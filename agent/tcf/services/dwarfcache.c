@@ -1405,9 +1405,9 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
             }
             if (Obj->mTag == TAG_structure_type || Obj->mTag == TAG_class_type || Obj->mTag == TAG_union_type) {
                 /* It is OK to return size 0 if the structure has no data members */
-                int OK = 1;
+                int ok = 1;
                 ObjectInfo * c = get_dwarf_children(Obj);
-                while (OK && c != NULL) {
+                while (ok && c != NULL) {
                     ObjectInfo * d = c;
                     while (d->mTag == TAG_imported_declaration) {
                         PropertyValue v;
@@ -1418,7 +1418,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
                         if (d == NULL) break;
                     }
                     if (d == NULL) {
-                        OK = 0;
+                        ok = 0;
                     }
                     else {
                         switch (d->mTag) {
@@ -1432,15 +1432,15 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
                             break;
                         case TAG_member:
                             if (d->mFlags & DOIF_external) break;
-                            OK = 0;
+                            ok = 0;
                             break;
                         default:
-                            OK = 0;
+                            ok = 0;
                         }
                     }
                     c = c->mSibling;
                 }
-                if (OK) {
+                if (ok) {
                     Value->mForm = FORM_UDATA;
                     Value->mAddr = 0;
                     Value->mValue = 0;
