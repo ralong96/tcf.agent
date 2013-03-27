@@ -240,10 +240,8 @@ static void event_context_exited(Context * ctx, void * args) {
 
 static void event_context_disposed(Context * ctx, void * args) {
     ContextExtensionPF * ext = EXT(ctx);
-    LINK * l = ext->list.next;
-    while (l != &ext->list) {
-        ProfilerRegistration * prf = link_ctx2prf(l);
-        l = l->next;
+    while (!list_is_empty(&ext->list)) {
+        ProfilerRegistration * prf = link_ctx2prf(ext->list.next);
         list_remove(&prf->link_ctx);
         loc_free(prf);
     }
