@@ -224,7 +224,7 @@ static void elf_cleanup_event(void * arg) {
     while (file != NULL) {
         file->age++;
 #if SERVICE_MemoryMap
-        if (!file->debug_info_file && file->age % max_file_age / 2 == 0 && is_file_mapped(file)) {
+        if (!file->mtime_changed && file->age > max_file_age && is_file_mapped(file)) {
             file->age = 0;
             if (file->debug_info_file_name) {
                 find_open_file_by_name(file->debug_info_file_name);
@@ -451,10 +451,20 @@ static int is_debug_info_file(ELF_File * file) {
 static void create_symbol_names_hash(ELF_Section * tbl);
 
 static void reopen_file(ELF_File * file) {
+    int error = 0;
     if (file->fd >= 0) return;
     if (file->error != NULL) return;
-    if ((file->fd = open(file->name, O_RDONLY | O_BINARY, 0)) < 0) {
-        int error = errno;
+    if ((file->fd = open(file->name, O_RDONLY | O_BINARY, 0)) < 0) error = errno;
+    if (!error) {
+        struct stat st;
+        if (fstat(file->fd, &st) < 0) error = errno;
+        else if (st.st_mtime != file->mtime) error = set_errno(ERR_OTHER, "Invalid file mtime");
+    }
+    if (error) {
+        if (file->fd >= 0) {
+            close(file->fd);
+            file->fd = -1;
+        }
         trace(LOG_ELF, "Error re-opening ELF file: %d %s", error, errno_to_str(error));
         file->error = get_error_report(error);
     }
@@ -468,10 +478,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
     char * real_name = NULL;
 
     file = find_open_file_by_name(file_name);
-    if (file != NULL) {
-        reopen_file(file);
-        return file;
-    }
+    if (file != NULL) return file;
 
     if (stat(file_name, &st) < 0) {
         error = errno;
@@ -485,7 +492,6 @@ static ELF_File * create_elf_cache(const char * file_name) {
         file = find_open_file_by_inode(st.st_dev, st.st_ino, st.st_mtime);
         if (file != NULL) {
             add_file_name(file, file_name);
-            reopen_file(file);
             return file;
         }
     }
@@ -494,10 +500,6 @@ static ELF_File * create_elf_cache(const char * file_name) {
 
     file = (ELF_File *)loc_alloc_zero(sizeof(ELF_File));
     file->fd = -1;
-    file->dev = st.st_dev;
-    file->ino = st.st_ino;
-    file->mtime = st.st_mtime;
-    file->size = st.st_size;
 
     if (error == 0) real_name = canonicalize_file_name(file_name);
 
@@ -510,6 +512,12 @@ static ELF_File * create_elf_cache(const char * file_name) {
     }
 
     if (error == 0 && (file->fd = open(file->name, O_RDONLY | O_BINARY, 0)) < 0) error = errno;
+    if (error == 0 && fstat(file->fd, &st) < 0) error = errno;
+
+    file->dev = st.st_dev;
+    file->ino = st.st_ino;
+    file->mtime = st.st_mtime;
+    file->size = st.st_size;
 
     if (error == 0) {
         Elf32_Ehdr hdr;
@@ -902,13 +910,18 @@ int elf_load(ELF_Section * s) {
 
     if (s->data == NULL) {
         ELF_File * file = s->file;
-        if (lseek(file->fd, s->offset, SEEK_SET) == (off_t)-1) return -1;
+        reopen_file(file);
+        if (file->error) {
+            set_error_report_errno(file->error);
+            return -1;
+        }
         s->data = loc_alloc((size_t)s->size);
-        if (read(file->fd, s->data, (size_t)s->size) < 0) {
-            int err = errno;
+        if (lseek(file->fd, s->offset, SEEK_SET) == (off_t)-1 ||
+                read(file->fd, s->data, (size_t)s->size) < 0) {
+            int error = errno;
             loc_free(s->data);
             s->data = NULL;
-            set_errno(err, "Cannot read symbol file");
+            set_errno(error, "Cannot read symbol file");
             return -1;
         }
         trace(LOG_ELF, "Section %s in ELF file %s is loaded", s->name, s->file->name);
@@ -942,7 +955,6 @@ ELF_File * elf_open_memory_region_file(MemoryRegion * r, int * error) {
     if (file->error == NULL) {
         if (r->dev != 0 && file->dev != r->dev) return NULL;
         if (r->ino != 0 && file->ino != r->ino) return NULL;
-        reopen_file(file);
         return file;
     }
     if (error != NULL && *error == 0) {
