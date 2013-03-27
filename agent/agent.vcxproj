@@ -295,6 +295,7 @@
     <ClCompile Include="tcf\services\memoryservice.c" />
     <ClCompile Include="tcf\services\pathmap.c" />
     <ClCompile Include="tcf\services\processes.c" />
+    <ClCompile Include="tcf\services\profiler.c" />
     <ClCompile Include="tcf\services\registers.c" />
     <ClCompile Include="tcf\services\runctrl.c" />
     <ClCompile Include="tcf\services\stacktrace.c" />
@@ -441,6 +442,7 @@
     <ClInclude Include="tcf\services\memoryservice.h" />
     <ClInclude Include="tcf\services\pathmap.h" />
     <ClInclude Include="tcf\services\processes.h" />
+    <ClInclude Include="tcf\services\profiler.h" />
     <ClInclude Include="tcf\services\registers.h" />
     <ClInclude Include="tcf\services\runctrl.h" />
     <ClInclude Include="tcf\services\stacktrace.h" />

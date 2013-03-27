@@ -309,6 +309,9 @@
     <ClCompile Include="tcf\services\dprintf.c">
       <Filter>services</Filter>
     </ClCompile>
+    <ClCompile Include="tcf\services\profiler.c">
+      <Filter>services</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tcf\framework\asyncreq.h">
@@ -571,6 +574,9 @@
       <Filter>services</Filter>
     </ClInclude>
     <ClInclude Include="tcf\services\dprintf.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\services\profiler.h">
       <Filter>services</Filter>
     </ClInclude>
   </ItemGroup>
