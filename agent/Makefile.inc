@@ -5,6 +5,9 @@ ifndef OPSYS
 endif
 ifndef MACHINE
   MACHINE := $(shell uname -m)
+  ifeq ($(MACHINE),armv6l)
+    MACHINE := arm
+  endif
 endif
 
 INCDIRS = . system/$(OPSYS) machine/$(MACHINE)
