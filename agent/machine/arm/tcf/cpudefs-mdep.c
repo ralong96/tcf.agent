@@ -57,7 +57,7 @@ RegisterDefinition regs_def[] = {
     { "cpsr",    REG_OFFSET(user.regs.uregs[16]),     4, -1, -1},
     { "orig_r0", REG_OFFSET(user.regs.uregs[17]),     4, -1, -1},
     { "debug",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 18 */
-    { "bp_info", REG_OFFSET(other.bp_info),           4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "bp_info", REG_OFFSET(other.bp_info),      4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
     { "bvr0",    REG_OFFSET(other.bp[0].vr),     4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
     { "bcr0",    REG_OFFSET(other.bp[0].cr),     4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
     { NULL,     0,                    0,  0,  0},
@@ -80,45 +80,43 @@ static RegisterDefinition * cpsr_def = NULL;
 #if !defined(PTRACE_SETHBPREGS)
 #define PTRACE_SETHBPREGS 30
 #endif
-#define MAX_HWP 1
-static int offset_to_regnum(size_t offset) {
-    int bp_id = (offset - 4) >> 3;
-    int reg_offset = 1 + (((offset - 4) >> 2) & 1);
-    if (offset == 0) return 0;
-    trace (LOG_ALWAYS,"offset_to_regnum offset %x, bp_id %x, reg_offset %x", offset, bp_id, reg_offset);
-    if (bp_id >= MAX_HWP) return - (((bp_id - MAX_HWP) << 1) + reg_offset);
-    return (bp_id << 1) + reg_offset;
+static int offset_to_regnum(size_t offset, size_t * done_offs) {
+    assert(sizeof(user_hbpreg_struct) == 8);
+    if (offset >= REG_OFFSET(other.bp) && offset < REG_OFFSET(other.bp) + MAX_HBP * 8) {
+        int idx = (offset - REG_OFFSET(other.bp)) / 4;
+        *done_offs = REG_OFFSET(other.bp) + idx * 4;
+        return 1 + idx;
+    }
+    if (offset >= REG_OFFSET(other.wp) && offset < REG_OFFSET(other.wp) + MAX_HWP * 8) {
+        int idx = (offset - REG_OFFSET(other.wp)) / 4;
+        *done_offs = REG_OFFSET(other.wp) + idx * 4;
+        return -idx;
+    }
+    *done_offs = REG_OFFSET(other.bp_info);
+    return 0;
 }
 
 int mdep_get_other_regs(pid_t pid, REG_SET * data,
                        size_t data_offs, size_t data_size,
                        size_t * done_offs, size_t * done_size) {
-    size_t size = 0;
+    int reg_num = 0;
     assert(data_offs >= offsetof(REG_SET, other));
     assert(data_offs + data_size <= offsetof(REG_SET, other) + sizeof(data->other));
-    /* bp registers can only be accessed 1 at a time */
-    for (size = data_offs - offsetof(REG_SET, other); size < sizeof(data->other); size += 4) {
-        trace (LOG_ALWAYS,"get_other_registers %x", offset_to_regnum(size));
-        if (ptrace(PTRACE_GETHBPREGS, pid, offset_to_regnum (size), (char *)&data->other + size) < 0) return -1;
-    }
-    *done_offs = offsetof(REG_SET, other);
-    *done_size = sizeof(data->other);
+    reg_num = offset_to_regnum(data_offs, done_offs);
+    if (ptrace(PTRACE_GETHBPREGS, pid, reg_num, (char *)data + *done_offs) < 0) return -1;
+    *done_size = 4;
     return 0;
 }
 
 int mdep_set_other_regs(pid_t pid, REG_SET * data,
                        size_t data_offs, size_t data_size,
                        size_t * done_offs, size_t * done_size) {
-    size_t size = 0;
+    int reg_num = 0;
     assert(data_offs >= offsetof(REG_SET, other));
     assert(data_offs + data_size <= offsetof(REG_SET, other) + sizeof(data->other));
-    /* bp registers can only be accessed 1 at a time */
-    for (size = data_offs - offsetof(REG_SET, other); size < data_offs + data_size - offsetof(REG_SET, other); size += 4) {
-        trace (LOG_ALWAYS,"set_other_registers %x", offset_to_regnum(size));
-        if (ptrace(PTRACE_SETHBPREGS, pid, offset_to_regnum(size), (char *)&data->other + size) < 0) return -1;
-    }
-    *done_offs = offsetof(REG_SET, other);
-    *done_size = sizeof(data->other);
+    reg_num = offset_to_regnum(data_offs, done_offs);
+    if (ptrace(PTRACE_SETHBPREGS, pid, reg_num, (char *)data + *done_offs) < 0) return -1;
+    *done_size = 4;
     return 0;
 }
 
