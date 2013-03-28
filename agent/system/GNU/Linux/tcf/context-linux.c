@@ -111,6 +111,7 @@ typedef struct ContextExtensionLinux {
     int                     sigstop_posted;
     int                     waitpid_posted;
     int                     detach_req;
+    int                     crt0_done;
 } ContextExtensionLinux;
 
 static size_t context_extension_offset = 0;
@@ -1303,6 +1304,13 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     if (signal != SIGSTOP && signal != SIGTRAP) {
         assert(signal < 32);
         ctx->pending_signals |= 1 << signal;
+#if defined(__arm__)
+        /* On ARM, Linux kernel appears to use SIGILL to lazily enable vector registers */
+        if (signal == SIGILL && !ext->crt0_done) {
+            /* Ignore */
+        }
+        else
+#endif
         if ((ctx->sig_dont_stop & (1 << signal)) == 0) {
             if (!is_intercepted(ctx)) ctx->pending_intercept = 1;
             stopped_by_exception = 1;
@@ -1493,6 +1501,7 @@ static void eventpoint_at_loader(Context * ctx, void * args) {
 #endif /* SERVICE_Expressions && ENABLE_ELF */
 
 static void eventpoint_at_main(Context * ctx, void * args) {
+    EXT(ctx)->crt0_done = 1;
     send_context_changed_event(ctx->mem);
     memory_map_event_mapping_changed(ctx->mem);
     if ((EXT(ctx)->attach_mode & CONTEXT_ATTACH_NO_MAIN) == 0) {
