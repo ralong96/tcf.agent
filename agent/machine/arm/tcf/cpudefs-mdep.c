@@ -65,7 +65,7 @@ RegisterDefinition regs_def[] = {
 
 RegisterDefinition * regs_index = NULL;
 
-unsigned char BREAK_INST[] = { 0x7f, 0xff, 0x2f, 0xe1 };
+unsigned char BREAK_INST[] = { 0xf0, 0x01, 0xf0, 0xe7 };
 
 static RegisterDefinition * pc_def = NULL;
 static RegisterDefinition * cpsr_def = NULL;
