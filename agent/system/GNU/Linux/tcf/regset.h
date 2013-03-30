@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2010 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -11,6 +11,7 @@
  *
  * Contributors:
  *     Wind River Systems - initial API and implementation
+ *     Stanislav Yakovlev - [404627] Add support for ARM VFP registers
  *******************************************************************************/
 
 /*
@@ -23,10 +24,17 @@
 #include <sys/user.h>
 #include <tcf/regset-mdep.h>
 
+#if defined(__arm__)
+struct user_vfpregs {
+	uint64_t fpregs[32];
+	uint32_t fpscr;
+};
+#endif
+
 typedef struct REG_SET {
     struct user user;
 #if defined(__arm__)
-    struct user_fpregs fp;
+    struct user_vfpregs fp;
 #else
     struct user_fpregs_struct fp;
 #endif

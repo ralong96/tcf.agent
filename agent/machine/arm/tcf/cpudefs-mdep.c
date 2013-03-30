@@ -10,8 +10,9 @@
  * You may elect to redistribute this code under either of these licenses.
  *
  * Contributors:
- *     Stanislav Yakovlev - initial API and implementation
- * Emmanuel Touron (Wind River) - initial ARM stepping emulation
+ *     Stanislav Yakovlev           - initial API and implementation
+ *     Emmanuel Touron (Wind River) - initial ARM stepping emulation
+ *     Stanislav Yakovlev           - [404627] Add support for ARM VFP registers
  *******************************************************************************/
 
 #include <tcf/config.h>
@@ -56,10 +57,46 @@ RegisterDefinition regs_def[] = {
     { "pc",      REG_OFFSET(user.regs.uregs[15]),     4, 15, 15},
     { "cpsr",    REG_OFFSET(user.regs.uregs[16]),     4, -1, -1},
     { "orig_r0", REG_OFFSET(user.regs.uregs[17]),     4, -1, -1},
-    { "debug",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 18 */
-    { "bp_info", REG_OFFSET(other.bp_info),      4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "bvr0",    REG_OFFSET(other.bp[0].vr),     4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "bcr0",    REG_OFFSET(other.bp[0].cr),     4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+
+    { "vfp",     0, 0, -1, -1, 0, 0, 1, 1 }, /* 18 */
+    { "d0",      REG_OFFSET(fp.fpregs[0]),      8, 256, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d1",      REG_OFFSET(fp.fpregs[1]),      8, 257, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d2",      REG_OFFSET(fp.fpregs[2]),      8, 258, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d3",      REG_OFFSET(fp.fpregs[3]),      8, 259, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d4",      REG_OFFSET(fp.fpregs[4]),      8, 260, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d5",      REG_OFFSET(fp.fpregs[5]),      8, 261, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d6",      REG_OFFSET(fp.fpregs[6]),      8, 262, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d7",      REG_OFFSET(fp.fpregs[7]),      8, 263, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d8",      REG_OFFSET(fp.fpregs[8]),      8, 264, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d9",      REG_OFFSET(fp.fpregs[9]),      8, 265, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d10",     REG_OFFSET(fp.fpregs[10]),     8, 266, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d11",     REG_OFFSET(fp.fpregs[11]),     8, 267, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d12",     REG_OFFSET(fp.fpregs[12]),     8, 268, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d13",     REG_OFFSET(fp.fpregs[13]),     8, 269, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d14",     REG_OFFSET(fp.fpregs[14]),     8, 270, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d15",     REG_OFFSET(fp.fpregs[15]),     8, 271, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d16",     REG_OFFSET(fp.fpregs[16]),     8, 272, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d17",     REG_OFFSET(fp.fpregs[17]),     8, 273, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d18",     REG_OFFSET(fp.fpregs[18]),     8, 274, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d19",     REG_OFFSET(fp.fpregs[19]),     8, 275, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d20",     REG_OFFSET(fp.fpregs[20]),     8, 276, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d21",     REG_OFFSET(fp.fpregs[21]),     8, 277, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d22",     REG_OFFSET(fp.fpregs[22]),     8, 278, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d23",     REG_OFFSET(fp.fpregs[23]),     8, 279, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d24",     REG_OFFSET(fp.fpregs[24]),     8, 280, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d25",     REG_OFFSET(fp.fpregs[25]),     8, 281, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d26",     REG_OFFSET(fp.fpregs[26]),     8, 282, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d27",     REG_OFFSET(fp.fpregs[27]),     8, 283, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d28",     REG_OFFSET(fp.fpregs[28]),     8, 284, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d29",     REG_OFFSET(fp.fpregs[29]),     8, 285, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d30",     REG_OFFSET(fp.fpregs[30]),     8, 286, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "d31",     REG_OFFSET(fp.fpregs[31]),     8, 287, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+    { "fpscr",   REG_OFFSET(fp.fpscr),          4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
+
+    { "debug",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 52 */
+    { "bp_info", REG_OFFSET(other.bp_info),      4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 52},
+    { "bvr0",    REG_OFFSET(other.bp[0].vr),     4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 52},
+    { "bcr0",    REG_OFFSET(other.bp[0].cr),     4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 52},
     { NULL,     0,                    0,  0,  0},
 };
 

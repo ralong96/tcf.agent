@@ -11,6 +11,7 @@
  *
  * Contributors:
  *     Wind River Systems - initial API and implementation
+ *     Stanislav Yakovlev - [404627] Add support for ARM VFP registers
  *******************************************************************************/
 
 /*
@@ -78,6 +79,13 @@
 #endif
 
 #define USE_PTRACE_SYSCALL      0
+
+#if defined(__arm__)
+#if !defined(PTRACE_GETVFPREGS)
+#define PTRACE_GETVFPREGS       27
+#define PTRACE_SETVFPREGS       28
+#endif
+#endif
 
 static const int PTRACE_FLAGS =
 #if USE_PTRACE_SYSCALL
@@ -338,7 +346,11 @@ static int flush_regs(Context * ctx) {
     for (i = 0; i < sizeof(REG_SET); i++) {
         if (!ext->regs_dirty[i]) continue;
         if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
+#if defined(__arm__)
+            if (ptrace(PTRACE_SETVFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
+#else
             if (ptrace(PTRACE_SETFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
+#endif
                 err = errno;
                 break;
             }
@@ -772,7 +784,11 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
             memset(ext->regs_valid + offsetof(REG_SET, user.regs), 0xff, sizeof(ext->regs->user.regs));
         }
         else if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
+#if defined(__arm__)
+            if (ptrace(PTRACE_GETVFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
+#else
             if (ptrace(PTRACE_GETFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
+#endif
                 err = errno;
                 break;
             }
