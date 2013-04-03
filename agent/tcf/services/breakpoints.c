@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -113,11 +113,14 @@ struct InstructionRef {
     int cnt;
 };
 
+#define MAX_BI_SIZE 16
+
 struct BreakInstruction {
     LINK link_all;
     LINK link_adr;
     ContextBreakpoint cb; /* cb.ctx is "canonical" context, see context_get_canonical_addr() */
-    char saved_code[16];
+    char saved_code[MAX_BI_SIZE];
+    char planted_code[MAX_BI_SIZE];
     size_t saved_size;
     ErrorReport * planting_error;
     ErrorReport * address_error;
@@ -298,6 +301,7 @@ static void plant_instruction(BreakInstruction * bi) {
             assert(!bi->virtual_addr);
             error = 0;
             planting_instruction = 1;
+            memcpy(bi->planted_code, break_inst, bi->saved_size);
             if (context_read_mem(bi->cb.ctx, bi->cb.address, bi->saved_code, bi->saved_size) < 0) {
                 error = errno;
             }
@@ -334,8 +338,12 @@ static int remove_instruction(BreakInstruction * bi) {
     if (bi->saved_size) {
         if (!bi->cb.ctx->exited) {
             int r = 0;
+            char buf[MAX_BI_SIZE];
             planting_instruction = 1;
-            r = context_write_mem(bi->cb.ctx, bi->cb.address, bi->saved_code, bi->saved_size);
+            r = context_read_mem(bi->cb.ctx, bi->cb.address, buf, bi->saved_size);
+            if (r >= 0 && memcmp(buf, bi->planted_code, bi->saved_size) == 0) {
+                r = context_write_mem(bi->cb.ctx, bi->cb.address, bi->saved_code, bi->saved_size);
+            }
             planting_instruction = 0;
             if (r < 0) return -1;
         }
