@@ -64,4 +64,7 @@ struct LINK {
             } \
         }
 
+#define list_foreach(trav,list) \
+	for (trav = (list)->next; trav != list; trav = trav->next)
+
 #endif /* D_link */
