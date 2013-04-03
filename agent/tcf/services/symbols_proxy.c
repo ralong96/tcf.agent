@@ -1624,7 +1624,9 @@ int get_stack_tracing_info(Context * ctx, ContextAddress ip, StackTracingInfo **
             if (c->pending != NULL) {
                 cache_wait(&c->cache);
             }
-            else if (c->sti.addr <= ip && c->sti.addr + c->sti.size > ip) {
+            else if (c->sti.addr <= ip &&
+                    (c->sti.addr + c->sti.size > ip ||
+                     c->sti.addr + c->sti.size < c->sti.addr)) {
                 f = c;
                 break;
             }
