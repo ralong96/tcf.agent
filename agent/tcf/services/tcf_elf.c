@@ -511,10 +511,14 @@ static ELF_File * create_elf_cache(const char * file_name) {
         add_file_name(file, file_name);
     }
 
+    /* Note: fstat() returns st_dev = 0 on Windows */
+    file->dev = st.st_dev;
+
     if (error == 0 && (file->fd = open(file->name, O_RDONLY | O_BINARY, 0)) < 0) error = errno;
     if (error == 0 && fstat(file->fd, &st) < 0) error = errno;
+    if (error == 0 && st.st_ino == 0) st.st_ino = elf_ino(file->name);
 
-    file->dev = st.st_dev;
+    if (st.st_dev != 0) file->dev = st.st_dev;
     file->ino = st.st_ino;
     file->mtime = st.st_mtime;
     file->size = st.st_size;
