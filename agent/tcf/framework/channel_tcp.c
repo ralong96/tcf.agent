@@ -1491,10 +1491,10 @@ void generate_ssl_certificate(void) {
         X509_gmtime_adj(X509_get_notBefore(cert), 0L);
         X509_gmtime_adj(X509_get_notAfter(cert), 60 * 60 * 24 * 365L * 10L);
         name = X509_get_subject_name(cert);
-        X509_NAME_add_entry_by_txt(name, "commonName", MBSTRING_ASC,
+        X509_NAME_add_entry_by_txt(name, (char *) "commonName", MBSTRING_ASC,
             (unsigned char *)subject_name, strlen(subject_name), -1, 0);
         name = X509_get_issuer_name(cert);
-        X509_NAME_add_entry_by_txt(name, "commonName", MBSTRING_ASC,
+        X509_NAME_add_entry_by_txt(name, (char *) "commonName", MBSTRING_ASC,
             (unsigned char *)issuer_name, strlen(issuer_name), -1, 0);
     }
     if (!err && !X509_set_pubkey(cert, rsa_key)) err = set_ssl_errno();
