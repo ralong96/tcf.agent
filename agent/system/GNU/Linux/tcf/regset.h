@@ -26,8 +26,8 @@
 
 #if defined(__arm__)
 struct user_vfpregs {
-	uint64_t fpregs[32];
-	uint32_t fpscr;
+    uint64_t fpregs[32];
+    uint32_t fpscr;
 };
 #endif
 
