@@ -32,6 +32,7 @@
 #include <tcf/framework/events.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
+#include <tcf/services/memorymap.h>
 #include <tcf/services/linenumbers.h>
 
 #define HASH_SIZE (16 * MEM_USAGE_FACTOR - 1)
@@ -115,7 +116,8 @@ static LineNumbersCache * get_line_numbers_cache(void) {
     LINK * l = NULL;
     LineNumbersCache * cache = NULL;
     Channel * c = cache_channel();
-    if (c == NULL) str_exception(ERR_OTHER, "get_line_numbers_cache(): illegal cache access");
+    if (c == NULL) str_exception(ERR_OTHER, "Line numbers cache: illegal cache access");
+    if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
     for (l = root.next; l != &root; l = l->next) {
         LineNumbersCache * x = root2cache(l);
         if (x->channel == c) {
@@ -239,8 +241,7 @@ int line_to_address(Context * ctx, char * file, int line, int column,
     }
 
     if (entry == NULL) {
-        Channel * c = cache_channel();
-        if (c == NULL || is_channel_closed(c)) exception(ERR_UNSUPPORTED);
+        Channel * c = cache->channel;
         entry = (LineNumbersCacheEntry *)loc_alloc_zero(sizeof(LineNumbersCacheEntry));
         list_add_first(&entry->link_cache, cache->link_entries + h);
         entry->magic = LINE_NUMBERS_CACHE_MAGIC;
@@ -305,8 +306,7 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
     }
 
     if (entry == NULL) {
-        Channel * c = cache_channel();
-        if (c == NULL || is_channel_closed(c)) exception(ERR_UNSUPPORTED);
+        Channel * c = cache->channel;
         entry = (LineNumbersCacheEntry *)loc_alloc_zero(sizeof(LineNumbersCacheEntry));
         list_add_first(&entry->link_cache, cache->link_entries + h);
         entry->magic = LINE_NUMBERS_CACHE_MAGIC;
@@ -370,6 +370,12 @@ static void event_context_changed(Context * ctx, void * x) {
     flush_cache(context_get_group(ctx, CONTEXT_GROUP_SYMBOLS));
 }
 
+#if SERVICE_MemoryMap
+static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddress size, void * x) {
+    event_context_changed(ctx, x);
+}
+#endif
+
 static void channel_close_listener(Channel * c) {
     LINK * l = root.next;
     while (l != &root) {
@@ -380,14 +386,27 @@ static void channel_close_listener(Channel * c) {
 }
 
 void ini_line_numbers_lib(void) {
-    static ContextEventListener listener = {
-        event_context_created,
-        event_context_exited,
-        NULL,
-        NULL,
-        event_context_changed
-    };
-    add_context_event_listener(&listener, NULL);
+    {
+        static ContextEventListener listener = {
+            event_context_created,
+            event_context_exited,
+            NULL,
+            NULL,
+            event_context_changed
+        };
+        add_context_event_listener(&listener, NULL);
+    }
+#if SERVICE_MemoryMap
+    {
+        static MemoryMapEventListener listener = {
+            event_context_changed,
+            event_code_unmapped,
+            event_context_changed,
+            event_context_changed,
+        };
+        add_memory_map_event_listener(&listener, NULL);
+    }
+#endif
     add_channel_close_listener(channel_close_listener);
 }
 

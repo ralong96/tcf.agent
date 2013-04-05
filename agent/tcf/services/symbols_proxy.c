@@ -32,6 +32,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/stacktrace.h>
+#include <tcf/services/memorymap.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/vm.h>
 #if ENABLE_RCBP_TEST
@@ -226,7 +227,8 @@ static SymbolsCache * get_symbols_cache(void) {
     LINK * l = NULL;
     SymbolsCache * syms = NULL;
     Channel * c = cache_channel();
-    if (c == NULL) str_exception(ERR_OTHER, "get_symbols_cache(): illegal cache access");
+    if (c == NULL) str_exception(ERR_OTHER, "Symbols cache: illegal cache access");
+    if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
     for (l = root.next; l != &root; l = l->next) {
         SymbolsCache * x = root2syms(l);
         if (x->channel == c) {
@@ -1678,10 +1680,19 @@ const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
 
 /*************************************************************************************************/
 
+static int check_policy(Context * ctx, int mode, Context * sym_grp, Context * sym_ctx, int policy) {
+    if ((mode & (1 << policy)) && sym_ctx == ctx) return 1;
+    if (mode & (1 << UPDATE_ON_MEMORY_MAP_CHANGES)) {
+        if (context_get_group(sym_ctx, CONTEXT_GROUP_SYMBOLS) == sym_grp) return 1;
+    }
+    return 0;
+}
+
 static void flush_syms(Context * ctx, int mode) {
     LINK * l;
     LINK * m;
     int i;
+    Context * sym_grp = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
 
     for (m = root.next; m != &root; m = m->next) {
         SymbolsCache * syms = root2syms(m);
@@ -1696,7 +1707,7 @@ static void flush_syms(Context * ctx, int mode) {
                 else if (c->update_owner == NULL || c->update_owner->exited) {
                     free_sym_info_cache(c);
                 }
-                else if ((mode & (1 << c->update_policy)) && ctx == c->update_owner) {
+                else if (check_policy(ctx, mode, sym_grp, c->update_owner, c->update_policy)) {
                     if (mode == (1 << UPDATE_ON_EXE_STATE_CHANGES)) {
                         c->degraded = 1;
                     }
@@ -1709,7 +1720,7 @@ static void flush_syms(Context * ctx, int mode) {
             while (l != syms->link_find_by_name + i) {
                 FindSymCache * c = syms2find(l);
                 l = l->next;
-                if ((mode & (1 << c->update_policy)) && c->ctx == ctx) {
+                if (check_policy(ctx, mode, sym_grp, c->ctx, c->update_policy)) {
                     free_find_sym_cache(c);
                 }
             }
@@ -1717,7 +1728,7 @@ static void flush_syms(Context * ctx, int mode) {
             while (l != syms->link_find_in_scope + i) {
                 FindSymCache * c = syms2find(l);
                 l = l->next;
-                if ((mode & (1 << c->update_policy)) && c->ctx == ctx) {
+                if (check_policy(ctx, mode, sym_grp, c->ctx, c->update_policy)) {
                     free_find_sym_cache(c);
                 }
             }
@@ -1725,29 +1736,34 @@ static void flush_syms(Context * ctx, int mode) {
             while (l != syms->link_list + i) {
                 FindSymCache * c = syms2find(l);
                 l = l->next;
-                if ((mode & (1 << c->update_policy)) && c->ctx == ctx) {
+                if (check_policy(ctx, mode, sym_grp, c->ctx, c->update_policy)) {
                     free_find_sym_cache(c);
                 }
             }
             if (mode & (1 << UPDATE_ON_MEMORY_MAP_CHANGES)) {
-                Context * prs = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
                 l = syms->link_frame[i].next;
                 while (l != syms->link_frame + i) {
                     StackFrameCache * c = syms2frame(l);
                     l = l->next;
-                    if (context_get_group(c->ctx, CONTEXT_GROUP_SYMBOLS) == prs) free_stack_frame_cache(c);
+                    if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
+                        free_stack_frame_cache(c);
+                    }
                 }
                 l = syms->link_address[i].next;
                 while (l != syms->link_address + i) {
                     AddressInfoCache * c = syms2address(l);
                     l = l->next;
-                    if (context_get_group(c->ctx, CONTEXT_GROUP_SYMBOLS) == prs) free_address_info_cache(c);
+                    if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
+                        free_address_info_cache(c);
+                    }
                 }
                 l = syms->link_location[i].next;
                 while (l != syms->link_location + i) {
                     LocationInfoCache * c = syms2location(l);
                     l = l->next;
-                    if (context_get_group(c->ctx, CONTEXT_GROUP_SYMBOLS) == prs) free_location_info_cache(c);
+                    if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
+                        free_location_info_cache(c);
+                    }
                 }
             }
         }
@@ -1771,8 +1787,14 @@ static void event_context_started(Context * ctx, void * x) {
 }
 
 static void event_context_changed(Context * ctx, void * x) {
-    flush_syms(ctx, (1 << UPDATE_ON_MEMORY_MAP_CHANGES) | (1 << UPDATE_ON_EXE_STATE_CHANGES));
+    flush_syms(ctx, ~0);
 }
+
+#if SERVICE_MemoryMap
+static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddress size, void * x) {
+    flush_syms(ctx, ~0);
+}
+#endif
 
 static void channel_close_listener(Channel * c) {
     LINK * l = root.next;
@@ -1784,14 +1806,27 @@ static void channel_close_listener(Channel * c) {
 }
 
 void ini_symbols_lib(void) {
-    static ContextEventListener listener = {
-        event_context_created,
-        event_context_exited,
-        event_context_stopped,
-        event_context_started,
-        event_context_changed
-    };
-    add_context_event_listener(&listener, NULL);
+    {
+        static ContextEventListener listener = {
+            event_context_created,
+            event_context_exited,
+            event_context_stopped,
+            event_context_started,
+            event_context_changed
+        };
+        add_context_event_listener(&listener, NULL);
+    }
+#if SERVICE_MemoryMap
+    {
+        static MemoryMapEventListener listener = {
+            event_context_changed,
+            event_code_unmapped,
+            event_context_changed,
+            event_context_changed,
+        };
+        add_memory_map_event_listener(&listener, NULL);
+    }
+#endif
     add_channel_close_listener(channel_close_listener);
 }
 

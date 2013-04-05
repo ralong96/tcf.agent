@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -30,6 +30,7 @@
 #include <tcf/framework/events.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/contextquery.h>
+#include <tcf/services/pathmap.h>
 #include <tcf/services/memorymap.h>
 
 typedef struct Listener {
@@ -521,6 +522,28 @@ static void command_set(char * token, Channel * c) {
     write_stream(&c->out, MARKER_EOM);
 }
 
+#if SERVICE_PathMap
+/* Memory map file names are translated using Path Map service,
+ * so any change in the path maps translates to memory map
+ * change in all memory spaces */
+static void event_path_map_changed(Channel * c, void * args) {
+    LINK * l = context_root.next;
+    while (l != &context_root) {
+        int notify = 0;
+        Context * ctx = ctxl2ctxp(l);
+        ContextExtensionMM * ext = EXT(ctx);
+        l = l->next;
+        if (ctx->exited) continue;
+        if (ctx != get_mem_context(ctx)) continue;
+#if ENABLE_DebugContext
+        if (ext->valid && !ext->error && ext->target_map.region_cnt > 0) notify = 1;
+#endif
+        if (ext->client_map.region_cnt > 0) notify = 1;
+        if (notify) memory_map_event_mapping_changed(ctx);
+    }
+}
+#endif
+
 static void channel_close_listener(Channel * c) {
     int notify = 0;
     LINK * l = client_map_list.next;
@@ -539,17 +562,27 @@ static void channel_close_listener(Channel * c) {
 }
 
 void ini_memory_map_service(Protocol * proto, TCFBroadcastGroup * bcg) {
-    static ContextEventListener listener = {
-        event_context_changed,
-        NULL,
-        NULL,
-        NULL,
-        event_context_changed,
-        event_context_disposed
-    };
+    {
+        static ContextEventListener listener = {
+            event_context_changed,
+            NULL,
+            NULL,
+            NULL,
+            event_context_changed,
+            event_context_disposed
+        };
+        add_context_event_listener(&listener, NULL);
+    }
+#if SERVICE_PathMap
+    {
+        static PathMapEventListener listener = {
+            event_path_map_changed,
+        };
+        add_path_map_event_listener(&listener, NULL);
+    }
+#endif
     broadcast_group = bcg;
     add_channel_close_listener(channel_close_listener);
-    add_context_event_listener(&listener, NULL);
     add_command_handler(proto, MEMORY_MAP, "get", command_get);
     add_command_handler(proto, MEMORY_MAP, "set", command_set);
     context_extension_offset = context_extension(sizeof(ContextExtensionMM));
