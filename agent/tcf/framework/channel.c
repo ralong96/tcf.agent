@@ -43,6 +43,10 @@
 #include <tcf/framework/link.h>
 #include <tcf/framework/json.h>
 
+#ifndef DEFAULT_SERVER_NAME
+#  define DEFAULT_SERVER_NAME "TCF Agent"
+#endif
+
 static void trigger_channel_shutdown(ShutdownInfo * obj);
 
 ShutdownInfo channel_shutdown = { trigger_channel_shutdown };
@@ -224,7 +228,7 @@ PeerServer * channel_peer_from_url(const char * url) {
     char transport[16];
     PeerServer * ps = peer_server_alloc();
 
-    peer_server_addprop(ps, loc_strdup("Name"), loc_strdup("TCF Agent"));
+    peer_server_addprop(ps, loc_strdup("Name"), loc_strdup(DEFAULT_SERVER_NAME));
     peer_server_addprop(ps, loc_strdup("OSName"), loc_strdup(get_os_name()));
     if (user != NULL) peer_server_addprop(ps, loc_strdup("UserName"), loc_strdup(user));
     peer_server_addprop(ps, loc_strdup("AgentID"), loc_strdup(get_agent_id()));
