@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2010 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -141,22 +141,22 @@ void get_byte_array_output_stream_data(ByteArrayOutputStream * buf, char ** data
 
 static int read_byte_array_input_stream(InputStream * inp) {
     ByteArrayInputStream * buf = (ByteArrayInputStream *)((char *)inp - offsetof(ByteArrayInputStream, inp));
-    if (buf->pos >= buf->max) return MARKER_EOS;
-    return ((unsigned char *)buf->buf)[buf->pos++];
+    if (buf->inp.cur >= buf->inp.end) return MARKER_EOS;
+    return *buf->inp.cur++;
 }
 
 static int peek_byte_array_input_stream(InputStream * inp) {
     ByteArrayInputStream * buf = (ByteArrayInputStream *)((char *)inp - offsetof(ByteArrayInputStream, inp));
-    if (buf->pos >= buf->max) return MARKER_EOS;
-    return ((unsigned char *)buf->buf)[buf->pos];
+    if (buf->inp.cur >= buf->inp.end) return MARKER_EOS;
+    return *buf->inp.cur;
 }
 
 InputStream * create_byte_array_input_stream(ByteArrayInputStream * buf, const char * data, size_t size) {
     memset(buf, 0, sizeof(ByteArrayInputStream));
     buf->inp.read = read_byte_array_input_stream;
     buf->inp.peek = peek_byte_array_input_stream;
-    buf->buf = data;
-    buf->max = size;
+    buf->inp.cur = (unsigned char *)data;
+    buf->inp.end = (unsigned char *)data + size;
     return &buf->inp;
 }
 

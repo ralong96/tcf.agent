@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2010 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -102,8 +102,6 @@ extern void get_byte_array_output_stream_data(ByteArrayOutputStream * buf, char 
 typedef struct ByteArrayInputStream {
     InputStream inp;
     const char * buf;
-    size_t pos;
-    size_t max;
 } ByteArrayInputStream;
 
 extern InputStream * create_byte_array_input_stream(ByteArrayInputStream * buf, const char * data, size_t size);
