@@ -1199,7 +1199,202 @@ const char * loc_gai_strerror(int ecode) {
 
 #endif
 
-#if defined(_WIN32) || defined(_WRS_KERNEL) || defined (__SYMBIAN32__)
+#if defined(_WIN32)
+#  include <tlhelp32.h>
+#  ifdef _MSC_VER
+#    pragma warning(disable:4201) /* nonstandard extension used : nameless struct/union (in winternl.h) */
+#    include <winternl.h>
+#  else
+#    include <ntdef.h>
+#  endif
+#  ifndef STATUS_INFO_LENGTH_MISMATCH
+#   define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
+#  endif
+#  ifndef SystemHandleInformation
+#    define SystemHandleInformation 16
+#  endif
+
+/* Disable inheritance for all handles owned by process */
+static NTSTATUS disable_handle_inheritance(void) {
+    typedef struct _HANDLE_INFORMATION {
+            USHORT ProcessId;
+            USHORT CreatorBackTraceIndex;
+            UCHAR ObjectTypeNumber;
+            UCHAR Flags;
+            USHORT Handle;
+            PVOID Object;
+            ACCESS_MASK GrantedAccess;
+    } HANDLE_INFORMATION;
+    typedef struct _SYSTEM_HANDLE_INFORMATION {
+        ULONG Count;
+        HANDLE_INFORMATION Handles[1];
+    } SYSTEM_HANDLE_INFORMATION;
+    typedef NTSTATUS (FAR WINAPI * QuerySystemInformationTypedef)(int, PVOID, ULONG, PULONG);
+    QuerySystemInformationTypedef QuerySystemInformationProc = (QuerySystemInformationTypedef)GetProcAddress(
+        GetModuleHandle("NTDLL.DLL"), "NtQuerySystemInformation");
+    DWORD size;
+    NTSTATUS status;
+    SYSTEM_HANDLE_INFORMATION * hi = NULL;
+
+    size = sizeof(SYSTEM_HANDLE_INFORMATION) + sizeof(HANDLE_INFORMATION) * 256;
+    hi = (SYSTEM_HANDLE_INFORMATION *)tmp_alloc_zero(size);
+    for (;;) {
+        status = QuerySystemInformationProc(SystemHandleInformation, hi, size, &size);
+        if (status != STATUS_INFO_LENGTH_MISMATCH) break;
+        hi = (SYSTEM_HANDLE_INFORMATION *)tmp_realloc(hi, size);
+    }
+    if (status == 0) {
+        ULONG i;
+        DWORD id = GetCurrentProcessId();
+        for (i = 0; i < hi->Count; i++) {
+            if (hi->Handles[i].ProcessId != id) continue;
+            SetHandleInformation((HANDLE)(uintptr_t)hi->Handles[i].Handle, HANDLE_FLAG_INHERIT, 0);
+        }
+    }
+    return status;
+}
+
+static char *make_cmd_from_args(char **args) {
+    int i = 0;
+    int cmd_size = 0;
+    int cmd_pos = 0;
+    char *cmd = NULL;
+
+#  define cmd_append(ch) { \
+        if (cmd_pos >= cmd_size) { \
+            cmd_size += 0x1000; \
+            cmd = (char *)loc_realloc(cmd, cmd_size); \
+        } \
+        cmd[cmd_pos++] = (ch); \
+    }
+    while (args[i] != NULL) {
+        const char * p = args[i++];
+        if (cmd_pos > 0) cmd_append(' ');
+        cmd_append('"');
+        while (*p) {
+            if (*p == '"') cmd_append('\\');
+            cmd_append(*p);
+            p++;
+        }
+        cmd_append('"');
+    }
+    cmd_append(0);
+#  undef cmd_append
+    return cmd;
+}
+
+static int running_as_daemon = 0;
+
+int is_daemon(void) {
+    return running_as_daemon;
+}
+
+#  if !defined(__CYGWIN__)
+#    define pipe(fds) _pipe((fds), 1024, 0)
+#  endif
+
+void become_daemon(char **args) {
+    int fdpairs[4];
+    int npairs = 2;
+    char fnm[FILE_PATH_SIZE];
+    STARTUPINFO startupInfo;
+    PROCESS_INFORMATION prs_info;
+    int i;
+
+    assert(!running_as_daemon);
+    running_as_daemon = 1;
+
+    if (args == NULL)
+        return;
+
+    fflush(stdout);
+    fflush(stderr);
+
+    /* Make sure no handles are inherited by new process */
+    disable_handle_inheritance();
+
+    if (pipe(fdpairs) < 0) {
+        perror("pipe");
+        exit(1);
+    }
+
+    if (pipe(fdpairs + 2) < 0) {
+        perror("pipe");
+        exit(1);
+    }
+
+    if (GetModuleFileName(NULL, fnm, sizeof(fnm)) == 0) {
+        fprintf(stderr, "GetModuleFileName failed\n");
+        exit(1);
+    }
+
+    memset(&startupInfo, 0, sizeof startupInfo);
+    startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+    startupInfo.hStdInput = INVALID_HANDLE_VALUE;
+    startupInfo.hStdOutput = (HANDLE)_get_osfhandle(fdpairs[1]);
+    startupInfo.hStdError = (HANDLE)_get_osfhandle(fdpairs[3]);
+    SetHandleInformation(startupInfo.hStdOutput, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+    SetHandleInformation(startupInfo.hStdError, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+
+    if (!CreateProcess(fnm, make_cmd_from_args(args), NULL, NULL, TRUE,
+                       DETACHED_PROCESS, NULL, NULL, &startupInfo, &prs_info)) {
+        fprintf(stderr, "CreateProcess failed 0x%lx\n", GetLastError());
+        exit(1);
+    }
+
+    for (i = 0; i < 2; i++) {
+        /* Make read side non-blocking */
+        DWORD pipemode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
+        if (!SetNamedPipeHandleState((HANDLE)_get_osfhandle(fdpairs[i*2]), &pipemode, NULL, NULL)) {
+            fprintf(stderr, "SetNamedPipeHandleState failed 0x%lx\n", GetLastError());
+            exit(1);
+        }
+
+        /* Close write side of pipes so we get end of file as soon as
+         * the new them or exits */
+        close(fdpairs[i*2 + 1]);
+        fdpairs[i*2 + 1] = 1;
+    }
+
+    while (npairs > 0) {
+        for (i = 0; i < npairs; i++) {
+            char tmpbuf[1000];
+            DWORD size;
+            if (ReadFile((HANDLE)_get_osfhandle(fdpairs[i*2]), tmpbuf, sizeof tmpbuf, &size, NULL)) {
+                if (write(fdpairs[i*2 + 1], tmpbuf, size) < 0)
+                    perror("write");
+            } else if (GetLastError() != ERROR_NO_DATA) {
+                if (GetLastError() != ERROR_BROKEN_PIPE) {
+                    fprintf(stderr, "SetNamedPipeHandleState failed 0x%lx\n", GetLastError());
+                }
+                fdpairs[i*2] = fdpairs[(npairs - 1)*2];
+                fdpairs[i*2 + 1] = fdpairs[(npairs - 1)*2 + 1];
+                npairs--;
+            }
+        }
+        /* Neither select nor overlapped I/O works for anonymous pipes, so use
+         * polling for now until a better solution if found... */
+        usleep(1000);
+    }
+
+    exit(0);
+}
+
+void close_out_and_err(void) {
+    int fd = open("nul", O_WRONLY, 0);
+    if (fd < 0) {
+        perror("open nul");
+        exit(1);
+    }
+
+    fflush(stdout);
+    fflush(stderr);
+
+    dup2(fd, 1);
+    dup2(fd, 2);
+}
+
+#elif defined(_WRS_KERNEL) || defined (__SYMBIAN32__)
 
 int is_daemon(void) {
     return 0;
@@ -1210,9 +1405,10 @@ void become_daemon(void) {
     exit(1);
 }
 
-#else
+void close_out_and_err(void) {
+}
 
-#include <syslog.h>
+#else
 
 static int running_as_daemon = 0;
 
@@ -1221,13 +1417,132 @@ int is_daemon(void) {
 }
 
 void become_daemon(void) {
+    int fdpairs[4];
+    int npairs = 2;
+
     assert(!running_as_daemon);
-    openlog("tcf-agent", LOG_PID, LOG_DAEMON);
-    if (daemon(0, 0) < 0) {
-        syslog(LOG_MAKEPRI(LOG_DAEMON, LOG_ERR), "Cannot become a daemon: %m");
+
+    fflush(stdout);
+    fflush(stderr);
+
+    if (pipe(fdpairs) < 0) {
+        perror("pipe");
         exit(1);
     }
-    running_as_daemon = 1;
+
+    if (pipe(fdpairs + 2) < 0) {
+        perror("pipe");
+        exit(1);
+    }
+
+    /* Fork a new process so we can close everything except the pipes */
+    switch (fork()) {
+    default:                        /* Parent process */
+        /* Close write side of pipes so we get end of file as soon as
+         * child closes them or exits */
+        close(fdpairs[1]);
+        close(fdpairs[3]);
+        fdpairs[1] = 1;
+        fdpairs[3] = 2;
+
+        while (npairs > 0) {
+            int i;
+            int rval;
+            int nfds = 0;
+            fd_set readfds;
+            char tmpbuf[1000];
+
+            FD_ZERO(&readfds);
+            for (i = 0; i < npairs; i++) {
+                int fd = fdpairs[i*2];
+                FD_SET(fd, &readfds);
+                if (nfds < fd)
+                    nfds = fd;
+            }
+            rval = select(nfds + 1, &readfds, NULL, NULL, NULL);
+            if (rval < 0) {
+                if (errno == EINTR)
+                    continue;
+                perror("select");
+                _exit(1);
+            }
+            assert(rval > 0);
+            for (i = 0; i < npairs; i++) {
+                int fd = fdpairs[i*2];
+                if (FD_ISSET(fd, &readfds)) {
+                    rval = read(fd, tmpbuf, sizeof tmpbuf);
+                    if (rval > 0) {
+                        if (write(fdpairs[i*2 + 1], tmpbuf, rval) < 0)
+                            perror("write");
+                    } else {
+                        if (rval < 0)
+                            perror("read");
+                        fdpairs[i*2] = fdpairs[(npairs - 1)*2];
+                        fdpairs[i*2 + 1] = fdpairs[(npairs - 1)*2 + 1];
+                        npairs--;
+                    }
+                }
+            }
+        }
+        _exit(0);
+        break;
+
+    case 0: {                       /* Child process */
+        /* Replace stdin with /dev/null */
+        int fd = open("/dev/null", O_RDONLY);
+        if (fd < 0) {
+            perror("open /dev/null");
+            exit(1);
+        }
+        dup2(fd, 0);
+        dup2(fdpairs[1], 1);
+        dup2(fdpairs[3], 2);
+
+        /* Close all open files except stdin, stdout and stderr */
+        fd = sysconf(_SC_OPEN_MAX);
+        while (fd-- > 3)
+            close(fd);
+
+        /* Fork a new process so it is owned by init */
+        switch (fork()) {
+        default:                    /* Parent process */
+            _exit(0);
+            break;
+
+        case 0:                     /* Child process */
+            /* Create new session */
+            if (setsid() == (pid_t)-1) {
+                perror("setsid");
+                _exit(1);
+            }
+
+            running_as_daemon = 1;
+            return;
+
+        case -1:                    /* Fork failed */
+            perror("fork");
+            exit(1);
+        }
+    }
+
+    case -1:                        /* Fork failed */
+        perror("fork");
+        exit(1);
+    }
+}
+
+void close_out_and_err(void) {
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd < 0) {
+        perror("open /dev/null");
+        exit(1);
+    }
+
+    fflush(stdout);
+    fflush(stderr);
+
+    dup2(fd, 1);
+    dup2(fd, 2);
 }
 #endif
 

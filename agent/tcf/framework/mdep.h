@@ -397,7 +397,14 @@ extern const char * get_user_name(void);
 extern const char * create_uuid(void);
 
 /* Switch to running in the background, rather than under the direct control of a user */
+#if defined(_WIN32)
+extern void become_daemon(char ** argv);
+#else
 extern void become_daemon(void);
+#endif
+
+/* Close stdout and stderr and replace with null output device */
+extern void close_out_and_err(void);
 
 /* Return 1 if running in the background, return 0 othewise */
 extern int is_daemon(void);

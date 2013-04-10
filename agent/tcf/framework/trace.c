@@ -34,6 +34,8 @@ int log_mode = LOG_EVENTS | LOG_CHILD | LOG_WAITPID | LOG_CONTEXT | LOG_PROTOCOL
 #include <syslog.h>
 #endif
 
+static int use_syslog = 0;
+
 FILE * log_file = NULL;
 
 #define MAX_TRACE_MODES 40
@@ -67,7 +69,7 @@ int print_trace(int mode, const char * fmt, ...) {
     if (mode != LOG_ALWAYS && (log_mode & mode) == 0) return 0;
 
     va_start(ap, fmt);
-    if (is_daemon()) {
+    if (use_syslog) {
 #if defined(_WIN32)
 #elif defined(_WRS_KERNEL)
 #elif defined(__SYMBIAN32__)
@@ -175,6 +177,15 @@ void open_log_file(const char * log_name) {
     }
     else if (strcmp(log_name, LOG_NAME_STDERR) == 0) {
         log_file = stderr;
+        if (is_daemon()) {
+#if defined(_WIN32)
+#elif defined(_WRS_KERNEL)
+#elif defined(__SYMBIAN32__)
+#else
+            use_syslog = 1;
+            openlog("tcf-agent", LOG_PID, LOG_DAEMON);
+#endif
+        }
     }
     else if ((log_file = fopen(log_name, "a")) == NULL) {
         fprintf(stderr, "TCF: error: cannot create log file %s\n", log_name);

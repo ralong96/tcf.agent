@@ -195,7 +195,7 @@ int main(int argc, char ** argv) {
 
     /* Parse arguments */
     for (ind = 1; ind < argc; ind++) {
-        const char * s = argv[ind];
+        char * s = argv[ind];
         if (*s != '-') {
             break;
         }
@@ -214,6 +214,17 @@ int main(int argc, char ** argv) {
                 break;
 
             case 'd':
+#if defined(_WIN32)
+                /* For Windows the only way to detach a process is to
+                 * create a new process, so we patch the -d option to
+                 * -D for the second time we get invoked so we don't
+                 * keep on creating new processes forever. */
+                s[-1] = 'D';
+                daemon = 2;
+                break;
+
+            case 'D':
+#endif
                 daemon = 1;
                 break;
 
@@ -279,13 +290,13 @@ int main(int argc, char ** argv) {
         }
     }
 
-    if (daemon && log_name != NULL && strcmp (log_name, LOG_NAME_STDERR) != 0) {
-        fprintf(stderr, "%s: error: can only log to stderr when in daemon "
-                "mode.\n", progname);
-        exit (1);
+    if (daemon) {
+#if defined(_WIN32)
+        become_daemon(daemon > 1 ? argv : NULL);
+#else
+        become_daemon();
+#endif
     }
-
-    if (daemon) become_daemon();
     open_log_file(log_name);
 
 #endif
@@ -328,6 +339,9 @@ int main(int argc, char ** argv) {
         trace(LOG_ALWAYS, "Server-Properties: %s", server_properties);
         loc_free(server_properties);
     }
+
+    if (daemon)
+        close_out_and_err();
 
 #if ENABLE_SignalHandlers
     signal(SIGABRT, signal_handler);
