@@ -196,11 +196,8 @@ int main(int argc, char ** argv) {
     /* Parse arguments */
     for (ind = 1; ind < argc; ind++) {
         char * s = argv[ind];
-        if (*s != '-') {
-            break;
-        }
-        s++;
-        while ((c = *s++) != '\0') {
+        if (*s++ != '-') break;
+        while (s && (c = *s++) != '\0') {
             switch (c) {
             case 'i':
                 interactive = 1;
@@ -279,7 +276,7 @@ int main(int argc, char ** argv) {
                     break;
 #endif
                 }
-                s = "";
+                s = NULL;
                 break;
 
             default:

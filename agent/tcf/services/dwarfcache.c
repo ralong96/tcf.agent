@@ -1142,7 +1142,7 @@ ObjectInfo * get_dwarf_children(ObjectInfo * obj) {
     if (set_trap(&trap)) {
         U8_T end_pos = sCompUnit->mDesc.mUnitOffs + sCompUnit->mDesc.mUnitSize;
         if (obj->mSibling != NULL) end_pos = obj->mSibling->mID - sDebugSection->addr;
-        dio_ReadEntry(NULL, ~(U2_T)0u);
+        dio_ReadEntry(NULL, (U2_T)0xffffu);
         sParentObject = obj;
         sPrevSibling = NULL;
         while (dio_GetPos() < end_pos) {
