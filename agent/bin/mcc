@@ -91,16 +91,16 @@ if [ ! -z "$oval" ] ; then
 fi
 
 if [ $gflag = 1 ] ; then
-    CFLAGS1="/D_DEBUG /Zi /MTd"
+    CFLAGS1="/Zi /MTd"
 else
-    CFLAGS1="/DNDEBUG /GF /Gy /FD /MT"
+    CFLAGS1="/GF /Gy /FD /MT"
 fi
 if [ $Oflag = 0 ] ; then
     CFLAGS2="/Od"
 else
     CFLAGS2="/O2 /Ob1"
 fi
-CFLAGS3="/Oy- /DWIN32 /D_CONSOLE /D_VC80_UPGRADE=0x0600 /D_MBCS /W4"
+CFLAGS3="/Oy- /W4 /DWIN32 /D_CONSOLE"
 
 if [ "$machine" == "x86_64" ] ; then
   export LIB=$(cygpath -aw "$VSHOME/VC/lib/amd64")\;$(cygpath -aw "$WINSDK/Lib/x64")

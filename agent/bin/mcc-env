@@ -85,13 +85,13 @@ if [ ! -d "$WINSDK" ] ; then
     exit 1
 fi
 
-export DevEnvDir=$(cygpath -aw "$VSHOME/Common7/IDE")
-export WindowsSdkDir=$(cygpath -aw "$WINSDK/")
-export VSINSTALLDIR=$(cygpath -aw "$VSHOME")
-export VCINSTALLDIR=$(cygpath -aw "$VSHOME/VC")
+export WindowsSdkDir=$(cygpath -am "$WINSDK/")
+export VSINSTALLDIR=$(cygpath -am "$VSHOME")
+export VCINSTALLDIR="$VSINSTALLDIR/VC"
+export DevEnvDir="$VSINSTALLDIR/Common7/IDE"
 export FrameworkDir=Framework32
-export LIB=$(cygpath -aw "$VSHOME/VC/lib")\;$(cygpath -aw "$WINSDK/Lib")
-export INCLUDE=$(cygpath -aw "$VSHOME/VC/include")\;$(cygpath -aw "$WINSDK/Include")
+export LIB="$VSINSTALLDIR/VC/lib"\;"$WindowsSdkDir/Lib"
+export INCLUDE="$VSINSTALLDIR/VC/include"\;"$WindowsSdkDir/Include"
 export PATH="$VSHOME/Common7/IDE:$VSHOME/VC/bin:$VSHOME/Common7/Tools:$VSHOME/VC/VCPackages:$PATH"
 
 unset MAKEFLAGS
