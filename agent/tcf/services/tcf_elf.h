@@ -262,7 +262,8 @@ typedef struct {
 
 #endif
 
-#if defined(_WRS_KERNEL) || !defined(INCLUDE_NATIVE_ELF_H)
+#if !defined(INCLUDE_NATIVE_ELF_H) || \
+    (defined(_WRS_KERNEL) && !defined(EM_X86_64))
 
 typedef uint64_t        Elf64_Addr;
 typedef uint16_t        Elf64_Half;
