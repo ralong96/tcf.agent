@@ -18,10 +18,12 @@
 #include <assert.h>
 #include <stdio.h>
 #include <tcf/framework/context.h>
+#include <tcf/services/symbols.h>
 #include <machine/arm/tcf/disassembler-arm.h>
 
 static char buf[128];
 static size_t buf_pos = 0;
+static Context * ctx = NULL;
 
 static const char * shift_names[] = { "lsl", "lsr", "asr", "ror" };
 
@@ -114,6 +116,30 @@ static void add_flt_uint64(uint64_t n) {
     u.n = n;
     snprintf(buf, sizeof(buf), "%g", u.d);
     add_str(buf);
+}
+
+static void add_addr(uint32_t addr) {
+    while (buf_pos < 16) add_char(' ');
+    add_str("; addr=0x");
+    add_hex_uint32(addr);
+#if ENABLE_Symbols
+    if (ctx != NULL) {
+        Symbol * sym = NULL;
+        char * name = NULL;
+        ContextAddress sym_addr = 0;
+        if (find_symbol_by_addr(ctx, STACK_NO_FRAME, addr, &sym) < 0) return;
+        if (get_symbol_name(sym, &name) < 0 || name == NULL) return;
+        if (get_symbol_address(sym, &sym_addr) < 0) return;
+        if (sym_addr <= addr) {
+            add_str(": ");
+            add_str(name);
+            if (sym_addr < addr) {
+                add_str(" + 0x");
+                add_hex_uint32(addr - sym_addr);
+            }
+        }
+    }
+#endif
 }
 
 #define add_reg_name(reg) add_str(reg_names[(reg) & 0xf])
@@ -1270,8 +1296,7 @@ static void disassemble_unconditional_instr(uint32_t addr, uint32_t instr) {
             add_char('+');
             add_dec_uint32(offset);
         }
-        add_str(" ; addr=0x");
-        add_hex_uint32(addr + offset + 8);
+        add_addr(addr + offset + 8);
         return;
     }
 }
@@ -1885,8 +1910,7 @@ static void disassemble_branch_and_block_data_transfer(uint32_t addr, uint32_t i
             add_char('+');
             add_dec_uint32(offset);
         }
-        add_str(" ; addr=0x");
-        add_hex_uint32(addr + offset + 8);
+        add_addr(addr + offset + 8);
         return;
     }
 
@@ -1945,6 +1969,7 @@ DisassemblyResult * disassemble_arm(uint8_t * code,
     memset(&dr, 0, sizeof(dr));
     dr.size = 4;
     buf_pos = 0;
+    ctx = params->ctx;
     for (i = 0; i < 4; i++) instr |= (uint32_t)*code++ << (i * 8);
     cond = (instr >> 28) & 0xf;
     cond_name = cond_names[cond];

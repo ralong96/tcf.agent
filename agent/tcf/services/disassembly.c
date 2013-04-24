@@ -170,6 +170,7 @@ static void disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_b
     int disassembler_ok = 0;
     DisassemblerParams param;
 
+    param.ctx = ctx;
     param.big_endian = ctx->big_endian;
     param.pseudo_instr = args->pseudo_instr;
     param.simplified = args->simplified;

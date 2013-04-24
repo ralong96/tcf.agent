@@ -30,6 +30,7 @@ typedef struct {
  * Parameters to a disassembler.
  */
 typedef struct DisassemblerParams {
+    Context * ctx;      /* Debug context to be used to lookup symbols */
     int big_endian;     /* 0 - little endian, 1 -  big endian */
     int simplified;     /* If true, simplified mnemonics are specified */
     int pseudo_instr;   /* If true, pseudo-instructions are requested */
