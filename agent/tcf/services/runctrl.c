@@ -1165,6 +1165,31 @@ static int is_function_prologue(Context * ctx, ContextAddress ip, CodeArea * are
     return 0;
 }
 
+static int is_hidden_function(Context * ctx, ContextAddress ip,
+        ContextAddress * addr0, ContextAddress * addr1) {
+#if ENABLE_Symbols
+    Symbol * sym = NULL;
+    char * name = NULL;
+    ContextAddress sym_addr = 0;
+    ContextAddress sym_size = 0;
+    if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip, &sym) < 0) return 0;
+    if (get_symbol_name(sym, &name) < 0 || name == NULL) return 0;
+    if (strcmp(name, "__i686.get_pc_thunk.bx") == 0) {
+        if (get_symbol_address(sym, &sym_addr) < 0) return 0;
+        if (get_symbol_size(sym, &sym_size) < 0 || sym_size == 0) {
+            *addr0 = ip;
+            *addr1 = ip + 1;
+        }
+        else {
+            *addr0 = sym_addr;
+            *addr1 = sym_addr + sym_size;
+        }
+        return 1;
+    }
+#endif
+    return 0;
+}
+
 #if ENABLE_Symbols
 static void get_machine_code_area(CodeArea * area, void * args) {
     *(CodeArea **)args = (CodeArea *)tmp_alloc(sizeof(CodeArea));
@@ -1473,6 +1498,10 @@ static int update_step_machine_state(Context * ctx) {
                 ctx->pending_intercept = 1;
                 ext->step_done = REASON_STEP;
                 return 0;
+            }
+            if (is_hidden_function(ctx, addr, &ext->step_range_start, &ext->step_range_end)) {
+                /* Don't stop in a function that should be hidden during source level stepping */
+                break;
             }
             ext->step_code_area = NULL;
             if (address_to_line(ctx, addr, addr + 1, update_step_machine_code_area, ext) < 0) {
