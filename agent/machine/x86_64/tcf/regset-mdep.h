@@ -15,3 +15,9 @@
 
 /* offset to be applied to the PC after a software trap */
 #define TRAP_OFFSET -1
+
+#if defined(__i386__)
+/* Building 32-bit agent on a 64-bit machine */
+/* additional CPU registers */
+#  define MDEP_OtherRegisters struct user_fpxregs_struct
+#endif
