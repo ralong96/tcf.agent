@@ -229,6 +229,29 @@ static RegisterDefinition regs_def[] = {
     { "eip",    REG_OFFSET(eip),      4,  8,  8},
     { "eflags", REG_OFFSET(eflags),   4,  9,  9},
 
+#elif defined(_WRS_KERNEL) && defined(__x86_64__)
+#   define REG_SP rsp
+#   define REG_BP rbp
+#   define REG_IP rip
+    { "rax",    REG_OFFSET(rax),      8,  0,  0},
+    { "rdx",    REG_OFFSET(rdx),      8,  1,  1},
+    { "rcx",    REG_OFFSET(rcx),      8,  2,  2},
+    { "rbx",    REG_OFFSET(rbx),      8,  3,  3},
+    { "rsi",    REG_OFFSET(rsi),      8,  4,  4},
+    { "rdi",    REG_OFFSET(rdi),      8,  5,  5},
+    { "rbp",    REG_OFFSET(rbp),      8,  6,  6},
+    { "rsp",    REG_OFFSET(rsp),      8,  7,  7},
+    { "r8",     REG_OFFSET(r8),       8,  8,  8},
+    { "r9",     REG_OFFSET(r9),       8,  9,  9},
+    { "r10",    REG_OFFSET(r10),      8, 10, 10},
+    { "r11",    REG_OFFSET(r11),      8, 11, 11},
+    { "r12",    REG_OFFSET(r12),      8, 12, 12},
+    { "r13",    REG_OFFSET(r13),      8, 13, 13},
+    { "r14",    REG_OFFSET(r14),      8, 14, 14},
+    { "r15",    REG_OFFSET(r15),      8, 15, 15},
+    { "rip",    REG_OFFSET(rip),      8, 16, 16},
+    { "eflags", REG_OFFSET(eflags),   4, 49, -1},
+
 #elif defined(__x86_64__)
 #   define REG_SP user.regs.rsp
 #   define REG_BP user.regs.rbp
@@ -436,20 +459,42 @@ int mdep_set_other_regs(pid_t pid, REG_SET * data,
 
 #if !ENABLE_ExternalStackcrawl
 
-#ifndef _WRS_KERNEL
+#ifndef JMPD08
 #define JMPD08      0xeb
+#endif
+#ifndef JMPD32
 #define JMPD32      0xe9
+#endif
+#ifndef PUSH_EBP
 #define PUSH_EBP    0x55
+#endif
+#ifndef ENTER
 #define ENTER       0xc8
+#endif
+#ifndef RET
 #define RET         0xc3
+#endif
+#ifndef RETADD
 #define RETADD      0xc2
 #endif
+#ifndef GRP5
 #define GRP5        0xff
+#endif
+#ifndef JMPN
 #define JMPN        0x25
+#endif
+#ifndef MOVE_mr
 #define MOVE_mr     0x89
+#endif
+#ifndef MOVE_rm
 #define MOVE_rm     0x8b
+#endif
+#ifndef REXW
 #define REXW        0x48
+#endif
+#ifndef POP_EBP
 #define POP_EBP     0x5d
+#endif
 
 static int read_stack(Context * ctx, ContextAddress addr, void * buf, size_t size) {
     if (addr == 0) {

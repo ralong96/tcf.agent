@@ -18,9 +18,14 @@
  */
 
 #ifdef _WRS_KERNEL
-#  if CPU_FAMILY == SIMNT || CPU_FAMILY == I80X86
+#  if CPU_FAMILY == SIMNT || CPU_FAMILY == I80X86 || CPU_FAMILY == SIMLINUX
+#ifdef _WRS_CONFIG_LP64
+#    define __x86_64__ 1
+#    define rip pc
+#else
 #    define __i386__ 1
 #    define eip pc
+#endif
 #    undef BREAK_INST
 #  endif
 #  include <system/VxWorks/tcf/context-vxworks.h>
