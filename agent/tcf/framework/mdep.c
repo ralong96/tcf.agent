@@ -719,6 +719,7 @@ void ini_mdep(void) {
     pthread_attr_init(&pthread_create_attr);
     pthread_attr_setstacksize(&pthread_create_attr, 0x8000);
     pthread_attr_setname(&pthread_create_attr, "tTcf");
+    pthread_attr_setopt (&pthread_create_attr, VX_FP_TASK|VX_UNBREAKABLE);
 }
 
 #elif defined(__SYMBIAN32__)
