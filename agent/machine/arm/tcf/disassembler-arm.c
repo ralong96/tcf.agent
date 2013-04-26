@@ -135,7 +135,7 @@ static void add_addr(uint32_t addr) {
             add_str(name);
             if (sym_addr < addr) {
                 add_str(" + 0x");
-                add_hex_uint32(addr - sym_addr);
+                add_hex_uint32(addr - (uint32_t)sym_addr);
             }
         }
     }
