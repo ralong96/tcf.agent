@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -330,12 +330,10 @@ static const char * get_suspend_reason(Context * ctx) {
     return REASON_USER_REQUEST;
 }
 
-static void write_context_state(OutputStream * out, Context * ctx) {
+static void write_context_state(OutputStream * out, Context * ctx, ContextAddress pc, int pc_error) {
     int fst = 1;
     char ** bp_ids = NULL;
     ContextExtensionRC * ext = EXT(ctx);
-    ContextAddress pc = 0;
-    int pc_error = 0;
 
     assert(!ctx->exited);
 
@@ -346,7 +344,6 @@ static void write_context_state(OutputStream * out, Context * ctx) {
     else {
 
         /* Number: PC */
-        if (get_current_pc(ctx, &pc) < 0) pc_error = errno;
         json_write_uint64(out, pc);
         write_stream(out, 0);
 
@@ -509,28 +506,36 @@ static void command_get_children(char * token, Channel * c) {
     write_stream(&c->out, MARKER_EOM);
 }
 
-static void command_get_state(char * token, Channel * c) {
+typedef struct CommandGetStateArgs {
+    char token[256];
     char id[256];
+} CommandGetStateArgs;
+
+static void command_get_state_cache_client(void * x) {
+    CommandGetStateArgs * args = (CommandGetStateArgs *)x;
     Context * ctx = NULL;
     ContextExtensionRC * ext = NULL;
+    Channel * c = cache_channel();
+    ContextAddress pc = 0;
+    int pc_error = 0;
     int err = 0;
 
-    json_read_string(&c->inp, id, sizeof(id));
-    json_test_char(&c->inp, MARKER_EOA);
-    json_test_char(&c->inp, MARKER_EOM);
-
-    ctx = id2ctx(id);
-    ext = EXT(ctx);
+    ctx = id2ctx(args->id);
+    if (ctx != NULL) ext = EXT(ctx);
 
     if (ctx == NULL || !context_has_state(ctx)) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
 
+    if (ext != NULL && ext->intercepted && get_current_pc(ctx, &pc) < 0) pc_error = errno;
+
+    cache_exit();
+
     write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
+    write_stringz(&c->out, args->token);
 
     write_errno(&c->out, err);
 
-    json_write_boolean(&c->out, ctx != NULL && ext->intercepted);
+    json_write_boolean(&c->out, ext != NULL && ext->intercepted);
     write_stream(&c->out, 0);
 
     if (err) {
@@ -539,10 +544,22 @@ static void command_get_state(char * token, Channel * c) {
         write_stringz(&c->out, "null");
     }
     else {
-        write_context_state(&c->out, ctx);
+        write_context_state(&c->out, ctx, pc, pc_error);
     }
 
     write_stream(&c->out, MARKER_EOM);
+}
+
+static void command_get_state(char * token, Channel * c) {
+    CommandGetStateArgs args;
+
+    memset(&args, 0, sizeof(args));
+    json_read_string(&c->inp, args.id, sizeof(args.id));
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(command_get_state_cache_client, c, &args, sizeof(args));
 }
 
 static void send_simple_result(Channel * c, char * token, int err) {
@@ -645,7 +662,7 @@ static void start_step_mode(Context * ctx, Channel * c, int mode, ContextAddress
 }
 
 int continue_debug_context(Context * ctx, Channel * c,
-                           int mode, int count, ContextAddress range_start, ContextAddress range_end) {
+        int mode, int count, ContextAddress range_start, ContextAddress range_end) {
     ContextExtensionRC * ext = EXT(ctx);
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
     int err = 0;
@@ -990,9 +1007,13 @@ static void send_event_context_suspended(void) {
         LINK * n = !list_is_empty(&p0) ? p0.next : p1.next;
         Context * ctx = link2ctx(n);
         int container = list_is_empty(&p0) && p1.next != p1.prev;
+        ContextAddress pc = 0;
+        int pc_error = 0;
 
         list_remove(n);
         list_add_last(n, &p2);
+
+        if (get_current_pc(ctx, &pc) < 0) pc_error = errno;
 
         write_stringz(out, "E");
         write_stringz(out, RUN_CONTROL);
@@ -1001,7 +1022,7 @@ static void send_event_context_suspended(void) {
         json_write_string(out, ctx->id);
         write_stream(out, 0);
 
-        write_context_state(out, ctx);
+        write_context_state(out, ctx, pc, pc_error);
 
         if (container) {
             write_stream(out, '[');
@@ -1507,7 +1528,8 @@ static int update_step_machine_state(Context * ctx) {
             }
             ext->step_code_area = NULL;
             if (address_to_line(ctx, addr, addr + 1, update_step_machine_code_area, ext) < 0) {
-                free_code_area(area);
+                if (ext->step_code_area) free_code_area(ext->step_code_area);
+                ext->step_code_area = area;
                 return -1;
             }
             if (ext->step_code_area == NULL) {
@@ -1521,6 +1543,7 @@ static int update_step_machine_state(Context * ctx) {
                     break;
                 }
                 else if (errno) {
+                    ext->step_code_area = area;
                     return -1;
                 }
 #endif
@@ -1536,9 +1559,9 @@ static int update_step_machine_state(Context * ctx) {
              * the beginning of previous line. If we are still on same line but have reached the beginning of the line, then we
              * are done.
              */
-            if (same_line
-                    && (ext->step_mode == RM_REVERSE_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_OVER_LINE)
-                    && ext->step_line_cnt > 0 && addr == ext->step_code_area->start_address) {
+            if (same_line &&
+                    (ext->step_mode == RM_REVERSE_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_OVER_LINE) &&
+                    ext->step_line_cnt > 0 && addr == ext->step_code_area->start_address) {
                 ctx->pending_intercept = 1;
                 ext->step_done = REASON_STEP;
                 return 0;
@@ -1630,27 +1653,6 @@ static int update_step_machine_state(Context * ctx) {
     return -1;
 }
 
-static void step_machine_cache_client(void * args) {
-    int error = 0;
-    Context * ctx = *(Context **)args;
-    ContextExtensionRC * ext = EXT(ctx);
-
-    assert(ext->step_mode);
-    assert(ext->step_error == NULL);
-
-    if (update_step_machine_state(ctx) < 0) error = errno;
-
-    cache_exit();
-
-    if (error) {
-        cancel_step_mode(ctx);
-        ext->step_error = get_error_report(error);
-        ctx->pending_intercept = 1;
-    }
-    run_ctrl_unlock();
-    context_unlock(ctx);
-}
-
 static void stop_all_timer(void * args) {
     stop_all_timer_posted = 0;
     stop_all_timer_cnt++;
@@ -1714,12 +1716,12 @@ static int check_step_breakpoint(Context * ctx) {
     return -1;
 }
 
-static void sync_run_state(void * args) {
+static int sync_run_state(void) {
     int err_cnt = 0;
     LINK * l;
     LINK p;
 
-    if (run_ctrl_lock_cnt != 0) return;
+    if (run_ctrl_lock_cnt != 0) return 0;
     assert(safe_event_list == NULL);
     stop_all_timer_cnt = 0;
 
@@ -1737,9 +1739,13 @@ static void sync_run_state(void * args) {
         }
         else if (ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) {
             int md = ext->step_mode;
-            ext->step_mode = 0;
             assert(is_all_stopped(ctx));
-            if (context_resume(ctx, md, 0, 0) < 0) resume_error(ctx, errno);
+            if (context_resume(ctx, md, 0, 0) < 0) {
+                int error = errno;
+                if (get_error_code(error) == ERR_CACHE_MISS) return 0;
+                resume_error(ctx, error);
+            }
+            ext->step_mode = 0;
         }
     }
 
@@ -1761,9 +1767,12 @@ static void sync_run_state(void * args) {
             ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) {
                 ext->step_continue_mode = ext->step_mode;
         }
-        else if (ext->step_channel == NULL) {
+        else {
+            cache_set_def_channel(ext->step_channel);
             if (update_step_machine_state(ctx) < 0) {
-                ext->step_error = get_error_report(errno);
+                int error = errno;
+                if (get_error_code(error) == ERR_CACHE_MISS) return 0;
+                ext->step_error = get_error_report(error);
                 cancel_step_mode(ctx);
                 ctx->pending_intercept = 1;
                 grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
@@ -1773,18 +1782,7 @@ static void sync_run_state(void * args) {
                 grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
                 EXT(grp)->intercept_group = 1;
             }
-        }
-        else if (is_channel_closed(ext->step_channel)) {
-            cancel_step_mode(ctx);
-        }
-        else {
-            run_ctrl_lock();
-            context_lock(ctx);
-            cache_enter(step_machine_cache_client, ext->step_channel, &ctx, sizeof(ctx));
-            if (ctx->pending_intercept) {
-                grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
-                EXT(grp)->intercept_group = 1;
-            }
+            cache_set_def_channel(NULL);
         }
     }
 
@@ -1819,7 +1817,9 @@ static void sync_run_state(void * args) {
                 list_add_last(&ext->link, &p);
             }
             else if (context_resume(ctx, EXT(grp)->reverse_run ? RM_REVERSE_RESUME : RM_RESUME, 0, 0) < 0) {
-                resume_error(ctx, errno);
+                int error = errno;
+                if (get_error_code(error) == ERR_CACHE_MISS) return 0;
+                resume_error(ctx, error);
                 err_cnt++;
             }
         }
@@ -1833,20 +1833,32 @@ static void sync_run_state(void * args) {
         assert(!ext->intercepted);
         l = l->next;
         if (context_resume(ctx, ext->step_continue_mode, ext->step_range_start, ext->step_range_end) < 0) {
-            resume_error(ctx, errno);
+            int error = errno;
+            if (get_error_code(error) == ERR_CACHE_MISS) return 0;
+            resume_error(ctx, error);
             err_cnt++;
         }
     }
 
-    if (safe_event_pid_count > 0 || run_ctrl_lock_cnt > 0) return;
+    if (safe_event_pid_count > 0 || run_ctrl_lock_cnt > 0) return 0;
     if (err_cnt > 0) {
         if (run_safe_events_posted < 4) {
             run_safe_events_posted++;
             post_event(run_safe_events, NULL);
         }
-        return;
+        return 0;
     }
-    send_event_context_suspended();
+    return 1;
+}
+
+static void sync_run_state_cache_client(void * args) {
+    int n = sync_run_state();
+    cache_exit();
+    if (n) send_event_context_suspended();
+}
+
+static void sync_run_state_event(void * args) {
+    cache_enter(sync_run_state_cache_client, NULL, NULL, 0);
 }
 
 static void run_safe_events(void * arg) {
@@ -1857,7 +1869,7 @@ static void run_safe_events(void * arg) {
     if (run_safe_events_posted > 0) return;
 
     if (run_ctrl_lock_cnt == 0) {
-        post_event(sync_run_state, NULL);
+        post_event(sync_run_state_event, NULL);
         return;
     }
 
