@@ -3672,14 +3672,18 @@ static void command_evaluate_cache_client(void * x) {
     Context * ctx = NULL;
     int frame = STACK_NO_FRAME;
     Expression * expr = NULL;
-    int value_ok = 0;
     Value value;
+    void * buf = NULL;
     int err = 0;
 
     memset(&value, 0, sizeof(value));
     if (expression_context_id(args->id, &ctx, &frame, &expr) < 0) err = errno;
     if (!err && evaluate_expression(ctx, frame, 0, expr->script, 0, &value) < 0) err = errno;
-    if (value.size >= 0x100000) err = ERR_BUFFER_OVERFLOW;
+    if (!err && value.remote && value.size <= 0x10000) {
+        buf = tmp_alloc_zero(value.size);
+        if (!err && context_read_mem(ctx, value.address, buf, value.size) < 0)
+            err = set_errno(errno, "Cannot read target memory");
+    }
 
     cache_exit();
 
@@ -3688,32 +3692,19 @@ static void command_evaluate_cache_client(void * x) {
     if (err) {
         write_stringz(&c->out, "null");
     }
-    else {
-        JsonWriteBinaryState state;
-
-        value_ok = 1;
-        json_write_binary_start(&state, &c->out, (size_t)value.size);
-        if (!value.remote) {
-            json_write_binary_data(&state, value.value, (size_t)value.size);
-        }
-        else {
-            char buf[256];
-            size_t offs = 0;
-            while (offs < (size_t)value.size) {
-                int size = (size_t)value.size - offs;
-                if (size > (int)sizeof(buf)) size = (int)sizeof(buf);
-                memset(buf, 0, size);
-                if (!err && context_read_mem(ctx, value.address + offs, buf, size) < 0)
-                    err = set_errno(errno, "Cannot read target memory");
-                json_write_binary_data(&state, buf, size);
-                offs += size;
-            }
-        }
-        json_write_binary_end(&state);
+    else if (!value.remote) {
+        json_write_binary(&c->out, value.value, (size_t)value.size);
         write_stream(&c->out, 0);
     }
+    else if (buf != NULL) {
+        json_write_binary(&c->out, buf, (size_t)value.size);
+        write_stream(&c->out, 0);
+    }
+    else {
+        write_stringz(&c->out, "null");
+    }
     write_errno(&c->out, err);
-    if (!value_ok) {
+    if (err) {
         write_stringz(&c->out, "null");
     }
     else {
