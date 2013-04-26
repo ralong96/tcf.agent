@@ -72,7 +72,8 @@ typedef struct ContextExtensionRC {
     int step_line_cnt;
     ContextAddress step_range_start;
     ContextAddress step_range_end;
-    ContextAddress step_frame;
+    ContextAddress step_frame_fp;
+    ContextAddress step_frame_ip;
     ContextAddress step_bp_addr;
     BreakpointInfo * step_bp_info;
     CodeArea * step_code_area;
@@ -614,7 +615,8 @@ static void cancel_step_mode(Context * ctx) {
     ext->step_line_cnt = 0;
     ext->step_range_start = 0;
     ext->step_range_end = 0;
-    ext->step_frame = 0;
+    ext->step_frame_fp = 0;
+    ext->step_frame_ip = 0;
     ext->step_bp_addr = 0;
     ext->step_continue_mode = RM_RESUME;
     ext->step_mode = RM_RESUME;
@@ -1210,10 +1212,8 @@ static int is_within_function_epilogue(Context * ctx, ContextAddress ip) {
     if (get_symbol_size(sym, &sym_size) < 0) return 0;
     if (sym_size == 0) return 0;
     if (get_symbol_address(sym, &sym_addr) < 0) return 0;
-    if (address_to_line(ctx, sym_addr + sym_size - 1, sym_addr + sym_size, get_machine_code_area, &area)
-            == 0 && area != NULL) {
-        if (ip > area->start_address && ip < area->end_address) return 1;
-    }
+    if (address_to_line(ctx, sym_addr + sym_size - 1, sym_addr + sym_size, get_machine_code_area, &area) < 0) return 0;
+    if (area != NULL && ip > area->start_address && ip < area->end_address) return 1;
 #endif
     return 0;
 }
@@ -1312,18 +1312,20 @@ static int update_step_machine_state(Context * ctx) {
         case RM_REVERSE_STEP_OVER_LINE:
             if (ext->step_cnt == 0) {
                 StackFrame * info = NULL;
-                ext->step_frame = 0;
+                ext->step_frame_fp = 0;
                 if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) break;
-                ext->step_frame = info->fp;
+                ext->step_frame_fp = info->fp;
             }
             else if (addr < ext->step_range_start || addr >= ext->step_range_end) {
                 StackFrame * info = NULL;
                 int n = get_top_frame(ctx);
-                int do_reverse = (ext->step_mode == RM_REVERSE_STEP_OVER || ext->step_mode == RM_REVERSE_STEP_OVER_RANGE
-                        || ext->step_mode == RM_REVERSE_STEP_OVER_LINE);
+                int do_reverse =
+                        ext->step_mode == RM_REVERSE_STEP_OVER ||
+                        ext->step_mode == RM_REVERSE_STEP_OVER_RANGE ||
+                        ext->step_mode == RM_REVERSE_STEP_OVER_LINE;
                 if (n < 0) return -1;
                 if (get_frame_info(ctx, n, &info) < 0) return -1;
-                if (ext->step_frame != info->fp) {
+                if (ext->step_frame_fp != info->fp) {
                     if (do_reverse && is_within_function_epilogue(ctx, addr)) {
                         /* With some compilers, the stack walking code based on debug information does not work
                          * correctly if we are in the middle of the function epilogue. In this case, an invalid
@@ -1335,9 +1337,11 @@ static int update_step_machine_state(Context * ctx) {
                         ext->step_continue_mode = RM_REVERSE_STEP_INTO;
                         return 0;
                     }
-                    while (n > 0) {
-                        if (get_frame_info(ctx, --n, &info) < 0) return -1;
-                        if (ext->step_frame == info->fp) {
+                    for (;;) {
+                        n = get_prev_frame(ctx, n);
+                        if (n < 0) break;
+                        if (get_frame_info(ctx, n, &info) < 0) return -1;
+                        if (ext->step_frame_fp == info->fp) {
                             uint64_t pc = 0;
                             if (read_reg_value(info, get_PC_definition(ctx), &pc) < 0) return -1;
                             step_bp_addr = (ContextAddress)pc;
@@ -1345,31 +1349,23 @@ static int update_step_machine_state(Context * ctx) {
                         }
                     }
                 }
-                else {
-                    switch (ext->step_mode) {
-                    case RM_REVERSE_STEP_OVER:
-                    case RM_REVERSE_STEP_OVER_RANGE:
-                    case RM_REVERSE_STEP_OVER_LINE:
-                        {
-                            /* Workaround for GCC debug information that contains
-                             * invalid stack frame information for function epilogues */
-                            Symbol * sym_org = NULL;
-                            Symbol * sym_now = NULL;
-                            ContextAddress sym_org_addr = ext->step_range_start;
-                            ContextAddress sym_now_addr = addr;
-                            int anomaly =
-                                    find_symbol_by_addr(ctx, n, sym_now_addr, &sym_now) >= 0 &&
-                                    find_symbol_by_addr(ctx, n, sym_org_addr, &sym_org) >= 0 &&
-                                    get_symbol_address(sym_now, &sym_now_addr) >= 0 &&
-                                    get_symbol_address(sym_org, &sym_org_addr) >= 0 &&
-                                    sym_now_addr != sym_org_addr;
-                            if (anomaly) {
-                                /* Step over the anomaly */
-                                ext->step_continue_mode = RM_REVERSE_STEP_INTO;
-                                return 0;
-                            }
-                        }
-                        break;
+                else if (do_reverse) {
+                    /* Workaround for GCC debug information that contains
+                     * invalid stack frame information for function epilogues */
+                    Symbol * sym_org = NULL;
+                    Symbol * sym_now = NULL;
+                    ContextAddress sym_org_addr = ext->step_range_start;
+                    ContextAddress sym_now_addr = addr;
+                    int anomaly =
+                            find_symbol_by_addr(ctx, n, sym_now_addr, &sym_now) >= 0 &&
+                            find_symbol_by_addr(ctx, n, sym_org_addr, &sym_org) >= 0 &&
+                            get_symbol_address(sym_now, &sym_now_addr) >= 0 &&
+                            get_symbol_address(sym_org, &sym_org_addr) >= 0 &&
+                            sym_now_addr != sym_org_addr;
+                    if (anomaly) {
+                        /* Step over the anomaly */
+                        ext->step_continue_mode = RM_REVERSE_STEP_INTO;
+                        return 0;
                     }
                 }
             }
@@ -1381,19 +1377,25 @@ static int update_step_machine_state(Context * ctx) {
                 int n = get_top_frame(ctx);
                 if (n < 0) return -1;
                 if (ext->step_cnt == 0) {
-                    if (n == 0) {
+                    uint64_t ip = 0;
+                    int p = get_prev_frame(ctx, n);
+                    if (p < 0) {
                         set_errno(ERR_OTHER, "Cannot step out: no parent stack frame");
                         return -1;
                     }
-                    if (get_frame_info(ctx, n - 1, &info) < 0) return -1;
-                    ext->step_frame = info->fp;
+                    if (get_frame_info(ctx, p, &info) < 0) return -1;
+                    if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) break;
+                    ext->step_frame_fp = info->fp;
+                    ext->step_frame_ip = (ContextAddress)ip;
                 }
-                while (n > 0) {
-                    if (get_frame_info(ctx, --n, &info) < 0) return -1;
-                    if (ext->step_frame == info->fp) {
-                        uint64_t pc = 0;
-                        if (read_reg_value(info, get_PC_definition(ctx), &pc) < 0) return -1;
-                        step_bp_addr = (ContextAddress)pc;
+                for (;;) {
+                    uint64_t ip = 0;
+                    n = get_prev_frame(ctx, n);
+                    if (n < 0) break;
+                    if (get_frame_info(ctx, n, &info) < 0) return -1;
+                    if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) break;
+                    if (ext->step_frame_fp == info->fp && ext->step_frame_ip == ip) {
+                        step_bp_addr = (ContextAddress)ip;
                         break;
                     }
                 }
