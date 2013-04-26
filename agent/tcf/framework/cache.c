@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -47,12 +47,14 @@ static WaitingCacheClient * wait_list_buf;
 static unsigned wait_list_max;
 static unsigned id_cnt = 0;
 static LINK cache_list = TCF_LIST_INIT(cache_list);
+static Channel * def_channel = NULL;
 
 static void run_cache_client(void) {
     Trap trap;
 
     cache_miss_cnt = 0;
     client_exited = 0;
+    def_channel = NULL;
     if (set_trap(&trap)) {
         current_client.client(current_client.args);
         clear_trap(&trap);
@@ -66,13 +68,13 @@ static void run_cache_client(void) {
     memset(&current_client, 0, sizeof(current_client));
     cache_miss_cnt = 0;
     client_exited = 0;
+    def_channel = NULL;
 }
 
 void cache_enter(CacheClient * client, Channel * channel, void * args, size_t args_size) {
     assert(is_dispatch_thread());
     assert(client != NULL);
-    assert(channel != NULL);
-    assert(!is_channel_closed(channel));
+    assert(channel == NULL || !is_channel_closed(channel));
     assert(current_client.client == NULL);
     current_client.id = id_cnt++;
     current_client.client = client;
@@ -99,7 +101,7 @@ void cache_wait_dbg(const char * file, int line, AbstractCache * cache) {
     assert(is_dispatch_thread());
     assert(client_exited == 0);
     if (current_client.client != NULL && cache_miss_cnt == 0) {
-        assert(!is_channel_closed(current_client.channel));
+        assert(current_client.channel == NULL || !is_channel_closed(current_client.channel));
         if (cache->wait_list_cnt >= cache->wait_list_max) {
             cache->wait_list_max += 8;
             cache->wait_list_buf = (WaitingCacheClient *)loc_realloc(cache->wait_list_buf, cache->wait_list_max * sizeof(WaitingCacheClient));
@@ -115,8 +117,8 @@ void cache_wait_dbg(const char * file, int line, AbstractCache * cache) {
         current_client.line = line;
 #endif
         if (cache->wait_list_cnt == 0) list_add_last(&cache->link, &cache_list);
+        if (current_client.channel != NULL) channel_lock(current_client.channel);
         cache->wait_list_buf[cache->wait_list_cnt++] = current_client;
-        channel_lock(current_client.channel);
     }
 #ifndef NDEBUG
     else if (current_client.client == NULL) {
@@ -143,12 +145,17 @@ void cache_notify(AbstractCache * cache) {
     for (i = 0; i < cnt; i++) {
         current_client = wait_list_buf[i];
         run_cache_client();
-        channel_unlock(wait_list_buf[i].channel);
+        if (wait_list_buf[i].channel != NULL) channel_unlock(wait_list_buf[i].channel);
     }
 }
 
 Channel * cache_channel(void) {
-    return current_client.channel;
+    if (current_client.channel != NULL) return current_client.channel;
+    return def_channel;
+}
+
+void cache_set_def_channel(Channel * channel) {
+    def_channel = channel;
 }
 
 unsigned cache_transaction_id(void) {
