@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -229,10 +229,18 @@ static StackTrace * create_stack_trace(Context * ctx) {
     return stack;
 }
 
-static void write_context(OutputStream * out, char * id, Context * ctx, int level, StackFrame * frame, StackFrame * down) {
-    uint64_t v;
-    RegisterDefinition * reg_def = get_PC_definition(ctx);
+typedef struct CommandGetContextData {
+    Context * ctx;
+    int frame;
+    StackFrame * info;
+    StackFrame * down;
+    uint64_t ip;
+    uint64_t rp;
+    int ip_error;
+    int rp_error;
+} CommandGetContextData;
 
+static void write_context(OutputStream * out, char * id, CommandGetContextData * d) {
     write_stream(out, '{');
 
     json_write_string(out, "ID");
@@ -242,55 +250,48 @@ static void write_context(OutputStream * out, char * id, Context * ctx, int leve
     write_stream(out, ',');
     json_write_string(out, "ParentID");
     write_stream(out, ':');
-    json_write_string(out, ctx->id);
+    json_write_string(out, d->ctx->id);
 
     write_stream(out, ',');
     json_write_string(out, "Level");
     write_stream(out, ':');
-    json_write_long(out, level);
+    json_write_long(out, d->frame);
 
     write_stream(out, ',');
     json_write_string(out, "ProcessID");
     write_stream(out, ':');
-    json_write_string(out, context_get_group(ctx, CONTEXT_GROUP_PROCESS)->id);
+    json_write_string(out, context_get_group(d->ctx, CONTEXT_GROUP_PROCESS)->id);
 
-    if (frame->is_top_frame) {
+    if (d->info->is_top_frame) {
         write_stream(out, ',');
         json_write_string(out, "TopFrame");
         write_stream(out, ':');
         json_write_boolean(out, 1);
     }
 
-    if (frame->fp) {
+    if (d->info->fp) {
         write_stream(out, ',');
         json_write_string(out, "FP");
         write_stream(out, ':');
-        json_write_uint64(out, frame->fp);
+        json_write_uint64(out, d->info->fp);
     }
 
-    if (read_reg_value(frame, reg_def, &v) == 0) {
+    if (d->ip_error == 0) {
         write_stream(out, ',');
         json_write_string(out, "IP");
         write_stream(out, ':');
-        json_write_uint64(out, v);
+        json_write_uint64(out, d->ip);
     }
 
-    if (down != NULL && read_reg_value(down, reg_def, &v) == 0) {
+    if (d->rp_error == 0) {
         write_stream(out, ',');
         json_write_string(out, "RP");
         write_stream(out, ':');
-        json_write_uint64(out, v);
+        json_write_uint64(out, d->rp);
     }
 
     write_stream(out, '}');
 }
-
-typedef struct CommandGetContextData {
-    Context * ctx;
-    int frame;
-    StackFrame * info;
-    StackFrame * down;
-} CommandGetContextData;
 
 typedef struct CommandGetContextArgs {
     char token[256];
@@ -309,6 +310,7 @@ static void command_get_context_cache_client(void * x) {
     for (i = 0; i < args->id_cnt; i++) {
         StackTrace * stack = NULL;
         CommandGetContextData * d = args->data + i;
+        RegisterDefinition * reg_ip = NULL;
         if (id2frame(args->ids[i], &d->ctx, &d->frame) < 0) {
             err = errno;
             break;
@@ -328,6 +330,12 @@ static void command_get_context_cache_client(void * x) {
         }
         d->info = stack->frames + d->frame;
         d->down = d->frame > 0 ? d->info - 1 : NULL;
+
+        reg_ip = get_PC_definition(d->ctx);
+        if (reg_ip == NULL || d->info == NULL) d->ip_error = ERR_OTHER;
+        else if (read_reg_value(d->info, reg_ip, &d->ip) < 0) d->ip_error = errno;
+        if (reg_ip == NULL || d->down == NULL) d->rp_error = ERR_OTHER;
+        else if (read_reg_value(d->down, reg_ip, &d->rp) < 0) d->rp_error = errno;
     }
 
     cache_exit();
@@ -342,7 +350,7 @@ static void command_get_context_cache_client(void * x) {
             write_string(&c->out, "null");
         }
         else {
-            write_context(&c->out, args->ids[i], d->ctx, d->frame, d->info, d->down);
+            write_context(&c->out, args->ids[i], d);
         }
     }
     write_stream(&c->out, ']');
