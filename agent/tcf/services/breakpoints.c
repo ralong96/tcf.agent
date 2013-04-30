@@ -430,8 +430,7 @@ static void free_instruction(BreakInstruction * bi) {
     loc_free(bi);
 }
 
-static EvaluationRequest * create_evaluation_request(Context * ctx);
-static void post_evaluation_request(EvaluationRequest * req);
+static void post_location_evaluation_request(Context * ctx, BreakpointInfo * bp);
 
 static void flush_instructions(void) {
     LINK * l = instructions.next;
@@ -450,6 +449,14 @@ static void flush_instructions(void) {
                 memmove(ref, ref + 1, sizeof(InstructionRef) * (bi->ref_cnt - i - 1));
                 if (bi->planted) bi->dirty = 1;
                 bi->ref_cnt--;
+                if (bi->virtual_addr && !bi->cb.ctx->exited) {
+                    /* If hardware breakpoint is changed or removed, it can free hardware resources.
+                     * We have to try to replant other breakpoints in the context.
+                     * Note: bi->cb.ctx cannot be used if 'bi' is non-virtual breakpoint,
+                     * because in such case the context represents canonical address space,
+                     * which can be different from the breakpoint address space. */
+                    post_location_evaluation_request(bi->cb.ctx, NULL);
+                }
             }
             else {
                 if (ref->bp->attrs_changed && bi->planted) bi->dirty = 1;
@@ -459,22 +466,15 @@ static void flush_instructions(void) {
         bi->valid = 1;
         if (!bi->stepping_over_bp) {
             if (bi->ref_cnt == 0) {
-                int hw = bi->planted && bi->saved_size == 0 && bi->virtual_addr;
                 if (bi->planted) remove_instruction(bi);
                 if (!bi->planted) {
                     assert(!bi->dirty);
-                    if (hw) {
-                        /* If hardware breakpoint is removed, it can free hardware resources.
-                         * We have to try to replant other breakpoints in the context.
-                         * Note: bi->cb.ctx cannot be used to replant non-virtual breakpoint,
-                         * because in such case the context represents canonical address space,
-                         * which can be different from the breakpoint address space. */
-                        EvaluationRequest * req = create_evaluation_request(bi->cb.ctx);
-                        req->loc_posted.bp_cnt = LOC_EVALUATION_BP_ALL;
-                        post_evaluation_request(req);
-                    }
                     free_instruction(bi);
                 }
+            }
+            else if (bi->ph_addr_bi != NULL) {
+                assert(!bi->planted);
+                assert(!bi->dirty);
             }
             else if (!bi->planted) {
                 plant_instruction(bi);
@@ -838,7 +838,6 @@ static BreakInstruction * link_breakpoint_instruction(
         }
         else {
             int i = 0;
-            bi->ph_addr_bi = NULL;
             while (i < bi->ref_cnt) {
                 ref = bi->refs + i;
                 if (ref->bp == bp && ref->ctx == ctx) {
@@ -880,25 +879,41 @@ static void address_expression_error(Context * ctx, BreakpointInfo * bp, int err
 }
 
 static void plant_breakpoint(Context * ctx, BreakpointInfo * bp, ContextAddress addr, ContextAddress size) {
-    Context * mem = NULL;
-    ContextAddress mem_addr = 0;
     BreakInstruction * v_bi = NULL;
     BreakInstruction * p_bi = NULL;
+    int need_p_bp = 1;
 
     if (context_get_supported_bp_access_types(ctx) & CTX_BP_ACCESS_VIRTUAL) {
         v_bi = link_breakpoint_instruction(bp, ctx, addr, size, ctx, 1, addr, NULL);
         if (v_bi->planted && bp->attrs_changed) remove_instruction(v_bi);
         if (!v_bi->planted) plant_instruction(v_bi);
-        if (v_bi->planted) return;
-        if (v_bi->unsupported == 0) return;
+        if (v_bi->planted || !v_bi->unsupported) need_p_bp = 0;
     }
 
-    if (context_get_canonical_addr(ctx, addr, &mem, &mem_addr, NULL, NULL) < 0) {
-        address_expression_error(ctx, bp, errno);
+    if (need_p_bp) {
+        Context * mem = NULL;
+        ContextAddress mem_addr = 0;
+        if (context_get_canonical_addr(ctx, addr, &mem, &mem_addr, NULL, NULL) < 0) {
+            address_expression_error(ctx, bp, errno);
+        }
+        else {
+            p_bi = link_breakpoint_instruction(bp, ctx, addr, size, mem, 0, mem_addr, NULL);
+        }
     }
-    else {
-        p_bi = link_breakpoint_instruction(bp, ctx, addr, size, mem, 0, mem_addr, NULL);
-        if (v_bi != NULL) v_bi->ph_addr_bi = p_bi;
+
+    if (v_bi != NULL) {
+        assert(v_bi->virtual_addr);
+        assert(v_bi->ref_cnt > 0);
+        assert(v_bi->ref_cnt > 1 || v_bi->refs[0].bp == bp);
+        if (v_bi->ref_cnt > 1 && v_bi->ph_addr_bi != p_bi) {
+            /* If hardware breakpoint is changed or removed, it can free hardware resources.
+             * We have to try to replant other breakpoints in the context.
+             * Note: bi->cb.ctx cannot be used if 'bi' is non-virtual breakpoint,
+             * because in such case the context represents canonical address space,
+             * which can be different from the breakpoint address space. */
+            post_location_evaluation_request(v_bi->cb.ctx, NULL);
+        }
+        v_bi->ph_addr_bi = p_bi;
     }
 }
 
