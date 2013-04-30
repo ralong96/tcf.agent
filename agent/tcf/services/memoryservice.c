@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2010 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -29,6 +29,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/channel.h>
 #include <tcf/framework/trace.h>
+#include <tcf/framework/cache.h>
 #include <tcf/services/memoryservice.h>
 #include <tcf/services/runctrl.h>
 
@@ -56,6 +57,10 @@ typedef struct MemoryCommandArgs {
     int word_size;
     int mode;
     Context * ctx;
+    JsonReadBinaryState state;
+    char * buf;
+    size_t pos;
+    size_t max;
 } MemoryCommandArgs;
 
 static void write_context(OutputStream * out, Context * ctx) {
@@ -287,6 +292,15 @@ static void command_get_children(char * token, Channel * c) {
     write_stream(&c->out, MARKER_EOM);
 }
 
+static void read_memory_fill_array_cb(InputStream * inp, void * args) {
+    MemoryCommandArgs * buf = (MemoryCommandArgs *)args;
+    if (buf->pos >= buf->max) {
+        buf->max = buf->max == 0 ? BUF_SIZE : buf->max * 2;
+        buf->buf = (char *)loc_realloc(buf->buf, buf->max);
+    }
+    buf->buf[buf->pos++] = (char)json_read_ulong(inp);
+}
+
 static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd) {
     int err = 0;
     char id[256];
@@ -303,7 +317,22 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
     json_test_char(&c->inp, MARKER_EOA);
     buf.mode = (int)json_read_long(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
-    if (cmd == CMD_GET) json_test_char(&c->inp, MARKER_EOM);
+    switch (cmd) {
+    case CMD_SET:
+        json_read_binary_start(&buf.state, &c->inp);
+        buf.buf = (char *)loc_alloc(buf.max = BUF_SIZE);
+        buf.pos = json_read_binary_data(&buf.state, buf.buf, buf.max);
+        break;
+    case CMD_GET:
+        buf.buf = (char *)loc_alloc(buf.max = buf.size > BUF_SIZE ? BUF_SIZE : buf.size);
+        json_test_char(&c->inp, MARKER_EOM);
+        break;
+    case CMD_FILL:
+        json_read_array(&c->inp, read_memory_fill_array_cb, &buf);
+        json_test_char(&c->inp, MARKER_EOA);
+        json_test_char(&c->inp, MARKER_EOM);
+        break;
+    }
 
     buf.ctx = id2ctx(id);
     if (buf.ctx == NULL) err = ERR_INV_CONTEXT;
@@ -311,7 +340,7 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
     else if (buf.ctx->mem_access == 0) err = ERR_INV_CONTEXT;
 
     if (err != 0) {
-        if (cmd != CMD_GET) {
+        if (cmd == CMD_SET) {
             int ch;
             do ch = read_stream(&c->inp);
             while (ch != MARKER_EOM && ch != MARKER_EOS);
@@ -369,68 +398,92 @@ void send_event_memory_changed(Context * ctx, ContextAddress addr, unsigned long
     }
 }
 
+static void memory_set_cache_client(void * parm) {
+    MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
+    Channel * c = args->c;
+    Context * ctx = args->ctx;
+    ContextAddress addr0 = args->addr;
+    ContextAddress addr = args->addr;
+    unsigned long size = 0;
+    MemoryErrorInfo err_info;
+    int err = 0;
+
+    memset(&err_info, 0, sizeof(err_info));
+    if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
+
+    /* First write needs to be done before cache_exit() */
+    if (err == 0) {
+        /* TODO: word size, mode */
+        if (context_write_mem(ctx, addr, args->buf, args->pos) < 0) {
+            err = errno;
+#if ENABLE_ExtendedMemoryErrorReports
+            context_get_mem_error_info(&err_info);
+#endif
+        }
+        else {
+            addr += args->pos;
+        }
+    }
+    size += args->pos;
+
+    cache_exit();
+
+    if (!is_channel_closed(c)) {
+        InputStream * inp = &c->inp;
+        OutputStream * out = &c->out;
+        char * token = args->token;
+
+        for (;;) {
+            size_t rd = json_read_binary_data(&args->state, args->buf, args->max);
+            if (rd == 0) break;
+            if (err == 0) {
+                /* TODO: word size, mode */
+                if (context_write_mem(ctx, addr, args->buf, rd) < 0) {
+                    err = errno;
+#if ENABLE_ExtendedMemoryErrorReports
+                    context_get_mem_error_info(&err_info);
+#endif
+                }
+                else {
+                    addr += rd;
+                }
+            }
+            size += rd;
+        }
+        json_read_binary_end(&args->state);
+        json_test_char(inp, MARKER_EOA);
+        json_test_char(inp, MARKER_EOM);
+
+        send_event_memory_changed(ctx, addr0, size);
+
+        write_stringz(out, "R");
+        write_stringz(out, token);
+        write_errno(out, err);
+        if (err == 0) {
+            write_stringz(out, "null");
+        }
+        else {
+            write_ranges(out, addr0, (int)(addr - addr0), BYTE_CANNOT_WRITE, &err_info);
+        }
+        write_stream(out, MARKER_EOM);
+    }
+    loc_free(args->buf);
+    context_unlock(ctx);
+    run_ctrl_unlock();
+}
+
 static void safe_memory_set(void * parm) {
     MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
     Channel * c = args->c;
     Context * ctx = args->ctx;
 
     if (!is_channel_closed(c)) {
-        Trap trap;
-        if (set_trap(&trap)) {
-            InputStream * inp = &c->inp;
-            OutputStream * out = &c->out;
-            char * token = args->token;
-            ContextAddress addr0 = args->addr;
-            ContextAddress addr = args->addr;
-            unsigned long size = 0;
-            char buf[BUF_SIZE];
-            int err = 0;
-            MemoryErrorInfo err_info;
-            JsonReadBinaryState state;
-
-            memset(&err_info, 0, sizeof(err_info));
-            if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
-
-            json_read_binary_start(&state, inp);
-            for (;;) {
-                int rd = json_read_binary_data(&state, buf, sizeof(buf));
-                if (rd == 0) break;
-                if (err == 0) {
-                    /* TODO: word size, mode */
-                    if (context_write_mem(ctx, addr, buf, rd) < 0) {
-                        err = errno;
-#if ENABLE_ExtendedMemoryErrorReports
-                        context_get_mem_error_info(&err_info);
-#endif
-                    }
-                    else {
-                        addr += rd;
-                    }
-                }
-                size += rd;
-            }
-            json_read_binary_end(&state);
-            json_test_char(inp, MARKER_EOA);
-            json_test_char(inp, MARKER_EOM);
-
-            send_event_memory_changed(ctx, addr0, size);
-
-            write_stringz(out, "R");
-            write_stringz(out, token);
-            write_errno(out, err);
-            if (err == 0) {
-                write_stringz(out, "null");
-            }
-            else {
-                write_ranges(out, addr0, (int)(addr - addr0), BYTE_CANNOT_WRITE, &err_info);
-            }
-            write_stream(out, MARKER_EOM);
-            clear_trap(&trap);
-        }
-        else {
-            trace(LOG_ALWAYS, "Exception in Memory.set: %s", errno_to_str(trap.error));
-            channel_close(c);
-        }
+        run_ctrl_lock();
+        context_lock(ctx);
+        cache_enter(memory_set_cache_client, c, args, sizeof(MemoryCommandArgs));
+    }
+    else {
+        loc_free(args->buf);
     }
     channel_unlock(c);
     context_unlock(ctx);
@@ -442,68 +495,99 @@ static void command_set(char * token, Channel * c) {
     if (args != NULL) post_safe_event(args->ctx, safe_memory_set, args);
 }
 
+static void memory_get_cache_client(void * parm) {
+    MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
+    Context * ctx = args->ctx;
+    Channel * c = cache_channel();
+    ContextAddress addr0 = args->addr;
+    ContextAddress addr = args->addr;
+    unsigned long size = args->size;
+    unsigned long pos = 0;
+    int err = 0;
+    MemoryErrorInfo err_info;
+    JsonWriteBinaryState state;
+
+    memset(&err_info, 0, sizeof(err_info));
+    if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
+
+    /* First read needs to be done before cache_exit() */
+    if (size > 0) {
+        size_t rd = size;
+        if (rd > args->max) rd = args->max;
+        /* TODO: word size, mode */
+        memset(args->buf, 0, rd);
+        if (err == 0) {
+            if (context_read_mem(ctx, addr, args->buf, rd) < 0) {
+                err = errno;
+#if ENABLE_ExtendedMemoryErrorReports
+                context_get_mem_error_info(&err_info);
+#endif
+            }
+            else {
+                addr += rd;
+            }
+        }
+        pos += rd;
+    }
+
+    cache_exit();
+
+    if (!is_channel_closed(c)) {
+        OutputStream * out = &c->out;
+
+        write_stringz(out, "R");
+        write_stringz(out, args->token);
+
+        json_write_binary_start(&state, out, size);
+        json_write_binary_data(&state, args->buf, pos);
+        while (pos < size) {
+            size_t rd = size - pos;
+            if (rd > args->max) rd = args->max;
+            /* TODO: word size, mode */
+            memset(args->buf, 0, rd);
+            if (err == 0) {
+                if (context_read_mem(ctx, addr, args->buf, rd) < 0) {
+                    err = errno;
+#if ENABLE_ExtendedMemoryErrorReports
+                    context_get_mem_error_info(&err_info);
+#endif
+                }
+                else {
+                    addr += rd;
+                }
+            }
+            json_write_binary_data(&state, args->buf, rd);
+            pos += rd;
+        }
+        json_write_binary_end(&state);
+        write_stream(out, 0);
+
+        write_errno(out, err);
+        if (err == 0) {
+            write_stringz(out, "null");
+        }
+        else {
+            write_ranges(out, addr0, (int)(addr - addr0), BYTE_CANNOT_READ, &err_info);
+        }
+        write_stream(out, MARKER_EOM);
+    }
+    loc_free(args->buf);
+    context_unlock(ctx);
+    run_ctrl_unlock();
+}
+
 static void safe_memory_get(void * parm) {
     MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
     Channel * c = args->c;
     Context * ctx = args->ctx;
 
     if (!is_channel_closed(c)) {
-        Trap trap;
-        if (set_trap(&trap)) {
-            OutputStream * out = &args->c->out;
-            char * token = args->token;
-            ContextAddress addr0 = args->addr;
-            ContextAddress addr = args->addr;
-            unsigned long size = args->size;
-            unsigned long pos = 0;
-            char buf[BUF_SIZE];
-            int err = 0;
-            MemoryErrorInfo err_info;
-            JsonWriteBinaryState state;
-
-            memset(&err_info, 0, sizeof(err_info));
-            if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
-
-            write_stringz(out, "R");
-            write_stringz(out, token);
-
-            json_write_binary_start(&state, out, size);
-            while (pos < size) {
-                int rd = size - pos;
-                if (rd > BUF_SIZE) rd = BUF_SIZE;
-                /* TODO: word size, mode */
-                memset(buf, 0, rd);
-                if (err == 0) {
-                    if (context_read_mem(ctx, addr, buf, rd) < 0) {
-                        err = errno;
-#if ENABLE_ExtendedMemoryErrorReports
-                        context_get_mem_error_info(&err_info);
-#endif
-                    }
-                    else {
-                        addr += rd;
-                    }
-                }
-                json_write_binary_data(&state, buf, rd);
-                pos += rd;
-            }
-            json_write_binary_end(&state);
-            write_stream(out, 0);
-
-            write_errno(out, err);
-            if (err == 0) {
-                write_stringz(out, "null");
-            }
-            else {
-                write_ranges(out, addr0, (int)(addr - addr0), BYTE_CANNOT_READ, &err_info);
-            }
-            write_stream(out, MARKER_EOM);
-            clear_trap(&trap);
-        }
-        else {
-            trace(LOG_ALWAYS, "Exception in Memory.get: %s", errno_to_str(trap.error));
-            channel_close(c);
-        }
+        run_ctrl_lock();
+        context_lock(ctx);
+        cache_enter(memory_get_cache_client, c, args, sizeof(MemoryCommandArgs));
+    }
+    else {
+        loc_free(args->buf);
     }
     channel_unlock(c);
     context_unlock(ctx);
@@ -515,18 +599,59 @@ static void command_get(char * token, Channel * c) {
     if (args != NULL) post_safe_event(args->ctx, safe_memory_get, args);
 }
 
-typedef struct {
-    char * buf;
-    unsigned pos;
-    unsigned max;
-} MemoryFillBuffer;
+static void memory_fill_cache_client(void * parm) {
+    MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
+    Channel * c = args->c;
+    Context * ctx = args->ctx;
+    char * tmp = (char *)tmp_alloc(args->pos);
+    ContextAddress addr0 = args->addr;
+    ContextAddress addr = args->addr;
+    unsigned long size = args->size;
+    MemoryErrorInfo err_info;
+    int err = 0;
 
-static void read_memory_fill_array_cb(InputStream * inp, void * args) {
-    MemoryFillBuffer * buf = (MemoryFillBuffer *)args;
-    if (buf->pos >= buf->max) {
-        buf->buf = (char *)tmp_realloc(buf->buf, buf->max *= 2);
+    memset(&err_info, 0, sizeof(err_info));
+    if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
+
+    while (err == 0 && addr < addr0 + size) {
+        /* Note: context_write_mem() modifies buffer contents */
+        unsigned wr = (unsigned)(addr0 + size - addr);
+        if (wr > args->pos) wr = args->pos;
+        /* TODO: word size, mode */
+        memcpy(tmp, args->buf, wr);
+        if (context_write_mem(ctx, addr, tmp, wr) < 0) {
+            err = errno;
+#if ENABLE_ExtendedMemoryErrorReports
+            context_get_mem_error_info(&err_info);
+#endif
+        }
+        else {
+            addr += wr;
+        }
     }
-    buf->buf[buf->pos++] = (char)json_read_ulong(inp);
+
+    cache_exit();
+
+    send_event_memory_changed(ctx, addr0, size);
+
+    if (!is_channel_closed(c)) {
+        OutputStream * out = &c->out;
+        char * token = args->token;
+
+        write_stringz(out, "R");
+        write_stringz(out, token);
+        write_errno(out, err);
+        if (err == 0) {
+            write_stringz(out, "null");
+        }
+        else {
+            write_ranges(out, addr0, (int)(addr - addr0), BYTE_CANNOT_WRITE, &err_info);
+        }
+        write_stream(out, MARKER_EOM);
+    }
+    loc_free(args->buf);
+    context_unlock(ctx);
+    run_ctrl_unlock();
 }
 
 static void safe_memory_fill(void * parm) {
@@ -535,76 +660,22 @@ static void safe_memory_fill(void * parm) {
     Context * ctx = args->ctx;
 
     if (!is_channel_closed(c)) {
-        Trap trap;
-        if (set_trap(&trap)) {
-            InputStream * inp = &c->inp;
-            OutputStream * out = &c->out;
-            char * token = args->token;
-            ContextAddress addr0 = args->addr;
-            ContextAddress addr = args->addr;
-            unsigned long size = args->size;
-            MemoryErrorInfo err_info;
-            MemoryFillBuffer buf;
-            char * tmp = NULL;
-            int err = 0;
-
-            memset(&err_info, 0, sizeof(err_info));
-            if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
-
-            memset(&buf, 0, sizeof(buf));
-            buf.buf = (char *)tmp_alloc(buf.max = BUF_SIZE);
-
-            if (err) json_skip_object(inp);
-            else json_read_array(inp, read_memory_fill_array_cb, &buf);
-            json_test_char(inp, MARKER_EOA);
-            json_test_char(inp, MARKER_EOM);
-
-            while (err == 0 && buf.pos < size && buf.pos <= buf.max / 2) {
-                if (buf.pos == 0) {
-                    buf.buf[buf.pos++] = 0;
-                }
-                else {
-                    memcpy(buf.buf + buf.pos, buf.buf, buf.pos);
-                    buf.pos *= 2;
-                }
-            }
-
-            while (err == 0 && addr < addr0 + size) {
-                /* Note: context_write_mem() modifies buffer contents */
-                unsigned wr = (unsigned)(addr0 + size - addr);
-                if (tmp == NULL) tmp = (char *)tmp_alloc(buf.pos);
-                if (wr > buf.pos) wr = buf.pos;
-                /* TODO: word size, mode */
-                memcpy(tmp, buf.buf, wr);
-                if (context_write_mem(ctx, addr, tmp, wr) < 0) {
-                    err = errno;
-#if ENABLE_ExtendedMemoryErrorReports
-                    context_get_mem_error_info(&err_info);
-#endif
-                }
-                else {
-                    addr += wr;
-                }
-            }
-
-            send_event_memory_changed(ctx, addr0, size);
-
-            write_stringz(out, "R");
-            write_stringz(out, token);
-            write_errno(out, err);
-            if (err == 0) {
-                write_stringz(out, "null");
+        run_ctrl_lock();
+        context_lock(ctx);
+        /* Grow buffer for faster execution */
+        while (args->pos < args->size && args->pos <= args->max / 2) {
+            if (args->pos == 0) {
+                args->buf[args->pos++] = 0;
             }
             else {
-                write_ranges(out, addr0, (int)(addr - addr0), BYTE_CANNOT_WRITE, &err_info);
+                memcpy(args->buf + args->pos, args->buf, args->pos);
+                args->pos *= 2;
             }
-            write_stream(out, MARKER_EOM);
-            clear_trap(&trap);
         }
-        else {
-            trace(LOG_ALWAYS, "Exception in Memory.fill: %s", errno_to_str(trap.error));
-            channel_close(c);
-        }
+        cache_enter(memory_fill_cache_client, c, args, sizeof(MemoryCommandArgs));
+    }
+    else {
+        loc_free(args->buf);
     }
     channel_unlock(c);
     context_unlock(ctx);
