@@ -350,6 +350,11 @@ static int remove_instruction(BreakInstruction * bi) {
     }
     else {
         if (context_unplant_breakpoint(&bi->cb) < 0) return -1;
+        if (bi->cb.ctx->stopped_by_cb != NULL) {
+            ContextBreakpoint ** p = bi->cb.ctx->stopped_by_cb;
+            while (*p != NULL && *p != &bi->cb) p++;
+            while (*p != NULL && (*p = *(p + 1)) != NULL) p++;
+        }
     }
     bi->planted = 0;
     bi->dirty = 0;
