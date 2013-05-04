@@ -1405,9 +1405,11 @@ static int update_step_machine_state(Context * ctx) {
                         return -1;
                     }
                     if (get_frame_info(ctx, p, &info) < 0) return -1;
-                    if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) break;
+                    if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) return -1;
                     ext->step_frame_fp = info->fp;
                     ext->step_frame_ip = (ContextAddress)ip;
+                    step_bp_addr = (ContextAddress)ip;
+                    break;
                 }
                 for (;;) {
                     uint64_t ip = 0;
