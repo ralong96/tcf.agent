@@ -647,13 +647,10 @@ static void start_step_mode(Context * ctx, Channel * c, int mode, ContextAddress
         release_error_report(ext->step_error);
         ext->step_error = NULL;
     }
+    assert(ext->step_channel == NULL);
     if (c != NULL) {
         ext->step_channel = c;
         channel_lock(ext->step_channel);
-    }
-    else if (ext->step_channel != NULL) {
-        channel_unlock(ext->step_channel);
-        ext->step_channel = NULL;
     }
     ext->step_done = NULL;
     ext->step_mode = mode;
@@ -1768,6 +1765,9 @@ static int sync_run_state(void) {
         if (ext->step_mode == RM_RESUME || ext->step_mode == RM_REVERSE_RESUME ||
             ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) {
                 ext->step_continue_mode = ext->step_mode;
+        }
+        else if (ext->step_channel != NULL && is_channel_closed(ext->step_channel)) {
+            cancel_step_mode(ctx);
         }
         else {
             cache_set_def_channel(ext->step_channel);
