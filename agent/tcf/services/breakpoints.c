@@ -1680,6 +1680,7 @@ static void replant_breakpoint(BreakpointInfo * bp) {
             for (i = 0; i < bi->ref_cnt; i++) {
                 InstructionRef * ref = bi->refs + i;
                 if (ref->bp != bp) continue;
+                if (ref->ctx->exited) continue;
                 /* Check for fork child that is going to be detached */
                 if (id2ctx(ref->ctx->id) == NULL) continue;
                 post_location_evaluation_request(ref->ctx, bp);
