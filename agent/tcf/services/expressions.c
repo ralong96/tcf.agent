@@ -3680,8 +3680,8 @@ static void command_evaluate_cache_client(void * x) {
     if (expression_context_id(args->id, &ctx, &frame, &expr) < 0) err = errno;
     if (!err && evaluate_expression(ctx, frame, 0, expr->script, 0, &value) < 0) err = errno;
     if (!err && value.remote && value.size <= 0x10000) {
-        buf = tmp_alloc_zero(value.size);
-        if (!err && context_read_mem(ctx, value.address, buf, value.size) < 0)
+        buf = tmp_alloc_zero((size_t)value.size);
+        if (!err && context_read_mem(ctx, value.address, buf, (size_t)value.size) < 0)
             err = set_errno(errno, "Cannot read target memory");
     }
 
