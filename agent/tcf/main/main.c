@@ -37,6 +37,7 @@
 #include <tcf/main/cmdline.h>
 #include <tcf/main/services.h>
 #include <tcf/main/server.h>
+#include <tcf/main/main_hooks.h>
 
 #ifndef ENABLE_SignalHandlers
 #  define ENABLE_SignalHandlers 1
@@ -44,6 +45,35 @@
 
 #ifndef DEFAULT_SERVER_URL
 #  define DEFAULT_SERVER_URL "TCP:"
+#endif
+
+/* Hook before all TCF initialization.  This hook can add local variables. */
+#ifndef PRE_INIT_HOOK
+#define PRE_INIT_HOOK do {} while(0)
+#endif
+
+/* Hook before any TCF threads are created.  This hook can do
+ * initialization that will affect all threads and call most basic TCF
+ * functions, like post_event. */
+#ifndef PRE_THREADING_HOOK
+#define PRE_THREADING_HOOK do {} while(0)
+#endif
+
+/* Hook before becoming a daemon process.  This hook can output
+ * banners and other information. */
+#ifndef PRE_DAEMON_HOOK
+#define PRE_DAEMON_HOOK do {} while(0)
+#endif
+
+/* Hook to add help text. */
+#ifndef HELP_TEXT_HOOK
+#define HELP_TEXT_HOOK
+#endif
+
+/* Hook for illegal option case.  This hook allows for handling off
+ * additional options. */
+#ifndef ILLEGAL_OPTION_HOOK
+#define ILLEGAL_OPTION_HOOK  do {} while(0)
 #endif
 
 static const char * progname;
@@ -140,6 +170,7 @@ static const char * help_text[] = {
 #if ENABLE_SSL
     "  -c               generate SSL certificate and exit",
 #endif
+    HELP_TEXT_HOOK
     NULL
 };
 
@@ -178,10 +209,12 @@ int main(int argc, char ** argv) {
     Protocol * proto;
     TCFBroadcastGroup * bcg;
 
+    PRE_INIT_HOOK;
     ini_mdep();
     ini_trace();
     ini_events_queue();
     ini_asyncreq();
+    PRE_THREADING_HOOK;
 
 #if defined(_WRS_KERNEL)
 
@@ -280,6 +313,7 @@ int main(int argc, char ** argv) {
                 break;
 
             default:
+                ILLEGAL_OPTION_HOOK;
                 fprintf(stderr, "%s: error: illegal option '%c'\n", progname, c);
                 show_help();
                 exit(1);
@@ -337,6 +371,7 @@ int main(int argc, char ** argv) {
         loc_free(server_properties);
     }
 
+    PRE_DAEMON_HOOK;
     if (daemon)
         close_out_and_err();
 
