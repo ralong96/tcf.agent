@@ -158,6 +158,8 @@ extern void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg);
 
 #else
 
+#define run_ctrl_lock() do {} while(0)
+#define run_ctrl_unlock() do {} while(0)
 #define is_intercepted(x) 0
 #define is_safe_event() 0
 #define post_safe_event(ctx, done, arg) ((void)ctx, post_event(done, arg))

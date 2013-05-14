@@ -534,9 +534,11 @@ static void flush_stack_trace(Context * ctx, void * args) {
     invalidate_stack_trace(EXT(ctx));
 }
 
+#if SERVICE_Registers
 static void flush_on_register_change(Context * ctx, int frame, RegisterDefinition * def, void * args) {
     invalidate_stack_trace(EXT(ctx));
 }
+#endif
 
 static void delete_stack_trace(Context * ctx, void * args) {
     invalidate_stack_trace(EXT(ctx));
@@ -569,9 +571,11 @@ void ini_stack_trace_service(Protocol * proto, TCFBroadcastGroup * bcg) {
         flush_stack_trace,
         delete_stack_trace
     };
+#if SERVICE_Registers
     static RegistersEventListener registers_listener = {
         flush_on_register_change,
     };
+#endif
 #if SERVICE_MemoryMap
     static MemoryMapEventListener map_listener = {
         NULL,
@@ -581,7 +585,9 @@ void ini_stack_trace_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     };
 #endif
     add_context_event_listener(&context_listener, bcg);
+#if SERVICE_Registers
     add_registers_event_listener(&registers_listener, bcg);
+#endif
 #if SERVICE_MemoryMap
     add_memory_map_event_listener(&map_listener, NULL);
 #endif

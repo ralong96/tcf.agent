@@ -24,13 +24,13 @@
 #include <tcf/framework/mdep.h>
 
 #if !defined(SERVICE_Locator)
-#define SERVICE_Locator         1
+#define SERVICE_Locator         0
 #endif
 #if !defined(SERVICE_Registers)
-#define SERVICE_Registers       1
+#define SERVICE_Registers       0
 #endif
 #if !defined(SERVICE_Memory)
-#define SERVICE_Memory          1
+#define SERVICE_Memory          0
 #endif
 #if !defined(SERVICE_LineNumbers)
 #define SERVICE_LineNumbers     1
@@ -48,51 +48,47 @@
 #define SERVICE_StackTrace      1
 #endif
 
-#if !defined(ENABLE_ZeroCopy)
-#define ENABLE_ZeroCopy         1
-#endif
+#define SERVICE_RunControl      0
+#define SERVICE_Breakpoints     0
+#define SERVICE_PathMap         0
+#define SERVICE_Processes       0
+#define SERVICE_Terminals       0
+#define SERVICE_FileSystem      0
+#define SERVICE_SysMonitor      0
+#define SERVICE_Streams         0
+#define SERVICE_DPrintf         0
+#define SERVICE_ContextQuery    0
+#define SERVICE_Disassembly     0
+#define SERVICE_Profiler        0
 
-#if !defined(ENABLE_Trace)
-#  define ENABLE_Trace          1
-#endif
-
-#if !defined(ENABLE_Discovery)
-#  define ENABLE_Discovery      0
-#endif
-
-#if !defined(ENABLE_ContextProxy)
-#  define ENABLE_ContextProxy   1
-#endif
-
-#if !defined(ENABLE_SymbolsProxy)
-#  define ENABLE_SymbolsProxy   0
-#endif
-
-#if !defined(ENABLE_LineNumbersProxy)
-#  define ENABLE_LineNumbersProxy   0
-#endif
-
-#if !defined(ENABLE_Symbols)
-#  define ENABLE_Symbols        (ENABLE_SymbolsProxy || SERVICE_Symbols)
-#endif
-
-#if !defined(ENABLE_LineNumbers)
-#  define ENABLE_LineNumbers    (ENABLE_LineNumbersProxy || SERVICE_LineNumbers)
-#endif
-
-#if !defined(ENABLE_DebugContext)
-#  define ENABLE_DebugContext   1
-#endif
-
-#if !defined(ENABLE_ELF)
-#  define ENABLE_ELF            1
-#endif
-
+#define ENABLE_ZeroCopy         0
+#define ENABLE_Trace            1
+#define ENABLE_Discovery        0
+#define ENABLE_ContextProxy     1
+#define ENABLE_SymbolsProxy     0
+#define ENABLE_LineNumbersProxy 0
+#define ENABLE_Symbols          1
+#define ENABLE_LineNumbers      1
+#define ENABLE_DebugContext     1
+#define ENABLE_ELF              1
+#define ENABLE_PE               0
 #define ENABLE_SSL              0
 #define ENABLE_Unix_Domain      0
+#define ENABLE_AIO              0
+#define ENABLE_RCBP_TEST        0
+#define ENABLE_Splice           0
+#define ENABLE_Plugins          0
+#define ENABLE_Cmdline          0
+#define ENABLE_STREAM_MACROS    0
 
-#if !defined(ENABLE_STREAM_MACROS)
-#define ENABLE_STREAM_MACROS    1
-#endif
+#define ENABLE_ContextExtraProperties           0
+#define ENABLE_ContextStateProperties           0
+#define ENABLE_ContextBreakpointCapabilities    0
+#define ENABLE_ExtendedMemoryErrorReports       0
+#define ENABLE_ExtendedBreakpointStatus         0
+#define ENABLE_ExternalStackcrawl               0
+#define ENABLE_SymbolsMux                       0
+#define ENABLE_LineNumbersMux                   0
+#define ENABLE_ContextISA                       0
 
 #endif /* D_config */

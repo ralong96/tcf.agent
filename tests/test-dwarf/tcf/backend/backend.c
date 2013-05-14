@@ -130,10 +130,10 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
             return context_read_reg(frame->ctx, reg_def, offs, size, buf);
         }
         if (frame->regs != NULL) {
-            size_t i;
             uint8_t * r_addr = (uint8_t *)&frame->regs->data + reg_def->offset;
 #if 0
             uint8_t * m_addr = (uint8_t *)&frame->regs->mask + reg_def->offset;
+            size_t i;
             for (i = 0; i < size; i++) {
                 if (m_addr[offs + i] != 0xff) {
                     errno = ERR_INV_CONTEXT;
