@@ -580,7 +580,7 @@ static void event_locator_hello(Channel * c) {
 
     c->out.supports_zero_copy = 0;
     do ch = read_stream(&c->inp);
-    while (isspace(ch));
+    while (ch > 0 && isspace(ch));
     if (ch != '[') exception(ERR_PROTOCOL);
     if (peek_stream(&c->inp) == ']') {
         read_stream(&c->inp);
@@ -597,7 +597,7 @@ static void event_locator_hello(Channel * c) {
             }
             list[cnt++] = service;
             do ch = read_stream(&c->inp);
-            while (isspace(ch));
+            while (ch > 0 && isspace(ch));
             if (ch == ',') continue;
             if (ch == ']') break;
             free_string_list(cnt, list);

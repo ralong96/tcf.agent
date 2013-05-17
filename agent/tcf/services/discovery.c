@@ -107,7 +107,7 @@ static void command_redirect(char * token, Channel * c) {
     int free_ps = 0;
 
     assert(c->state == ChannelStateConnected);
-    if (peek_stream(&c->inp) == '{') {
+    if (json_peek(&c->inp) == '{') {
         ps = peer_server_alloc();
         json_read_struct(&c->inp, read_peer_attr, ps);
         free_ps = 1;

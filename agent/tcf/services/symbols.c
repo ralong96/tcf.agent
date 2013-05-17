@@ -436,7 +436,7 @@ static void command_find_by_name_args(char * token, Channel * c, CommandFindByNa
     args->ip = 0;
     json_read_string(&c->inp, args->id, sizeof(args->id));
     json_test_char(&c->inp, MARKER_EOA);
-    if (peek_stream(&c->inp) != '"' && peek_stream(&c->inp) != 'n') {
+    if (json_peek(&c->inp) != '"' && json_peek(&c->inp) != 'n') {
         args->ip = (ContextAddress)json_read_uint64(&c->inp);
         json_test_char(&c->inp, MARKER_EOA);
     }

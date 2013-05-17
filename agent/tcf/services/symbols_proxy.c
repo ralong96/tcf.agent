@@ -554,7 +554,7 @@ static char ** string_to_symbol_list(char * id, int * cnt) {
 
 static char ** read_symbol_list(InputStream * inp, int * id_cnt) {
     char id[256];
-    if (peek_stream(inp) == '[') return json_read_alloc_string_array(inp, id_cnt);
+    if (json_peek(inp) == '[') return json_read_alloc_string_array(inp, id_cnt);
     json_read_string(inp, id, sizeof(id));
     return string_to_symbol_list(id, id_cnt);
 }

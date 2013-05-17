@@ -58,6 +58,9 @@ extern void json_skip_object(InputStream * inp);
 /* Read one char and check that it matches 'ch' */
 extern void json_test_char(InputStream * inp, int ch);
 
+/* Peek one char after skipping all whitespaces */
+extern int json_peek(InputStream * inp);
+
 extern void json_write_ulong(OutputStream * out, unsigned long n);
 extern void json_write_long(OutputStream * out, long n);
 extern void json_write_uint64(OutputStream * out, uint64_t n);
