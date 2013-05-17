@@ -969,12 +969,13 @@ static void validate_memory_cache(Channel * c, void * args, int error) {
 
 int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
     ContextCache * cache = *EXT(ctx);
+    Channel * c = cache->peer->target;
     MemoryCache * m = NULL;
-    Channel * c = NULL;
     LINK * l = NULL;
     Trap trap;
 
     if (!set_trap(&trap)) return -1;
+    if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
     if (!cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
 
     for (l = cache->mem_cache_list.next; l != &cache->mem_cache_list; l = l->next) {
@@ -988,7 +989,6 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
         }
     }
 
-    c = cache->peer->target;
     m = (MemoryCache *)loc_alloc_zero(sizeof(MemoryCache));
     list_add_first(&m->link_ctx, &cache->mem_cache_list);
     m->ctx = cache;
@@ -1138,6 +1138,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
                 Trap trap;
                 Channel * c = fc->ctx->peer->target;
                 if (!set_trap(&trap)) return -1;
+                if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
                 if (fc->pending != NULL) cache_wait(&fc->cache);
                 fc->reg_pending = rn;
                 fc->pending = protocol_send_command(c, "Registers", "get", validate_top_frame_reg_values_cache, fc);
@@ -1158,6 +1159,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
             unsigned n;
             Channel * c = fc->ctx->peer->target;
             if (!set_trap(&trap)) return -1;
+            if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
             if (fc->pending != NULL) cache_wait(&fc->cache);
             fc->pending = protocol_send_command(c, "Registers", "getm", validate_mid_frame_reg_values_cache, fc);
             write_stream(&c->out, '[');
@@ -1305,16 +1307,17 @@ static void validate_memory_map_cache(Channel * c, void * args, int error) {
 
 int context_get_memory_map(Context * ctx, MemoryMap * map) {
     ContextCache * cache = *EXT(ctx);
+    Channel * c = cache->peer->target;
     Trap trap;
 
     if (!set_trap(&trap)) return -1;
+    if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
     if (cache->peer != NULL && !cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
 
     cache = *EXT(ctx);
     assert(cache->ctx == ctx);
     if (cache->pending_get_mmap != NULL) cache_wait(&cache->mmap_cache);
     if (cache->mmap_is_valid == 0 && cache->peer != NULL) {
-        Channel * c = cache->peer->target;
         cache->pending_get_mmap = protocol_send_command(c, MEMORY_MAP, "get", validate_memory_map_cache, cache);
         json_write_string(&c->out, cache->id);
         write_stream(&c->out, 0);
@@ -1620,6 +1623,7 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     }
 
     if (!set_trap(&trap)) return -1;
+    if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
 
     assert(frame >= 0);
     check_registers_cache(cache);
