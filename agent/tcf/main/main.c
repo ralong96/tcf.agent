@@ -372,8 +372,10 @@ int main(int argc, char ** argv) {
     }
 
     PRE_DAEMON_HOOK;
+#if !defined(_WRS_KERNEL)
     if (daemon)
         close_out_and_err();
+#endif
 
 #if ENABLE_SignalHandlers
     signal(SIGABRT, signal_handler);
