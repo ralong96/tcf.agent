@@ -270,6 +270,22 @@ static int is_software_break_instruction(BreakInstruction * bi) {
     return (bi->cb.access_types & mask) == CTX_BP_ACCESS_INSTRUCTION && bi->cb.length == 1 && !bi->virtual_addr;
 }
 
+#ifndef NDEBUG
+static int check_all_stopped(Context * ctx) {
+    LINK * l;
+    Context * grp;
+    if (is_all_stopped(ctx)) return 1;
+    grp = context_get_group(ctx, CONTEXT_GROUP_STOP);
+    for (l = context_root.next; l != &context_root; l = l->next) {
+        Context * ctx = ctxl2ctxp(l);
+        if (context_get_group(ctx, CONTEXT_GROUP_STOP) != grp) continue;
+        printf("ID %s, stopped %d, exiting %d, exited %d, signal %d\n",
+            ctx->id, ctx->stopped, ctx->exiting, ctx->exited, ctx->signal);
+    }
+    return 0;
+}
+#endif
+
 static void plant_instruction(BreakInstruction * bi) {
     int error = 0;
     size_t saved_size = bi->saved_size;
@@ -282,7 +298,7 @@ static void plant_instruction(BreakInstruction * bi) {
     assert(!bi->cb.ctx->exiting);
     assert(bi->valid || bi->virtual_addr);
     if (bi->address_error != NULL) return;
-    assert(is_all_stopped(bi->cb.ctx));
+    assert(check_all_stopped(bi->cb.ctx));
 
     bi->saved_size = 0;
     bi->cb.access_types = get_bi_access_types(bi);
@@ -334,7 +350,7 @@ static int remove_instruction(BreakInstruction * bi) {
     assert(bi->planted);
     assert(bi->planting_error == NULL);
     assert(bi->address_error == NULL);
-    assert(is_all_stopped(bi->cb.ctx));
+    assert(check_all_stopped(bi->cb.ctx));
     if (bi->saved_size) {
         if (!bi->cb.ctx->exited) {
             int r = 0;
