@@ -168,13 +168,13 @@ int context_continue(Context * ctx) {
     if (skip_breakpoint(ctx, 0)) return 0;
 
     if (!EXT(ctx)->syscall_enter) {
-        while (ctx->pending_signals != 0) {
-            while ((ctx->pending_signals & (1 << signal)) == 0) signal++;
-            if (ctx->sig_dont_pass & (1 << signal)) {
-                ctx->pending_signals &= ~(1 << signal);
-                signal = 0;
+        unsigned n = 0;
+        while (sigset_get_next(&ctx->pending_signals, &n)) {
+            if (sigset_get(&ctx->sig_dont_pass, n)) {
+                sigset_set(&ctx->pending_signals, n, 0);
             }
             else {
+                signal = n;
                 break;
             }
         }
@@ -272,7 +272,7 @@ int context_resume(Context * ctx, int mode, ContextAddress range_start, ContextA
     case RM_STEP_INTO:
         return context_single_step(ctx);
     case RM_TERMINATE:
-        ctx->pending_signals |= 1 << SIGKILL;
+        sigset_set(&ctx->pending_signals, SIGKILL, 1);
         return context_continue(ctx);
     }
     errno = ERR_UNSUPPORTED;
@@ -598,9 +598,8 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     assert(!EXT(ctx)->attach_callback);
 
     if (signal != SIGSTOP && signal != SIGTRAP) {
-        assert(signal < 32);
-        ctx->pending_signals |= 1 << signal;
-        if ((ctx->sig_dont_stop & (1 << signal)) == 0) {
+        sigset_set(&ctx->pending_signals, signal, 1);
+        if (sigset_get(&ctx->sig_dont_stop, signal) == 0) {
             ctx->pending_intercept = 1;
             stopped_by_exception = 1;
         }

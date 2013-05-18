@@ -494,13 +494,13 @@ int context_continue(Context * ctx) {
     if (skip_breakpoint(ctx, 0)) return 0;
 
     if (!ext->syscall_enter && !ext->ptrace_event) {
-        while (ctx->pending_signals != 0) {
-            while ((ctx->pending_signals & (1 << signal)) == 0) signal++;
-            if (ctx->sig_dont_pass & (1 << signal)) {
-                ctx->pending_signals &= ~(1 << signal);
-                signal = 0;
+        unsigned n = 0;
+        while (sigset_get_next(&ctx->pending_signals, &n)) {
+            if (sigset_get(&ctx->sig_dont_pass, n)) {
+                sigset_set(&ctx->pending_signals, n, 0);
             }
             else {
+                signal = n;
                 break;
             }
         }
@@ -529,7 +529,7 @@ int context_continue(Context * ctx) {
         errno = err;
         return -1;
     }
-    ctx->pending_signals &= ~(1 << signal);
+    sigset_set(&ctx->pending_signals, signal, 0);
     if (syscall_never_returns(ctx)) {
         ext->syscall_enter = 0;
         ext->syscall_exit = 0;
@@ -580,7 +580,7 @@ int context_resume(Context * ctx, int mode, ContextAddress range_start, ContextA
     case RM_STEP_INTO:
         return context_single_step(ctx);
     case RM_TERMINATE:
-        ctx->pending_signals |= 1 << SIGKILL;
+        sigset_set(&ctx->pending_signals, SIGKILL, 1);
         return context_continue(ctx);
     case RM_DETACH:
         return context_detach(ctx);
@@ -1112,8 +1112,8 @@ static Context * add_thread(Context * parent, Context * creator, pid_t pid) {
     ctx->big_endian = parent->big_endian;
     ctx->creator = creator;
     if (creator) {
-        ctx->sig_dont_stop = creator->sig_dont_stop;
-        ctx->sig_dont_pass = creator->sig_dont_pass;
+        sigset_copy(&ctx->sig_dont_stop, &creator->sig_dont_stop);
+        sigset_copy(&ctx->sig_dont_pass, &creator->sig_dont_pass);
         creator->ref_count++;
     }
     (ctx->parent = parent)->ref_count++;
@@ -1260,8 +1260,8 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
                 prs2->mem_access |= MEM_ACCESS_USER;
                 prs2->big_endian = ctx->parent->big_endian;
                 (prs2->creator = ctx)->ref_count++;
-                prs2->sig_dont_stop = ctx->sig_dont_stop;
-                prs2->sig_dont_pass = ctx->sig_dont_pass;
+                sigset_copy(&prs2->sig_dont_stop, &ctx->sig_dont_stop);
+                sigset_copy(&prs2->sig_dont_pass, &ctx->sig_dont_pass);
                 prs2->ref_count = 1;
                 clone_breakpoints_on_process_fork(ctx, prs2);
                 if ((ext->attach_mode & CONTEXT_ATTACH_CHILDREN) == 0) {
@@ -1296,8 +1296,8 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
                     alloc_regs(ctx2);
                     ctx2->mem = prs;
                     ctx2->big_endian = prs->big_endian;
-                    ctx2->sig_dont_stop = ctx->sig_dont_stop;
-                    ctx2->sig_dont_pass = ctx->sig_dont_pass;
+                    sigset_copy(&ctx2->sig_dont_stop, &ctx->sig_dont_stop);
+                    sigset_copy(&ctx2->sig_dont_pass, &ctx->sig_dont_pass);
                     ctx2->exiting = 1;
                     (ctx2->creator = ctx)->ref_count++;
                     (ctx2->parent = prs)->ref_count++;
@@ -1318,8 +1318,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     }
 
     if (signal != SIGSTOP && signal != SIGTRAP) {
-        assert(signal < 32);
-        ctx->pending_signals |= 1 << signal;
+        sigset_set(&ctx->pending_signals, signal, 1);
 #if defined(__arm__)
         /* On ARM, Linux kernel appears to use SIGILL to lazily enable vector registers */
         if (signal == SIGILL && !ext->crt0_done) {
@@ -1327,7 +1326,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         }
         else
 #endif
-        if ((ctx->sig_dont_stop & (1 << signal)) == 0) {
+        if (sigset_get(&ctx->sig_dont_stop, signal) == 0) {
             if (!is_intercepted(ctx)) ctx->pending_intercept = 1;
             stopped_by_exception = 1;
         }
@@ -1414,7 +1413,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         send_context_stopped_event(ctx);
     }
 
-    if (ext->detach_req && !ext->sigstop_posted && !ctx->pending_signals) {
+    if (ext->detach_req && !ext->sigstop_posted && sigset_is_empty(&ctx->pending_signals)) {
         ext->waitpid_posted = 0;
         detach_waitpid_process();
     }

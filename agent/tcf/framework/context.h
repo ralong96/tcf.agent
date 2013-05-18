@@ -23,6 +23,7 @@
 #include <tcf/config.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/errors.h>
+#include <tcf/framework/sigsets.h>
 #include <tcf/framework/link.h>
 
 extern LINK context_root;
@@ -65,9 +66,9 @@ struct Context {
     int                 exited;             /* context exited */
     int                 event_notification; /* set to 1 when calling one of ContextEventListener call-backs for this context */
     int                 pending_intercept;  /* host is waiting for this context to be suspended */
-    unsigned long       pending_signals;    /* bit set of signals that were received, but not handled yet */
-    unsigned long       sig_dont_stop;      /* bit set of signals that should not be intercepted by the debugger */
-    unsigned long       sig_dont_pass;      /* bit set of signals that should not be delivered to the context */
+    SigSet              pending_signals;    /* bit set of signals that were received, but not handled yet */
+    SigSet              sig_dont_stop;      /* bit set of signals that should not be intercepted by the debugger */
+    SigSet              sig_dont_pass;      /* bit set of signals that should not be delivered to the context */
     int                 signal;             /* signal that stopped this context */
 };
 

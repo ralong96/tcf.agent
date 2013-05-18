@@ -20,6 +20,9 @@
 #ifndef D_signames
 #define D_signames
 
+/* Return the number of signals descriptions */
+extern int signal_cnt(void);
+
 /* Return signal name */
 extern const char * signal_name(int signal);
 

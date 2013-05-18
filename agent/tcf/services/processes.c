@@ -512,6 +512,28 @@ static void command_detach(char * token, Channel * c) {
     write_stream(&c->out, MARKER_EOM);
 }
 
+static void write_sigset(OutputStream * out, SigSet * set) {
+    unsigned bit = 0;
+    uint64_t bits = 0;
+    while (sigset_get_next(set, &bit)) {
+        if (bit >= sizeof(bits) * 8) {
+            /* Does not fit into int bitset */
+            unsigned cnt = 0;
+            bit = 0;
+            write_stream(out, '[');
+            while (sigset_get_next(set, &bit)) {
+                if (cnt > 0) write_stream(out, ',');
+                json_write_long(out, bit);
+                cnt++;
+            }
+            write_stream(out, ']');
+            return;
+        }
+        bits |= (uint64_t)1 << bit;
+    }
+    json_write_uint64(out, bits);
+}
+
 static void command_get_signal_mask(char * token, Channel * c) {
     int err = 0;
     char id[256];
@@ -534,29 +556,51 @@ static void command_get_signal_mask(char * token, Channel * c) {
         write_stringz(&c->out, "null");
     }
     else {
-        json_write_long(&c->out, ctx->sig_dont_stop);
+        write_sigset(&c->out, &ctx->sig_dont_stop);
         write_stream(&c->out, 0);
-        json_write_long(&c->out, ctx->sig_dont_pass);
+        write_sigset(&c->out, &ctx->sig_dont_pass);
         write_stream(&c->out, 0);
-        json_write_long(&c->out, ctx->pending_signals);
+        write_sigset(&c->out, &ctx->pending_signals);
         write_stream(&c->out, 0);
     }
 
     write_stream(&c->out, MARKER_EOM);
 }
 
+static void read_sigset_bit(InputStream * inp, void * args) {
+    SigSet * set = (SigSet *)args;
+    unsigned bit = (unsigned)json_read_long(inp);
+    sigset_set(set, bit, 1);
+}
+
+static SigSet read_sigset(InputStream * inp) {
+    SigSet set;
+    memset(&set, 0, sizeof(set));
+    if (json_peek(inp) == '[') {
+        json_read_array(inp, read_sigset_bit, &set);
+    }
+    else {
+        unsigned bit;
+        uint64_t bits = json_read_uint64(inp);
+        for (bit = 0; bit < 64; bit++) {
+            sigset_set(&set, bit, (bits & ((uint64_t)1 << bit)) != 0);
+        }
+    }
+    return set;
+}
+
 static void command_set_signal_mask(char * token, Channel * c) {
     int err = 0;
     char id[256];
     Context * ctx = NULL;
-    int dont_stop;
-    int dont_pass;
+    SigSet dont_stop;
+    SigSet dont_pass;
 
     json_read_string(&c->inp, id, sizeof(id));
     json_test_char(&c->inp, MARKER_EOA);
-    dont_stop = json_read_long(&c->inp);
+    dont_stop = read_sigset(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
-    dont_pass = json_read_long(&c->inp);
+    dont_pass = read_sigset(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
@@ -565,6 +609,8 @@ static void command_set_signal_mask(char * token, Channel * c) {
         err = ERR_INV_CONTEXT;
     }
     else {
+        sigset_clear(&ctx->sig_dont_stop);
+        sigset_clear(&ctx->sig_dont_pass);
         ctx->sig_dont_stop = dont_stop;
         ctx->sig_dont_pass = dont_pass;
     }
@@ -700,8 +746,9 @@ static void command_get_signal_list(char * token, Channel * c) {
     else {
         int i = 0;
         int n = 0;
+        int cnt = signal_cnt();
         write_stream(&c->out, '[');
-        for (i = 0; i < 32; i++) {
+        for (i = 0; i < cnt; i++) {
             const char * name = signal_name(i);
             const char * desc = signal_description(i);
             if (name != NULL || desc != NULL) {
@@ -1468,7 +1515,7 @@ static void command_start(char * token, Channel * c, void * x) {
         json_test_char(&c->inp, MARKER_EOA);
         params.envp = json_read_alloc_string_array(&c->inp, &envp_len);
         json_test_char(&c->inp, MARKER_EOA);
-        if (version > 0 && (peek_stream(&c->inp) == '{' || peek_stream(&c->inp) == 'n')) {
+        if (version > 0 && (json_peek(&c->inp) == '{' || json_peek(&c->inp) == 'n')) {
             json_read_struct(&c->inp, read_start_params, &params);
         }
         else {

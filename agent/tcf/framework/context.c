@@ -206,6 +206,9 @@ void context_unlock(Context * ctx) {
         }
         ctx->event_notification = 0;
         list_remove(&ctx->ctxl);
+        sigset_clear(&ctx->pending_signals);
+        sigset_clear(&ctx->sig_dont_stop);
+        sigset_clear(&ctx->sig_dont_pass);
         loc_free(ctx->name);
         loc_free(ctx);
     }

@@ -596,6 +596,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\tcf\framework\sigsets.c"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\framework\sigsets.h"
+				>
+			</File>
+			<File
 				RelativePath=".\tcf\framework\streams.c"
 				>
 			</File>

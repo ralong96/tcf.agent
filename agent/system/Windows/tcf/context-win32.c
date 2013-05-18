@@ -255,7 +255,7 @@ static DWORD event_win32_context_stopped(Context * ctx) {
     memset(ext->regs, 0, sizeof(REG_SET));
 
     ctx->signal = get_signal_index(ctx);
-    ctx->pending_signals = 0;
+    sigset_clear(&ctx->pending_signals);
     ctx->stopped = 1;
     ctx->stopped_by_bp = 0;
     ctx->stopped_by_cb = NULL;
@@ -338,11 +338,11 @@ static DWORD event_win32_context_stopped(Context * ctx) {
             int intercept = 1;
             ctx->stopped_by_exception = 1;
             if (ctx->signal) {
-                ctx->pending_signals |= 1 << ctx->signal;
-                if (ctx->sig_dont_pass & (1 << ctx->signal)) {
+                sigset_set(&ctx->pending_signals, ctx->signal, 1);
+                if (sigset_get(&ctx->sig_dont_pass, ctx->signal)) {
                     continue_status = DBG_CONTINUE;
                 }
-                if (ctx->sig_dont_stop & (1 << ctx->signal)) {
+                if (sigset_get(&ctx->sig_dont_stop, ctx->signal)) {
                     intercept = 0;
                 }
             }

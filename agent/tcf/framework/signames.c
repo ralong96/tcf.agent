@@ -20,6 +20,8 @@
 #include <tcf/config.h>
 
 #include <signal.h>
+#include <tcf/framework/myalloc.h>
+#include <tcf/framework/sigsets.h>
 #include <tcf/framework/signames.h>
 
 #if defined(_WIN32)
@@ -63,6 +65,10 @@ static ExceptionName exception_names[] = {
 };
 
 #define EXCEPTION_NAMES_CNT ((int)(sizeof(exception_names) / sizeof(ExceptionName)))
+
+int signal_cnt(void) {
+    return EXCEPTION_NAMES_CNT;
+}
 
 const char * signal_name(int signal) {
     int n = signal - 1;
@@ -154,18 +160,27 @@ static SignalInfo info[] = {
 
 #define INFO_CNT ((int)(sizeof(info) / sizeof(SignalInfo)))
 
+static int index_len = 0;
+
 static SignalInfo * get_info(int signal) {
-    static SignalInfo * index[32];
-    static int index_ok = 0;
-    if (signal < 0 || signal > 31) return NULL;
-    if (!index_ok) {
+    static SignalInfo ** index = NULL;
+    if (index_len == 0) {
         int i;
+        for (i = 0; i < INFO_CNT; i++) {
+            if (info[i].signal >= index_len) index_len = info[i].signal + 1;
+        }
+        index = (SignalInfo **)loc_alloc_zero(sizeof(SignalInfo *) * index_len);
         for (i = 0; i < INFO_CNT; i++) {
             index[info[i].signal] = &info[i];
         }
-        index_ok = 1;
     }
+    if (signal < 0 || signal >= index_len) return NULL;
     return index[signal];
+}
+
+int signal_cnt(void) {
+    get_info(0);
+    return index_len;
 }
 
 const char * signal_name(int signal) {
