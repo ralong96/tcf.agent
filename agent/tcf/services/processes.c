@@ -523,7 +523,7 @@ static void write_sigset(OutputStream * out, SigSet * set) {
             write_stream(out, '[');
             while (sigset_get_next(set, &bit)) {
                 if (cnt > 0) write_stream(out, ',');
-                json_write_long(out, bit);
+                json_write_ulong(out, bit);
                 cnt++;
             }
             write_stream(out, ']');
@@ -569,7 +569,7 @@ static void command_get_signal_mask(char * token, Channel * c) {
 
 static void read_sigset_bit(InputStream * inp, void * args) {
     SigSet * set = (SigSet *)args;
-    unsigned bit = (unsigned)json_read_long(inp);
+    unsigned bit = (unsigned)json_read_ulong(inp);
     sigset_set(set, bit, 1);
 }
 
@@ -581,7 +581,7 @@ static void read_sigset(InputStream * inp, SigSet * set) {
     else {
         unsigned bit;
         uint64_t bits = json_read_uint64(inp);
-        for (bit = 0; bit < 64; bit++) {
+        for (bit = 0; bit < sizeof(bits) * 8; bit++) {
             sigset_set(set, bit, (bits & ((uint64_t)1 << bit)) != 0);
         }
     }
