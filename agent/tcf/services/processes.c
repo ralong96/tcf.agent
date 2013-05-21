@@ -573,20 +573,18 @@ static void read_sigset_bit(InputStream * inp, void * args) {
     sigset_set(set, bit, 1);
 }
 
-static SigSet read_sigset(InputStream * inp) {
-    SigSet set;
-    memset(&set, 0, sizeof(set));
+static void read_sigset(InputStream * inp, SigSet * set) {
+    memset(set, 0, sizeof(SigSet));
     if (json_peek(inp) == '[') {
-        json_read_array(inp, read_sigset_bit, &set);
+        json_read_array(inp, read_sigset_bit, set);
     }
     else {
         unsigned bit;
         uint64_t bits = json_read_uint64(inp);
         for (bit = 0; bit < 64; bit++) {
-            sigset_set(&set, bit, (bits & ((uint64_t)1 << bit)) != 0);
+            sigset_set(set, bit, (bits & ((uint64_t)1 << bit)) != 0);
         }
     }
-    return set;
 }
 
 static void command_set_signal_mask(char * token, Channel * c) {
@@ -598,9 +596,9 @@ static void command_set_signal_mask(char * token, Channel * c) {
 
     json_read_string(&c->inp, id, sizeof(id));
     json_test_char(&c->inp, MARKER_EOA);
-    dont_stop = read_sigset(&c->inp);
+    read_sigset(&c->inp, &dont_stop);
     json_test_char(&c->inp, MARKER_EOA);
-    dont_pass = read_sigset(&c->inp);
+    read_sigset(&c->inp, &dont_pass);
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
