@@ -83,6 +83,8 @@ typedef struct ContextExtensionRC {
     int step_continue_mode;
     int safe_single_step;   /* not zero if the context is performing a "safe" single instruction step */
     int cannot_stop;
+    ContextAddress pc;
+    int pc_error;
     LINK link;
 } ContextExtensionRC;
 
@@ -285,23 +287,30 @@ static void write_context(OutputStream * out, Context * ctx) {
     write_stream(out, '}');
 }
 
-static int get_current_pc(Context * ctx, ContextAddress * res) {
+static void get_current_pc(Context * ctx) {
     size_t i;
     uint8_t buf[8];
-    ContextAddress pc = 0;
+    ContextExtensionRC * ext = EXT(ctx);
     RegisterDefinition * def = get_PC_definition(ctx);
+    ext->pc = 0;
+    ext->pc_error = 0;
     if (def == NULL) {
-        set_errno(ERR_OTHER, "Program counter register not found");
-        return -1;
+        ext->pc_error = set_errno(ERR_OTHER, "Program counter register not found");
+        return;
+    }
+    if (!ctx->stopped) {
+        ext->pc_error = ERR_IS_RUNNING;
+        return;
     }
     assert(def->size <= sizeof(buf));
-    if (context_read_reg(ctx, def, 0, def->size, buf) < 0) return -1;
-    for (i = 0; i < def->size; i++) {
-        pc = pc << 8;
-        pc |= buf[def->big_endian ? i : def->size - i - 1];
+    if (context_read_reg(ctx, def, 0, def->size, buf) < 0) {
+        ext->pc_error = errno;
+        return;
     }
-    *res = pc;
-    return 0;
+    for (i = 0; i < def->size; i++) {
+        ext->pc = ext->pc << 8;
+        ext->pc |= buf[def->big_endian ? i : def->size - i - 1];
+    }
 }
 
 #if ENABLE_ContextStateProperties
@@ -330,7 +339,7 @@ static const char * get_suspend_reason(Context * ctx) {
     return REASON_USER_REQUEST;
 }
 
-static void write_context_state(OutputStream * out, Context * ctx, ContextAddress pc, int pc_error) {
+static void write_context_state(OutputStream * out, Context * ctx) {
     int fst = 1;
     char ** bp_ids = NULL;
     ContextExtensionRC * ext = EXT(ctx);
@@ -344,7 +353,7 @@ static void write_context_state(OutputStream * out, Context * ctx, ContextAddres
     else {
 
         /* Number: PC */
-        json_write_uint64(out, pc);
+        json_write_uint64(out, ext->pc);
         write_stream(out, 0);
 
         /* String: Reason */
@@ -356,52 +365,54 @@ static void write_context_state(OutputStream * out, Context * ctx, ContextAddres
 
     /* Object: Additional context state info */
     write_stream(out, '{');
-    if (ext->intercepted && ext->step_error == NULL && ext->step_done == NULL && ctx->signal) {
-        const char * name = signal_name(ctx->signal);
-        const char * desc = signal_description(ctx->signal);
-        json_write_string(out, "Signal");
-        write_stream(out, ':');
-        json_write_long(out, ctx->signal);
-        if (name != NULL) {
-            write_stream(out, ',');
-            json_write_string(out, "SignalName");
+    if (ext->intercepted) {
+        if (ext->step_error == NULL && ext->step_done == NULL && ctx->signal) {
+            const char * name = signal_name(ctx->signal);
+            const char * desc = signal_description(ctx->signal);
+            json_write_string(out, "Signal");
             write_stream(out, ':');
-            json_write_string(out, name);
+            json_write_long(out, ctx->signal);
+            if (name != NULL) {
+                write_stream(out, ',');
+                json_write_string(out, "SignalName");
+                write_stream(out, ':');
+                json_write_string(out, name);
+            }
+            if (desc != NULL) {
+                write_stream(out, ',');
+                json_write_string(out, "SignalDescription");
+                write_stream(out, ':');
+                json_write_string(out, desc);
+            }
+            fst = 0;
         }
-        if (desc != NULL) {
-            write_stream(out, ',');
-            json_write_string(out, "SignalDescription");
+        if (bp_ids != NULL) {
+            int i = 0;
+            if (!fst) write_stream(out, ',');
+            json_write_string(out, "BPs");
             write_stream(out, ':');
-            json_write_string(out, desc);
+            write_stream(out, '[');
+            while (bp_ids[i] != NULL) {
+                if (i > 0) write_stream(out, ',');
+                json_write_string(out, bp_ids[i++]);
+            }
+            write_stream(out, ']');
+            fst = 0;
         }
-        fst = 0;
-    }
-    if (bp_ids != NULL) {
-        int i = 0;
-        if (!fst) write_stream(out, ',');
-        json_write_string(out, "BPs");
-        write_stream(out, ':');
-        write_stream(out, '[');
-        while (bp_ids[i] != NULL) {
-            if (i > 0) write_stream(out, ',');
-            json_write_string(out, bp_ids[i++]);
+        if (ext->pc_error) {
+            if (!fst) write_stream(out, ',');
+            json_write_string(out, "PCError");
+            write_stream(out, ':');
+            write_error_object(out, ext->pc_error);
+            fst = 0;
         }
-        write_stream(out, ']');
-        fst = 0;
-    }
-    if (pc_error) {
-        if (!fst) write_stream(out, ',');
-        json_write_string(out, "PCError");
-        write_stream(out, ':');
-        write_error_object(out, pc_error);
-        fst = 0;
-    }
-    if (ctx->stopped_by_funccall) {
-        if (!fst) write_stream(out, ',');
-        json_write_string(out, "FuncCall");
-        write_stream(out, ':');
-        json_write_boolean(out, 1);
-        fst = 0;
+        if (ctx->stopped_by_funccall) {
+            if (!fst) write_stream(out, ',');
+            json_write_string(out, "FuncCall");
+            write_stream(out, ':');
+            json_write_boolean(out, 1);
+            fst = 0;
+        }
     }
 #if ENABLE_ContextStateProperties
     {
@@ -516,8 +527,6 @@ static void command_get_state_cache_client(void * x) {
     Context * ctx = NULL;
     ContextExtensionRC * ext = NULL;
     Channel * c = cache_channel();
-    ContextAddress pc = 0;
-    int pc_error = 0;
     int err = 0;
 
     ctx = id2ctx(args->id);
@@ -526,7 +535,7 @@ static void command_get_state_cache_client(void * x) {
     if (ctx == NULL || !context_has_state(ctx)) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
 
-    if (ext != NULL && ext->intercepted && get_current_pc(ctx, &pc) < 0) pc_error = errno;
+    if (ext != NULL) get_current_pc(ctx);
 
     cache_exit();
 
@@ -544,7 +553,7 @@ static void command_get_state_cache_client(void * x) {
         write_stringz(&c->out, "null");
     }
     else {
-        write_context_state(&c->out, ctx, pc, pc_error);
+        write_context_state(&c->out, ctx);
     }
 
     write_stream(&c->out, MARKER_EOM);
@@ -981,21 +990,21 @@ static void send_event_context_suspended(void) {
     list_init(&p2);
 
     while (l != &context_root) {
-        Context * x = ctxl2ctxp(l);
+        Context * ctx = ctxl2ctxp(l);
         l = l->next;
-        if (x->pending_intercept && x->stopped) {
+        if (ctx->pending_intercept && ctx->stopped) {
             LINK * n = &p1;
-            ContextExtensionRC * e = EXT(x);
-            assert(!x->exited);
-            assert(!e->intercepted);
-            assert(!e->safe_single_step);
-            cancel_step_mode(x);
-            assert(!e->intercepted);
-            e->intercepted = 1;
-            x->pending_intercept = 0;
-            if (get_context_breakpoint_ids(x) != NULL) e->intercepted_by_bp++;
-            if (strcmp(get_suspend_reason(x), REASON_USER_REQUEST)) n = &p0;
-            list_add_last(&e->link, n);
+            ContextExtensionRC * ext = EXT(ctx);
+            assert(!ctx->exited);
+            assert(!ext->intercepted);
+            assert(!ext->safe_single_step);
+            cancel_step_mode(ctx);
+            assert(!ext->intercepted);
+            ext->intercepted = 1;
+            ctx->pending_intercept = 0;
+            if (get_context_breakpoint_ids(ctx) != NULL) ext->intercepted_by_bp++;
+            if (strcmp(get_suspend_reason(ctx), REASON_USER_REQUEST)) n = &p0;
+            list_add_last(&ext->link, n);
         }
     }
 
@@ -1004,13 +1013,9 @@ static void send_event_context_suspended(void) {
         LINK * n = !list_is_empty(&p0) ? p0.next : p1.next;
         Context * ctx = link2ctx(n);
         int container = list_is_empty(&p0) && p1.next != p1.prev;
-        ContextAddress pc = 0;
-        int pc_error = 0;
 
         list_remove(n);
         list_add_last(n, &p2);
-
-        if (get_current_pc(ctx, &pc) < 0) pc_error = errno;
 
         write_stringz(out, "E");
         write_stringz(out, RUN_CONTROL);
@@ -1019,7 +1024,7 @@ static void send_event_context_suspended(void) {
         json_write_string(out, ctx->id);
         write_stream(out, 0);
 
-        write_context_state(out, ctx, pc, pc_error);
+        write_context_state(out, ctx);
 
         if (container) {
             write_stream(out, '[');
@@ -1276,16 +1281,15 @@ static BreakpointInfo * create_step_machine_breakpoint(ContextAddress addr, Cont
 
 static int update_step_machine_state(Context * ctx) {
     ContextExtensionRC * ext = EXT(ctx);
-    ContextAddress addr = 0;
+    ContextAddress addr = ext->pc;
 
     if (!context_has_state(ctx) || ctx->exited || ctx->pending_intercept) {
         cancel_step_mode(ctx);
         return 0;
     }
 
-    if (get_current_pc(ctx, &addr) < 0) {
-        int n = errno;
-        if (ctx->stopped && get_error_code(n) == ERR_NOT_ACTIVE) {
+    if (ext->pc_error) {
+        if (ctx->stopped && get_error_code(ext->pc_error) == ERR_NOT_ACTIVE) {
             switch (ext->step_mode) {
             case RM_STEP_OVER:
             case RM_STEP_INTO:
@@ -1309,7 +1313,7 @@ static int update_step_machine_state(Context * ctx) {
                 break;
             }
         }
-        errno = n;
+        errno = ext->pc_error;
         return -1;
     }
 
@@ -1715,25 +1719,28 @@ static int check_step_breakpoint(Context * ctx) {
     return -1;
 }
 
-static int sync_run_state(void) {
+static void sync_run_state(void) {
     int err_cnt = 0;
     LINK * l;
     LINK p;
 
-    if (run_ctrl_lock_cnt != 0) return 0;
+    if (run_ctrl_lock_cnt != 0) return;
     assert(safe_event_list == NULL);
     stop_all_timer_cnt = 0;
 
-    /* Clear intercept group flags */
+    /* Clear intercept group flags, get current PCs */
     safe_event_pid_count = 0;
     l = context_root.next;
     while (l != &context_root) {
         Context * ctx = ctxl2ctxp(l);
         ContextExtensionRC * ext = EXT(ctx);
         l = l->next;
+        ext->pc = 0;
+        ext->pc_error = ERR_OTHER;
         ext->pending_safe_event = 0;
         if (context_has_state(ctx)) {
             Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
+            if (!ctx->exited && ctx->stopped && !ext->intercepted) get_current_pc(ctx);
             EXT(grp)->intercept_group = 0;
         }
         else if (ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) {
@@ -1741,7 +1748,7 @@ static int sync_run_state(void) {
             assert(is_all_stopped(ctx));
             if (context_resume(ctx, md, 0, 0) < 0) {
                 int error = errno;
-                if (get_error_code(error) == ERR_CACHE_MISS) return 0;
+                if (get_error_code(error) == ERR_CACHE_MISS) return;
                 resume_error(ctx, error);
             }
             ext->step_mode = 0;
@@ -1773,7 +1780,7 @@ static int sync_run_state(void) {
             cache_set_def_channel(ext->step_channel);
             if (update_step_machine_state(ctx) < 0) {
                 int error = errno;
-                if (get_error_code(error) == ERR_CACHE_MISS) return 0;
+                if (get_error_code(error) == ERR_CACHE_MISS) return;
                 ext->step_error = get_error_report(error);
                 cancel_step_mode(ctx);
                 ctx->pending_intercept = 1;
@@ -1820,7 +1827,7 @@ static int sync_run_state(void) {
             }
             else if (context_resume(ctx, EXT(grp)->reverse_run ? RM_REVERSE_RESUME : RM_RESUME, 0, 0) < 0) {
                 int error = errno;
-                if (get_error_code(error) == ERR_CACHE_MISS) return 0;
+                if (get_error_code(error) == ERR_CACHE_MISS) return;
                 resume_error(ctx, error);
                 err_cnt++;
             }
@@ -1836,27 +1843,25 @@ static int sync_run_state(void) {
         l = l->next;
         if (context_resume(ctx, ext->step_continue_mode, ext->step_range_start, ext->step_range_end) < 0) {
             int error = errno;
-            if (get_error_code(error) == ERR_CACHE_MISS) return 0;
+            if (get_error_code(error) == ERR_CACHE_MISS) return;
             resume_error(ctx, error);
             err_cnt++;
         }
     }
 
-    if (safe_event_pid_count > 0 || run_ctrl_lock_cnt > 0) return 0;
-    if (err_cnt > 0) {
-        if (run_safe_events_posted < 4) {
-            run_safe_events_posted++;
-            post_event(run_safe_events, NULL);
-        }
-        return 0;
+    if (safe_event_pid_count > 0 || run_ctrl_lock_cnt > 0) return;
+
+    if (err_cnt > 0 && run_safe_events_posted < 4) {
+        run_safe_events_posted++;
+        post_event(run_safe_events, NULL);
     }
-    return 1;
 }
 
 static void sync_run_state_cache_client(void * args) {
-    int n = sync_run_state();
+    sync_run_state();
     cache_exit();
-    if (n) send_event_context_suspended();
+    if (run_safe_events_posted || run_ctrl_lock_cnt > 0) return;
+    send_event_context_suspended();
 }
 
 static void sync_run_state_event(void * args) {
