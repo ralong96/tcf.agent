@@ -124,6 +124,7 @@ static void write_context(OutputStream * out, Context * ctx) {
     Context * rc_grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
     Context * bp_grp = context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT);
     Context * ss_grp = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
+    Context * cpu_grp = context_get_group(ctx, CONTEXT_GROUP_CPU);
     int has_state = context_has_state(ctx);
 
     assert(!ctx->exited);
@@ -260,6 +261,13 @@ static void write_context(OutputStream * out, Context * ctx) {
         json_write_string(out, "SymbolsGroup");
         write_stream(out, ':');
         json_write_string(out, ss_grp->id);
+    }
+
+    if (cpu_grp != NULL) {
+        write_stream(out, ',');
+        json_write_string(out, "CPUGroup");
+        write_stream(out, ':');
+        json_write_string(out, cpu_grp->id);
     }
 
 #if ENABLE_ContextExtraProperties

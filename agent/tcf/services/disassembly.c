@@ -56,6 +56,11 @@ typedef struct {
     int opcode_value;
 } DisassembleCmdArgs;
 
+typedef struct {
+    char token[256];
+    char id[256];
+} GetCapabilitiesCmdArgs;
+
 static const char * DISASSEMBLY = "Disassembly";
 static size_t context_extension_offset = 0;
 
@@ -95,41 +100,53 @@ void add_disassembler(Context * ctx, const char * isa, Disassembler disassembler
     i->disassembler = disassembler;
 }
 
-static void command_get_capabilities(char * token, Channel * c) {
+static void command_get_capabilities_cache_client(void * x) {
     int error = 0;
-    char id[256];
     Context * ctx = NULL;
     ContextExtensionDS * ext = NULL;
-    unsigned i, j;
+    GetCapabilitiesCmdArgs * args = (GetCapabilitiesCmdArgs *)x;
+    Channel * c = cache_channel();
 
-    json_read_string(&c->inp, id, sizeof(id));
-    if (read_stream(&c->inp) != 0) exception(ERR_JSON_SYNTAX);
-    if (read_stream(&c->inp) != MARKER_EOM) exception(ERR_JSON_SYNTAX);
-
-    ctx = id2ctx(id);
+    ctx = id2ctx(args->id);
 
     if (ctx == NULL) error = ERR_INV_CONTEXT;
     else if (ctx->exited) error = ERR_ALREADY_EXITED;
+    else {
+        ctx = context_get_group(ctx, CONTEXT_GROUP_CPU);
+        ext = EXT(ctx);
+    }
 
-    ctx = context_get_group(ctx, CONTEXT_GROUP_CPU);
-    ext = EXT(ctx);
+    cache_exit();
 
     write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
+    write_stringz(&c->out, args->token);
     write_errno(&c->out, error);
     write_stream(&c->out, '[');
-    for (i = 0, j = 0; i < ext->disassemblers_cnt; i++) {
-        if (j > 0) write_stream(&c->out, ',');
-        write_stream(&c->out, '{');
-        json_write_string(&c->out, "ISA");
-        write_stream(&c->out, ':');
-        json_write_string(&c->out, ext->disassemblers[i].isa);
-        write_stream(&c->out, '}');
-        j++;
+    if (ext != NULL) {
+        unsigned i;
+        for (i = 0; i < ext->disassemblers_cnt; i++) {
+            if (i > 0) write_stream(&c->out, ',');
+            write_stream(&c->out, '{');
+            json_write_string(&c->out, "ISA");
+            write_stream(&c->out, ':');
+            json_write_string(&c->out, ext->disassemblers[i].isa);
+            write_stream(&c->out, '}');
+        }
     }
     write_stream(&c->out, ']');
     write_stream(&c->out, 0);
     write_stream(&c->out, MARKER_EOM);
+}
+
+static void command_get_capabilities(char * token, Channel * c) {
+    GetCapabilitiesCmdArgs args;
+
+    json_read_string(&c->inp, args.id, sizeof(args.id));
+    if (read_stream(&c->inp) != 0) exception(ERR_JSON_SYNTAX);
+    if (read_stream(&c->inp) != MARKER_EOM) exception(ERR_JSON_SYNTAX);
+
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(command_get_capabilities_cache_client, c, &args, sizeof(args));
 }
 
 static void get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
@@ -351,14 +368,13 @@ static void disassemble_cache_client(void * x) {
         mem_buf = (uint8_t *)loc_alloc(mem_size);
         if (context_read_mem(ctx, buf_addr, mem_buf, mem_size) < 0) error = errno;
         if (error) {
+#if ENABLE_ExtendedMemoryErrorReports
             MemoryErrorInfo info;
-            if (context_get_mem_error_info(&info) < 0 || info.size_valid == 0) {
-                mem_size = 0;
-            }
-            else {
+            if (context_get_mem_error_info(&info) == 0 && info.size_valid > 0) {
                 mem_size = info.size_valid;
                 error = 0;
             }
+#endif
         }
     }
 
@@ -385,6 +401,7 @@ static void disassemble_cache_client(void * x) {
     loc_free(mem_buf);
 }
 
+#if SERVICE_RunControl
 static void safe_event_disassemble(void * x) {
     DisassembleCmdArgs * args = (DisassembleCmdArgs *)x;
     if (!is_channel_closed(args->c)) {
@@ -393,6 +410,7 @@ static void safe_event_disassemble(void * x) {
     channel_unlock(args->c);
     loc_free(args);
 }
+#endif
 
 static void read_disassembly_params(InputStream * inp, const char * name, void * x) {
     DisassembleCmdArgs * args = (DisassembleCmdArgs *) x;
@@ -415,8 +433,6 @@ static void read_disassembly_params(InputStream * inp, const char * name, void *
 }
 
 static void command_disassemble(char * token, Channel * c) {
-    int error = 0;
-    Context * ctx = NULL;
     DisassembleCmdArgs * args = (DisassembleCmdArgs *)loc_alloc_zero(sizeof(DisassembleCmdArgs));
     json_read_string(&c->inp, args->id, sizeof(args->id));
     if (read_stream(&c->inp) != 0) exception(ERR_JSON_SYNTAX);
@@ -428,24 +444,33 @@ static void command_disassemble(char * token, Channel * c) {
     if (read_stream(&c->inp) != 0) exception(ERR_JSON_SYNTAX);
     if (read_stream(&c->inp) != MARKER_EOM) exception(ERR_JSON_SYNTAX);
 
-    ctx = id2ctx(args->id);
-    if (ctx == NULL) error = ERR_INV_CONTEXT;
-    else if (ctx->exited) error = ERR_ALREADY_EXITED;
-    else if (context_get_group(ctx, CONTEXT_GROUP_PROCESS)->mem_access == 0) error = ERR_INV_CONTEXT;
+    args->c = c;
+    strlcpy(args->token, token, sizeof(args->token));
+#if SERVICE_RunControl
+    {
+        int error = 0;
+        Context * ctx = id2ctx(args->id);
+        if (ctx == NULL) error = ERR_INV_CONTEXT;
+        else if (ctx->exited) error = ERR_ALREADY_EXITED;
+        else if (context_get_group(ctx, CONTEXT_GROUP_PROCESS)->mem_access == 0) error = ERR_INV_CONTEXT;
 
-    if (error != 0) {
-        write_stringz(&c->out, "R");
-        write_stringz(&c->out, token);
-        write_errno(&c->out, error);
-        write_stringz(&c->out, "null");
-        write_stream(&c->out, MARKER_EOM);
-        loc_free(args);
+        if (error != 0) {
+            write_stringz(&c->out, "R");
+            write_stringz(&c->out, token);
+            write_errno(&c->out, error);
+            write_stringz(&c->out, "null");
+            write_stream(&c->out, MARKER_EOM);
+            loc_free(args);
+        }
+        else {
+            channel_lock(c);
+            post_safe_event(ctx, safe_event_disassemble, args);
+        }
     }
-    else {
-        channel_lock(args->c = c);
-        strlcpy(args->token, token, sizeof(args->token));
-        post_safe_event(ctx, safe_event_disassemble, args);
-    }
+#else
+    cache_enter(disassemble_cache_client, c, args, sizeof(DisassembleCmdArgs));
+    loc_free(args);
+#endif
 }
 
 static void event_context_disposed(Context * ctx, void * args) {
@@ -466,8 +491,10 @@ void ini_disassembly_service(Protocol * proto) {
         NULL,
         event_context_disposed
     };
-    add_context_event_listener(&listener, NULL);
-    context_extension_offset = context_extension(sizeof(ContextExtensionDS));
+    if (context_extension_offset == 0) {
+        add_context_event_listener(&listener, NULL);
+        context_extension_offset = context_extension(sizeof(ContextExtensionDS));
+    }
     add_command_handler(proto, DISASSEMBLY, "getCapabilities", command_get_capabilities);
     add_command_handler(proto, DISASSEMBLY, "disassemble", command_disassemble);
 }

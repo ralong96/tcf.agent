@@ -363,6 +363,14 @@
 				>
 			</File>
 			<File
+				RelativePath="..\agent\tcf\services\disassembly.c"
+				>
+			</File>
+			<File
+				RelativePath="..\agent\tcf\services\disassembly.h"
+				>
+			</File>
+			<File
 				RelativePath="..\agent\tcf\services\discovery.c"
 				>
 			</File>

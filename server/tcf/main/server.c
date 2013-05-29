@@ -26,6 +26,7 @@
 #include <tcf/services/linenumbers.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/pathmap.h>
+#include <tcf/services/disassembly.h>
 #include <tcf/services/context-proxy.h>
 #include <tcf/main/server.h>
 
@@ -127,7 +128,7 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if defined(SERVICE_LineNumbers) && SERVICE_LineNumbers
         ini_line_numbers_service(target->protocol);
 #endif
-#if defined(ENABLE_Symbols) && ENABLE_Symbols
+#if defined(SERVICE_Symbols) && SERVICE_Symbols
         ini_symbols_service(target->protocol);
 #endif
     }
@@ -137,6 +138,7 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
         int service_mm = 0;
         int service_pm = 0;
         int service_sm = 0;
+        int service_da = 0;
         int forward_pm = 0;
         for (i = 0; i < target->peer_service_cnt; i++) {
             char * nm = target->peer_service_list[i];
@@ -144,6 +146,7 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
             if (strcmp(nm, "Symbols") == 0) service_sm = 1;
             if (strcmp(nm, "MemoryMap") == 0) service_mm = 1;
             if (strcmp(nm, "PathMap") == 0) service_pm = 1;
+            if (strcmp(nm, "Disassembly") == 0) service_da = 1;
         }
         if (!service_pm || !service_ln || !service_sm) {
             ini_path_map_service(host->protocol, bcg);
@@ -153,8 +156,11 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if defined(SERVICE_LineNumbers) && SERVICE_LineNumbers
             if (!service_ln) ini_line_numbers_service(host->protocol);
 #endif
-#if defined(ENABLE_Symbols) && ENABLE_Symbols
+#if defined(SERVICE_Symbols) && SERVICE_Symbols
             if (!service_sm) ini_symbols_service(host->protocol);
+#endif
+#if defined(SERVICE_Disassembly) && SERVICE_Disassembly
+            if (!service_da) ini_disassembly_service(host->protocol);
 #endif
 #if defined(ENABLE_DebugContext) && ENABLE_DebugContext \
     && defined(ENABLE_ContextProxy) && ENABLE_ContextProxy

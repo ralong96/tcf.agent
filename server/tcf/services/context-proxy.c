@@ -32,6 +32,7 @@
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/json.h>
 #include <tcf/framework/cache.h>
+#include <tcf/services/symbols.h>
 #include <tcf/services/pathmap.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/stacktrace.h>
@@ -52,6 +53,7 @@ struct ContextCache {
     char process_id[256];
     char creator_id[256];
     char symbols_id[256];
+    char cpu_id[256];
     char * file;
     char * name;
     Context * ctx;
@@ -370,6 +372,7 @@ static void read_run_control_context_property(InputStream * inp, const char * na
     else if (strcmp(name, "ProcessID") == 0) json_read_string(inp, ctx->process_id, sizeof(ctx->process_id));
     else if (strcmp(name, "CreatorID") == 0) json_read_string(inp, ctx->creator_id, sizeof(ctx->creator_id));
     else if (strcmp(name, "SymbolsGroup") == 0) json_read_string(inp, ctx->symbols_id, sizeof(ctx->symbols_id));
+    else if (strcmp(name, "CPUGroup") == 0) json_read_string(inp, ctx->symbols_id, sizeof(ctx->cpu_id));
     else if (strcmp(name, "File") == 0) ctx->file = json_read_alloc_string(inp);
     else if (strcmp(name, "Name") == 0) ctx->name = json_read_alloc_string(inp);
     else if (strcmp(name, "HasState") == 0) ctx->has_state = json_read_boolean(inp);
@@ -928,6 +931,12 @@ Context * context_get_group(Context * ctx, int group) {
             if (h != NULL) return h->ctx;
         }
         break;
+    case CONTEXT_GROUP_CPU:
+        if (c->cpu_id[0]) {
+            ContextCache * h = find_context_cache(c->peer, c->cpu_id);
+            if (h != NULL) return h->ctx;
+        }
+        return ctx;
     }
     return ctx->mem;
 }
@@ -1711,6 +1720,14 @@ unsigned context_word_size(Context * ctx) {
     }
     return cache->word_size;
 }
+
+#if ENABLE_ContextISA
+int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
+    memset(isa, 0, sizeof(ContextISA));
+    if (get_context_isa(ctx, addr, &isa->isa, &isa->addr, &isa->size) < 0) return -1;
+    return 0;
+}
+#endif
 
 static void channel_close_listener(Channel * c) {
     LINK * l = NULL;

@@ -36,6 +36,9 @@
 #if !defined(SERVICE_MemoryMap)
 #define SERVICE_MemoryMap       1
 #endif
+#if !defined(SERVICE_Disassembly)
+#define SERVICE_Disassembly     1
+#endif
 
 #define SERVICE_StackTrace      0
 #define SERVICE_Processes       0
@@ -48,7 +51,6 @@
 #define SERVICE_SysMonitor      0
 #define SERVICE_Expressions     0
 #define SERVICE_DPrintf         0
-#define SERVICE_Disassembly     0
 #define SERVICE_Profiler        0
 #if !defined(SERVICE_Streams)
 #define SERVICE_Streams         0
@@ -145,6 +147,6 @@
 #define ENABLE_ExternalStackcrawl               0
 #define ENABLE_SymbolsMux                       0
 #define ENABLE_LineNumbersMux                   0
-#define ENABLE_ContextISA                       0
+#define ENABLE_ContextISA                       SERVICE_Disassembly
 
 #endif /* D_config */
