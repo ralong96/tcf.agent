@@ -28,20 +28,26 @@ file(GLOB TCF_MAIN_REL RELATIVE ${TCF_BASE_DIR}
 list(REMOVE_ITEM TCF_SRCS_REL ${TCF_MAIN_REL})
 
 if(DEFINED TCF_EXTRA_DIR)
-  # get extra all source files
-  file(GLOB TCF_EXTRA_SRCS_REL RELATIVE ${TCF_EXTRA_DIR}
-	${TCF_EXTRA_DIR}/system/${TCF_OPSYS}/tcf/*.c
-	${TCF_EXTRA_DIR}/machine/${TCF_MACHINE}/tcf/*.c
-	${TCF_EXTRA_DIR}/tcf/framework/*.c
-	${TCF_EXTRA_DIR}/tcf/services/*.c
-	${TCF_EXTRA_DIR}/tcf/main/*.c)
+  foreach(extraDir ${TCF_EXTRA_DIR})
+    # get extra all source files
+    file(GLOB TCF_EXTRA_SRCS_REL RELATIVE ${extraDir}
+      ${extraDir}/system/${TCF_OPSYS}/tcf/*.c
+      ${extraDir}/machine/${TCF_MACHINE}/tcf/*.c
+      ${extraDir}/tcf/framework/*.c
+      ${extraDir}/tcf/services/*.c
+      ${extraDir}/tcf/main/*.c)
 
-  # Override regular files with extra files
-  list(REMOVE_ITEM TCF_SRCS_REL ${TCF_EXTRA_SRCS_REL})
+    # Override regular files with extra files
+    list (LENGTH TCF_EXTRA_SRCS_REL LEN_TCF_EXTRA_SRCS_REL)
 
-  foreach(file ${TCF_EXTRA_SRCS_REL})
-    list(APPEND TCF_SRCS ${TCF_EXTRA_DIR}/${file})
-  endforeach(file)
+    if (NOT LEN_TCF_EXTRA_SRCS_REL EQUAL 0)
+      list(REMOVE_ITEM TCF_SRCS_REL ${TCF_EXTRA_SRCS_REL})
+    endif ()
+    
+    foreach(file ${TCF_EXTRA_SRCS_REL})
+      list(APPEND TCF_SRCS ${extraDir}/${file})
+    endforeach(file)
+  endforeach(extraDir)
 endif()
 
 foreach(file ${TCF_SRCS_REL})
@@ -49,8 +55,11 @@ foreach(file ${TCF_SRCS_REL})
 endforeach(file)
 
 if(DEFINED TCF_EXTRA_DIR)
-  include_directories(${TCF_EXTRA_DIR} ${TCF_EXTRA_DIR}/system/${TCF_OPSYS} ${TCF_EXTRA_DIR}/machine/${TCF_MACHINE})
+  foreach(extraDir ${TCF_EXTRA_DIR})
+    include_directories(${extraDir} ${extraDir}/system/${TCF_OPSYS} ${extraDir}/machine/${TCF_MACHINE})
+  endforeach(extraDir)
 endif()
+
 include_directories(${TCF_BASE_DIR} ${TCF_BASE_DIR}/system/${TCF_OPSYS} ${TCF_BASE_DIR}/machine/${TCF_MACHINE})
 
 set_source_files_properties(${TCF_SRCS} PROPERTIES
