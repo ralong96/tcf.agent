@@ -80,8 +80,11 @@ void sigset_set(SigSet * set, unsigned bit, int value) {
 void sigset_copy(SigSet * dst, SigSet * src) {
     dst->cnt = src->cnt;
     dst->max = src->cnt;
-    dst->buf = (unsigned *)loc_alloc(sizeof(unsigned) * dst->max);
-    memcpy(dst->buf, src->buf, sizeof(unsigned) * dst->cnt);
+    dst->buf = NULL;
+    if (dst->max > 0) {
+        dst->buf = (unsigned *)loc_alloc(sizeof(unsigned) * dst->max);
+        memcpy(dst->buf, src->buf, sizeof(unsigned) * dst->cnt);
+    }
 }
 
 void sigset_clear(SigSet * set) {
