@@ -18,8 +18,11 @@
  * System specific debug context code can use this module to implement context lookup.
  */
 
-/* TODO: consider splitting the code into two files: some clients might want to reuse PID hash table for context_find_from_pid(),
- * but use some other means to implement id2ctx() */
+/*
+ * NOTE: Some clients might want to reuse PID hash table for
+ * context_find_from_pid(), but use some other means to implement id2ctx():
+ * This can be done by defining ENABLE_USER_DEFINED_id2ctx.
+ */
 
 #define CONTEXT_PID_HASH_SIZE (32 * MEM_USAGE_FACTOR - 1)
 #define CONTEXT_PID_HASH(PID) ((unsigned)(PID) % CONTEXT_PID_HASH_SIZE)
@@ -56,12 +59,14 @@ Context * context_find_from_pid(pid_t pid, int thread) {
     return NULL;
 }
 
+#if !defined(ENABLE_USER_DEFINED_id2ctx)
 Context * id2ctx(const char * id) {
     pid_t parent = 0;
     pid_t pid = id2pid(id, &parent);
     if (pid == 0) return NULL;
     return context_find_from_pid(pid, parent != 0);
 }
+#endif /* !ENABLE_USER_DEFINED_id2ctx */
 
 static void pid_hash_context_exited(Context * ctx, void * args) {
     list_remove(ctx2pidlink(ctx));
