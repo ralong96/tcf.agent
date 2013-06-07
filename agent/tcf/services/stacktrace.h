@@ -26,10 +26,16 @@
 #if SERVICE_StackTrace || ENABLE_ContextProxy
 
 /*
- * Get index of the top frame of a context.
+ * Get index of the top and bootom frames of a context.
  */
 extern int get_top_frame(Context * ctx);
+extern int get_bottom_frame(Context * ctx);
 
+/*
+ * Get index of the prev and next frames of a context.
+ * Prev frame is caller (parent) frame.
+ * Next frame is callee (child) frame.
+ */
 extern int get_prev_frame(Context * ctx, int frame);
 extern int get_next_frame(Context * ctx, int frame);
 

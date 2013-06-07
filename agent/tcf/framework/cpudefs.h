@@ -208,9 +208,9 @@ typedef struct CodeArea {
     int discriminator;
 } CodeArea;
 
-#define STACK_BOTTOM_FRAME  0
 #define STACK_NO_FRAME      (-1)
 #define STACK_TOP_FRAME     (-2)
+#define STACK_BOTTOM_FRAME  (-3)
 
 typedef struct StackFrame {
     int frame;

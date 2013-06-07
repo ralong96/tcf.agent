@@ -44,7 +44,7 @@ static const char * STACKTRACE = "StackTrace";
 
 typedef struct StackTrace {
     ErrorReport * error;
-    int valid;
+    int complete;
     int frame_cnt;
     int frame_max;
     StackFrame * frames; /* ordered bottom to top */
@@ -123,22 +123,23 @@ static void invalidate_stack_trace(StackTrace * stack) {
     }
     stack->error = NULL;
     stack->frame_cnt = 0;
-    stack->valid = 0;
+    stack->complete = 0;
 }
 
-static void trace_stack(Context * ctx, StackTrace * stack) {
-    int i;
+static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
     int error = 0;
-    StackFrame frame;
-    ContextAddress prev_fp = 0;
+    StackFrame down;
 
-    stack->frame_cnt = 0;
-    memset(&frame, 0, sizeof(frame));
-    frame.is_top_frame = 1;
-    frame.ctx = ctx;
+    if (stack->frame_cnt == 0) {
+        memset(&down, 0, sizeof(down));
+        down.is_top_frame = 1;
+        down.ctx = ctx;
+        add_frame(stack, &down);
+    }
+
     trace(LOG_STACK, "Stack trace, ctx %s", ctx->id);
-    while (stack->frame_cnt < MAX_FRAMES) {
-        StackFrame down;
+    while (stack->frame_cnt < max_frames) {
+        StackFrame * frame = stack->frames + (stack->frame_cnt - 1);
         memset(&down, 0, sizeof(down));
         down.ctx = ctx;
         trace(LOG_STACK, "Frame %d", stack->frame_cnt);
@@ -147,42 +148,42 @@ static void trace_stack(Context * ctx, StackTrace * stack) {
             uint64_t v;
             RegisterDefinition * r;
             for (r = get_reg_definitions(ctx); r->name != NULL; r++) {
-                if (read_reg_value(&frame, r, &v) == 0) {
+                if (read_reg_value(frame, r, &v) == 0) {
                     trace(LOG_STACK, "  %-8s %16"PRIX64, r->name, v);
                 }
             }
         }
 #endif
-        if (get_next_stack_frame(&frame, &down) < 0) {
+        if (get_next_stack_frame(frame, &down) < 0) {
             error = errno;
             trace(LOG_STACK, "  trace error: %s", errno_to_str(errno));
             loc_free(down.regs);
             break;
         }
-        if (frame.is_walked == 0) {
+        if (frame->is_walked == 0) {
             trace(LOG_STACK, "  *** frame info not available ***");
             loc_free(down.regs);
             memset(&down, 0, sizeof(down));
             down.ctx = ctx;
-            if (crawl_stack_frame(&frame, &down) < 0) {
+            if (crawl_stack_frame(frame, &down) < 0) {
                 error = errno;
                 trace(LOG_STACK, "  crawl error: %s", errno_to_str(errno));
                 loc_free(down.regs);
                 break;
             }
         }
-        trace(LOG_STACK, "  cfa      %16"PRIX64, (uint64_t)frame.fp);
+        trace(LOG_STACK, "  cfa      %16"PRIX64, (uint64_t)frame->fp);
         if (!down.has_reg_data) {
             loc_free(down.regs);
             break;
         }
-        if (stack->frame_cnt > 0 && frame.fp == prev_fp) {
+        if (stack->frame_cnt > 1 && frame->fp == stack->frames[stack->frame_cnt - 2].fp) {
             /* Compare registers in current and next frame */
             int equ = 1;
             RegisterDefinition * r;
             for (r = get_reg_definitions(ctx); r->name != NULL; r++) {
                 uint64_t v0 = 0, v1 = 0;
-                int f0 = read_reg_value(&frame, r, &v0) == 0;
+                int f0 = read_reg_value(frame, r, &v0) == 0;
                 int f1 = read_reg_value(&down, r, &v1) == 0;
                 if (f0 != f1 || (f0 && v0 != v1)) {
                     equ = 0;
@@ -195,36 +196,22 @@ static void trace_stack(Context * ctx, StackTrace * stack) {
                 break;
             }
         }
-        add_frame(stack, &frame);
-        prev_fp = frame.fp;
-        frame = down;
+        add_frame(stack, &down);
     }
-
-    if (stack->frame_cnt == 0 || frame.has_reg_data) add_frame(stack, &frame);
-    else loc_free(frame.regs);
 
     if (get_error_code(error) == ERR_CACHE_MISS) {
-        invalidate_stack_trace(stack);
         stack->error = get_error_report(ERR_CACHE_MISS);
-    }
-    else if (error && stack->frame_cnt == 0) {
-        stack->error = get_error_report(error);
-    }
-    for (i = 0; i < stack->frame_cnt / 2; i++) {
-        StackFrame f = stack->frames[i];
-        stack->frames[i] = stack->frames[stack->frame_cnt - i - 1];
-        stack->frames[stack->frame_cnt - i - 1] = f;
     }
 }
 
-static StackTrace * create_stack_trace(Context * ctx) {
+static StackTrace * create_stack_trace(Context * ctx, int max_frames) {
     StackTrace * stack = EXT(ctx);
-    if (!stack->valid) {
-        assert(stack->frame_cnt == 0);
+    max_frames++; /* Frame pointer and return address calculation needs one more frame */
+    if (!stack->complete && stack->frame_cnt < max_frames) {
         release_error_report(stack->error);
         stack->error = NULL;
-        stack->valid = 1;
-        trace_stack(ctx, stack);
+        trace_stack(ctx, stack, max_frames);
+        stack->complete = stack->error == NULL && stack->frame_cnt < max_frames;
     }
     return stack;
 }
@@ -232,6 +219,7 @@ static StackTrace * create_stack_trace(Context * ctx) {
 typedef struct CommandGetContextData {
     Context * ctx;
     int frame;
+    StackTrace * stack;
     StackFrame * info;
     StackFrame * down;
     uint64_t ip;
@@ -253,14 +241,21 @@ static void write_context(OutputStream * out, char * id, CommandGetContextData *
     json_write_string(out, d->ctx->id);
 
     write_stream(out, ',');
-    json_write_string(out, "Level");
-    write_stream(out, ':');
-    json_write_long(out, d->frame);
-
-    write_stream(out, ',');
     json_write_string(out, "ProcessID");
     write_stream(out, ':');
     json_write_string(out, context_get_group(d->ctx, CONTEXT_GROUP_PROCESS)->id);
+
+    write_stream(out, ',');
+    json_write_string(out, "Index");
+    write_stream(out, ':');
+    json_write_long(out, d->frame);
+
+    if (d->stack->complete) {
+        write_stream(out, ',');
+        json_write_string(out, "Level");
+        write_stream(out, ':');
+        json_write_long(out, d->stack->frame_cnt - d->frame - 1);
+    }
 
     if (d->info->is_top_frame) {
         write_stream(out, ',');
@@ -297,19 +292,19 @@ typedef struct CommandGetContextArgs {
     char token[256];
     int id_cnt;
     char ** ids;
-    CommandGetContextData * data;
 } CommandGetContextArgs;
 
 static void command_get_context_cache_client(void * x) {
     int i;
     int err = 0;
-    CommandGetContextArgs * args = (CommandGetContextArgs *)x;
     Channel * c = cache_channel();
+    CommandGetContextArgs * args = (CommandGetContextArgs *)x;
+    CommandGetContextData * data = (CommandGetContextData *)
+        tmp_alloc_zero(sizeof(CommandGetContextData) * args->id_cnt);
 
-    memset(args->data, 0, sizeof(CommandGetContextData) * args->id_cnt);
     for (i = 0; i < args->id_cnt; i++) {
         StackTrace * stack = NULL;
-        CommandGetContextData * d = args->data + i;
+        CommandGetContextData * d = data + i;
         RegisterDefinition * reg_ip = NULL;
         if (id2frame(args->ids[i], &d->ctx, &d->frame) < 0) {
             err = errno;
@@ -319,17 +314,20 @@ static void command_get_context_cache_client(void * x) {
             err = ERR_IS_RUNNING;
             break;
         }
-        stack = create_stack_trace(d->ctx);
+        assert(d->frame >= 0);
+        stack = create_stack_trace(d->ctx, d->frame + 1);
         if (stack->error) {
             err = set_error_report_errno(stack->error);
             break;
         }
         if (d->frame >= stack->frame_cnt) {
+            assert(stack->complete);
             err = ERR_INV_CONTEXT;
             break;
         }
+        d->stack = stack;
         d->info = stack->frames + d->frame;
-        d->down = d->frame > 0 ? d->info - 1 : NULL;
+        d->down = d->frame < stack->frame_cnt - 1 ? d->info + 1 : NULL;
 
         reg_ip = get_PC_definition(d->ctx);
         if (reg_ip == NULL || d->info == NULL) d->ip_error = ERR_OTHER;
@@ -344,7 +342,7 @@ static void command_get_context_cache_client(void * x) {
     write_stringz(&c->out, args->token);
     write_stream(&c->out, '[');
     for (i = 0; i < args->id_cnt; i++) {
-        CommandGetContextData * d = args->data + i;
+        CommandGetContextData * d = data + i;
         if (i > 0) write_stream(&c->out, ',');
         if (d->info == NULL) {
             write_string(&c->out, "null");
@@ -359,7 +357,6 @@ static void command_get_context_cache_client(void * x) {
     write_stream(&c->out, MARKER_EOM);
 
     loc_free(args->ids);
-    loc_free(args->data);
 }
 
 static void command_get_context(char * token, Channel * c) {
@@ -369,7 +366,6 @@ static void command_get_context(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    args.data = (CommandGetContextData *)loc_alloc(sizeof(CommandGetContextData) * args.id_cnt);
     strlcpy(args.token, token, sizeof(args.token));
     cache_enter(command_get_context_cache_client, c, &args, sizeof(args));
 }
@@ -377,6 +373,9 @@ static void command_get_context(char * token, Channel * c) {
 typedef struct CommandGetChildrenArgs {
     char token[256];
     char id[256];
+    int min_frame;
+    int max_frame;
+    int all_frames;
 } CommandGetChildrenArgs;
 
 static void command_get_children_cache_client(void * x) {
@@ -393,8 +392,11 @@ static void command_get_children_cache_client(void * x) {
     else if (!ctx->stopped) {
         err = ERR_IS_RUNNING;
     }
+    else if (args->all_frames) {
+        stack = create_stack_trace(ctx, MAX_FRAMES);
+    }
     else {
-        stack = create_stack_trace(ctx);
+        stack = create_stack_trace(ctx, args->max_frame + 1);
     }
 
     cache_exit();
@@ -410,9 +412,17 @@ static void command_get_children_cache_client(void * x) {
     else {
         int i;
         write_stream(&c->out, '[');
-        for (i = 0; i < stack->frame_cnt; i++) {
-            if (i > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, frame2id(ctx, i));
+        if (args->all_frames) {
+            for (i = 0; i < stack->frame_cnt; i++) {
+                if (i > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, frame2id(ctx, stack->frame_cnt - i - 1));
+            }
+        }
+        else {
+            for (i = args->min_frame; i <= args->max_frame && i < stack->frame_cnt; i++) {
+                if (i > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, frame2id(ctx, i));
+            }
         }
         write_stream(&c->out, ']');
         write_stream(&c->out, 0);
@@ -424,7 +434,25 @@ static void command_get_children_cache_client(void * x) {
 static void command_get_children(char * token, Channel * c) {
     CommandGetChildrenArgs args;
 
+    memset(&args, 0, sizeof(args));
     json_read_string(&c->inp, args.id, sizeof(args.id));
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    args.all_frames = 1;
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(command_get_children_cache_client, c, &args, sizeof(args));
+}
+
+static void command_get_children_range(char * token, Channel * c) {
+    CommandGetChildrenArgs args;
+
+    memset(&args, 0, sizeof(args));
+    json_read_string(&c->inp, args.id, sizeof(args.id));
+    json_test_char(&c->inp, MARKER_EOA);
+    args.min_frame = (int)json_read_long(&c->inp);
+    json_test_char(&c->inp, MARKER_EOA);
+    args.max_frame = (int)json_read_long(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
@@ -440,10 +468,28 @@ int get_top_frame(Context * ctx) {
         return STACK_TOP_FRAME;
     }
 
-    stack = create_stack_trace(ctx);
+    stack = create_stack_trace(ctx, 1);
     if (stack->error != NULL) {
         set_error_report_errno(stack->error);
         return STACK_TOP_FRAME;
+    }
+
+    assert(stack->frame_cnt > 0);
+    return 0;
+}
+
+int get_bottom_frame(Context * ctx) {
+    StackTrace * stack;
+
+    if (!ctx->stopped) {
+        errno = ERR_IS_RUNNING;
+        return STACK_BOTTOM_FRAME;
+    }
+
+    stack = create_stack_trace(ctx, MAX_FRAMES);
+    if (stack->error != NULL) {
+        set_error_report_errno(stack->error);
+        return STACK_BOTTOM_FRAME;
     }
 
     assert(stack->frame_cnt > 0);
@@ -451,40 +497,50 @@ int get_top_frame(Context * ctx) {
 }
 
 int get_prev_frame(Context * ctx, int frame) {
+    StackTrace * stack;
+
     if (frame == STACK_TOP_FRAME) {
         frame = get_top_frame(ctx);
         if (frame < 0) return frame;
     }
 
-    if (frame <= 0) {
+    if (frame < 0) {
         set_errno(ERR_OTHER, "No previous stack frame");
         return STACK_NO_FRAME;
     }
 
-    return frame - 1;
-}
-
-int get_next_frame(Context * ctx, int frame) {
-    int top_frame = 0;
-
-    if (frame < 0) {
-        set_errno(ERR_OTHER, "No next stack frame");
+    stack = create_stack_trace(ctx, frame + 2);
+    if (stack->error != NULL) {
+        set_error_report_errno(stack->error);
         return STACK_NO_FRAME;
     }
 
-    top_frame = get_top_frame(ctx);
-    if (top_frame < 0) return top_frame;
-
-    if (frame >= top_frame) {
-        set_errno(ERR_OTHER, "No next stack frame");
+    if (frame + 1 >= stack->frame_cnt) {
+        set_errno(ERR_OTHER, "No previous stack frame");
         return STACK_NO_FRAME;
     }
 
     return frame + 1;
 }
 
+int get_next_frame(Context * ctx, int frame) {
+
+    if (frame == STACK_BOTTOM_FRAME) {
+        frame = get_bottom_frame(ctx);
+        if (frame < 0) return frame;
+    }
+
+    if (frame <= 0) {
+        set_errno(ERR_OTHER, "No next stack frame");
+        return STACK_NO_FRAME;
+    }
+
+    return frame - 1;
+}
+
 int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     StackTrace * stack;
+    int max_frames = 0;
 
     *info = NULL;
     if (ctx == NULL || !context_has_state(ctx)) {
@@ -496,14 +552,21 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
         return -1;
     }
 
-    stack = create_stack_trace(ctx);
+    if (frame >= 0) max_frames = frame + 1;
+    else if (frame == STACK_TOP_FRAME) max_frames = 1;
+    else if (frame == STACK_BOTTOM_FRAME) max_frames = MAX_FRAMES;
+
+    stack = create_stack_trace(ctx, max_frames);
     if (stack->error != NULL) {
         set_error_report_errno(stack->error);
         return -1;
     }
 
     if (frame == STACK_TOP_FRAME) {
-        if (stack->frame_cnt == 0) {
+        frame = 0;
+    }
+    else if (frame == STACK_BOTTOM_FRAME) {
+        if (!stack->complete) {
             set_errno(ERR_INV_CONTEXT, "No such stack frame");
             return -1;
         }
@@ -520,14 +583,8 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
 }
 
 int is_top_frame(Context * ctx, int frame) {
-    StackTrace * stack;
-
     if (ctx == NULL || !context_has_state(ctx)) return 0;
-    if (frame == STACK_TOP_FRAME) return 1;
-    if (!ctx->stopped) return 0;
-    stack = create_stack_trace(ctx);
-    if (stack->error != NULL) return 0;
-    return frame == stack->frame_cnt - 1;
+    return frame == 0 || frame == STACK_TOP_FRAME;
 }
 
 static void flush_stack_trace(Context * ctx, void * args) {
@@ -549,7 +606,7 @@ static void delete_stack_trace(Context * ctx, void * args) {
 static void event_map_changed(Context * ctx, void * client_data) {
     if (ctx->mem_access && context_get_group(ctx, CONTEXT_GROUP_PROCESS) == ctx) {
         /* If the context is a memory space, we need to invalidate
-         * stack traces on all members of the group, since they can be
+         * stack traces on all members of the group, since they can
          * dependent on the symbol information. */
         LINK * l = context_root.next;
         while (l != &context_root) {
@@ -593,6 +650,7 @@ void ini_stack_trace_service(Protocol * proto, TCFBroadcastGroup * bcg) {
 #endif
     add_command_handler(proto, STACKTRACE, "getContext", command_get_context);
     add_command_handler(proto, STACKTRACE, "getChildren", command_get_children);
+    add_command_handler(proto, STACKTRACE, "getChildrenRange", command_get_children_range);
     context_extension_offset = context_extension(sizeof(StackTrace));
 }
 

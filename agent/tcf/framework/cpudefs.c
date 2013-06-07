@@ -144,12 +144,7 @@ int id2frame(const char * id, Context ** ctx, int * frame) {
 
 const char * frame2id(Context * ctx, int frame) {
     char id[256];
-
     assert(frame >= 0);
-    if (!context_has_state(ctx)) {
-        errno = ERR_INV_CONTEXT;
-        return NULL;
-    }
     snprintf(id, sizeof(id), "FP%d.%s", frame, ctx->id);
     return tmp_strdup(id);
 }
