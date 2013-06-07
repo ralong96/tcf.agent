@@ -1031,6 +1031,12 @@ int context_attach(pid_t pid, ContextAttachCallBack * done, void * data, int mod
         debug_state->debug_thread_semaphore = NULL;
     }
 
+#ifndef _WIN64
+    if (!error && debug_state->error == 50) {
+        error = set_errno(ERR_UNSUPPORTED, "Cannot attach 64-bit proceess with 32-bit agent");
+    }
+#endif
+
     if (!error) {
         error = set_win32_errno(debug_state->error);
     }
