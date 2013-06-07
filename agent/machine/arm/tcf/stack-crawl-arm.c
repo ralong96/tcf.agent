@@ -1679,8 +1679,10 @@ static int trace_instructions(void) {
     }
     trace(LOG_STACK, "Stack crawl: Function epilogue not found");
     for (i = 0; i < 16; i++) reg_data[i].o = 0;
-    if (org_sp.v != 0) reg_data[13] = org_sp;
-    if (org_lr.v != 0) reg_data[15] = org_lr;
+    if (org_sp.v != 0 && org_lr.v != 0) {
+        reg_data[13] = org_sp;
+        reg_data[15] = org_lr;
+    }
     cpsr_data.o = 0;
     return 0;
 }
