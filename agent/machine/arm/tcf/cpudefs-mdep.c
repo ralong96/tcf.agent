@@ -28,6 +28,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
 #include <tcf/services/symbols.h>
+#include <tcf/services/runctrl.h>
 #include <machine/arm/tcf/disassembler-arm.h>
 #include <machine/arm/tcf/stack-crawl-arm.h>
 #include <tcf/cpudefs-mdep.h>
@@ -226,7 +227,7 @@ static int arm_evaluate_condition (uint32_t opc, uint32_t cpsr) {
     return 1;
 }
 
-static ContextAddress arm_get_next_branch (Context * ctx, ContextAddress addr, uint32_t opc, int cond) {
+static ContextAddress arm_get_next_branch(Context * ctx, ContextAddress addr, uint32_t opc, int cond) {
     int32_t imm = opc & 0x00FFFFFF;
     if (cond == 0) return addr + 4;
     if (imm & 0x00800000) imm |= 0xFF000000;
@@ -234,7 +235,7 @@ static ContextAddress arm_get_next_branch (Context * ctx, ContextAddress addr, u
     return (ContextAddress)((int)addr + imm + 8);
 }
 
-static ContextAddress arm_get_next_address (Context * ctx) {
+static ContextAddress arm_get_next_address(Context * ctx) {
     ContextAddress addr;
     uint32_t opc;
     ContextAddress cpsr;
@@ -244,38 +245,42 @@ static ContextAddress arm_get_next_address (Context * ctx) {
     if (read_reg(ctx, pc_def, pc_def->size, &addr) < 0) return -1;
     if (read_reg(ctx, cpsr_def, cpsr_def->size, &cpsr) < 0) return -1;
     if (context_read_mem(ctx, addr, &opc, sizeof(opc)) < 0) return -1;
-    trace (LOG_ALWAYS, "pc: 0x%x, opcode 0x%x", (int)addr, (int)opc);
+    trace(LOG_CONTEXT, "pc: 0x%x, opcode 0x%x", (int)addr, (int)opc);
 
     /* decode opcode */
-    cond = arm_evaluate_condition (opc, (uint32_t) cpsr);
+    cond = arm_evaluate_condition(opc, (uint32_t) cpsr);
 
     switch (GET_GROUP(opc)) {
 //    case LD_ST_IMM : return get_next_load_store_imm ();
-    case BRANCH_LINK : return arm_get_next_branch (ctx, addr, opc, cond);
+    case BRANCH_LINK : return arm_get_next_branch(ctx, addr, opc, cond);
     }
     return addr + 4;
 }
 
-int cpu_enable_stepping_mode (Context * ctx, uint32_t * is_cont) {
+int cpu_enable_stepping_mode(Context * ctx, uint32_t * is_cont) {
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
     ContextExtensionARM * ext = EXT(grp);
-    assert (!ext->stepping);
-    ext->addr = arm_get_next_address (ctx);
-    trace (LOG_ALWAYS, "cpu_enable_stepping_mode 0x%x", (int) ext->addr);
-    if (context_read_mem(ctx, ext->addr, ext->opcode, sizeof(BREAK_INST)) < 0) return -1;
-    if (context_write_mem(ctx,ext->addr, BREAK_INST, sizeof(BREAK_INST)) < 0) return -1;
+    assert(!grp->exited);
+    assert(!ext->stepping);
+    ext->addr = arm_get_next_address(ctx);
+    trace(LOG_CONTEXT, "cpu_enable_stepping_mode 0x%x", (int)ext->addr);
+    if (context_read_mem(grp, ext->addr, ext->opcode, sizeof(BREAK_INST)) < 0) return -1;
+    if (context_write_mem(grp, ext->addr, BREAK_INST, sizeof(BREAK_INST)) < 0) return -1;
     ext->stepping = 1;
+    run_ctrl_lock();
     *is_cont = 1;
     return 0;
 }
 
-int cpu_disable_stepping_mode (Context * ctx) {
+int cpu_disable_stepping_mode(Context * ctx) {
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
     ContextExtensionARM * ext = EXT(grp);
-    trace (LOG_ALWAYS, "cpu_disable_stepping_mode");
+    trace(LOG_CONTEXT, "cpu_disable_stepping_mode");
     if (ext->stepping) {
+        run_ctrl_unlock();
         ext->stepping = 0;
-        return context_write_mem(ctx, ext->addr, ext->opcode, sizeof(BREAK_INST));
+        if (grp->exited) return 0;
+        return context_write_mem(grp, ext->addr, ext->opcode, sizeof(BREAK_INST));
     }
     return 0;
 }

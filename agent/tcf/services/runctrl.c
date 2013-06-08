@@ -2116,7 +2116,6 @@ static void event_context_stopped(Context * ctx, void * args) {
 static void event_context_started(Context * ctx, void * args) {
     ContextExtensionRC * ext = EXT(ctx);
     assert(!ctx->stopped);
-    assert(run_ctrl_lock_cnt == 0 || ext->safe_single_step || ctx->exiting);
     if (ext->intercepted) resume_context_tree(ctx);
     ext->intercepted_by_bp = 0;
     stop_if_safe_events(ctx);
