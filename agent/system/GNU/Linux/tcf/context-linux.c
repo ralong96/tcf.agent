@@ -42,6 +42,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/waitpid.h>
 #include <tcf/framework/signames.h>
+#include <tcf/framework/exceptions.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/contextquery.h>
 #include <tcf/services/breakpoints.h>
@@ -367,7 +368,7 @@ static int flush_regs(Context * ctx) {
                 break;
             }
             assert(i >= offs);
-            assert(j <= offs + size);
+            assert(i < offs + size);
             memset(ext->regs_dirty + offs, 0, size);
         }
 #endif
@@ -434,10 +435,10 @@ static int do_single_step(Context * ctx) {
 
     if (skip_breakpoint(ctx, 1)) return 0;
     if (!ctx->stopped) return 0;
-    if (flush_regs(ctx) < 0) return -1;
 
     trace(LOG_CONTEXT, "context: single step ctx %#lx, id %s", ctx, ctx->id);
     if (cpu_enable_stepping_mode(ctx, &is_cont) < 0) return -1;
+    if (flush_regs(ctx) < 0) return -1;
     if (is_cont) {
         if (ptrace(PTRACE_CONT, ext->pid, 0, 0) < 0) {
             int err = errno;
@@ -1432,36 +1433,32 @@ static void waitpid_listener(int pid, int exited, int exit_code, int signal, int
 
 #if SERVICE_Expressions && ENABLE_ELF
 
+static void get_debug_structure_address(Context * ctx, Value * v) {
+    v->address = elf_get_debug_structure_address(ctx, NULL);
+    if (v->address == 0) str_exception(ERR_OTHER, "Cannot access loader data");
+    v->type_class = TYPE_CLASS_POINTER;
+    v->big_endian = ctx->big_endian;
+    v->size = context_word_size(ctx);
+}
+
 static int expression_identifier_callback(Context * ctx, int frame, char * name, Value * v) {
     if (ctx == NULL) return 0;
     if (strcmp(name, "$loader_brk") == 0) {
-        v->address = elf_get_debug_structure_address(ctx, NULL);
-        v->type_class = TYPE_CLASS_POINTER;
-        v->size = context_word_size(ctx);
-        if (v->address != 0) {
-            v->big_endian = ctx->big_endian;
-            switch (v->size) {
-            case 4: v->address += 8; break;
-            case 8: v->address += 16; break;
-            default: assert(0);
-            }
-            v->remote = 1;
+        get_debug_structure_address(ctx, v);
+        switch (v->size) {
+        case 4: v->address += 8; break;
+        case 8: v->address += 16; break;
+        default: assert(0);
         }
-        else {
-            set_value(v, NULL, v->size, 0);
-        }
+        v->remote = 1;
         return 1;
     }
     if (strcmp(name, "$loader_state") == 0) {
-        v->address = elf_get_debug_structure_address(ctx, NULL);
-        v->type_class = TYPE_CLASS_CARDINAL;
-        v->size = context_word_size(ctx);
-        if (v->address != 0) {
-            switch (v->size) {
-            case 4: v->address += 12; break;
-            case 8: v->address += 24; break;
-            default: assert(0);
-            }
+        get_debug_structure_address(ctx, v);
+        switch (v->size) {
+        case 4: v->address += 12; break;
+        case 8: v->address += 24; break;
+        default: assert(0);
         }
         v->remote = 1;
         return 1;
