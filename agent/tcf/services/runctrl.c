@@ -579,6 +579,90 @@ static void command_get_state(char * token, Channel * c) {
     cache_enter(command_get_state_cache_client, c, &args, sizeof(args));
 }
 
+#if ENABLE_ContextISA
+
+typedef struct CommandGetISAArgs {
+    char token[256];
+    char id[256];
+    ContextAddress addr;
+} CommandGetISAArgs;
+
+static void command_get_isa_cache_client(void * x) {
+    CommandGetISAArgs * args = (CommandGetISAArgs *)x;
+    Context * ctx = NULL;
+    Channel * c = cache_channel();
+    ContextISA isa;
+    int err = 0;
+
+    ctx = id2ctx(args->id);
+
+    memset(&isa, 0, sizeof(isa));
+    if (ctx == NULL || !context_has_state(ctx)) err = ERR_INV_CONTEXT;
+    else if (ctx->exited) err = ERR_ALREADY_EXITED;
+    else if (context_get_isa(ctx, args->addr, &isa) < 0) err = errno;
+
+    cache_exit();
+
+    write_stringz(&c->out, "R");
+    write_stringz(&c->out, args->token);
+
+    write_errno(&c->out, err);
+
+    if (err) {
+        write_stringz(&c->out, "null");
+    }
+    else {
+        write_stream(&c->out, '{');
+        json_write_string(&c->out, "Addr");
+        write_stream(&c->out, ':');
+        json_write_uint64(&c->out, isa.addr);
+        write_stream(&c->out, ',');
+        json_write_string(&c->out, "Size");
+        write_stream(&c->out, ':');
+        json_write_uint64(&c->out, isa.size);
+        write_stream(&c->out, ',');
+        json_write_string(&c->out, "Alignment");
+        write_stream(&c->out, ':');
+        json_write_uint64(&c->out, isa.alignment);
+        write_stream(&c->out, ',');
+        json_write_string(&c->out, "MaxInstrSize");
+        write_stream(&c->out, ':');
+        json_write_uint64(&c->out, isa.max_instruction_size);
+        if (isa.def != NULL) {
+            write_stream(&c->out, ',');
+            json_write_string(&c->out, "DefISA");
+            write_stream(&c->out, ':');
+            json_write_string(&c->out, isa.def);
+        }
+        if (isa.isa != NULL) {
+            write_stream(&c->out, ',');
+            json_write_string(&c->out, "ISA");
+            write_stream(&c->out, ':');
+            json_write_string(&c->out, isa.isa);
+        }
+        write_stream(&c->out, '}');
+        write_stream(&c->out, 0);
+    }
+
+    write_stream(&c->out, MARKER_EOM);
+}
+
+static void command_get_isa(char * token, Channel * c) {
+    CommandGetISAArgs args;
+
+    memset(&args, 0, sizeof(args));
+    json_read_string(&c->inp, args.id, sizeof(args.id));
+    json_test_char(&c->inp, MARKER_EOA);
+    args.addr = (ContextAddress)json_read_uint64(&c->inp);
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(command_get_isa_cache_client, c, &args, sizeof(args));
+}
+
+#endif /* ENABLE_ContextISA */
+
 static void send_simple_result(Channel * c, char * token, int err) {
     write_stringz(&c->out, "R");
     write_stringz(&c->out, token);
@@ -2167,6 +2251,9 @@ void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     add_command_handler(proto, RUN_CONTROL, "getContext", command_get_context);
     add_command_handler(proto, RUN_CONTROL, "getChildren", command_get_children);
     add_command_handler(proto, RUN_CONTROL, "getState", command_get_state);
+#if ENABLE_ContextISA
+    add_command_handler(proto, RUN_CONTROL, "getISA", command_get_isa);
+#endif
     add_command_handler(proto, RUN_CONTROL, "resume", command_resume);
     add_command_handler(proto, RUN_CONTROL, "suspend", command_suspend);
     add_command_handler(proto, RUN_CONTROL, "terminate", command_terminate);
