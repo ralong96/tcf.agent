@@ -393,16 +393,20 @@ int cpu_bp_on_suspend(Context * ctx, int * triggered) {
 
 #endif /* ENABLE_HardwareBreakpoints */
 
-#define GET_GROUP(a) (((a) >> 25) & 7)
-#define BRANCH_LINK 5
+static Context * arm_ctx;
+static uint32_t arm_pc;
+static uint32_t arm_instr;
+static uint32_t arm_cpsr;
+static uint32_t arm_next;
+static int arm_cond;
 
-static int arm_evaluate_condition(uint32_t opc, uint32_t cpsr) {
-    int N = ( cpsr >> 31 ) & 1;
-    int Z = ( cpsr >> 30 ) & 1;
-    int C = ( cpsr >> 29 ) & 1;
-    int V = ( cpsr >> 28 ) & 1;
+static int arm_evaluate_condition(void) {
+    int N = ( arm_cpsr >> 31 ) & 1;
+    int Z = ( arm_cpsr >> 30 ) & 1;
+    int C = ( arm_cpsr >> 29 ) & 1;
+    int V = ( arm_cpsr >> 28 ) & 1;
 
-    switch (opc >> 28) {
+    switch (arm_instr >> 28) {
     case 0 : return Z;
     case 1 : return Z == 0;
     case 2 : return C;
@@ -422,42 +426,81 @@ static int arm_evaluate_condition(uint32_t opc, uint32_t cpsr) {
     return 1;
 }
 
-static ContextAddress arm_get_next_branch(Context * ctx, ContextAddress addr, uint32_t opc, int cond) {
-    int32_t imm = opc & 0x00FFFFFF;
-    if (cond == 0) return addr + 4;
+static int arm_get_next_bx(void) {
+    uint32_t Rm = arm_instr & 0xf;
+    if (arm_cond == 0) return 0;
+    return context_read_reg(arm_ctx, regs_index + Rm, 0, 4, &arm_next);
+}
+
+static int arm_get_next_ldm(void) {
+    int P = (arm_instr & (1 << 24)) != 0;
+    int U = (arm_instr & (1 << 23)) != 0;
+    int S = (arm_instr & (1 << 22)) != 0;
+    int L = (arm_instr & (1 << 20)) != 0;
+    uint32_t Rn = (arm_instr >> 16) & 0xf;
+    ContextAddress addr = 0;
+
+    if (((arm_instr >> 28) & 0xf) == 0xf) return 0;
+    if (!L || S || Rn == 15) return 0;
+    if ((arm_instr & (1 << 15)) == 0) return 0;
+    if (arm_cond == 0) return 0;
+
+    if (read_reg(arm_ctx, regs_index + Rn, 4, &addr) < 0) return -1;
+    if (U) {
+        int i;
+        for (i = 0; i < 15; i++) {
+            if (arm_instr & (1 << i)) addr += 4;
+        }
+    }
+    if (P) addr = U ? addr + 4 : addr - 4;
+    return context_read_mem(arm_ctx, addr, &arm_next, 4);
+}
+
+static int arm_get_next_branch(void) {
+    int32_t imm = arm_instr & 0x00FFFFFF;
+    if (arm_cond == 0) return 0;
     if (imm & 0x00800000) imm |= 0xFF000000;
     imm = imm << 2;
-    return (ContextAddress)((int)addr + imm + 8);
+    arm_next = ((int)arm_pc + imm + 8);
+    return 0;
 }
 
 static int arm_get_next_address(Context * ctx, ContextAddress * next_addr) {
-    uint32_t opc;
     ContextAddress addr = 0;
     ContextAddress cpsr = 0;
-    int cond;
 
     /* read opcode at PC */
     if (read_reg(ctx, pc_def, pc_def->size, &addr) < 0) return -1;
     if (read_reg(ctx, cpsr_def, cpsr_def->size, &cpsr) < 0) return -1;
-    if (context_read_mem(ctx, addr, &opc, sizeof(opc)) < 0) return -1;
-    trace(LOG_CONTEXT, "pc: 0x%x, opcode 0x%x", (int)addr, (int)opc);
+    if (context_read_mem(ctx, addr, &arm_instr, 4) < 0) return -1;
+
+    arm_ctx = ctx;
+    arm_pc = (uint32_t)addr;
+    arm_cpsr = (uint32_t)cpsr;
+    trace(LOG_CONTEXT, "pc 0x%x, opcode 0x%x", arm_pc, arm_instr);
 
     /* decode opcode */
-    cond = arm_evaluate_condition(opc, (uint32_t)cpsr);
+    arm_cond = arm_evaluate_condition();
 
-    switch (GET_GROUP(opc)) {
-#if 0
-    case LD_ST_IMM :
-        addr = get_next_load_store_imm ();
+    arm_next = arm_pc + 4;
+    switch ((arm_instr >> 25) & 7) {
+    case 0:
+        if ((arm_instr & 0xfffffff0) == 0xe12fff10) {
+            /* Branch and Exchange */
+            if (arm_get_next_bx() < 0) return -1;
+            break;
+        }
         break;
-#endif
-    case BRANCH_LINK:
-        addr = arm_get_next_branch(ctx, addr, opc, cond);
+    case 4: /* Load/store multiple */
+        if (arm_get_next_ldm() < 0) return -1;
         break;
-    default:
-        addr += 4;
+    case 5: /* Branch and branch with link */
+        if (arm_get_next_branch() < 0) return -1;
         break;
     }
+    /* TODO: add/sub pc, ldr pc */
+
+    addr = arm_next;
     if (addr >= 0xffff0000) {
         /* Linux kernel user-mode helpers space - run to return address */
         if (read_reg(ctx, lr_def, lr_def->size, &addr) < 0) return -1;
