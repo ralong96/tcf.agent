@@ -22,6 +22,7 @@
 #include <stddef.h>
 #include <assert.h>
 #include <stdio.h>
+#include <signal.h>
 #include <tcf/framework/errors.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
@@ -58,57 +59,19 @@ RegisterDefinition regs_def[] = {
     { "pc",      REG_OFFSET(user.regs.uregs[15]),     4, 15, 15},
     { "cpsr",    REG_OFFSET(user.regs.uregs[16]),     4, -1, -1},
     { "orig_r0", REG_OFFSET(user.regs.uregs[17]),     4, -1, -1},
-
-    { "vfp",     0, 0, -1, -1, 0, 0, 1, 1 }, /* 18 */
-    { "d0",      REG_OFFSET(fp.fpregs[0]),      8, 256, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d1",      REG_OFFSET(fp.fpregs[1]),      8, 257, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d2",      REG_OFFSET(fp.fpregs[2]),      8, 258, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d3",      REG_OFFSET(fp.fpregs[3]),      8, 259, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d4",      REG_OFFSET(fp.fpregs[4]),      8, 260, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d5",      REG_OFFSET(fp.fpregs[5]),      8, 261, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d6",      REG_OFFSET(fp.fpregs[6]),      8, 262, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d7",      REG_OFFSET(fp.fpregs[7]),      8, 263, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d8",      REG_OFFSET(fp.fpregs[8]),      8, 264, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d9",      REG_OFFSET(fp.fpregs[9]),      8, 265, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d10",     REG_OFFSET(fp.fpregs[10]),     8, 266, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d11",     REG_OFFSET(fp.fpregs[11]),     8, 267, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d12",     REG_OFFSET(fp.fpregs[12]),     8, 268, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d13",     REG_OFFSET(fp.fpregs[13]),     8, 269, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d14",     REG_OFFSET(fp.fpregs[14]),     8, 270, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d15",     REG_OFFSET(fp.fpregs[15]),     8, 271, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d16",     REG_OFFSET(fp.fpregs[16]),     8, 272, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d17",     REG_OFFSET(fp.fpregs[17]),     8, 273, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d18",     REG_OFFSET(fp.fpregs[18]),     8, 274, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d19",     REG_OFFSET(fp.fpregs[19]),     8, 275, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d20",     REG_OFFSET(fp.fpregs[20]),     8, 276, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d21",     REG_OFFSET(fp.fpregs[21]),     8, 277, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d22",     REG_OFFSET(fp.fpregs[22]),     8, 278, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d23",     REG_OFFSET(fp.fpregs[23]),     8, 279, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d24",     REG_OFFSET(fp.fpregs[24]),     8, 280, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d25",     REG_OFFSET(fp.fpregs[25]),     8, 281, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d26",     REG_OFFSET(fp.fpregs[26]),     8, 282, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d27",     REG_OFFSET(fp.fpregs[27]),     8, 283, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d28",     REG_OFFSET(fp.fpregs[28]),     8, 284, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d29",     REG_OFFSET(fp.fpregs[29]),     8, 285, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d30",     REG_OFFSET(fp.fpregs[30]),     8, 286, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "d31",     REG_OFFSET(fp.fpregs[31]),     8, 287, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-    { "fpscr",   REG_OFFSET(fp.fpscr),          4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 18},
-
-    { "debug",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 52 */
-    { "bp_info", REG_OFFSET(other.bp_info),      4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 52},
-    { "bvr0",    REG_OFFSET(other.bp[0].vr),     4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 52},
-    { "bcr0",    REG_OFFSET(other.bp[0].cr),     4, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, regs_def + 52},
-    { NULL,     0,                    0,  0,  0},
+    { "vfp",     0, 0, -1, -1, 0, 0, 1, 1 },
+    { NULL,      0, 0,  0,  0},
 };
 
 RegisterDefinition * regs_index = NULL;
+static unsigned regs_cnt = 0;
+static unsigned regs_max = 0;
 
 unsigned char BREAK_INST[] = { 0xf0, 0x01, 0xf0, 0xe7 };
 
 static RegisterDefinition * pc_def = NULL;
+static RegisterDefinition * lr_def = NULL;
 static RegisterDefinition * cpsr_def = NULL;
-
-#ifdef MDEP_OtherRegisters
 
 #include <sys/ptrace.h>
 
@@ -118,47 +81,38 @@ static RegisterDefinition * cpsr_def = NULL;
 #if !defined(PTRACE_SETHBPREGS)
 #define PTRACE_SETHBPREGS 30
 #endif
-static int offset_to_regnum(size_t offset, size_t * done_offs) {
-    assert(sizeof(user_hbpreg_struct) == 8);
-    if (offset >= REG_OFFSET(other.bp) && offset < REG_OFFSET(other.bp) + MAX_HBP * 8) {
-        int idx = (offset - REG_OFFSET(other.bp)) / 4;
-        *done_offs = REG_OFFSET(other.bp) + idx * 4;
-        return 1 + idx;
-    }
-    if (offset >= REG_OFFSET(other.wp) && offset < REG_OFFSET(other.wp) + MAX_HWP * 8) {
-        int idx = (offset - REG_OFFSET(other.wp)) / 4;
-        *done_offs = REG_OFFSET(other.wp) + idx * 4;
-        return -idx;
-    }
-    *done_offs = REG_OFFSET(other.bp_info);
-    return 0;
-}
 
-int mdep_get_other_regs(pid_t pid, REG_SET * data,
-                       size_t data_offs, size_t data_size,
-                       size_t * done_offs, size_t * done_size) {
-    int reg_num = 0;
-    assert(data_offs >= offsetof(REG_SET, other));
-    assert(data_offs + data_size <= offsetof(REG_SET, other) + sizeof(data->other));
-    reg_num = offset_to_regnum(data_offs, done_offs);
-    if (ptrace(PTRACE_GETHBPREGS, pid, reg_num, (char *)data + *done_offs) < 0) return -1;
-    *done_size = 4;
-    return 0;
-}
+typedef struct ContextExtensionARM {
+    int sw_stepping;
+    char opcode[sizeof(BREAK_INST)];
+    ContextAddress addr;
 
-int mdep_set_other_regs(pid_t pid, REG_SET * data,
-                       size_t data_offs, size_t data_size,
-                       size_t * done_offs, size_t * done_size) {
-    int reg_num = 0;
-    assert(data_offs >= offsetof(REG_SET, other));
-    assert(data_offs + data_size <= offsetof(REG_SET, other) + sizeof(data->other));
-    reg_num = offset_to_regnum(data_offs, done_offs);
-    if (ptrace(PTRACE_SETHBPREGS, pid, reg_num, (char *)data + *done_offs) < 0) return -1;
-    *done_size = 4;
-    return 0;
-}
+#if ENABLE_HardwareBreakpoints
+#define MAX_HBP 16
+#define MAX_HWP 16
+#define MAX_HW_BPS (MAX_HBP + MAX_HWP)
+    uint8_t arch;
+    uint8_t wp_size;
+    uint8_t wp_cnt;
+    uint8_t bp_cnt;
+    int8_t info_ok;
+    int hw_stepping;
 
+    ContextBreakpoint * triggered_hw_bps[MAX_HW_BPS + 1];
+    unsigned hw_bps_regs_generation;
+
+    ContextBreakpoint * hw_bps[MAX_HW_BPS];
+    unsigned hw_bps_generation;
+
+    unsigned armed;
 #endif
+} ContextExtensionARM;
+
+static size_t context_extension_offset = 0;
+
+#define EXT(ctx) ((ContextExtensionARM *)((char *)(ctx) + context_extension_offset))
+
+static int arm_get_next_address(Context * ctx, ContextAddress * next_addr);
 
 RegisterDefinition * get_PC_definition(Context * ctx) {
     if (!context_has_state(ctx)) return NULL;
@@ -188,20 +142,261 @@ static int read_reg(Context *ctx, RegisterDefinition * def, size_t size, Context
     return 0;
 }
 
-typedef struct ContextExtensionARM {
-    char opcode[sizeof(BREAK_INST)];
-    ContextAddress addr;
-    int stepping;
-} ContextExtensionARM;
+#if ENABLE_HardwareBreakpoints
 
-static size_t context_extension_offset = 0;
+static void clear_bp(ContextBreakpoint * bp) {
+    unsigned i;
+    Context * ctx = bp->ctx;
+    ContextExtensionARM * bps = EXT(ctx);
+    for (i = 0; i < MAX_HW_BPS; i++) {
+        if (bps->hw_bps[i] == bp) bps->hw_bps[i] = NULL;
+    }
+}
 
-#define EXT(ctx) ((ContextExtensionARM *)((char *)(ctx) + context_extension_offset))
+static int get_bp_info(Context * ctx) {
+    uint32_t buf = 0;
+    ContextExtensionARM * bps = EXT(ctx);
+    if (bps->info_ok) return 0;
+    if (ptrace(PTRACE_GETHBPREGS, id2pid(ctx->id, NULL), 0, &buf) < 0) return -1;
+    bps->arch = (uint8_t)(buf >> 24);
+    bps->wp_size = (uint8_t)(buf >> 16);
+    bps->wp_cnt = (uint8_t)(buf >> 8);
+    bps->bp_cnt = (uint8_t)buf;
+    if (bps->wp_cnt > MAX_HWP) bps->wp_cnt = MAX_HWP;
+    if (bps->bp_cnt > MAX_HBP) bps->bp_cnt = MAX_HBP;
+    bps->info_ok = 1;
+    return 0;
+}
+
+static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
+    int i, j;
+    ContextAddress pc = 0;
+    Context * grp = context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT);
+    ContextExtensionARM * ext = EXT(ctx);
+    ContextExtensionARM * bps = EXT(grp);
+    pid_t pid = id2pid(ctx->id, NULL);
+
+    assert(bps->info_ok);
+
+    ext->armed = 0;
+    *step_over_hw_bp = 0;
+    if (read_reg(ctx, pc_def, pc_def->size, &pc) < 0) return -1;
+
+    for (i = 0; i < bps->bp_cnt + bps->wp_cnt; i++) {
+        uint32_t cr = 0;
+        ContextBreakpoint * cb = bps->hw_bps[i];
+        if (i == 0 && ext->hw_stepping) {
+            uint32_t vr = 0;
+            if (ext->hw_stepping == 1) {
+                vr = (uint32_t)ext->addr;
+            }
+            else {
+                vr = (uint32_t)pc;
+                cr |= 1u << 22;
+            }
+            cr |= 0xfu << 5;
+            cr |= 0x7u;
+            if (ptrace(PTRACE_SETHBPREGS, pid, 1, &vr) < 0) return -1;
+        }
+        else if (cb != NULL) {
+            if (i < bps->bp_cnt && cb->address == pc) {
+                /* Skipping the breakpoint */
+                *step_over_hw_bp = 1;
+            }
+            else {
+                uint32_t vr = (uint32_t)(cb->address & ~3);
+                if (i < bps->bp_cnt) {
+                    cr |= 0xfu << 5;
+                }
+                else {
+                    for (j = 0; j < 4; j++) {
+                        if (vr + j < cb->address) continue;
+                        if (vr + j >= cb->address + cb->length) continue;
+                        cr |= 1 << (5 + j);
+                    }
+                    if (cb->access_types & CTX_BP_ACCESS_DATA_READ) cr |= 1 << 3;
+                    if (cb->access_types & CTX_BP_ACCESS_DATA_WRITE) cr |= 1 << 4;
+                }
+                cr |= 0x7u;
+                if (i < bps->bp_cnt) {
+                    if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 1, &vr) < 0) return -1;
+                }
+                else {
+                    if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 1), &vr) < 0) return -1;
+                }
+                ext->armed |= 1u << i;
+            }
+        }
+        if (cr == 0) {
+            /* Linux kernel does not allow 0 as Control Register value */
+            cr |= 0x3u << 1;
+            cr |= 0xfu << 5;
+            if (i >= bps->bp_cnt) {
+                cr |= 1u << 4;
+            }
+        }
+        if (i < bps->bp_cnt) {
+            if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 2, &cr) < 0) return -1;
+        }
+        else {
+            if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 2), &cr) < 0) return -1;
+        }
+    }
+
+    ext->hw_bps_regs_generation = bps->hw_bps_generation;
+    return 0;
+}
+
+static int enable_hw_stepping_mode(Context * ctx, int mode) {
+    int step = 0;
+    ContextExtensionARM * ext = EXT(ctx);
+    if (mode == 1 && arm_get_next_address(ctx, &ext->addr) < 0) return -1;
+    ext->hw_stepping = mode;
+    return set_debug_regs(ctx, &step);
+}
+
+static int disable_hw_stepping_mode(Context * ctx) {
+    ContextExtensionARM * ext = EXT(ctx);
+    ext->hw_stepping = 0;
+    ext->hw_bps_regs_generation--;
+    return 0;
+}
+
+int cpu_bp_get_capabilities(Context * ctx) {
+    int res = 0;
+    ContextExtensionARM * bps = EXT(ctx);
+    if (ctx != context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT)) return 0;
+    if (get_bp_info(ctx) < 0) return 0;
+    if (bps->bp_cnt > 0) {
+        res |= CTX_BP_ACCESS_INSTRUCTION;
+    }
+    if (bps->wp_cnt > 0) {
+        res |= CTX_BP_ACCESS_DATA_READ;
+        res |= CTX_BP_ACCESS_DATA_WRITE;
+    }
+    res |= CTX_BP_ACCESS_VIRTUAL;
+    return res;
+}
+
+int cpu_bp_plant(ContextBreakpoint * bp) {
+    Context * ctx = bp->ctx;
+    ContextExtensionARM * bps = EXT(ctx);
+    assert(bp->access_types);
+    assert(ctx == context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
+    if (get_bp_info(ctx) < 0) return -1;
+    if (bp->access_types & CTX_BP_ACCESS_VIRTUAL) {
+        if (bp->access_types & CTX_BP_ACCESS_INSTRUCTION) {
+            unsigned i;
+            unsigned n = 0;
+            for (i = 0; i < bps->bp_cnt; i++) {
+                assert(bps->hw_bps[i] != bp);
+                if (bps->hw_bps[i] == NULL) {
+                    bps->hw_bps[i] = bp;
+                    bps->hw_bps_generation++;
+                    n++;
+                    break;
+                }
+            }
+            if (n == 0) {
+                clear_bp(bp);
+                errno = ERR_UNSUPPORTED;
+                return -1;
+            }
+        }
+        if (bp->access_types & (CTX_BP_ACCESS_DATA_READ | CTX_BP_ACCESS_DATA_WRITE)) {
+            unsigned n = 0;
+            if (bp->length <= bps->wp_size) {
+                unsigned i;
+                for (i = bps->bp_cnt; i < bps->bp_cnt + bps->wp_cnt; i++) {
+                    assert(bps->hw_bps[i] != bp);
+                    if (bps->hw_bps[i] == NULL) {
+                        bps->hw_bps[i] = bp;
+                        bps->hw_bps_generation++;
+                        n++;
+                        break;
+                    }
+                }
+            }
+            if (n == 0) {
+                clear_bp(bp);
+                errno = ERR_UNSUPPORTED;
+                return -1;
+            }
+        }
+        return 0;
+    }
+    errno = ERR_UNSUPPORTED;
+    return -1;
+}
+
+int cpu_bp_remove(ContextBreakpoint * bp) {
+    ContextExtensionARM * bps = EXT(bp->ctx);
+    clear_bp(bp);
+    bps->hw_bps_generation++;
+    return 0;
+}
+
+int cpu_bp_on_resume(Context * ctx, int * single_step) {
+    ContextExtensionARM * ext = EXT(ctx);
+    ContextExtensionARM * bps = EXT(context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
+    if (ctx->stopped_by_cb != NULL || ext->hw_bps_regs_generation != bps->hw_bps_generation) {
+        if (set_debug_regs(ctx, single_step) < 0) return -1;
+    }
+    return 0;
+}
+
+int cpu_bp_on_suspend(Context * ctx, int * triggered) {
+    unsigned cb_cnt = 0;
+    ContextExtensionARM * ext = EXT(ctx);
+    ContextExtensionARM * bps = EXT(context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
+    int i;
+
+    if (ctx->exiting) return 0;
+
+    if (bps->bp_cnt > 0) {
+        ContextAddress pc = 0;
+        if (read_reg(ctx, pc_def, pc_def->size, &pc) < 0) return -1;
+        for (i = 0; i < bps->bp_cnt; i++) {
+            ContextBreakpoint * cb = bps->hw_bps[i];
+            if (cb != NULL && cb->address == pc && (ext->armed & (1u << i))) {
+                ext->triggered_hw_bps[cb_cnt++] = cb;
+            }
+        }
+    }
+
+    if (bps->wp_cnt > 0) {
+        siginfo_t siginfo;
+        pid_t pid = id2pid(ctx->id, NULL);
+        if (ptrace(PTRACE_GETSIGINFO, pid, 0, &siginfo) < 0) return -1;
+        if (siginfo.si_signo == SIGTRAP && (siginfo.si_code & 0xffff) == 0x0004 && siginfo.si_errno < 0) {
+            /* Watchpoint */
+            for (i = bps->bp_cnt; i < bps->bp_cnt + bps->wp_cnt; i++) {
+                ContextBreakpoint * cb = bps->hw_bps[i];
+                if (cb != NULL && (ext->armed & (1u << i))) {
+                    if (bps->wp_cnt > 1) {
+                        ContextAddress addr = (ContextAddress)siginfo.si_addr;
+                        if (addr < cb->address || addr >= cb->address + cb->length) continue;
+                    }
+                    ext->triggered_hw_bps[cb_cnt++] = cb;
+                }
+            }
+        }
+    }
+
+    *triggered = cb_cnt > 0;
+    if (cb_cnt > 0) {
+        ctx->stopped_by_cb = ext->triggered_hw_bps;
+        ctx->stopped_by_cb[cb_cnt] = NULL;
+    }
+    return 0;
+}
+
+#endif /* ENABLE_HardwareBreakpoints */
 
 #define GET_GROUP(a) (((a) >> 25) & 7)
 #define BRANCH_LINK 5
 
-static int arm_evaluate_condition (uint32_t opc, uint32_t cpsr) {
+static int arm_evaluate_condition(uint32_t opc, uint32_t cpsr) {
     int N = ( cpsr >> 31 ) & 1;
     int Z = ( cpsr >> 30 ) & 1;
     int C = ( cpsr >> 29 ) & 1;
@@ -235,10 +430,10 @@ static ContextAddress arm_get_next_branch(Context * ctx, ContextAddress addr, ui
     return (ContextAddress)((int)addr + imm + 8);
 }
 
-static ContextAddress arm_get_next_address(Context * ctx) {
-    ContextAddress addr;
+static int arm_get_next_address(Context * ctx, ContextAddress * next_addr) {
     uint32_t opc;
-    ContextAddress cpsr;
+    ContextAddress addr = 0;
+    ContextAddress cpsr = 0;
     int cond;
 
     /* read opcode at PC */
@@ -248,46 +443,97 @@ static ContextAddress arm_get_next_address(Context * ctx) {
     trace(LOG_CONTEXT, "pc: 0x%x, opcode 0x%x", (int)addr, (int)opc);
 
     /* decode opcode */
-    cond = arm_evaluate_condition(opc, (uint32_t) cpsr);
+    cond = arm_evaluate_condition(opc, (uint32_t)cpsr);
 
     switch (GET_GROUP(opc)) {
-//    case LD_ST_IMM : return get_next_load_store_imm ();
-    case BRANCH_LINK : return arm_get_next_branch(ctx, addr, opc, cond);
+#if 0
+    case LD_ST_IMM :
+        addr = get_next_load_store_imm ();
+        break;
+#endif
+    case BRANCH_LINK:
+        addr = arm_get_next_branch(ctx, addr, opc, cond);
+        break;
+    default:
+        addr += 4;
+        break;
     }
-    return addr + 4;
-}
-
-int cpu_enable_stepping_mode(Context * ctx, uint32_t * is_cont) {
-    Context * grp = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
-    ContextExtensionARM * ext = EXT(grp);
-    assert(!grp->exited);
-    assert(!ext->stepping);
-    ext->addr = arm_get_next_address(ctx);
-    trace(LOG_CONTEXT, "cpu_enable_stepping_mode 0x%x", (int)ext->addr);
-    if (context_read_mem(grp, ext->addr, ext->opcode, sizeof(BREAK_INST)) < 0) return -1;
-    if (context_write_mem(grp, ext->addr, BREAK_INST, sizeof(BREAK_INST)) < 0) return -1;
-    ext->stepping = 1;
-    run_ctrl_lock();
-    *is_cont = 1;
+    if (addr >= 0xffff0000) {
+        /* Linux kernel user-mode helpers space - run to return address */
+        if (read_reg(ctx, lr_def, lr_def->size, &addr) < 0) return -1;
+    }
+    *next_addr = addr;
     return 0;
 }
 
-int cpu_disable_stepping_mode(Context * ctx) {
+static int enable_sw_stepping_mode(Context * ctx) {
+    Context * grp = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+    ContextExtensionARM * ext = EXT(grp);
+    assert(!grp->exited);
+    assert(!ext->sw_stepping);
+    if (arm_get_next_address(ctx, &ext->addr) < 0) return -1;
+    trace(LOG_CONTEXT, "cpu_enable_stepping_mode 0x%x", (int)ext->addr);
+    if (context_read_mem(grp, ext->addr, ext->opcode, sizeof(BREAK_INST)) < 0) return -1;
+    if (context_write_mem(grp, ext->addr, BREAK_INST, sizeof(BREAK_INST)) < 0) return -1;
+    ext->sw_stepping = 1;
+    run_ctrl_lock();
+    return 0;
+}
+
+static int disable_sw_stepping_mode(Context * ctx) {
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
     ContextExtensionARM * ext = EXT(grp);
     trace(LOG_CONTEXT, "cpu_disable_stepping_mode");
-    if (ext->stepping) {
+    if (ext->sw_stepping) {
         run_ctrl_unlock();
-        ext->stepping = 0;
+        ext->sw_stepping = 0;
         if (grp->exited) return 0;
         return context_write_mem(grp, ext->addr, ext->opcode, sizeof(BREAK_INST));
     }
     return 0;
 }
 
-void ini_cpudefs_mdep(void) {
-    RegisterDefinition * r;
-    for (r = regs_def; r->name != NULL; r++) {
+int cpu_enable_stepping_mode(Context * ctx, uint32_t * is_cont) {
+    *is_cont = 1;
+#if ENABLE_HardwareBreakpoints
+    {
+        ContextExtensionARM * bps = EXT(context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
+        if (get_bp_info(ctx) < 0) return -1;
+        if (bps->bp_cnt > 0) return enable_hw_stepping_mode(ctx, bps->arch > 2 ? 2 : 1);
+    }
+#endif /* ENABLE_HardwareBreakpoints */
+    return enable_sw_stepping_mode(ctx);
+}
+
+int cpu_disable_stepping_mode(Context * ctx) {
+#if ENABLE_HardwareBreakpoints
+    {
+        ContextExtensionARM * bps = EXT(context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
+        if (bps->bp_cnt > 0) return disable_hw_stepping_mode(ctx);
+    }
+#endif /* ENABLE_HardwareBreakpoints */
+    return disable_sw_stepping_mode(ctx);
+}
+
+static RegisterDefinition * alloc_reg(void) {
+    RegisterDefinition * r = regs_index + regs_cnt++;
+    assert(regs_cnt <= regs_max);
+    r->dwarf_id = -1;
+    r->eh_frame_id = -1;
+    r->big_endian = big_endian_host();
+    return r;
+}
+
+static void ini_reg_defs(void) {
+    int i;
+    RegisterDefinition * d;
+    regs_cnt = 0;
+    regs_max = 800;
+    regs_index = (RegisterDefinition *)loc_alloc_zero(sizeof(RegisterDefinition) * regs_max);
+    for (d = regs_def; d->name != NULL; d++) {
+        RegisterDefinition * r = alloc_reg();
+        assert(d->parent == NULL);
+        *r = *d;
         if (r->offset == offsetof(REG_SET, REG_FP)) {
             r->role = "FP";
         }
@@ -298,11 +544,37 @@ void ini_cpudefs_mdep(void) {
             r->role = "PC";
             pc_def = r;
         }
+        else if (r->offset == REG_OFFSET(user.regs.uregs[14])) {
+            r->role = "LR";
+            lr_def = r;
+        }
         else if (r->offset == offsetof(REG_SET, REG_CPSR)) {
             cpsr_def = r;
         }
+        if (strcmp(r->name, "vfp") == 0) {
+            RegisterDefinition * x = NULL;
+            for (i = 0; i < 32; i++) {
+                char nm[32];
+                x = alloc_reg();
+                snprintf(nm, sizeof(nm), "d%d", i);
+                x->name = loc_strdup(nm);
+                x->offset = REG_OFFSET(fp.fpregs[i]);
+                x->size = 8;
+                x->dwarf_id = 256 + i;
+                x->eh_frame_id = 256 + i;
+                x->parent = r;
+            }
+            x = alloc_reg();
+            x->name = "fpscr";
+            x->offset = REG_OFFSET(fp.fpscr);
+            x->size = 4;
+            x->parent = r;
+        }
     }
-    regs_index = regs_def;
+}
+
+void ini_cpudefs_mdep(void) {
+    ini_reg_defs();
     context_extension_offset = context_extension(sizeof(ContextExtensionARM));
 }
 

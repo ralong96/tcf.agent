@@ -33,4 +33,8 @@ extern void add_cpudefs_disassembler(Context * cpu_ctx);
 
 #define ENABLE_external_stepping_mode 1
 
+#if !defined(ENABLE_HardwareBreakpoints)
+#  define ENABLE_HardwareBreakpoints 1
+#endif
+
 #endif

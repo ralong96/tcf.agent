@@ -16,20 +16,3 @@
 
 /* offset to be applied to the PC after a software trap */
 #define TRAP_OFFSET 0
-
-#define MAX_HBP 1
-#define MAX_HWP 1
-
-typedef struct {
-    uint32_t vr;
-    uint32_t cr;
-} user_hbpreg_struct;
-
-struct user_hbpregs_struct {
-    uint32_t bp_info;
-    user_hbpreg_struct bp[MAX_HBP];
-    user_hbpreg_struct wp[MAX_HWP];
-};
-
-/* additional CPU registers */
-#define MDEP_OtherRegisters struct user_hbpregs_struct
