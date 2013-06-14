@@ -398,7 +398,6 @@ static uint32_t arm_pc;
 static uint32_t arm_instr;
 static uint32_t arm_cpsr;
 static uint32_t arm_next;
-static int arm_cond;
 
 static int arm_evaluate_condition(void) {
     int N = ( arm_cpsr >> 31 ) & 1;
@@ -421,15 +420,255 @@ static int arm_evaluate_condition(void) {
     case 11: return N != V;
     case 12: return Z == 0 && N == V;
     case 13: return Z == 1 || N != V;
+    case 15: return 0;
     }
 
     return 1;
 }
 
+static uint32_t arm_calc_shift(uint32_t shift_type, uint32_t shift_imm, uint32_t val) {
+    switch (shift_type) {
+    case 0: /* logical left */
+        val = val << shift_imm;
+        break;
+    case 1: /* logical right */
+        if (shift_imm == 0) val = 0;
+        else val = val >> shift_imm;
+        break;
+    case 2: /* arithmetic right */
+        if (shift_imm == 0) shift_imm = 32;
+        if (val & 0x80000000) {
+            if (shift_imm > 32) {
+                val = 0xffffffff;
+            }
+            else {
+                val = val >> shift_imm;
+                val |= 0xffffffff << (32 - shift_imm);
+            }
+        }
+        else {
+            val = val >> shift_imm;
+        }
+        break;
+    case 3: /* rotate right */
+        if (shift_imm == 0) {
+            /* Rotate right with extend */
+            val = val >> 1;
+            if (arm_cpsr & (1 << 29)) val |= 0x80000000;
+        }
+        else {
+            shift_imm &= 0x1f;
+            val = (val >> shift_imm) | (val << (32 - shift_imm));
+        }
+        break;
+    }
+    return val;
+}
+
 static int arm_get_next_bx(void) {
     uint32_t Rm = arm_instr & 0xf;
-    if (arm_cond == 0) return 0;
     return context_read_reg(arm_ctx, regs_index + Rm, 0, 4, &arm_next);
+}
+
+static int arm_get_next_data_processing(void) {
+    int I = (arm_instr & 0x02000000) != 0;
+    int S = (arm_instr & 0x00100000) != 0;
+    uint32_t opcode = (arm_instr & 0x01e00000) >> 21;
+    uint32_t Rn = (arm_instr & 0x000f0000) >> 16;
+    uint32_t Rd = (arm_instr & 0x0000f000) >> 12;
+    uint32_t operand2 = (arm_instr & 0x00000fff);
+    uint32_t op2val = 0;
+    uint32_t nval = 0;
+
+    if (!S && opcode >= 8 && opcode <= 11) return 0;
+    if (Rd != 15) return 0;
+
+    /* Decode operand 2 */
+    if (I) {
+        uint8_t shift_dist  = (operand2 & 0x0f00) >> 8;
+        uint8_t shift_const = (operand2 & 0x00ff);
+
+        /* rotate const right by 2 * shift_dist */
+        shift_dist *= 2;
+        op2val = (shift_const >> shift_dist) | (shift_const << (32 - shift_dist));
+    }
+    else {
+        /* Register and shift */
+        uint8_t Rm = (operand2 & 0x000f);
+        uint8_t reg_shift = (operand2 & 0x0010) != 0;
+        uint8_t shift_type = (operand2 & 0x0060) >> 5;
+        uint32_t shift_dist = 0;
+        uint32_t mval = 0;
+
+        /* Get the shift distance */
+        if (reg_shift) {
+            uint8_t Rs = (operand2 & 0x0f00) >> 8;
+            if (operand2 & 0x00800) {
+                return 0;
+            }
+            else {
+                if (context_read_reg(arm_ctx, regs_index + Rs, 0, 4, &shift_dist) < 0) return -1;
+            }
+        }
+        else {
+            shift_dist  = (operand2 & 0x0f80) >> 7;
+        }
+
+        if (context_read_reg(arm_ctx, regs_index + Rm, 0, 4, &mval) < 0) return -1;
+
+        if (shift_type == 0 && shift_dist == 0 && opcode == 13) {
+            /* MOV Rd,Rm */
+            op2val = mval;
+        }
+        else {
+            /* Apply the shift type to the source register */
+            switch (shift_type) {
+            case 0: /* logical left */
+                op2val = mval << shift_dist;
+                break;
+            case 1: /* logical right */
+                if (!reg_shift && shift_dist == 0) shift_dist = 32;
+                op2val = mval >> shift_dist;
+                break;
+            case 2: /* arithmetic right */
+                if (!reg_shift && shift_dist == 0) shift_dist = 32;
+                if (mval & 0x80000000) {
+                    /* Register shifts maybe greater than 32 */
+                    if (shift_dist >= 32) {
+                        op2val = 0xffffffff;
+                    }
+                    else {
+                        op2val = mval >> shift_dist;
+                        op2val |= 0xffffffff << (32 - shift_dist);
+                    }
+                }
+                else {
+                    op2val = mval >> shift_dist;
+                }
+                break;
+            case 3: /* rotate right */
+                if (!reg_shift && shift_dist == 0) {
+                    op2val = mval >> 1;
+                    if (arm_cpsr & (1 << 29)) op2val |= 0x80000000;
+                }
+                else {
+                    /* Limit shift distance to 0-31 in case of register shift */
+                    shift_dist &= 0x1f;
+                    op2val = (mval >> shift_dist) | (mval << (32 - shift_dist));
+                }
+                break;
+            }
+        }
+    }
+
+    if (context_read_reg(arm_ctx, regs_index + Rn, 0, 4, &nval) < 0) return -1;
+    /* Account for pre-fetch by adjusting PC */
+    if (Rn == 15) {
+        /* If the shift amount is specified in the instruction,
+         *  the PC will be 8 bytes ahead. If a register is used
+         *  to specify the shift amount the PC will be 12 bytes
+         *  ahead.
+         */
+        if (!I && (operand2 & 0x0010))
+            nval += 12;
+        else
+            nval += 8;
+    }
+
+    /* Compute values */
+    switch (opcode) {
+    case  0: /* AND: Rd:= Op1 AND Op2 */
+        arm_next = nval & op2val;
+        break;
+    case  1: /* EOR: Rd:= Op1 EOR Op2 */
+        arm_next = nval ^ op2val;
+        break;
+    case  2: /* SUB: Rd:= Op1 - Op2 */
+        arm_next = nval - op2val;
+        break;
+    case  3: /* RSB: Rd:= Op2 - Op1 */
+        arm_next = op2val - nval;
+        break;
+    case  4: /* ADD: Rd:= Op1 + Op2 */
+        arm_next = nval + op2val;
+        break;
+    case  5: /* ADC: Rd:= Op1 + Op2 + C */
+        arm_next = nval + op2val;
+        if (arm_cpsr & (1 << 29)) arm_next++;
+        break;
+    case  6: /* SBC: Rd:= Op1 - Op2 + C */
+        arm_next = nval - op2val;
+        if (arm_cpsr & (1 << 29)) arm_next++;
+        break;
+    case  7: /* RSC: Rd:= Op2 - Op1 + C */
+        arm_next = op2val - nval;
+        if (arm_cpsr & (1 << 29)) arm_next++;
+        break;
+    case  8: /* TST: set condition codes on Op1 AND Op2 */
+    case  9: /* TEQ: set condition codes on Op1 EOR Op2 */
+    case 10: /* CMP: set condition codes on Op1 - Op2 */
+    case 11: /* CMN: set condition codes on Op1 + Op2 */
+        break;
+    case 12: /* ORR: Rd:= Op1 OR Op2 */
+        arm_next = nval | op2val;
+        break;
+    case 13: /* MOV: Rd:= Op2 */
+        arm_next = op2val;
+        break;
+    case 14: /* BIC: Rd:= Op1 AND NOT Op2 */
+        arm_next = nval & (~op2val);
+        break;
+    case 15: /* MVN: Rd:= NOT Op2 */
+        arm_next = ~op2val;
+        break;
+    }
+
+    return 0;
+}
+
+static int arm_get_next_ldr(void) {
+    int I = (arm_instr & (1 << 25)) != 0;
+    int P = (arm_instr & (1 << 24)) != 0;
+    int U = (arm_instr & (1 << 23)) != 0;
+    int B = (arm_instr & (1 << 22)) != 0;
+    int W = (arm_instr & (1 << 21)) != 0;
+    int L = (arm_instr & (1 << 20)) != 0;
+    uint32_t Rn = (arm_instr >> 16) & 0xf;
+    uint32_t Rd = (arm_instr >> 12) & 0xf;
+    ContextAddress addr = 0;
+
+    if (!L || Rd != 15) return 0;
+
+    if (read_reg(arm_ctx, regs_index + Rn, 4, &addr) < 0) return -1;
+    if (Rn == 15) addr += 8;
+
+    if (B) {
+        /* TODO: ldrb r15 */
+    }
+    else if (!I && P) {
+        uint32_t offs = arm_instr & 0xfff;
+        addr = U ? addr + offs : addr - offs;
+        if (context_read_mem(arm_ctx, addr, &arm_next, 4) < 0) return -1;
+    }
+    else if (I && P) {
+        uint8_t Rm = arm_instr & 0xf;
+        uint32_t offs = 0;
+        if (context_read_reg(arm_ctx, regs_index + Rm, 0, 4, &offs) < 0) return -1;
+        if ((arm_instr & 0x00000ff0) == 0x00000000) {
+            addr = U ? addr + offs : addr - offs;
+        }
+        else {
+            uint32_t shift_imm = (arm_instr & 0x00000f80) >> 7;
+            uint32_t shift_type = (arm_instr & 0x00000060) >> 5;
+            uint32_t val = arm_calc_shift(shift_type, shift_imm, offs);
+            addr = U ? addr + val : addr - val;
+        }
+        if (context_read_mem(arm_ctx, addr, &arm_next, 4) < 0) return -1;
+    }
+    else if (!P && !W) {
+        if (context_read_mem(arm_ctx, addr, &arm_next, 4) < 0) return -1;
+    }
+    return 0;
 }
 
 static int arm_get_next_ldm(void) {
@@ -440,10 +679,8 @@ static int arm_get_next_ldm(void) {
     uint32_t Rn = (arm_instr >> 16) & 0xf;
     ContextAddress addr = 0;
 
-    if (((arm_instr >> 28) & 0xf) == 0xf) return 0;
     if (!L || S || Rn == 15) return 0;
     if ((arm_instr & (1 << 15)) == 0) return 0;
-    if (arm_cond == 0) return 0;
 
     if (read_reg(arm_ctx, regs_index + Rn, 4, &addr) < 0) return -1;
     if (U) {
@@ -458,7 +695,6 @@ static int arm_get_next_ldm(void) {
 
 static int arm_get_next_branch(void) {
     int32_t imm = arm_instr & 0x00FFFFFF;
-    if (arm_cond == 0) return 0;
     if (imm & 0x00800000) imm |= 0xFF000000;
     imm = imm << 2;
     arm_next = ((int)arm_pc + imm + 8);
@@ -480,25 +716,30 @@ static int arm_get_next_address(Context * ctx, ContextAddress * next_addr) {
     trace(LOG_CONTEXT, "pc 0x%x, opcode 0x%x", arm_pc, arm_instr);
 
     /* decode opcode */
-    arm_cond = arm_evaluate_condition();
-
     arm_next = arm_pc + 4;
-    switch ((arm_instr >> 25) & 7) {
-    case 0:
-        if ((arm_instr & 0xfffffff0) == 0xe12fff10) {
-            /* Branch and Exchange */
-            if (arm_get_next_bx() < 0) return -1;
+    if (arm_evaluate_condition()) {
+        switch ((arm_instr >> 25) & 7) {
+        case 0:
+        case 1:
+            if ((arm_instr & 0x0ffffff0) == 0x012fff10) {
+                /* Branch and Exchange */
+                if (arm_get_next_bx() < 0) return -1;
+                break;
+            }
+            if (arm_get_next_data_processing() < 0) return -1;
+            break;
+        case 2:
+        case 3: /* Load */
+            if (arm_get_next_ldr() < 0) return -1;
+            break;
+        case 4: /* Load/store multiple */
+            if (arm_get_next_ldm() < 0) return -1;
+            break;
+        case 5: /* Branch and branch with link */
+            if (arm_get_next_branch() < 0) return -1;
             break;
         }
-        break;
-    case 4: /* Load/store multiple */
-        if (arm_get_next_ldm() < 0) return -1;
-        break;
-    case 5: /* Branch and branch with link */
-        if (arm_get_next_branch() < 0) return -1;
-        break;
     }
-    /* TODO: add/sub pc, ldr pc */
 
     addr = arm_next;
     if (addr >= 0xffff0000) {
