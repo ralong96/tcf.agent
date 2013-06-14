@@ -1154,12 +1154,17 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
                 break;
             case 3: /* rotate right */
                 if (!reg_shift && shift_dist == 0) {
-                    /* Rotate right with extend.
-                     *  This uses the carry bit and so always has an
-                     *  untracked result.
-                     */
-                    op2origin = 0;
-                    op2val = 0;
+                    /* Rotate right with extend */
+                    if (cpsr_data.o == 0) {
+                        op2origin = 0;
+                        op2val = 0;
+                    }
+                    else {
+                        op2val = reg_data[rm].v >> 1;
+                        assert(cpsr_data.o != REG_VAL_ADDR);
+                        assert(cpsr_data.o != REG_VAL_STACK);
+                        if (cpsr_data.v & (1 << 29)) op2val |= 0x80000000;
+                    }
                 }
                 else {
                     /* Limit shift distance to 0-31 incase of register shift */
@@ -1219,8 +1224,12 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     case  5: /* ADC: Rd:= Op1 + Op2 + C */
     case  6: /* SBC: Rd:= Op1 - Op2 + C */
     case  7: /* RSC: Rd:= Op2 - Op1 + C */
-        /* CPSR is not tracked */
-        reg_data[rd].o = 0;
+        if (cpsr_data.o && reg_data[rn].o && op2origin && cond == 14) {
+            reg_data[rd].o = REG_VAL_OTHER;
+        }
+        else {
+            reg_data[rd].o = 0;
+        }
         break;
     case  8: /* TST: set condition codes on Op1 AND Op2 */
     case  9: /* TEQ: set condition codes on Op1 EOR Op2 */
@@ -1269,12 +1278,22 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
         reg_data[rd].v = reg_data[rn].v + op2val;
         break;
     case  5: /* ADC: Rd:= Op1 + Op2 + C */
+        reg_data[rd].v = reg_data[rn].v + op2val;
+        if (cpsr_data.v & (1 << 29)) reg_data[rd].v++;
+        break;
     case  6: /* SBC: Rd:= Op1 - Op2 + C */
+        reg_data[rd].v = reg_data[rn].v - op2val;
+        if (cpsr_data.v & (1 << 29)) reg_data[rd].v++;
+        break;
     case  7: /* RSC: Rd:= Op2 - Op1 + C */
+        reg_data[rd].v = op2val - reg_data[rn].v;
+        if (cpsr_data.v & (1 << 29)) reg_data[rd].v++;
+        break;
     case  8: /* TST: set condition codes on Op1 AND Op2 */
     case  9: /* TEQ: set condition codes on Op1 EOR Op2 */
     case 10: /* CMP: set condition codes on Op1 - Op2 */
     case 11: /* CMN: set condition codes on Op1 + Op2 */
+        cpsr_data.o = 0;
         break;
     case 12: /* ORR: Rd:= Op1 OR Op2 */
         reg_data[rd].v = reg_data[rn].v | op2val;
