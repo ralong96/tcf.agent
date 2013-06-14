@@ -1480,6 +1480,11 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
         info->size = s.st_size;
     }
 
+    if (info->name == NULL && info->type == STT_SECTION &&
+            info->section != NULL && info->value == info->section->addr) {
+        info->name = info->section->name;
+    }
+
     if (file->machine == EM_ARM) {
         if (info->type == STT_FUNC || info->type == STT_ARM_TFUNC) {
             info->value = info->value & ~ (U8_T)1;
@@ -1503,7 +1508,7 @@ static void create_symbol_names_hash(ELF_Section * tbl) {
                 if (strcmp(sym.name, "__GOTT_BASE__") == 0) tbl->file->vxworks_got = 1;
                 else if (strcmp(sym.name, "__GOTT_INDEX__") == 0) tbl->file->vxworks_got = 1;
             }
-            if (sym.section_index != SHN_UNDEF && sym.type != STT_SECTION && sym.type != STT_FILE) {
+            if (sym.section_index != SHN_UNDEF && sym.type != STT_FILE) {
                 unsigned h = calc_symbol_name_hash(sym.name) % sym_cnt;
                 tbl->sym_names_next[i] = tbl->sym_names_hash[h];
                 tbl->sym_names_hash[h] = i;
