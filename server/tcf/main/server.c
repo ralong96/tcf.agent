@@ -42,87 +42,6 @@ static void channel_new_connection(ChannelServer * serv, Channel * c) {
     channel_start(c);
 }
 
-typedef struct RedirectInfo {
-    Channel * host;
-    char token[256];
-} RedirectInfo;
-
-static void command_redirect_done (Channel * c, void * client_data, int error) {
-    RedirectInfo * info = (RedirectInfo *)client_data;
-
-    if (!is_channel_closed(info->host)) {
-        int err = error;
-
-        if (err == 0) {
-            /*
-             * When we are sure that the redirect command succeeded, update the
-             * state of the host channel to react correctly on the new Hello
-             * message from the target, sending a new Hello event to the host
-             * with all the services of the target agent plus the ones of this
-             * TCF entity.
-             */
-
-            assert (c->state == ChannelStateHelloSent);
-            assert (info->host->state == ChannelStateConnected);
-
-            info->host->state = ChannelStateHelloReceived;
-
-            /*
-             * Notify close of the host channel upon redirection; a
-             * notification about a new openning is sent when the Hello event
-             * is received from the target.
-             */
-
-            notify_channel_closed(info->host);
-        }
-
-        write_stringz(&info->host->out, "R");
-        write_stringz(&info->host->out, info->token);
-        write_errno(&info->host->out, err);
-        write_stream(&info->host->out, MARKER_EOM);
-    }
-
-    channel_unlock(info->host);
-    loc_free (info);
-}
-
-static void read_peer_attr(InputStream * inp, const char * name, void * x) {
-    peer_server_addprop((PeerServer *)x, loc_strdup(name), json_read_alloc_string(inp));
-}
-
-static void command_locator_redirect(char * token, Channel * c, void * args) {
-    char id[256];
-    PeerServer * ps = NULL;
-    Channel * target = (Channel *)args;
-    RedirectInfo * info = (RedirectInfo *)loc_alloc_zero(sizeof(RedirectInfo));
-
-    if (peek_stream(&c->inp) == '{') {
-        ps = peer_server_alloc();
-        json_read_struct(&c->inp, read_peer_attr, ps);
-    }
-    else {
-        json_read_string(&c->inp, id, sizeof(id));
-    }
-
-    json_test_char(&c->inp, MARKER_EOA);
-    json_test_char(&c->inp, MARKER_EOM);
-
-    channel_lock(c);
-    info->host = c;
-    strlcpy(info->token, token, sizeof(info->token));
-
-    /* Send the redirect command to the next TCF entity */
-
-    if (ps != NULL) {
-        send_redirect_command_by_props(target, ps, command_redirect_done, info);
-    }
-    else {
-        send_redirect_command_by_id(target, id, command_redirect_done, info);
-    }
-
-    if (ps != NULL) peer_server_free(ps);
-}
-
 static void channel_redirection_listener(Channel * host, Channel * target) {
     if (target->state == ChannelStateStarted) {
 #if defined(SERVICE_LineNumbers) && SERVICE_LineNumbers
@@ -167,15 +86,6 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
             create_context_proxy(host, target, forward_pm);
 #endif
         }
-        /*
-         * Intercept the Locator.redirect command to update the local list of
-         * services with the ones from the next TCF entity (agent), and send a
-         * consolidate list to the previous TCF entity (client). This is
-         * required in the case of more than one server between the client and
-         * the agent.
-         */
-        add_command_handler2(host->protocol, "Locator", "redirect",
-                             command_locator_redirect, target);
     }
 }
 

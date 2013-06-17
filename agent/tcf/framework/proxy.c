@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -21,6 +21,7 @@
 #include <tcf/config.h>
 #include <assert.h>
 #include <string.h>
+#include <tcf/framework/json.h>
 #include <tcf/framework/proxy.h>
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/trace.h>
@@ -35,8 +36,15 @@ typedef struct Proxy {
     int instance;
 } Proxy;
 
+typedef struct RedirectInfo {
+    Channel * host;
+    char token[256];
+} RedirectInfo;
+
 static ChannelRedirectionListener redirection_listeners[16];
 static int redirection_listeners_cnt = 0;
+
+static void proxy_update(Channel * c1, Channel * c2);
 
 static void proxy_connecting(Channel * c) {
     int i;
@@ -56,6 +64,63 @@ static void proxy_connecting(Channel * c) {
     send_hello_message(target->c);
 
     trace(LOG_PROXY, "Proxy waiting Hello from target");
+}
+
+static void command_redirect_done (Channel * c, void * client_data, int error) {
+    RedirectInfo * info = (RedirectInfo *)client_data;
+
+    if (!is_channel_closed(info->host)) {
+        int err = error;
+
+        if (err == 0) {
+            proxy_update (info->host, c);
+        }
+
+        write_stringz(&info->host->out, "R");
+        write_stringz(&info->host->out, info->token);
+        write_errno(&info->host->out, err);
+        write_stream(&info->host->out, MARKER_EOM);
+    }
+
+    channel_unlock(info->host);
+    loc_free (info);
+}
+
+static void read_peer_attr(InputStream * inp, const char * name, void * x) {
+    peer_server_addprop((PeerServer *)x, loc_strdup(name), json_read_alloc_string(inp));
+}
+
+static void command_locator_redirect(char * token, Channel * c, void * args) {
+    char id[256];
+    PeerServer * ps = NULL;
+    Channel * target = (Channel *)args;
+    RedirectInfo * info = (RedirectInfo *)loc_alloc_zero(sizeof(RedirectInfo));
+
+    if (peek_stream(&c->inp) == '{') {
+        ps = peer_server_alloc();
+        json_read_struct(&c->inp, read_peer_attr, ps);
+    }
+    else {
+        json_read_string(&c->inp, id, sizeof(id));
+    }
+
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    channel_lock(c);
+    info->host = c;
+    strlcpy(info->token, token, sizeof(info->token));
+
+    /* Send the redirect command to the next TCF entity */
+
+    if (ps != NULL) {
+        send_redirect_command_by_props(target, ps, command_redirect_done, info);
+    }
+    else {
+        send_redirect_command_by_id(target, id, command_redirect_done, info);
+    }
+
+    if (ps != NULL) peer_server_free(ps);
 }
 
 static void proxy_connected(Channel * c) {
@@ -80,6 +145,17 @@ static void proxy_connected(Channel * c) {
         if (strcmp(nm, "ZeroCopy") == 0) continue;
         protocol_get_service(host->proto, nm);
     }
+
+    /*
+     * Intercept the Locator.redirect command to update the local list of
+     * services with the ones from the next TCF entity (agent), and send a
+     * consolidate list to the previous TCF entity (client). This is
+     * required in the case of more than one server between the client and
+     * the agent.
+     */
+
+    add_command_handler2(host->c->protocol, "Locator", "redirect",
+                         command_locator_redirect, target->c);
 
     for (i = 0; i < redirection_listeners_cnt; i++) {
         redirection_listeners[i](host->c, target->c);
@@ -228,6 +304,65 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
     }
     while (i != MARKER_EOM && i != MARKER_EOS);
     log_flush(proxy);
+}
+
+static void proxy_update(Channel * c1, Channel * c2) {
+    Proxy * proxy;
+    int ix;
+
+    /* c1 is host */
+    assert (c1->state == ChannelStateConnected);
+    /* c2 is target */
+    assert (c2->state == ChannelStateHelloSent);
+
+    /* Check that both channels form a proxy */
+
+    assert(proxy_get_host_channel(c1) == c1);
+    assert(proxy_get_target_channel(c1) == c2);
+    assert(proxy_get_host_channel(c2) == c1);
+    assert(proxy_get_target_channel(c2) == c2);
+
+    proxy = (Proxy *)c1->client_data;
+    if (proxy->other == -1) proxy--;
+
+    /* Create new protocols for the channels */
+
+    /* Host */
+    proxy[0].proto = protocol_alloc();
+
+    /* Target */
+    proxy[1].proto = protocol_alloc();
+
+    trace(LOG_PROXY, "Proxy updated, host services:");
+    for (ix = 0; ix < c1->peer_service_cnt; ix++) {
+        char * nm = c1->peer_service_list[ix];
+        trace(LOG_PROXY, "    %s", nm);
+        if (strcmp(nm, "ZeroCopy") == 0) continue;
+        protocol_get_service(proxy[1].proto, nm);
+    }
+    /*
+     * Update the state of the host channel to react correctly on the new Hello
+     * message from the target, sending a new Hello event to the host
+     * with all the services of the target plus the ones of this
+     * TCF entity.
+     */
+
+    c1->state = ChannelStateHelloReceived;
+
+    /*
+     * Notify close of the host channel; a notification about a new opening is
+     * sent when the Hello event is received from the target.
+     */
+
+    notify_channel_closed(c1);
+
+    protocol_release(c1->protocol);
+    protocol_release(c2->protocol);
+
+    c1->protocol = proxy[0].proto;
+    set_default_message_handler(proxy[0].proto, proxy_default_message_handler);
+    c2->protocol = proxy[1].proto;
+    set_default_message_handler(proxy[1].proto, proxy_default_message_handler);
 }
 
 void proxy_create(Channel * c1, Channel * c2) {
