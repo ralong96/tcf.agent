@@ -61,23 +61,10 @@
 static const char * FILE_SYSTEM = "FileSystem";
 
 static const int
-    TCF_O_READ              = 0x00000001,
-    TCF_O_WRITE             = 0x00000002,
-    TCF_O_APPEND            = 0x00000004,
-    TCF_O_CREAT             = 0x00000008,
-    TCF_O_TRUNC             = 0x00000010,
-    TCF_O_EXCL              = 0x00000020;
-
-static const int
     ATTR_SIZE               = 0x00000001,
     ATTR_UIDGID             = 0x00000002,
     ATTR_PERMISSIONS        = 0x00000004,
     ATTR_ACMODTIME          = 0x00000008;
-
-static const int
-    FSERR_EOF               = 0x10001,
-    FSERR_NO_SUCH_FILE      = 0x10002,
-    FSERR_PERMISSION_DENIED = 0x10003;
 
 #define REQ_READ            1
 #define REQ_WRITE           2
@@ -1369,10 +1356,14 @@ static void command_roots(char * token, Channel * c) {
 
 void ini_file_system_service(Protocol * proto) {
     int i;
+    static int ini_file_system = 0;
 
-    add_channel_close_listener(channel_close_listener);
-    for (i = 0; i < HANDLE_HASH_SIZE; i++) {
-        list_init(&handle_hash[i]);
+    if (ini_file_system == 0) {
+        add_channel_close_listener(channel_close_listener);
+        for (i = 0; i < HANDLE_HASH_SIZE; i++) {
+            list_init(&handle_hash[i]);
+        }
+    ini_file_system = 1;
     }
 
     add_command_handler(proto, FILE_SYSTEM, "open", command_open);

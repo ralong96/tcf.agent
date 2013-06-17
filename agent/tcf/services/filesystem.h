@@ -21,6 +21,26 @@
 #define D_filesystem
 
 #include <tcf/framework/protocol.h>
+
+/*
+ * Open modes
+ */
+static const int
+    TCF_O_READ              = 0x00000001,
+    TCF_O_WRITE             = 0x00000002,
+    TCF_O_APPEND            = 0x00000004,
+    TCF_O_CREAT             = 0x00000008,
+    TCF_O_TRUNC             = 0x00000010,
+    TCF_O_EXCL              = 0x00000020;
+
+/*
+ * Error codes
+ */
+static const int
+    FSERR_EOF               = 0x10001,
+    FSERR_NO_SUCH_FILE      = 0x10002,
+    FSERR_PERMISSION_DENIED = 0x10003;
+
 /*
  * Initialize file system service.
  */
