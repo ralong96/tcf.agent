@@ -1293,7 +1293,6 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     case  9: /* TEQ: set condition codes on Op1 EOR Op2 */
     case 10: /* CMP: set condition codes on Op1 - Op2 */
     case 11: /* CMN: set condition codes on Op1 + Op2 */
-        cpsr_data.o = 0;
         break;
     case 12: /* ORR: Rd:= Op1 OR Op2 */
         reg_data[rd].v = reg_data[rn].v | op2val;
