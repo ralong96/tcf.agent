@@ -151,11 +151,41 @@ static void call_dispose(ProfilerConfiguration * cfg) {
 }
 
 static void read_cfg_param(InputStream * inp, const char * name, void * x) {
+    ByteArrayInputStream buf;
     ProfilerConfiguration * cfg = (ProfilerConfiguration *)x;
-    if (strcmp(name, "FrameCnt") == 0) cfg->params.frame_cnt = json_read_ulong(inp);
-    else if (strcmp(name, "MaxSamples") == 0) cfg->params.max_smaples = json_read_ulong(inp);
-    else json_skip_object(inp);
+    ProfilerParameter * p = (ProfilerParameter *)loc_alloc_zero(sizeof(ProfilerParameter));
+
+    p->name = loc_strdup(name);
+    p->value = json_read_object(inp);
+    p->next = cfg->params.list;
+    cfg->params.list = p;
     cfg->params_cnt++;
+
+    if (strcmp(name, "FrameCnt") == 0) {
+        inp = create_byte_array_input_stream(&buf, p->value, strlen(p->value));
+        cfg->params.frame_cnt = json_read_ulong(inp);
+    }
+    else if (strcmp(name, "MaxSamples") == 0) {
+        inp = create_byte_array_input_stream(&buf, p->value, strlen(p->value));
+        cfg->params.max_samples = json_read_ulong(inp);
+    }
+}
+
+static void free_params(ProfilerParams * params) {
+    while (params->list != NULL) {
+        ProfilerParameter * p = params->list;
+        params->list = p->next;
+        loc_free(p->name);
+        loc_free(p->value);
+        loc_free(p);
+    }
+}
+
+static void dispose_configuration(ProfilerConfiguration * cfg) {
+    call_dispose(cfg);
+    list_remove(&cfg->link_all);
+    free_params(&cfg->params);
+    loc_free(cfg);
 }
 
 static void command_configure(char * token, Channel * c) {
@@ -174,6 +204,7 @@ static void command_configure(char * token, Channel * c) {
     }
     else {
         cfg->params_cnt = 0;
+        free_params(&cfg->params);
         memset(&cfg->params, 0, sizeof(cfg->params));
     }
     json_read_struct(&c->inp, read_cfg_param, cfg);
@@ -184,9 +215,7 @@ static void command_configure(char * token, Channel * c) {
         call_configure(id2ctx(id));
     }
     else {
-        call_dispose(cfg);
-        list_remove(&cfg->link_all);
-        loc_free(cfg);
+        dispose_configuration(cfg);
     }
 
     write_stringz(&c->out, "R");
@@ -253,9 +282,7 @@ static void channel_close_listener(Channel * c) {
         ProfilerConfiguration * cfg = link_all2cfg(l);
         l = l->next;
         if (cfg->channel == c) {
-            call_dispose(cfg);
-            list_remove(&cfg->link_all);
-            loc_free(cfg);
+            dispose_configuration(cfg);
         }
     }
 }

@@ -23,9 +23,19 @@
 /*
  * Parameters to a profiler.
  */
+
+typedef struct ProfilerParameter ProfilerParameter;
+
+struct ProfilerParameter {
+    ProfilerParameter * next;
+    char * name;        /* Parameter name */
+    char * value;       /* Parameter value as JSON string */
+};
+
 typedef struct ProfilerParams {
-    unsigned frame_cnt;
-    unsigned max_smaples;
+    unsigned frame_cnt;     /* Value of FrameCnt parameter */
+    unsigned max_samples;   /* Value of MaxSamples parameter */
+    ProfilerParameter * list; /* List of all parameters */
 } ProfilerParams;
 
 /*
