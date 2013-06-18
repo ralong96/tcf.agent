@@ -721,7 +721,7 @@ void create_context_proxy(Channel * host, Channel * target, int forward_pm) {
     add_event_handler2(target, RUN_CONTROL, "containerResumed", event_container_resumed, p);
     add_event_handler2(target, MEMORY_MAP, "changed", event_memory_map_changed, p);
     if (forward_pm) add_command_handler2(host->protocol, PATH_MAP, "set", command_path_map_set, p);
-    /* Retirve initial set of run control contexts */
+    /* Retrive initial set of run control contexts */
     protocol_send_command(p->target, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
     write_stringz(&p->target->out, "null");
     write_stream(&p->target->out, MARKER_EOM);
@@ -1673,10 +1673,17 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     return -1;
 }
 
-/* TODO: need a cache for StackTrace.getChildren */
 int get_top_frame(Context * ctx) {
-    set_errno(ERR_UNSUPPORTED, "get_top_frame()");
-    return STACK_TOP_FRAME;
+    if (!ctx->stopped) {
+        errno = ERR_IS_RUNNING;
+        return STACK_TOP_FRAME;
+    }
+    return 0;
+}
+
+int get_bottom_frame(Context * ctx) {
+    set_errno(ERR_UNSUPPORTED, "get_bottom_frame()");
+    return STACK_BOTTOM_FRAME;
 }
 
 int get_prev_frame(Context * ctx, int frame) {
@@ -1685,31 +1692,26 @@ int get_prev_frame(Context * ctx, int frame) {
         if (frame < 0) return frame;
     }
 
-    if (frame <= 0) {
+    if (frame < 0) {
         set_errno(ERR_OTHER, "No previous stack frame");
         return STACK_NO_FRAME;
     }
 
-    return frame - 1;
+    return frame + 1;
 }
 
 int get_next_frame(Context * ctx, int frame) {
-    int top_frame = 0;
+    if (frame == STACK_BOTTOM_FRAME) {
+        frame = get_top_frame(ctx);
+        if (frame < 0) return frame;
+    }
 
-    if (frame < 0) {
+    if (frame <= 0) {
         set_errno(ERR_OTHER, "No next stack frame");
         return STACK_NO_FRAME;
     }
 
-    top_frame = get_top_frame(ctx);
-    if (top_frame < 0) return top_frame;
-
-    if (frame >= top_frame) {
-        set_errno(ERR_OTHER, "No next stack frame");
-        return STACK_NO_FRAME;
-    }
-
-    return frame + 1;
+    return frame - 1;
 }
 
 unsigned context_word_size(Context * ctx) {
