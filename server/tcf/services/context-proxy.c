@@ -372,7 +372,7 @@ static void read_run_control_context_property(InputStream * inp, const char * na
     else if (strcmp(name, "ProcessID") == 0) json_read_string(inp, ctx->process_id, sizeof(ctx->process_id));
     else if (strcmp(name, "CreatorID") == 0) json_read_string(inp, ctx->creator_id, sizeof(ctx->creator_id));
     else if (strcmp(name, "SymbolsGroup") == 0) json_read_string(inp, ctx->symbols_id, sizeof(ctx->symbols_id));
-    else if (strcmp(name, "CPUGroup") == 0) json_read_string(inp, ctx->symbols_id, sizeof(ctx->cpu_id));
+    else if (strcmp(name, "CPUGroup") == 0) json_read_string(inp, ctx->cpu_id, sizeof(ctx->cpu_id));
     else if (strcmp(name, "File") == 0) ctx->file = json_read_alloc_string(inp);
     else if (strcmp(name, "Name") == 0) ctx->name = json_read_alloc_string(inp);
     else if (strcmp(name, "HasState") == 0) ctx->has_state = json_read_boolean(inp);
