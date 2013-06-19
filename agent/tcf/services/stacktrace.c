@@ -468,13 +468,6 @@ int get_top_frame(Context * ctx) {
         return STACK_TOP_FRAME;
     }
 
-    stack = create_stack_trace(ctx, 1);
-    if (stack->error != NULL) {
-        set_error_report_errno(stack->error);
-        return STACK_TOP_FRAME;
-    }
-
-    assert(stack->frame_cnt > 0);
     return 0;
 }
 
