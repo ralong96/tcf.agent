@@ -264,6 +264,13 @@ static void write_context(OutputStream * out, char * id, CommandGetContextData *
         json_write_boolean(out, 1);
     }
 
+    if (d->info->is_walked) {
+        write_stream(out, ',');
+        json_write_string(out, "Walk");
+        write_stream(out, ':');
+        json_write_boolean(out, 1);
+    }
+
     if (d->info->fp) {
         write_stream(out, ',');
         json_write_string(out, "FP");
