@@ -461,7 +461,6 @@ static void command_get_children_range(char * token, Channel * c) {
 }
 
 int get_top_frame(Context * ctx) {
-    StackTrace * stack;
 
     if (!ctx->stopped) {
         errno = ERR_IS_RUNNING;
