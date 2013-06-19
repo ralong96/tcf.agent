@@ -57,7 +57,7 @@ RegisterDefinition regs_def[] = {
     { "sp",      REG_OFFSET(user.regs.uregs[13]),     4, 13, 13},
     { "lr",      REG_OFFSET(user.regs.uregs[14]),     4, 14, 14},
     { "pc",      REG_OFFSET(user.regs.uregs[15]),     4, 15, 15},
-    { "cpsr",    REG_OFFSET(user.regs.uregs[16]),     4, -1, -1},
+    { "cpsr",    REG_OFFSET(user.regs.uregs[16]),     4, 128, 128},
     { "orig_r0", REG_OFFSET(user.regs.uregs[17]),     4, -1, -1},
     { "vfp",     0, 0, -1, -1, 0, 0, 1, 1 },
     { NULL,      0, 0,  0,  0},
