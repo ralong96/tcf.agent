@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1363,7 +1363,7 @@ void ini_file_system_service(Protocol * proto) {
         for (i = 0; i < HANDLE_HASH_SIZE; i++) {
             list_init(&handle_hash[i]);
         }
-    ini_file_system = 1;
+        ini_file_system = 1;
     }
 
     add_command_handler(proto, FILE_SYSTEM, "open", command_open);
