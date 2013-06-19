@@ -45,7 +45,7 @@
 #define ACC_LENGTH  2
 #define ACC_OTHER   3
 
-/* Symbols cahce, one per channel */
+/* Symbols cache, one per channel */
 typedef struct SymbolsCache {
     Channel * channel;
     LINK link_root;
@@ -64,6 +64,7 @@ typedef struct SymbolsCache {
 typedef struct SymInfoCache {
     unsigned magic;
     LINK link_syms;
+    LINK link_flush;
     AbstractCache cache;
     char * id;
     char * type_id;
@@ -98,6 +99,7 @@ typedef struct SymInfoCache {
 
 /* Cached result of get_array_symbol() */
 typedef struct ArraySymCache {
+    unsigned magic;
     LINK link_sym;
     AbstractCache cache;
     ContextAddress length;
@@ -109,7 +111,9 @@ typedef struct ArraySymCache {
 
 /* Cached result of find_symbol_by_name(), find_symbol_in_scope(), find_symbol_by_addr(), enumerate_symbols() */
 typedef struct FindSymCache {
+    unsigned magic;
     LINK link_syms;
+    LINK link_flush;
     AbstractCache cache;
     ReplyHandlerInfo * pending;
     ErrorReport * error;
@@ -126,7 +130,9 @@ typedef struct FindSymCache {
 } FindSymCache;
 
 typedef struct StackFrameCache {
+    unsigned magic;
     LINK link_syms;
+    LINK link_flush;
     AbstractCache cache;
     ReplyHandlerInfo * pending;
     ErrorReport * error;
@@ -137,7 +143,9 @@ typedef struct StackFrameCache {
 } StackFrameCache;
 
 typedef struct AddressInfoCache {
+    unsigned magic;
     LINK link_syms;
+    LINK link_flush;
     AbstractCache cache;
     ReplyHandlerInfo * pending;
     ErrorReport * error;
@@ -153,7 +161,9 @@ typedef struct AddressInfoCache {
 } AddressInfoCache;
 
 typedef struct LocationInfoCache {
+    unsigned magic;
     LINK link_syms;
+    LINK link_flush;
     AbstractCache cache;
     ReplyHandlerInfo * pending;
     ErrorReport * error;
@@ -166,15 +176,20 @@ typedef struct LocationInfoCache {
     int disposed;
 } LocationInfoCache;
 
-#define SYM_CACHE_MAGIC 0x38254865
-
 #define root2syms(A) ((SymbolsCache *)((char *)(A) - offsetof(SymbolsCache, link_root)))
 #define syms2sym(A)  ((SymInfoCache *)((char *)(A) - offsetof(SymInfoCache, link_syms)))
 #define syms2find(A) ((FindSymCache *)((char *)(A) - offsetof(FindSymCache, link_syms)))
-#define sym2arr(A)   ((ArraySymCache *)((char *)(A) - offsetof(ArraySymCache, link_sym)))
 #define syms2frame(A)((StackFrameCache *)((char *)(A) - offsetof(StackFrameCache, link_syms)))
 #define syms2address(A)((AddressInfoCache *)((char *)(A) - offsetof(AddressInfoCache, link_syms)))
 #define syms2location(A)((LocationInfoCache *)((char *)(A) - offsetof(LocationInfoCache, link_syms)))
+
+#define sym2arr(A)   ((ArraySymCache *)((char *)(A) - offsetof(ArraySymCache, link_sym)))
+
+#define flush2sym(A)  ((SymInfoCache *)((char *)(A) - offsetof(SymInfoCache, link_flush)))
+#define flush2find(A) ((FindSymCache *)((char *)(A) - offsetof(FindSymCache, link_flush)))
+#define flush2frame(A)((StackFrameCache *)((char *)(A) - offsetof(StackFrameCache, link_flush)))
+#define flush2address(A)((AddressInfoCache *)((char *)(A) - offsetof(AddressInfoCache, link_flush)))
+#define flush2location(A)((LocationInfoCache *)((char *)(A) - offsetof(LocationInfoCache, link_flush)))
 
 struct Symbol {
     unsigned magic;
@@ -187,13 +202,22 @@ static char ** find_next_buf = NULL;
 static int find_next_pos = 0;
 static int find_next_cnt = 0;
 
+static LINK flush_rc;
+static LINK flush_mm;
+
 static const char * SYMBOLS = "Symbols";
 
-#define SYMBOL_MAGIC 0x34875234
+#define MAGIC_SYMBOL    0x34875234
+#define MAGIC_INFO      0x38254865
+#define MAGIC_ARRAY     0x92745446
+#define MAGIC_FIND      0x89058765
+#define MAGIC_FRAME     0x10837608
+#define MAGIC_ADDR      0x28658765
+#define MAGIC_LOC       0x09878751
 
 static Symbol * alloc_symbol(void) {
     Symbol * s = (Symbol *)tmp_alloc_zero(sizeof(Symbol));
-    s->magic = SYMBOL_MAGIC;
+    s->magic = MAGIC_SYMBOL;
     return s;
 }
 
@@ -260,12 +284,14 @@ static SymbolsCache * get_symbols_cache(void) {
 }
 
 static void free_arr_sym_cache(ArraySymCache * a) {
+    assert(a->magic == MAGIC_ARRAY);
     assert(!a->disposed || a->pending == NULL);
     if (!a->disposed) {
         list_remove(&a->link_sym);
         a->disposed = 1;
     }
     if (a->pending == NULL) {
+        a->magic = 0;
         cache_dispose(&a->cache);
         release_error_report(a->error);
         loc_free(a->id);
@@ -274,10 +300,11 @@ static void free_arr_sym_cache(ArraySymCache * a) {
 }
 
 static void free_sym_info_cache(SymInfoCache * c) {
-    assert(c->magic == SYM_CACHE_MAGIC);
+    assert(c->magic == MAGIC_INFO);
     assert(!c->disposed || (c->pending_get_context == NULL && c->pending_get_children == NULL));
     if (!c->disposed) {
         list_remove(&c->link_syms);
+        list_remove(&c->link_flush);
         c->disposed = 1;
     }
     if (c->pending_get_context == NULL && c->pending_get_children == NULL) {
@@ -301,12 +328,15 @@ static void free_sym_info_cache(SymInfoCache * c) {
 }
 
 static void free_find_sym_cache(FindSymCache * c) {
+    assert(c->magic == MAGIC_FIND);
     assert(!c->disposed || c->pending == NULL);
     if (!c->disposed) {
         list_remove(&c->link_syms);
+        list_remove(&c->link_flush);
         c->disposed = 1;
     }
     if (c->pending == NULL) {
+        c->magic = 0;
         if (find_next_buf == c->id_buf) {
             find_next_buf = NULL;
             find_next_pos = 0;
@@ -327,6 +357,12 @@ static void free_location_command_args(LocationExpressionCommand * cmd) {
     else if (cmd->cmd == SFT_CMD_PIECE) loc_free(cmd->args.piece.value);
 }
 
+static void free_location_commands(LocationCommands * cmds) {
+    unsigned i = 0;
+    while (i < cmds->cnt) free_location_command_args(cmds->cmds + i++);
+    loc_free(cmds->cmds);
+}
+
 static void free_sft_sequence(StackFrameRegisterLocation * seq) {
     if (seq != NULL) {
         unsigned i = 0;
@@ -336,13 +372,16 @@ static void free_sft_sequence(StackFrameRegisterLocation * seq) {
 }
 
 static void free_stack_frame_cache(StackFrameCache * c) {
+    assert(c->magic == MAGIC_FRAME);
     assert(!c->disposed || c->pending == NULL);
     if (!c->disposed) {
         list_remove(&c->link_syms);
+        list_remove(&c->link_flush);
         c->disposed = 1;
     }
     if (c->pending == NULL) {
         int i;
+        c->magic = 0;
         cache_dispose(&c->cache);
         release_error_report(c->error);
         context_unlock(c->ctx);
@@ -354,12 +393,15 @@ static void free_stack_frame_cache(StackFrameCache * c) {
 }
 
 static void free_address_info_cache(AddressInfoCache * c) {
+    assert(c->magic == MAGIC_ADDR);
     assert(!c->disposed || c->pending == NULL);
     if (!c->disposed) {
         list_remove(&c->link_syms);
+        list_remove(&c->link_flush);
         c->disposed = 1;
     }
     if (c->pending == NULL) {
+        c->magic = 0;
         cache_dispose(&c->cache);
         release_error_report(c->error);
         context_unlock(c->ctx);
@@ -368,19 +410,16 @@ static void free_address_info_cache(AddressInfoCache * c) {
     }
 }
 
-static void free_location_commands(LocationCommands * cmds) {
-    unsigned i = 0;
-    while (i < cmds->cnt) free_location_command_args(cmds->cmds + i++);
-    loc_free(cmds->cmds);
-}
-
 static void free_location_info_cache(LocationInfoCache * c) {
+    assert(c->magic == MAGIC_LOC);
     assert(!c->disposed || c->pending == NULL);
     if (!c->disposed) {
         list_remove(&c->link_syms);
+        list_remove(&c->link_flush);
         c->disposed = 1;
     }
     if (c->pending == NULL) {
+        c->magic = 0;
         cache_dispose(&c->cache);
         release_error_report(c->error);
         context_unlock(c->ctx);
@@ -453,6 +492,7 @@ static void read_context_data(InputStream * inp, const char * name, void * args)
 static void validate_context(Channel * c, void * args, int error) {
     Trap trap;
     SymInfoCache * s = (SymInfoCache *)args;
+    assert(s->magic == MAGIC_INFO);
     assert(s->pending_get_context != NULL);
     assert(s->error_get_context == NULL);
     assert(s->update_owner == NULL);
@@ -468,6 +508,10 @@ static void validate_context(Channel * c, void * args, int error) {
             json_test_char(&c->inp, MARKER_EOM);
             if (!error && s->update_owner == NULL) error = ERR_INV_CONTEXT;
             if (!error && s->update_owner->exited) error = ERR_ALREADY_EXITED;
+            if (s->update_policy != UPDATE_ON_MEMORY_MAP_CHANGES) {
+                list_remove(&s->link_flush);
+                list_add_last(&s->link_flush, &flush_rc);
+            }
         }
         clear_trap(&trap);
         if (s->update_owner != NULL) context_lock(s->update_owner);
@@ -484,8 +528,8 @@ static void validate_context(Channel * c, void * args, int error) {
 static SymInfoCache * get_sym_info_cache(const Symbol * sym, int acc_mode) {
     Trap trap;
     SymInfoCache * s = sym->cache;
-    assert(sym->magic == SYMBOL_MAGIC);
-    assert(s->magic == SYM_CACHE_MAGIC);
+    assert(sym->magic == MAGIC_SYMBOL);
+    assert(s->magic == MAGIC_INFO);
     assert(s->id != NULL);
     if (!set_trap(&trap)) return NULL;
     if (s->pending_get_context != NULL) {
@@ -562,6 +606,7 @@ static char ** read_symbol_list(InputStream * inp, int * id_cnt) {
 static void validate_find(Channel * c, void * args, int error) {
     Trap trap;
     FindSymCache * f = (FindSymCache *)args;
+    assert(f->magic == MAGIC_FIND);
     assert(f->pending != NULL);
     assert(f->error == NULL);
     if (set_trap(&trap)) {
@@ -621,7 +666,9 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress addr, const cha
             if (f == NULL) {
                 f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
                 list_add_first(&f->link_syms, syms->link_find_by_name + h);
+                list_add_last(&f->link_flush, &flush_mm);
                 context_lock(f->ctx = ctx);
+                f->magic = MAGIC_FIND;
                 f->name = loc_strdup(name);
                 f->ip = ip;
             }
@@ -643,7 +690,9 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress addr, const cha
         Channel * c = get_channel(syms);
         f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
         list_add_first(&f->link_syms, syms->link_find_by_name + h);
+        list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
         f->name = loc_strdup(name);
@@ -717,11 +766,19 @@ int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol **
         Channel * c = get_channel(syms);
         f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
         list_add_first(&f->link_syms, syms->link_find_by_addr + h);
+        if (ip) {
+            list_add_last(&f->link_flush, &flush_rc);
+            f->update_policy = UPDATE_ON_EXE_STATE_CHANGES;
+        }
+        else {
+            list_add_last(&f->link_flush, &flush_mm);
+            f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
+        }
         context_lock(f->ctx = ctx);
+        f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
         f->addr = addr;
-        f->update_policy = ip ? UPDATE_ON_EXE_STATE_CHANGES : UPDATE_ON_MEMORY_MAP_CHANGES;
         f->pending = protocol_send_command(c, SYMBOLS, "findByAddr", validate_find, f);
         if (frame != STACK_NO_FRAME) {
             json_write_string(&c->out, frame2id(ctx, frame));
@@ -794,7 +851,9 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress addr, Symbol *
         Channel * c = get_channel(syms);
         f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
         list_add_first(&f->link_syms, syms->link_find_in_scope + h);
+        list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
         if (scope != NULL) f->scope = loc_strdup(scope->cache->id);
@@ -878,7 +937,9 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * func,
         Channel * c = get_channel(syms);
         f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
         list_add_first(&f->link_syms, syms->link_list + h);
+        list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
         f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
@@ -913,7 +974,7 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * func,
 
 const char * symbol2id(const Symbol * sym) {
     SymInfoCache * s = sym->cache;
-    assert(s->magic == SYM_CACHE_MAGIC);
+    assert(s->magic == MAGIC_INFO);
     assert(s->id != NULL);
     return s->id;
 }
@@ -933,10 +994,11 @@ int id2symbol(const char * id, Symbol ** sym) {
     }
     if (s == NULL) {
         s = (SymInfoCache *)loc_alloc_zero(sizeof(SymInfoCache));
-        s->magic = SYM_CACHE_MAGIC;
+        s->magic = MAGIC_INFO;
         s->id = loc_strdup(id);
         s->frame = STACK_NO_FRAME;
         list_add_first(&s->link_syms, syms->link_sym + h);
+        list_add_last(&s->link_flush, &flush_mm);
         list_init(&s->array_syms);
 #if ENABLE_RCBP_TEST
         if (strncmp(id, "@T.", 3) == 0) {
@@ -1073,6 +1135,7 @@ int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame) {
 static void validate_children(Channel * c, void * args, int error) {
     Trap trap;
     SymInfoCache * s = (SymInfoCache *)args;
+    assert(s->magic == MAGIC_INFO);
     assert(s->pending_get_children != NULL);
     assert(s->error_get_children == NULL);
     assert(!s->done_children);
@@ -1130,9 +1193,10 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
     return 0;
 }
 
-static void validate_type_id(Channel * c, void * args, int error) {
+static void validate_array_type_id(Channel * c, void * args, int error) {
     Trap trap;
     ArraySymCache * s = (ArraySymCache *)args;
+    assert(s->magic == MAGIC_ARRAY);
     assert(s->pending != NULL);
     assert(s->error == NULL);
     assert(s->id == NULL);
@@ -1173,8 +1237,9 @@ int get_array_symbol(const Symbol * sym, ContextAddress length, Symbol ** ptr) {
         if (c == NULL || is_channel_closed(c)) exception(ERR_SYM_NOT_FOUND);
         a = (ArraySymCache *)loc_alloc_zero(sizeof(*a));
         list_add_first(&a->link_sym, &s->array_syms);
+        a->magic = MAGIC_ARRAY;
         a->length = length;
-        a->pending = protocol_send_command(c, SYMBOLS, "getArrayType", validate_type_id, a);
+        a->pending = protocol_send_command(c, SYMBOLS, "getArrayType", validate_array_type_id, a);
         json_write_string(&c->out, s->id);
         write_stream(&c->out, 0);
         json_write_uint64(&c->out, length);
@@ -1209,6 +1274,7 @@ static void read_address_attrs(InputStream * inp, const char * name, void * x) {
 static void validate_address_info(Channel * c, void * args, int error) {
     Trap trap;
     AddressInfoCache * f = (AddressInfoCache *)args;
+    assert(f->magic == MAGIC_ADDR);
     assert(f->pending != NULL);
     assert(f->error == NULL);
     if (set_trap(&trap)) {
@@ -1265,7 +1331,9 @@ static int get_address_info(Context * ctx, ContextAddress addr, AddressInfoCache
         Channel * c = get_channel(syms);
         f = (AddressInfoCache *)loc_alloc_zero(sizeof(AddressInfoCache));
         list_add_first(&f->link_syms, syms->link_address + h);
+        list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        f->magic = MAGIC_ADDR;
         f->addr = addr;
         context_lock(f->ctx = ctx);
         f->pending = protocol_send_command(c, SYMBOLS, "getAddressInfo", validate_address_info, f);
@@ -1424,6 +1492,7 @@ static void read_location_attrs(InputStream * inp, const char * name, void * x) 
 static void validate_location_info(Channel * c, void * args, int error) {
     Trap trap;
     LocationInfoCache * f = (LocationInfoCache *)args;
+    assert(f->magic == MAGIC_LOC);
     assert(f->pending != NULL);
     assert(f->error == NULL);
     if (set_trap(&trap)) {
@@ -1490,7 +1559,9 @@ int get_location_info(const Symbol * sym, LocationInfo ** loc) {
     if (f == NULL) {
         f = (LocationInfoCache *)loc_alloc_zero(sizeof(LocationInfoCache));
         list_add_first(&f->link_syms, syms->link_location + h);
+        list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        f->magic = MAGIC_LOC;
         f->ip = ip;
 #if ENABLE_RCBP_TEST
         if (strncmp(sym_cache->id, "@T.", 3) == 0) {
@@ -1556,6 +1627,7 @@ static void read_stack_trace_register(InputStream * inp, const char * id, void *
 static void validate_frame(Channel * c, void * args, int error) {
     Trap trap;
     StackFrameCache * f = (StackFrameCache *)args;
+    assert(f->magic == MAGIC_FRAME);
     assert(f->pending != NULL);
     assert(f->error == NULL);
     if (set_trap(&trap)) {
@@ -1644,7 +1716,9 @@ int get_stack_tracing_info(Context * ctx, ContextAddress ip, StackTracingInfo **
         Channel * c = get_channel(syms);
         f = (StackFrameCache *)loc_alloc_zero(sizeof(StackFrameCache));
         list_add_first(&f->link_syms, syms->link_frame + h);
+        list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        f->magic = MAGIC_FRAME;
         f->ip = ip;
         f->pending = protocol_send_command(c, SYMBOLS, "findFrameInfo", validate_frame, f);
         json_write_string(&c->out, f->ctx->id);
@@ -1688,85 +1762,73 @@ static int check_policy(Context * ctx, int mode, Context * sym_grp, Context * sy
     return 0;
 }
 
-static void flush_syms(Context * ctx, int mode) {
-    LINK * l;
-    LINK * m;
-    int i;
-    Context * sym_grp = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
-
-    for (m = root.next; m != &root; m = m->next) {
-        SymbolsCache * syms = root2syms(m);
-        for (i = 0; i < HASH_SIZE; i++) {
-            l = syms->link_sym[i].next;
-            while (l != syms->link_sym + i) {
-                SymInfoCache * c = syms2sym(l);
-                l = l->next;
-                if (!c->done_context || c->error_get_context != NULL) {
-                    free_sym_info_cache(c);
-                }
-                else if (c->update_owner == NULL || c->update_owner->exited) {
-                    free_sym_info_cache(c);
-                }
-                else if (check_policy(ctx, mode, sym_grp, c->update_owner, c->update_policy)) {
-                    if (mode == (1 << UPDATE_ON_EXE_STATE_CHANGES)) {
-                        c->degraded = 1;
-                    }
-                    else {
-                        free_sym_info_cache(c);
-                    }
-                }
+static void flush_one(Context * ctx, int mode, Context * sym_grp, LINK * l) {
+    unsigned magic = flush2sym(l)->magic;
+    if (magic == MAGIC_INFO) {
+        SymInfoCache * c = flush2sym(l);
+        if (!c->done_context || c->error_get_context != NULL) {
+            free_sym_info_cache(c);
+        }
+        else if (c->update_owner == NULL || c->update_owner->exited) {
+            free_sym_info_cache(c);
+        }
+        else if (check_policy(ctx, mode, sym_grp, c->update_owner, c->update_policy)) {
+            if (mode == (1 << UPDATE_ON_EXE_STATE_CHANGES)) {
+                c->degraded = 1;
             }
-            l = syms->link_find_by_name[i].next;
-            while (l != syms->link_find_by_name + i) {
-                FindSymCache * c = syms2find(l);
-                l = l->next;
-                if (check_policy(ctx, mode, sym_grp, c->ctx, c->update_policy)) {
-                    free_find_sym_cache(c);
-                }
-            }
-            l = syms->link_find_in_scope[i].next;
-            while (l != syms->link_find_in_scope + i) {
-                FindSymCache * c = syms2find(l);
-                l = l->next;
-                if (check_policy(ctx, mode, sym_grp, c->ctx, c->update_policy)) {
-                    free_find_sym_cache(c);
-                }
-            }
-            l = syms->link_list[i].next;
-            while (l != syms->link_list + i) {
-                FindSymCache * c = syms2find(l);
-                l = l->next;
-                if (check_policy(ctx, mode, sym_grp, c->ctx, c->update_policy)) {
-                    free_find_sym_cache(c);
-                }
-            }
-            if (mode & (1 << UPDATE_ON_MEMORY_MAP_CHANGES)) {
-                l = syms->link_frame[i].next;
-                while (l != syms->link_frame + i) {
-                    StackFrameCache * c = syms2frame(l);
-                    l = l->next;
-                    if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
-                        free_stack_frame_cache(c);
-                    }
-                }
-                l = syms->link_address[i].next;
-                while (l != syms->link_address + i) {
-                    AddressInfoCache * c = syms2address(l);
-                    l = l->next;
-                    if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
-                        free_address_info_cache(c);
-                    }
-                }
-                l = syms->link_location[i].next;
-                while (l != syms->link_location + i) {
-                    LocationInfoCache * c = syms2location(l);
-                    l = l->next;
-                    if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
-                        free_location_info_cache(c);
-                    }
-                }
+            else {
+                free_sym_info_cache(c);
             }
         }
+        return;
+    }
+    if (magic == MAGIC_FIND) {
+        FindSymCache * c = flush2find(l);
+        if (check_policy(ctx, mode, sym_grp, c->ctx, c->update_policy)) {
+            free_find_sym_cache(c);
+        }
+        return;
+    }
+    if (magic == MAGIC_FRAME) {
+        StackFrameCache * c = flush2frame(l);
+        if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
+            free_stack_frame_cache(c);
+        }
+        return;
+    }
+    if (magic == MAGIC_ADDR) {
+        AddressInfoCache * c = flush2address(l);
+        if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
+            free_address_info_cache(c);
+        }
+        return;
+    }
+    if (magic == MAGIC_LOC) {
+        LocationInfoCache * c = flush2location(l);
+        if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
+            free_location_info_cache(c);
+        }
+        return;
+    }
+    assert(0);
+}
+
+static void flush_syms(Context * ctx, int mode) {
+    LINK * l;
+    Context * sym_grp = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
+
+    for (l = flush_rc.next; l != &flush_rc;) {
+        LINK * n = l;
+        l = l->next;
+        flush_one(ctx, mode, sym_grp, n);
+    }
+
+    if ((mode & (1 << UPDATE_ON_MEMORY_MAP_CHANGES)) == 0) return;
+
+    for (l = flush_mm.next; l != &flush_mm;) {
+        LINK * n = l;
+        l = l->next;
+        flush_one(ctx, mode, sym_grp, n);
     }
 }
 
@@ -1828,6 +1890,8 @@ void ini_symbols_lib(void) {
     }
 #endif
     add_channel_close_listener(channel_close_listener);
+    list_init(&flush_rc);
+    list_init(&flush_mm);
 }
 
 #endif
