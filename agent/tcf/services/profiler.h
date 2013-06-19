@@ -33,6 +33,7 @@ struct ProfilerParameter {
 };
 
 typedef struct ProfilerParams {
+    Channel * channel;
     unsigned frame_cnt;     /* Value of FrameCnt parameter */
     unsigned max_samples;   /* Value of MaxSamples parameter */
     ProfilerParameter * list; /* List of all parameters */

@@ -44,7 +44,6 @@ typedef struct {
 typedef struct {
     LINK link_all;
     char id[256];
-    Channel * channel;
     unsigned params_cnt;
     ProfilerParams params;
     LINK list; /* List of ProfilerInstance */
@@ -77,7 +76,7 @@ static ProfilerConfiguration * find_cfg(Channel * c, const char * id) {
     LINK * l = cfgs.next;
     while (l != &cfgs) {
         ProfilerConfiguration * cfg = link_all2cfg(l);
-        if (cfg->channel == c && strcmp(id, cfg->id) == 0) return cfg;
+        if (cfg->params.channel == c && strcmp(id, cfg->id) == 0) return cfg;
         l = l->next;
     }
     return NULL;
@@ -124,7 +123,7 @@ static void call_read(Channel * c, Context * ctx) {
     while (k != &cfgs) {
         unsigned cnt = 0;
         ProfilerConfiguration * cfg = link_all2cfg(k);
-        if (cfg->channel == c && strcmp(ctx->id, cfg->id) == 0) {
+        if (cfg->params.channel == c && strcmp(ctx->id, cfg->id) == 0) {
             LINK * l = cfg->list.next;
             while (l != &cfg->list) {
                 ProfilerInstance * inst = link_cfg2inst(l);
@@ -197,7 +196,7 @@ static void command_configure(char * token, Channel * c) {
     cfg = find_cfg(c, id);
     if (cfg == NULL) {
         cfg = (ProfilerConfiguration *)loc_alloc_zero(sizeof(ProfilerConfiguration));
-        cfg->channel = c;
+        cfg->params.channel = c;
         list_init(&cfg->list);
         strlcpy(cfg->id, id, sizeof(cfg->id));
         list_add_last(&cfg->link_all, &cfgs);
@@ -281,7 +280,7 @@ static void channel_close_listener(Channel * c) {
     while (l != &cfgs) {
         ProfilerConfiguration * cfg = link_all2cfg(l);
         l = l->next;
-        if (cfg->channel == c) {
+        if (cfg->params.channel == c) {
             dispose_configuration(cfg);
         }
     }
