@@ -636,19 +636,17 @@ static int arm_get_next_ldr(void) {
     uint32_t Rn = (arm_instr >> 16) & 0xf;
     uint32_t Rd = (arm_instr >> 12) & 0xf;
     ContextAddress addr = 0;
+    unsigned size = B ? 1 : 4;
+    uint8_t bt = 0;
 
     if (!L || Rd != 15) return 0;
 
     if (read_reg(arm_ctx, regs_index + Rn, 4, &addr) < 0) return -1;
     if (Rn == 15) addr += 8;
 
-    if (B) {
-        /* TODO: ldrb r15 */
-    }
-    else if (!I && P) {
+    if (!I && P) {
         uint32_t offs = arm_instr & 0xfff;
         addr = U ? addr + offs : addr - offs;
-        if (context_read_mem(arm_ctx, addr, &arm_next, 4) < 0) return -1;
     }
     else if (I && P) {
         uint8_t Rm = arm_instr & 0xf;
@@ -663,10 +661,19 @@ static int arm_get_next_ldr(void) {
             uint32_t val = arm_calc_shift(shift_type, shift_imm, offs);
             addr = U ? addr + val : addr - val;
         }
-        if (context_read_mem(arm_ctx, addr, &arm_next, 4) < 0) return -1;
     }
-    else if (!P && !W) {
+    else if (P || W) {
+        size = 0;
+    }
+
+    switch (size) {
+    case 1:
+        if (context_read_mem(arm_ctx, addr, &bt, 1) < 0) return -1;
+        arm_next = bt;
+        break;
+    case 4:
         if (context_read_mem(arm_ctx, addr, &arm_next, 4) < 0) return -1;
+        break;
     }
     return 0;
 }
