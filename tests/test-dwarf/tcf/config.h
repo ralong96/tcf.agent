@@ -90,5 +90,6 @@
 #define ENABLE_SymbolsMux                       0
 #define ENABLE_LineNumbersMux                   0
 #define ENABLE_ContextISA                       0
+#define ENABLE_ProfilerSST                      0
 
 #endif /* D_config */

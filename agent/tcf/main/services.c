@@ -43,6 +43,7 @@
 #include <tcf/services/dprintf.h>
 #include <tcf/services/disassembly.h>
 #include <tcf/services/profiler.h>
+#include <tcf/services/profiler_sst.h>
 #include <tcf/main/services.h>
 
 #include <tcf/main/services-ext.h>
@@ -117,6 +118,9 @@ void ini_services(Protocol * proto, TCFBroadcastGroup * bcg) {
 #endif
 #if ENABLE_ELF
     ini_elf();
+#endif
+#if ENABLE_ProfilerSST
+    ini_profiler_sst();
 #endif
 #if ENABLE_Plugins
     plugins_load(proto, bcg);
