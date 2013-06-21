@@ -196,7 +196,6 @@ static void command_configure(char * token, Channel * c) {
     cfg = find_cfg(c, id);
     if (cfg == NULL) {
         cfg = (ProfilerConfiguration *)loc_alloc_zero(sizeof(ProfilerConfiguration));
-        cfg->params.channel = c;
         list_init(&cfg->list);
         strlcpy(cfg->id, id, sizeof(cfg->id));
         list_add_last(&cfg->link_all, &cfgs);
@@ -206,6 +205,7 @@ static void command_configure(char * token, Channel * c) {
         free_params(&cfg->params);
         memset(&cfg->params, 0, sizeof(cfg->params));
     }
+    cfg->params.channel = c;
     json_read_struct(&c->inp, read_cfg_param, cfg);
     if (read_stream(&c->inp) != 0) exception(ERR_JSON_SYNTAX);
     if (read_stream(&c->inp) != MARKER_EOM) exception(ERR_JSON_SYNTAX);
