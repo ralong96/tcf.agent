@@ -307,9 +307,12 @@ static void profiler_read(void * args, OutputStream * out) {
 }
 
 void profiler_sst_add(Context * ctx) {
+    add_profiler(ctx, &profiler_class);
+}
+
+static void event_context_created(Context * ctx, void * args) {
     ContextExtensionPrfSST * ext = EXT(ctx);
     list_init(&ext->list);
-    add_profiler(ctx, &profiler_class);
 }
 
 static void event_context_stopped(Context * ctx, void * args) {
@@ -326,7 +329,7 @@ static void event_context_stopped(Context * ctx, void * args) {
 
 void ini_profiler_sst(void) {
     static ContextEventListener listener = {
-        NULL,
+        event_context_created,
         NULL,
         event_context_stopped,
         NULL,
