@@ -51,6 +51,7 @@
 #include <tcf/services/runctrl.h>
 #include <tcf/services/elf-loader.h>
 #include <tcf/services/tcf_elf.h>
+#include <tcf/services/profiler_sst.h>
 #include <system/GNU/Linux/tcf/regset.h>
 
 #if !defined(TRAP_OFFSET)
@@ -99,6 +100,8 @@ static const int PTRACE_FLAGS =
       PTRACE_O_TRACEVFORKDONE |
       PTRACE_O_TRACEEXIT;
 
+#define PROFILER_SAMPLE_PERIOD 40000
+
 typedef struct ContextExtensionLinux {
     pid_t                   pid;
     ContextAttachCallBack * attach_callback;
@@ -118,9 +121,12 @@ typedef struct ContextExtensionLinux {
     int                     pending_step;
     int                     stop_cnt;
     int                     sigstop_posted;
-    int                     waitpid_posted;
     int                     detach_req;
     int                     crt0_done;
+#if ENABLE_ProfilerSST
+    int                     prof_armed;
+    int                     prof_fired;
+#endif
 } ContextExtensionLinux;
 
 static size_t context_extension_offset = 0;
@@ -175,7 +181,7 @@ int context_attach_self(void) {
     return 0;
 }
 
-static void proc_get_children(pid_t pid, int * cnt, pid_t ** pids) {
+static void get_thread_ids(pid_t pid, int * cnt, pid_t ** pids) {
     char dir[FILE_PATH_SIZE];
     DIR * proc;
     static int max_threads_cnt = 0;
@@ -289,10 +295,11 @@ int context_stop(Context * ctx) {
     assert(!ctx->exited);
     assert(!ctx->exiting);
     assert(!ctx->stopped);
-    assert(ext->waitpid_posted);
     if (ext->stop_cnt > 4) {
         /* Waiting too long, check for zombies */
         int ch = get_process_state(ext->pid);
+        if (ch == EOF) trace(LOG_ALWAYS, "error: waiting too long to stop %s, stat not found", ctx->id);
+        else trace(LOG_ALWAYS, "error: waiting too long to stop %s, stat %c", ctx->id, ch);
         if (ch == EOF || ch == 'Z') {
             /* Already exited or zombie */
             ctx->exiting = 1;
@@ -304,12 +311,12 @@ int context_stop(Context * ctx) {
     if (!ext->sigstop_posted) {
         if (tkill(ext->pid, SIGSTOP) < 0) {
             int err = errno;
+            trace(LOG_ALWAYS, "error: tkill(SIGSTOP) failed: ctx %#lx, id %s, error %d %s",
+                ctx, ctx->id, err, errno_to_str(err));
             if (err == ESRCH) {
                 ctx->exiting = 1;
                 return 0;
             }
-            trace(LOG_ALWAYS, "error: tkill(SIGSTOP) failed: ctx %#lx, id %s, error %d %s",
-                ctx, ctx->id, err, errno_to_str(err));
             errno = err;
             return -1;
         }
@@ -385,17 +392,16 @@ static int flush_regs(Context * ctx) {
 
     if (!err) return 0;
 
-    if (err == ESRCH) {
-        ctx->exiting = 1;
-        memset(ext->regs_dirty, 0, sizeof(REG_SET));
-        return 0;
-    }
-
     {
         RegisterDefinition * def = get_reg_definitions(ctx);
         while (def->name != NULL && (def->offset > i || def->offset + def->size <= i)) def++;
         trace(LOG_ALWAYS, "error: writing register %s failed: ctx %#lx, id %s, error %d %s",
             def->name ? def->name : "?", ctx, ctx->id, err, errno_to_str(err));
+        if (err == ESRCH) {
+            ctx->exiting = 1;
+            memset(ext->regs_dirty, 0, sizeof(REG_SET));
+            return 0;
+        }
         if (def->name) err = set_fmt_errno(err, "Cannot write register %s", def->name);
     }
     errno = err;
@@ -427,9 +433,20 @@ static void send_process_exited_event(Context * prs) {
     send_context_exited_event(prs);
 }
 
+static const char * get_ptrace_cmd_name(int cmd) {
+    switch (cmd) {
+    case PTRACE_CONT: return "PTRACE_CONT";
+    case PTRACE_DETACH: return "PTRACE_DETACH";
+    case PTRACE_SYSCALL: return "PTRACE_SYSCALL";
+    case PTRACE_SINGLESTEP: return "PTRACE_SINGLESTEP";
+    }
+    return "?";
+}
+
 static int do_single_step(Context * ctx) {
     uint32_t is_cont;
     ContextExtensionLinux * ext = EXT(ctx);
+    int cmd = PTRACE_SINGLESTEP;
 
     assert(!ext->pending_step);
 
@@ -439,39 +456,47 @@ static int do_single_step(Context * ctx) {
     trace(LOG_CONTEXT, "context: single step ctx %#lx, id %s", ctx, ctx->id);
     if (cpu_enable_stepping_mode(ctx, &is_cont) < 0) return -1;
     if (flush_regs(ctx) < 0) return -1;
-    if (is_cont) {
-        if (ptrace(PTRACE_CONT, ext->pid, 0, 0) < 0) {
-            int err = errno;
-            if (err == ESRCH) {
-                ctx->exiting = 1;
-                send_context_started_event(ctx);
-                return 0;
-            }
-            trace(LOG_ALWAYS, "error: ptrace(PTRACE_CONT, ...) failed: ctx %#lx, id %s, error %d %s",
-                ctx, ctx->id, err, errno_to_str(err));
-            errno = err;
-            return -1;
+    if (is_cont) cmd = PTRACE_CONT;
+    if (ptrace((enum __ptrace_request)cmd, ext->pid, 0, 0) < 0) {
+        int err = errno;
+        trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#lx, id %s, error %d %s",
+            get_ptrace_cmd_name(cmd), ctx, ctx->id, err, errno_to_str(err));
+        if (err == ESRCH) {
+            ctx->exiting = 1;
+            send_context_started_event(ctx);
+            add_waitpid_process(ext->pid);
+            return 0;
         }
-    }
-    else {
-        if (ptrace(PTRACE_SINGLESTEP, ext->pid, 0, 0) < 0) {
-            int err = errno;
-            if (err == ESRCH) {
-                ctx->exiting = 1;
-                send_context_started_event(ctx);
-                return 0;
-            }
-            trace(LOG_ALWAYS, "error: ptrace(PTRACE_SINGLESTEP, ...) failed: ctx %#lx, id %s, error %d %s",
-                ctx, ctx->id, err, errno_to_str(err));
-            errno = err;
-            return -1;
-        }
+        errno = err;
+        return -1;
     }
 
     ext->pending_step = 1;
     send_context_started_event(ctx);
+    add_waitpid_process(ext->pid);
     return 0;
 }
+
+#if ENABLE_ProfilerSST
+static void prof_sample_event(void * args) {
+    Context * ctx = (Context *)args;
+    ContextExtensionLinux * ext = EXT(ctx);
+    assert(!ctx->exited);
+    assert(ext->prof_armed);
+    assert(!ext->prof_fired);
+    ext->prof_armed = 0;
+    if (!ctx->exiting) {
+        if (profiler_sst_is_enabled(ctx)) {
+            ext->prof_fired = 1;
+            context_stop(ctx);
+        }
+        else {
+            ext->prof_armed = 1;
+            post_event_with_delay(prof_sample_event, ctx, PROFILER_SAMPLE_PERIOD * 10);
+        }
+    }
+}
+#endif
 
 int context_continue(Context * ctx) {
     int cpu_bp_step = 0;
@@ -517,16 +542,19 @@ int context_continue(Context * ctx) {
     }
 #endif
     if (flush_regs(ctx) < 0) return -1;
-    if (ext->detach_req && !ext->waitpid_posted) cmd = PTRACE_DETACH;
+    if (ext->detach_req && !ext->sigstop_posted &&
+            sigset_is_empty(&ctx->pending_signals)) cmd = PTRACE_DETACH;
     if (ptrace((enum __ptrace_request)cmd, ext->pid, 0, signal) < 0) {
         int err = errno;
+        trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#lx, id %s, error %d %s",
+            get_ptrace_cmd_name(cmd), ctx, ctx->id, err, errno_to_str(err));
         if (err == ESRCH) {
+            Context * prs = ctx->parent;
             ctx->exiting = 1;
             send_context_started_event(ctx);
+            add_waitpid_process(ext->pid);
             return 0;
         }
-        trace(LOG_ALWAYS, "error: ptrace(%d, ...) failed: ctx %#lx, id %s, error %d %s",
-            cmd, ctx, ctx->id, err, errno_to_str(err));
         errno = err;
         return -1;
     }
@@ -540,9 +568,8 @@ int context_continue(Context * ctx) {
     if (cmd == PTRACE_DETACH) {
         Context * prs = ctx->parent;
         assert(ctx->exiting);
-        assert(ext->waitpid_posted == 0);
         if (ext->pid == EXT(prs)->pid && (EXT(prs)->attach_mode & CONTEXT_ATTACH_SELF) != 0) {
-            /* The inferior process was started by the agent, post waitpid to wait until the inferior exits */
+            /* The inferior process was started by the agent, post waitpid to collect zombie */
             add_waitpid_process(ext->pid);
         }
         free_regs(ctx);
@@ -551,11 +578,18 @@ int context_continue(Context * ctx) {
         send_process_exited_event(prs);
     }
     else {
-        assert(ext->waitpid_posted);
+        add_waitpid_process(ext->pid);
         if (ext->detach_req && !ext->sigstop_posted) {
             assert(ctx->exiting);
             if (tkill(ext->pid, SIGSTOP) >= 0) ext->sigstop_posted = 1;
         }
+#if ENABLE_ProfilerSST
+        else if (!ctx->exiting) {
+            assert(!ext->prof_armed);
+            ext->prof_armed = 1;
+            post_event_with_delay(prof_sample_event, ctx, PROFILER_SAMPLE_PERIOD);
+        }
+#endif
     }
     return 0;
 }
@@ -628,7 +662,7 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
             if (errno != 0) {
                 error = errno;
                 trace(LOG_CONTEXT,
-                    "error: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
+                    "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
                     ctx, ctx->id, word_addr, error, errno_to_str(error));
                 break;
             }
@@ -694,7 +728,7 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
         if (errno != 0) {
             error = errno;
             trace(LOG_CONTEXT,
-                "error: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
+                "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
                 ctx, ctx->id, word_addr, error, errno_to_str(error));
             break;
         }
@@ -1027,12 +1061,17 @@ static void event_pid_exited(pid_t pid, int status, int signal) {
          * between PTRACE_CONT (or PTRACE_SYSCALL) and SIGTRAP/PTRACE_EVENT_EXIT. So, ctx->exiting can be 0.
          */
         Context * prs = ctx->parent;
-        EXT(ctx)->waitpid_posted = 0;
         trace(LOG_EVENTS, "event: ctx %#lx, pid %d, exit status %d, term signal %d", ctx, pid, status, signal);
         assert(EXT(prs)->attach_callback == NULL);
         assert(!prs->exited);
         assert(!ctx->exited);
         ctx->exiting = 1;
+#if ENABLE_ProfilerSST
+        if (EXT(ctx)->prof_armed) {
+            cancel_event(prof_sample_event, ctx, 0);
+            EXT(ctx)->prof_armed = 0;
+        }
+#endif
         if (ctx->stopped) send_context_started_event(ctx);
         free_regs(ctx);
         cpu_disable_stepping_mode(ctx);
@@ -1109,7 +1148,6 @@ static Context * add_thread(Context * parent, Context * creator, pid_t pid) {
     EXT(ctx)->pid = pid;
     EXT(ctx)->attach_mode = EXT(parent)->attach_mode;
     EXT(ctx)->sigstop_posted = (EXT(ctx)->attach_mode & CONTEXT_ATTACH_SELF) == 0;
-    EXT(ctx)->waitpid_posted = 1;
     alloc_regs(ctx);
     ctx->mem = parent;
     ctx->big_endian = parent->big_endian;
@@ -1129,6 +1167,9 @@ static Context * add_thread(Context * parent, Context * creator, pid_t pid) {
     }
     list_add_last(&ctx->cldl, &parent->children);
     link_context(ctx);
+#if ENABLE_ProfilerSST
+    profiler_sst_add(ctx);
+#endif
     trace(LOG_EVENTS, "event: new context 0x%x, id %s", ctx, ctx->id);
     send_context_created_event(ctx);
     return ctx;
@@ -1139,8 +1180,12 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     unsigned long msg = 0;
     Context * ctx = NULL;
     ContextExtensionLinux * ext = NULL;
+    ContextAddress pc0 = 0;
+    ContextAddress pc1 = 0;
+    int cb_found = 0;
 
     trace(LOG_EVENTS, "event: pid %d stopped, signal %d, event %s", pid, signal, event_name(event));
+    detach_waitpid_process();
 
     ctx = context_find_from_pid(pid, 1);
 
@@ -1155,12 +1200,13 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             link_context(prs);
             send_context_created_event(prs);
             ctx = add_thread(prs, NULL, pid);
-            proc_get_children(pid, &cnt, &pids);
+            get_thread_ids(pid, &cnt, &pids);
             for (n = 0; n < cnt; n++) {
                 if (pids[n] == pid) continue;
                 if (ptrace(PTRACE_ATTACH, pids[n],0,0) != 0) {
-                    trace(LOG_ALWAYS, "error: ptrace(PTRACE_ATTACH) failed: pid %d, error %d %s",
-                    pids[n], errno, errno_to_str(errno));
+                    trace(LOG_ALWAYS,
+                        "error: ptrace(PTRACE_ATTACH) failed: pid %d, error %d %s",
+                        pids[n], errno, errno_to_str(errno));
                 }
                 add_waitpid_process(pids[n]);
             }
@@ -1190,28 +1236,17 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             }
             context_unlock(prs);
         }
-        detach_waitpid_process();
         return;
     }
 
     ext = EXT(ctx);
     assert(!ext->attach_callback);
-    if (event == PTRACE_EVENT_EXIT && !ctx->stopped) {
-        int ch = get_process_state(ext->pid);
-        if (ch != 't' && ch != 'T') {
-            /* Lost PTRACE_EVENT_EXIT event - we alredy have resumed the process */
-            /* This happens when the agent resumes a process right after the process receives SIGKILL */
-            ctx->exiting = 1;
-            return;
-        }
-    }
     assert(!ctx->exited);
-    assert(ext->waitpid_posted);
     if (signal == SIGSTOP) ext->sigstop_posted = 0;
     ext->stop_cnt = 0;
 
     if (ext->ptrace_flags == 0) {
-        if (ptrace((enum __ptrace_request)PTRACE_SETOPTIONS, ext->pid, 0, PTRACE_FLAGS) < 0 && errno != ESRCH) {
+        if (ptrace((enum __ptrace_request)PTRACE_SETOPTIONS, ext->pid, 0, PTRACE_FLAGS) < 0) {
             int err = errno;
             trace(LOG_ALWAYS, "error: ptrace(PTRACE_SETOPTIONS) failed: pid %d, error %d %s",
                 ext->pid, err, errno_to_str(err));
@@ -1291,11 +1326,11 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
                 if (state != EOF) {
                     Context * prs = ctx->parent;
                     Context * ctx2 = create_context(pid2id(child_pid, EXT(prs)->pid));
+                    trace(LOG_ALWAYS, "error: lost clone %s", ctx2->id);
                     EXT(ctx2)->pid = child_pid;
                     EXT(ctx2)->attach_mode = EXT(prs)->attach_mode;
                     EXT(ctx2)->detach_req = EXT(prs)->detach_req;
                     EXT(ctx2)->sigstop_posted = 1;
-                    EXT(ctx2)->waitpid_posted = 1;
                     alloc_regs(ctx2);
                     ctx2->mem = prs;
                     ctx2->big_endian = prs->big_endian;
@@ -1335,91 +1370,91 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         }
     }
 
-    if (ctx->stopped) {
-        if (event != PTRACE_EVENT_EXEC) send_context_changed_event(ctx);
-    }
-    else {
-        int cb_found = 0;
-        ContextAddress pc0 = 0;
-        ContextAddress pc1 = 0;
+    assert(!ctx->stopped);
 
-        ext->end_of_step = 0;
-        ext->ptrace_event = event;
-        ctx->signal = signal;
-        ctx->stopped_by_bp = 0;
-        ctx->stopped_by_cb = NULL;
-        ctx->stopped_by_exception = stopped_by_exception;
-        ctx->stopped = 1;
+    ext->end_of_step = 0;
+    ext->ptrace_event = event;
+    ctx->signal = signal;
+    ctx->stopped_by_bp = 0;
+    ctx->stopped_by_cb = NULL;
+    ctx->stopped_by_exception = stopped_by_exception;
+    ctx->stopped = 1;
 
-        pc0 = get_regs_PC(ctx);
+    pc0 = get_regs_PC(ctx);
 
 #if defined(__powerpc__) || defined(__powerpc64__)
     /* Don't retrieve registers from an exiting process,
         causes kernel critical messages */
     if (event != PTRACE_EVENT_EXIT)
 #endif
-        memset(ext->regs_valid, 0, sizeof(REG_SET));
-        pc1 = get_regs_PC(ctx);
+    memset(ext->regs_valid, 0, sizeof(REG_SET));
+    pc1 = get_regs_PC(ctx);
 
-        if (syscall) {
-            if (!ext->syscall_enter) {
-                ext->syscall_id = get_syscall_id(ctx);
-                ext->syscall_pc = pc1;
-                ext->syscall_enter = 1;
-                ext->syscall_exit = 0;
-                trace(LOG_EVENTS, "event: pid %d enter sys call %d, PC = %#lx",
-                    pid, ext->syscall_id, ext->syscall_pc);
-            }
-            else {
-                if (ext->syscall_pc != pc1) {
-                    trace(LOG_ALWAYS, "Invalid PC at sys call exit: pid %d, sys call %d, PC %#lx, expected PC %#lx",
-                        ext->pid, ext->syscall_id, pc1, ext->syscall_pc);
-                }
-                trace(LOG_EVENTS, "event: pid %d exit sys call %d, PC = %#lx",
-                    pid, ext->syscall_id, pc1);
-                switch (ext->syscall_id) {
-#ifdef __NR_mmap
-                case __NR_mmap:
-#endif
-                case __NR_munmap:
-#ifdef __NR_mmap2
-                case __NR_mmap2:
-#endif
-                case __NR_mremap:
-                case __NR_remap_file_pages:
-                    memory_map_event_mapping_changed(ctx->mem);
-                    break;
-                }
-                ext->syscall_enter = 0;
-                ext->syscall_exit = 1;
-            }
+    if (syscall) {
+        if (!ext->syscall_enter) {
+            ext->syscall_id = get_syscall_id(ctx);
+            ext->syscall_pc = pc1;
+            ext->syscall_enter = 1;
+            ext->syscall_exit = 0;
+            trace(LOG_EVENTS, "event: pid %d enter sys call %d, PC = %#lx",
+                pid, ext->syscall_id, ext->syscall_pc);
         }
         else {
-            if (!ext->syscall_enter || pc0 != pc1) {
-                ext->syscall_enter = 0;
-                ext->syscall_exit = 0;
-                ext->syscall_id = 0;
-                ext->syscall_pc = 0;
+            if (ext->syscall_pc != pc1) {
+                trace(LOG_ALWAYS, "Invalid PC at sys call exit: pid %d, sys call %d, PC %#lx, expected PC %#lx",
+                    ext->pid, ext->syscall_id, pc1, ext->syscall_pc);
             }
-            trace(LOG_EVENTS, "event: pid %d stopped at PC = %#lx", pid, pc1);
+            trace(LOG_EVENTS, "event: pid %d exit sys call %d, PC = %#lx",
+                pid, ext->syscall_id, pc1);
+            switch (ext->syscall_id) {
+#ifdef __NR_mmap
+            case __NR_mmap:
+#endif
+            case __NR_munmap:
+#ifdef __NR_mmap2
+            case __NR_mmap2:
+#endif
+            case __NR_mremap:
+            case __NR_remap_file_pages:
+                memory_map_event_mapping_changed(ctx->mem);
+                break;
+            }
+            ext->syscall_enter = 0;
+            ext->syscall_exit = 1;
         }
-
-        cpu_bp_on_suspend(ctx, &cb_found);
-        if (signal == SIGTRAP && event == 0 && !syscall) {
-            ctx->stopped_by_bp = is_breakpoint_address(ctx, pc1 + TRAP_OFFSET);
-            if (ctx->stopped_by_bp) set_regs_PC(ctx, pc1 + TRAP_OFFSET);
-            else ctx->stopped_by_bp = is_breakpoint_address(ctx, pc1);
-            ext->end_of_step = !ctx->stopped_by_cb && !ctx->stopped_by_bp && ext->pending_step;
+    }
+    else {
+        if (!ext->syscall_enter || pc0 != pc1) {
+            ext->syscall_enter = 0;
+            ext->syscall_exit = 0;
+            ext->syscall_id = 0;
+            ext->syscall_pc = 0;
         }
-        ext->pending_step = 0;
-        cpu_disable_stepping_mode(ctx);
-        send_context_stopped_event(ctx);
+        trace(LOG_EVENTS, "event: pid %d stopped at PC = %#lx", pid, pc1);
     }
 
-    if (ext->detach_req && !ext->sigstop_posted && sigset_is_empty(&ctx->pending_signals)) {
-        ext->waitpid_posted = 0;
-        detach_waitpid_process();
+    cpu_bp_on_suspend(ctx, &cb_found);
+    if (signal == SIGTRAP && event == 0 && !syscall) {
+        ctx->stopped_by_bp = is_breakpoint_address(ctx, pc1 + TRAP_OFFSET);
+        if (ctx->stopped_by_bp) set_regs_PC(ctx, pc1 + TRAP_OFFSET);
+        else ctx->stopped_by_bp = is_breakpoint_address(ctx, pc1);
+        ext->end_of_step = !ctx->stopped_by_cb && !ctx->stopped_by_bp && ext->pending_step;
     }
+    ext->pending_step = 0;
+    cpu_disable_stepping_mode(ctx);
+    send_context_stopped_event(ctx);
+#if ENABLE_ProfilerSST
+    if (ext->prof_fired) {
+        assert(!ext->prof_armed);
+        ext->prof_fired = 0;
+        profiler_sst_sample(ctx, pc1);
+    }
+    else if (ext->prof_armed) {
+        assert(!ext->prof_fired);
+        cancel_event(prof_sample_event, ctx, 0);
+        ext->prof_armed = 0;
+    }
+#endif
 }
 
 static void waitpid_listener(int pid, int exited, int exit_code, int signal, int event_code, int syscall, void * args) {
