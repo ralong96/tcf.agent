@@ -549,7 +549,6 @@ int context_continue(Context * ctx) {
         trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#lx, id %s, error %d %s",
             get_ptrace_cmd_name(cmd), ctx, ctx->id, err, errno_to_str(err));
         if (err == ESRCH) {
-            Context * prs = ctx->parent;
             ctx->exiting = 1;
             send_context_started_event(ctx);
             add_waitpid_process(ext->pid);
