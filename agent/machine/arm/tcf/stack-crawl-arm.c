@@ -201,6 +201,7 @@ static int mem_hash_index(const uint32_t addr) {
     while(s != v);
 
     /* Search failed, hash is full and the address not stored */
+    errno = ERR_OTHER;
     return -1;
 }
 
@@ -210,30 +211,35 @@ static int mem_hash_read(uint32_t addr, uint32_t * data, int * tracked) {
     if (i >= 0 && mem_data.used[i] && mem_data.a[i] == addr) {
         *data    = mem_data.v[i];
         *tracked = mem_data.tracked[i];
-        return 1;
+        return 0;
     }
 
     /* Address not found in the hash */
-    return 0;
+    errno = ERR_OTHER;
+    return -1;
 }
 
 static int mem_hash_write(uint32_t addr, uint32_t value, int valid) {
     int i = mem_hash_index(addr);
 
-    if (i < 0) return 0;
+    if (i < 0) {
+        set_errno(ERR_OTHER, "Memory hash overflow");
+        return -1;
+    }
+
     /* Store the item */
     mem_data.used[i] = 1;
     mem_data.a[i] = addr;
     mem_data.v[i] = valid ? value : 0;
     mem_data.tracked[i] = (uint8_t)valid;
-    return 1;
+    return 0;
 }
 
 static int load_reg(uint32_t addr, int r) {
     int tracked = 0;
 
     /* Check if the value can be found in the hash */
-    if (mem_hash_read(addr, &reg_data[r].v, &tracked)) {
+    if (mem_hash_read(addr, &reg_data[r].v, &tracked) == 0) {
         reg_data[r].o = tracked ? REG_VAL_OTHER : 0;
     }
     else {
@@ -265,13 +271,20 @@ static int store_reg(uint32_t addr, int r) {
         if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
         if (reg_data[i].v >= addr + 4) continue;
         if (reg_data[i].v + 4 <= addr) continue;
-        if (load_reg(reg_data[i].v, r) < 0) return -1;
+        if (load_reg(reg_data[i].v, i) < 0) return -1;
     }
-    if (!mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0)) {
-        set_errno(ERR_OTHER, "Memory hash overflow");
-        return -1;
+    return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0);
+}
+
+static int store_invalid(uint32_t addr) {
+    unsigned i;
+    for (i = 0; i < 16; i++) {
+        if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
+        if (reg_data[i].v >= addr + 4) continue;
+        if (reg_data[i].v + 4 <= addr) continue;
+        if (load_reg(reg_data[i].v, i) < 0) return -1;
     }
-    return 0;
+    return mem_hash_write(addr, 0, 0);
 }
 
 static void add_branch(uint32_t addr) {
@@ -1323,6 +1336,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
 }
 
 static int trace_arm_ldm_stm(uint32_t instr) {
+    uint32_t cond = (instr >> 28) & 0xf;
     int P = (instr & 0x01000000) != 0;
     int U = (instr & 0x00800000) != 0;
     int S = (instr & 0x00400000) != 0;
@@ -1362,7 +1376,10 @@ static int trace_arm_ldm_stm(uint32_t instr) {
         if (regs & (1 << r)) {
             if (P) addr = U ? addr + 4 : addr - 4;
             if (L) {
-                if (addr_valid) {
+                if (cond != 14) {
+                    reg_data[r].o = 0;
+                }
+                else if (addr_valid) {
                     reg_data[r].o = rn == 13 ? REG_VAL_STACK : REG_VAL_ADDR;
                     reg_data[r].v = addr;
                 }
@@ -1372,7 +1389,8 @@ static int trace_arm_ldm_stm(uint32_t instr) {
                 }
             }
             else if (addr_valid) {
-                store_reg(addr, r);
+                if (cond != 14) store_invalid(addr);
+                else store_reg(addr, r);
             }
             if (!P) addr = U ? addr + 4 : addr - 4;
         }
@@ -1388,15 +1406,13 @@ static int trace_arm_ldm_stm(uint32_t instr) {
     }
 
     /* Check the writeback bit */
-    if (addr_valid && W) reg_data[rn].v = addr;
+    if (addr_valid && W) {
+        reg_data[rn].o = cond == 14 ? REG_VAL_OTHER : 0;
+        reg_data[rn].v = addr;
+    }
 
     /* Check if the PC was loaded */
     if (L && (regs & (1 << 15))) {
-        if (!reg_data[15].o) {
-            /* Return address is not valid */
-            set_errno(ERR_OTHER, "PC popped with invalid address");
-            return -1;
-        }
         /* Found the return address */
         trace_return = 1;
     }
@@ -1603,7 +1619,7 @@ static int trace_arm(void) {
     else if (is_data_processing_instr(instr)) { /* Data processing */
         trace_arm_data_processing_instr(instr);
     }
-    else if ((instr & 0xfe000000) == 0xe8000000) { /* Block Data Transfer - LDM, STM */
+    else if ((instr & 0x0e000000) == 0x08000000) { /* Block Data Transfer - LDM, STM */
         if (trace_arm_ldm_stm(instr) < 0) return -1;
     }
     else if ((instr & 0x0fb00000) == 0x03000000) { /* 16-bit immediate load */
