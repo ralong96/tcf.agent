@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -129,7 +129,7 @@ static void time_add_usec(struct timespec * tv, unsigned long usec) {
     }
 }
 
-static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned long delay) {
+static void post_from_bg_thread(EventCallBack * handler, void * arg, struct timespec * runtime) {
     event_node * ev;
     event_node * next;
     event_node * prev;
@@ -142,8 +142,7 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
         return;
     }
     alloc_event_node_bg(ev);
-    if (clock_gettime(CLOCK_REALTIME, &ev->runtime)) check_error(errno);
-    time_add_usec(&ev->runtime, delay);
+    ev->runtime = *runtime;
     ev->handler = handler;
     ev->arg = arg;
 
@@ -168,14 +167,16 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
 }
 
 void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long delay) {
+    struct timespec runtime;
+    if (clock_gettime(CLOCK_REALTIME, &runtime)) check_error(errno);
+    time_add_usec(&runtime, delay);
     if (is_event_thread) {
         event_node * ev;
         event_node * next;
         event_node * prev;
 
         alloc_event_node(ev);
-        if (clock_gettime(CLOCK_REALTIME, &ev->runtime)) check_error(errno);
-        time_add_usec(&ev->runtime, delay);
+        ev->runtime = runtime;
         ev->handler = handler;
         ev->arg = arg;
 
@@ -200,7 +201,7 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
             ev->runtime.tv_sec / 60 % 60, ev->runtime.tv_sec % 60, ev->runtime.tv_nsec / 1000000);
     }
     else {
-        post_from_bg_thread(handler, arg, delay);
+        post_from_bg_thread(handler, arg, &runtime);
     }
 }
 
@@ -223,7 +224,8 @@ void post_event(EventCallBack * handler, void * arg) {
         trace(LOG_EVENTCORE, "post_event: event %#lx, handler %#lx, arg %#lx", ev, ev->handler, ev->arg);
     }
     else {
-        post_from_bg_thread(handler, arg, 0);
+        static struct timespec runtime = { 0, 0 };
+        post_from_bg_thread(handler, arg, &runtime);
     }
 }
 
