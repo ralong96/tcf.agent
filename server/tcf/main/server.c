@@ -29,8 +29,14 @@
 #include <tcf/services/disassembly.h>
 #include <tcf/services/context-proxy.h>
 #include <tcf/main/server.h>
+#include <tcf/main/server_hooks.h>
 
 #include <assert.h>
+
+/* Hook when checking target service. */
+#ifndef TARGET_SERVICE_CHECK_HOOK
+#define TARGET_SERVICE_CHECK_HOOK do {} while(0)
+#endif
 
 static Protocol * proto;
 static TCFBroadcastGroup * bcg;
@@ -70,6 +76,7 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if defined(SERVICE_Disassembly) && SERVICE_Disassembly
             if (strcmp(nm, "Disassembly") == 0) service_da = 1;
 #endif
+            TARGET_SERVICE_CHECK_HOOK;
         }
         if (!service_pm || !service_ln || !service_sm) {
             ini_path_map_service(host->protocol, bcg);

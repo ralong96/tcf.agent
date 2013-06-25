@@ -543,6 +543,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\tcf\main\server_hooks.h"
+				>
+			</File>
+			<File
 				RelativePath="..\agent\tcf\main\services.c"
 				>
 			</File>
