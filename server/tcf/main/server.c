@@ -57,7 +57,9 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
         int service_mm = 0;
         int service_pm = 0;
         int service_sm = 0;
+#if defined(SERVICE_Disassembly) && SERVICE_Disassembly
         int service_da = 0;
+#endif
         int forward_pm = 0;
         for (i = 0; i < target->peer_service_cnt; i++) {
             char * nm = target->peer_service_list[i];
@@ -65,7 +67,9 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
             if (strcmp(nm, "Symbols") == 0) service_sm = 1;
             if (strcmp(nm, "MemoryMap") == 0) service_mm = 1;
             if (strcmp(nm, "PathMap") == 0) service_pm = 1;
+#if defined(SERVICE_Disassembly) && SERVICE_Disassembly
             if (strcmp(nm, "Disassembly") == 0) service_da = 1;
+#endif
         }
         if (!service_pm || !service_ln || !service_sm) {
             ini_path_map_service(host->protocol, bcg);
