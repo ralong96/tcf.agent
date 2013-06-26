@@ -43,7 +43,6 @@
 static const char * STACKTRACE = "StackTrace";
 
 typedef struct StackTrace {
-    ErrorReport * error;
     int complete;
     int frame_cnt;
     int frame_max;
@@ -116,17 +115,15 @@ static void add_frame(StackTrace * stack, StackFrame * frame) {
 
 static void invalidate_stack_trace(StackTrace * stack) {
     int i;
-    release_error_report(stack->error);
     for (i = 0; i < stack->frame_cnt; i++) {
         loc_free(stack->frames[i].regs);
         stack->frames[i].regs = NULL;
     }
-    stack->error = NULL;
     stack->frame_cnt = 0;
     stack->complete = 0;
 }
 
-static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
+static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
     int error = 0;
     StackFrame down;
 
@@ -192,6 +189,7 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             }
             if (equ) {
                 /* All registers are same - stop tracing */
+                stack->complete = 1;
                 loc_free(down.regs);
                 break;
             }
@@ -199,19 +197,20 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
         add_frame(stack, &down);
     }
 
-    if (get_error_code(error) == ERR_CACHE_MISS) {
-        stack->error = get_error_report(ERR_CACHE_MISS);
+    if (!error) return 0;
+    if (get_error_code(error) != ERR_CACHE_MISS) {
+        stack->complete = 1;
+        return 0;
     }
+    errno = error;
+    return -1;
 }
 
 static StackTrace * create_stack_trace(Context * ctx, int max_frames) {
     StackTrace * stack = EXT(ctx);
     max_frames++; /* Frame pointer and return address calculation needs one more frame */
     if (!stack->complete && stack->frame_cnt < max_frames) {
-        release_error_report(stack->error);
-        stack->error = NULL;
-        trace_stack(ctx, stack, max_frames);
-        stack->complete = stack->error == NULL && stack->frame_cnt < max_frames;
+        if (trace_stack(ctx, stack, max_frames) < 0) return NULL;
     }
     return stack;
 }
@@ -323,8 +322,8 @@ static void command_get_context_cache_client(void * x) {
         }
         assert(d->frame >= 0);
         stack = create_stack_trace(d->ctx, d->frame + 1);
-        if (stack->error) {
-            err = set_error_report_errno(stack->error);
+        if (stack == NULL) {
+            err = errno;
             break;
         }
         if (d->frame >= stack->frame_cnt) {
@@ -401,9 +400,11 @@ static void command_get_children_cache_client(void * x) {
     }
     else if (args->all_frames) {
         stack = create_stack_trace(ctx, MAX_FRAMES);
+        if (stack == NULL) err = errno;
     }
     else {
         stack = create_stack_trace(ctx, args->max_frame + 1);
+        if (stack == NULL) err = errno;
     }
 
     cache_exit();
@@ -411,7 +412,7 @@ static void command_get_children_cache_client(void * x) {
     write_stringz(&c->out, "R");
     write_stringz(&c->out, args->token);
 
-    write_errno(&c->out, stack != NULL ? set_error_report_errno(stack->error) : err);
+    write_errno(&c->out, err);
 
     if (stack == NULL) {
         write_stringz(&c->out, "null");
@@ -486,10 +487,7 @@ int get_bottom_frame(Context * ctx) {
     }
 
     stack = create_stack_trace(ctx, MAX_FRAMES);
-    if (stack->error != NULL) {
-        set_error_report_errno(stack->error);
-        return STACK_BOTTOM_FRAME;
-    }
+    if (stack == NULL) return STACK_BOTTOM_FRAME;
 
     assert(stack->frame_cnt > 0);
     return stack->frame_cnt - 1;
@@ -509,10 +507,7 @@ int get_prev_frame(Context * ctx, int frame) {
     }
 
     stack = create_stack_trace(ctx, frame + 2);
-    if (stack->error != NULL) {
-        set_error_report_errno(stack->error);
-        return STACK_NO_FRAME;
-    }
+    if (stack == NULL) return STACK_NO_FRAME;
 
     if (frame + 1 >= stack->frame_cnt) {
         set_errno(ERR_OTHER, "No previous stack frame");
@@ -556,10 +551,7 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     else if (frame == STACK_BOTTOM_FRAME) max_frames = MAX_FRAMES;
 
     stack = create_stack_trace(ctx, max_frames);
-    if (stack->error != NULL) {
-        set_error_report_errno(stack->error);
-        return -1;
-    }
+    if (stack == NULL) return -1;
 
     if (frame == STACK_TOP_FRAME) {
         frame = 0;

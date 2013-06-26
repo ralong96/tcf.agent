@@ -1453,7 +1453,10 @@ static int update_step_machine_state(Context * ctx) {
                     }
                     for (;;) {
                         n = get_prev_frame(ctx, n);
-                        if (n < 0) break;
+                        if (n < 0) {
+                            if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
+                            break;
+                        }
                         if (get_frame_info(ctx, n, &info) < 0) return -1;
                         if (ext->step_frame_fp == info->fp) {
                             uint64_t pc = 0;
@@ -1507,7 +1510,10 @@ static int update_step_machine_state(Context * ctx) {
                 for (;;) {
                     uint64_t ip = 0;
                     n = get_prev_frame(ctx, n);
-                    if (n < 0) break;
+                    if (n < 0) {
+                        if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
+                        break;
+                    }
                     if (get_frame_info(ctx, n, &info) < 0) return -1;
                     if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) break;
                     if (ext->step_frame_fp == info->fp && ext->step_frame_ip == ip) {
