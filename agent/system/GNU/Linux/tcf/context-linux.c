@@ -1345,7 +1345,9 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
                     if (state == 't' || state == 'T') {
                         event_pid_stopped(child_pid, SIGSTOP, 0, 0);
                     }
-                    add_waitpid_process(child_pid);
+                    else {
+                        add_waitpid_process(child_pid);
+                    }
                 }
             }
         }
