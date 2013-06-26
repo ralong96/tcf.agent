@@ -457,6 +457,29 @@ int mdep_set_other_regs(pid_t pid, REG_SET * data,
 
 #endif
 
+#if defined(__x86_64__)
+RegisterDefinition * get_386_reg_by_id(Context * ctx, unsigned id) {
+    static RegisterIdScope scope;
+    switch (id) {
+    case 0: /* eax */ id = 0; break;
+    case 1: /* ecx */ id = 2; break;
+    case 2: /* edx */ id = 1; break;
+    case 3: /* ebx */ id = 3; break;
+    case 4: /* esp */ id = 7; break;
+    case 5: /* ebp */ id = 6; break;
+    case 6: /* esi */ id = 4; break;
+    case 7: /* edi */ id = 5; break;
+    case 8: /* eip */ id = 16; break;
+    case 9: /* eflags */ id = 49; break;
+    default:
+        set_errno(ERR_OTHER, "Invalid register ID");
+        return NULL;
+    }
+    scope.machine = 62; /* EM_X86_64 */
+    return get_reg_by_id(ctx, id, &scope);
+}
+#endif
+
 #if !ENABLE_ExternalStackcrawl
 
 #ifndef JMPD08
@@ -667,6 +690,18 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
     }
 
     if (read_reg(frame, pc_def, word_size, &reg_pc) < 0) return 0;
+
+#if ENABLE_ContextISA
+    if (x64) {
+        ContextISA isa;
+        if (context_get_isa(ctx, reg_pc, &isa) == 0 &&
+                isa.isa != NULL && strcmp(isa.isa, "386") == 0) {
+            word_size = 4;
+            x64 = 0;
+        }
+    }
+#endif
+
     if (read_reg(frame, bp_def, word_size, &reg_bp) < 0) return 0;
 
     if (frame->is_top_frame) {

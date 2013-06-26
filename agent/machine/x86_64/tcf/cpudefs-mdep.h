@@ -49,6 +49,11 @@ extern unsigned char BREAK_INST[1];
 #define ENABLE_ini_cpudefs_mdep 1
 extern void ini_cpudefs_mdep(void);
 
+#if defined(__x86_64__)
+extern RegisterDefinition * get_386_reg_by_id(Context * ctx, unsigned id);
+#  define GET_REG_BY_ID_HOOK if (scope->machine == 3) return get_386_reg_by_id(ctx, id)
+#endif
+
 #else
 
 #  error "Unknown CPU"

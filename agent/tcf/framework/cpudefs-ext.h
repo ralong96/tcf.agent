@@ -73,6 +73,9 @@ static RegisterDefinition * get_reg_by_eh_frame_id(unsigned id) {
 
 RegisterDefinition * get_reg_by_id(Context * ctx, unsigned id, RegisterIdScope * scope) {
     RegisterDefinition * def = NULL;
+#ifdef GET_REG_BY_ID_HOOK
+        GET_REG_BY_ID_HOOK;
+#endif
     if (context_has_state(ctx)) {
         switch (scope->id_type) {
         case REGNUM_DWARF: def = get_reg_by_dwarf_id(id); break;
