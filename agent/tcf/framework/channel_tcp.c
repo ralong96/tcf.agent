@@ -449,9 +449,9 @@ static void tcp_write_stream(OutputStream * out, int byte) {
             else assert(0);
             if (c->chan.out.cur == c->chan.out.end) tcp_flush_with_flags(c, MSG_MORE);
             *c->chan.out.cur++ = esc;
-            if (byte == MARKER_EOM && c->out_flush_cnt < 4) {
+            if (byte == MARKER_EOM && c->out_flush_cnt < 2) {
                 if (c->out_flush_cnt++ == 0) tcp_lock(&c->chan);
-                post_event(tcp_flush_event, c);
+                post_event_with_delay(tcp_flush_event, c, 0);
             }
             return;
         }

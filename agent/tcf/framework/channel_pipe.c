@@ -225,9 +225,9 @@ static void pipe_write_stream(OutputStream * out, int byte) {
         if (c->chan.state == ChannelStateDisconnected) return;
         if (c->chan.out.cur == c->chan.out.end) pipe_flush(c);
         *c->chan.out.cur++ = esc;
-        if (byte == MARKER_EOM && c->out_flush_cnt < 8) {
+        if (byte == MARKER_EOM && c->out_flush_cnt < 2) {
             if (c->out_flush_cnt++ == 0) pipe_lock(&c->chan);
-            post_event(pipe_flush_event, c);
+            post_event_with_delay(pipe_flush_event, c, 0);
         }
         return;
     }
