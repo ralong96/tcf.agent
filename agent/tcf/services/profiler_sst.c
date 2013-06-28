@@ -233,6 +233,7 @@ static void * profiler_configure(void * args, Context * ctx, ProfilerParams * pa
     ContextExtensionPrfSST * ext = EXT(ctx);
     if (prf == NULL) {
         prf = (ProfilerSST *)loc_alloc_zero(sizeof(ProfilerSST));
+        if (list_is_empty(&ext->list)) list_init(&ext->list);
         list_add_last(&prf->link_core, &ext->list);
         prf->channel = params->channel;
         prf->ctx = ctx;
@@ -312,7 +313,7 @@ void profiler_sst_add(Context * ctx) {
 
 static void event_context_created(Context * ctx, void * args) {
     ContextExtensionPrfSST * ext = EXT(ctx);
-    list_init(&ext->list);
+    if (list_is_empty(&ext->list)) list_init(&ext->list);
 }
 
 static void event_context_stopped(Context * ctx, void * args) {
