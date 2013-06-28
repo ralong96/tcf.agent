@@ -105,6 +105,7 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
 }
 
 static void add_frame(StackTrace * stack, StackFrame * frame) {
+    frame->frame = stack->frame_cnt;
     if (stack->frame_cnt >= stack->frame_max) {
         stack->frame_max += 32;
         stack->frames = (StackFrame *)loc_realloc(stack->frames,
@@ -171,6 +172,7 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
         }
         trace(LOG_STACK, "  cfa      %16"PRIX64, (uint64_t)frame->fp);
         if (!down.has_reg_data) {
+            stack->complete = 1;
             loc_free(down.regs);
             break;
         }
@@ -569,7 +571,6 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     }
 
     *info = stack->frames + frame;
-    (*info)->frame = frame;
     return 0;
 }
 
