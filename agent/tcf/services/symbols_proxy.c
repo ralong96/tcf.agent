@@ -508,7 +508,7 @@ static void validate_context(Channel * c, void * args, int error) {
             json_test_char(&c->inp, MARKER_EOM);
             if (!error && s->update_owner == NULL) error = ERR_INV_CONTEXT;
             if (!error && s->update_owner->exited) error = ERR_ALREADY_EXITED;
-            if (s->update_policy != UPDATE_ON_MEMORY_MAP_CHANGES) {
+            if (!s->disposed && s->update_policy != UPDATE_ON_MEMORY_MAP_CHANGES) {
                 list_remove(&s->link_flush);
                 list_add_last(&s->link_flush, &flush_rc);
             }
@@ -997,6 +997,7 @@ int id2symbol(const char * id, Symbol ** sym) {
         s->magic = MAGIC_INFO;
         s->id = loc_strdup(id);
         s->frame = STACK_NO_FRAME;
+        s->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
         list_add_first(&s->link_syms, syms->link_sym + h);
         list_add_last(&s->link_flush, &flush_mm);
         list_init(&s->array_syms);
@@ -1008,7 +1009,6 @@ int id2symbol(const char * id, Symbol ** sym) {
             if (sscanf(id, "@T.%X.%"SCNx64".%255s", &sym_class, &address, ctx_id) == 3) {
                 s->done_context = 1;
                 s->sym_class = sym_class;
-                s->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
                 s->update_owner = id2ctx(ctx_id);
                 if (s->update_owner != NULL) context_lock(s->update_owner);
             }
