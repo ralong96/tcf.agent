@@ -43,6 +43,7 @@
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/trace.h>
+#include <tcf/services/stacktrace.h>
 #include <machine/arm/tcf/stack-crawl-arm.h>
 
 #define USE_MEM_CACHE        1
@@ -69,12 +70,15 @@ typedef struct {
     uint32_t addr;
     RegData reg_data[16];
     RegData cpsr_data;
+    RegData spsr_data;
     MemData mem_data;
 } BranchData;
 
 static Context * stk_ctx = NULL;
+static StackFrame * stk_frame = NULL;
 static RegData reg_data[16];
 static RegData cpsr_data;
+static RegData spsr_data;
 static MemData mem_data;
 static unsigned mem_cache_idx = 0;
 static int trace_return = 0;
@@ -303,10 +307,69 @@ static void add_branch(uint32_t addr) {
             b->addr = addr;
             b->mem_data = mem_data;
             b->cpsr_data = cpsr_data;
+            b->spsr_data = spsr_data;
             memcpy(b->reg_data, reg_data, sizeof(reg_data));
             b->reg_data[15].v = addr;
         }
     }
+}
+
+static int is_banked_reg_visible(RegisterDefinition * def, unsigned mode) {
+    int r = 15;
+    switch (mode) {
+    case 0x11: /* fiq */
+        if (def->dwarf_id >= 151 && def->dwarf_id <= 157) {
+            return def->dwarf_id - 151 + 8;
+        }
+        r = 8;
+        break;
+    case 0x12: /* irq */
+        if (def->dwarf_id >= 158 && def->dwarf_id <= 159) {
+            return def->dwarf_id - 158 + 13;
+        }
+        r = 13;
+        break;
+    case 0x13: /* svc */
+        if (def->dwarf_id >= 164 && def->dwarf_id <= 165) {
+            return def->dwarf_id - 164 + 13;
+        }
+        r = 13;
+        break;
+    case 0x16: /* mon */
+        if (def->dwarf_id >= 166 && def->dwarf_id <= 167) {
+            return def->dwarf_id - 166 + 13;
+        }
+        r = 13;
+        break;
+    case 0x17: /* abt */
+        if (def->dwarf_id >= 160 && def->dwarf_id <= 161) {
+            return def->dwarf_id - 160 + 13;
+        }
+        r = 13;
+        break;
+    case 0x1b: /* und */
+        if (def->dwarf_id >= 162 && def->dwarf_id <= 163) {
+            return def->dwarf_id - 162 + 13;
+        }
+        r = 13;
+        break;
+    }
+    if (def->dwarf_id >= 144 && def->dwarf_id < 144 - 8 + r) {
+        return def->dwarf_id - 144 + 8;
+    }
+    return -1;
+}
+
+static int search_reg_value(StackFrame * frame, RegisterDefinition * def, uint64_t * v) {
+    for (;;) {
+        int n;
+        if (read_reg_value(frame, def, v) == 0) return 0;
+        if (frame->is_top_frame) break;
+        n = get_next_frame(frame->ctx, get_info_frame(frame->ctx, frame));
+        if (get_frame_info(frame->ctx, n, &frame) < 0) break;
+    }
+    errno = ERR_OTHER;
+    return -1;
 }
 
 static uint32_t calc_shift(uint32_t shift_type, uint32_t shift_imm, uint32_t val) {
@@ -846,13 +909,11 @@ static void trace_arm_branch_instruction(uint32_t instr) {
 
 static void trace_arm_mrs_msr(uint32_t instr) {
     uint32_t cond = (instr >> 28) & 0xf;
+    RegData * psr = instr & (1 << 22) ? &spsr_data : &cpsr_data;
     if (instr & (1 << 21)) {
         uint8_t rn = instr & 0xf;
-        if (instr & (1 << 22)) {
-            /* SPSR is not traced */
-        }
-        else if (cond != 14) {
-            cpsr_data.o = 0;
+        if (cond != 14) {
+            psr->o = 0;
         }
         else {
             uint32_t mask = 0;
@@ -863,26 +924,23 @@ static void trace_arm_mrs_msr(uint32_t instr) {
             if (mask) {
                 chk_loaded(rn);
                 if (!reg_data[rn].o) {
-                    cpsr_data.o = 0;
+                    psr->o = 0;
                 }
                 else {
-                    cpsr_data.v &= ~mask;
-                    cpsr_data.v |= reg_data[rn].v & mask;
-                    cpsr_data.o = REG_VAL_OTHER;
+                    psr->v &= ~mask;
+                    psr->v |= reg_data[rn].v & mask;
+                    psr->o = REG_VAL_OTHER;
                 }
             }
         }
     }
     else {
         uint8_t rd = (instr & 0x0000f000) >> 12;
-        if (instr & (1 << 22)) {
-            reg_data[rd].o = 0;
-        }
-        else if (cond != 14) {
+        if (cond != 14) {
             reg_data[rd].o = 0;
         }
         else {
-            reg_data[rd] = cpsr_data;
+            reg_data[rd] = *psr;
         }
     }
 }
@@ -1333,6 +1391,25 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
         else
             reg_data[rn].v -= 8;
     }
+
+    if (rd == 15 && (instr & (1 << 20)) != 0) {
+        /* Return from exception - copies the SPSR to the CPSR */
+        RegisterDefinition * def;
+        for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+            int r = is_banked_reg_visible(def, spsr_data.v & 0x1f);
+            if (r >= 0 && r != is_banked_reg_visible(def, cpsr_data.v & 0x1f)) {
+                uint64_t v = 0;
+                if (search_reg_value(stk_frame, def, &v) < 0) {
+                    reg_data[r].o = 0;
+                }
+                else {
+                    reg_data[r].v = (uint32_t)v;
+                    reg_data[r].o = REG_VAL_OTHER;
+                }
+            }
+        }
+        cpsr_data = spsr_data;
+    }
 }
 
 static int trace_arm_ldm_stm(uint32_t instr) {
@@ -1346,6 +1423,7 @@ static int trace_arm_ldm_stm(uint32_t instr) {
     uint16_t regs = (instr & 0x0000ffff);
     uint32_t addr = 0;
     int addr_valid = 0;
+    unsigned banked = 0;
     uint8_t r;
 
     chk_loaded(rn);
@@ -1353,13 +1431,29 @@ static int trace_arm_ldm_stm(uint32_t instr) {
     addr_valid = reg_data[rn].o != 0;
 
     /* S indicates that banked registers (untracked) are used, unless
-     *  this is a load including the PC when the S-bit indicates that
-     *  that CPSR is loaded from SPSR (also untracked, but ignored).
+     * this is a load including the PC when the S-bit indicates that
+     * that CPSR is loaded from SPSR.
      */
-    if (S && (!L || (regs & (1 << 15)) == 0)) {
-        set_errno(ERR_OTHER, "S-bit set requiring banked registers");
-        return -1;
+    if (S) {
+        if (L && (regs & (1 << 15)) != 0) {
+            cpsr_data = spsr_data;
+        }
+        else {
+            switch (cpsr_data.v & 0x1f) {
+            case 0x11:
+                banked = 0x7f00;
+                break;
+            case 0x12:
+            case 0x13:
+            case 0x16:
+            case 0x17:
+            case 0x1b:
+                banked = 0x6000;
+                break;
+            }
+        }
     }
+
     if (rn == 15) {
         set_errno(ERR_OTHER, "r15 used as base register");
         return -1;
@@ -1376,7 +1470,10 @@ static int trace_arm_ldm_stm(uint32_t instr) {
         if (regs & (1 << r)) {
             if (P) addr = U ? addr + 4 : addr - 4;
             if (L) {
-                if (cond != 14) {
+                if (banked & (1 << r)) {
+                    /* Load user bank register */
+                }
+                else if (cond != 14) {
                     reg_data[r].o = 0;
                 }
                 else if (addr_valid) {
@@ -1387,6 +1484,9 @@ static int trace_arm_ldm_stm(uint32_t instr) {
                     /* Invalidate the register as the base reg was invalid */
                     reg_data[r].o = 0;
                 }
+            }
+            else if (banked & (1 << r)) {
+                /* Store user bank register */
             }
             else if (addr_valid) {
                 if (cond != 14) store_invalid(addr);
@@ -1648,13 +1748,12 @@ static int trace_instructions(void) {
     unsigned i;
     RegData org_sp = reg_data[13];
     RegData org_lr = reg_data[14];
+    RegData org_pc = reg_data[15];
     for (;;) {
         unsigned t = 0;
         BranchData * b = NULL;
-        uint32_t sp = 0;
         if (chk_loaded(13) < 0) return -1;
         if (chk_loaded(15) < 0) return -1;
-        sp = reg_data[13].v;
         trace(LOG_STACK, "Stack crawl: pc 0x%08x, sp 0x%08x",
             reg_data[15].o ? reg_data[15].v : 0,
             reg_data[13].o ? reg_data[13].v : 0);
@@ -1682,7 +1781,7 @@ static int trace_instructions(void) {
                 if (r < 0) error = errno;
             }
             if (!error && trace_return) {
-                if (chk_loaded(13) < 0 || !reg_data[13].o || reg_data[13].v < sp) {
+                if (chk_loaded(13) < 0 || !reg_data[13].o) {
                     error = set_errno(ERR_OTHER, "Stack crawl: invalid SP value");
                 }
             }
@@ -1709,11 +1808,12 @@ static int trace_instructions(void) {
         b = branch_data + branch_pos++;
         mem_data = b->mem_data;
         cpsr_data = b->cpsr_data;
+        spsr_data = b->spsr_data;
         memcpy(reg_data, b->reg_data, sizeof(reg_data));
     }
     trace(LOG_STACK, "Stack crawl: Function epilogue not found");
     for (i = 0; i < 16; i++) reg_data[i].o = 0;
-    if (org_sp.v != 0 && org_lr.v != 0) {
+    if (org_sp.v != 0 && org_lr.v != 0 && org_pc.v != org_lr.v) {
         reg_data[13] = org_sp;
         reg_data[15] = org_lr;
     }
@@ -1723,6 +1823,7 @@ static int trace_instructions(void) {
 
 int crawl_stack_frame_arm(StackFrame * frame, StackFrame * down) {
     RegisterDefinition * def = NULL;
+    int spsr_id = -1;
 
 #if USE_MEM_CACHE
     unsigned i;
@@ -1730,7 +1831,9 @@ int crawl_stack_frame_arm(StackFrame * frame, StackFrame * down) {
 #endif
 
     stk_ctx = frame->ctx;
+    stk_frame = frame;
     memset(&cpsr_data, 0, sizeof(cpsr_data));
+    memset(&spsr_data, 0, sizeof(spsr_data));
     memset(&reg_data, 0, sizeof(reg_data));
     memset(&mem_data, 0, sizeof(mem_data));
     branch_pos = 0;
@@ -1739,15 +1842,33 @@ int crawl_stack_frame_arm(StackFrame * frame, StackFrame * down) {
     for (def = get_reg_definitions(stk_ctx); def->name; def++) {
         uint64_t v = 0;
         if (def->dwarf_id == 128) {
-            if (read_reg_value(frame, def, &v) < 0) continue;
+            if (search_reg_value(frame, def, &v) < 0) continue;
             cpsr_data.v = (uint32_t)v;
             cpsr_data.o = REG_VAL_OTHER;
+            switch (cpsr_data.v & 0x1f) {
+            case 0x11: /* fiq */ spsr_id = 129; break;
+            case 0x12: /* irq */ spsr_id = 130; break;
+            case 0x13: /* svc */ spsr_id = 133; break;
+            case 0x16: /* mon */ spsr_id = 134; break;
+            case 0x17: /* abt */ spsr_id = 131; break;
+            case 0x1b: /* und */ spsr_id = 132; break;
+            }
         }
-        else {
-            if (def->dwarf_id < 0 || def->dwarf_id > 15) continue;
+        else if (def->dwarf_id >= 0 && def->dwarf_id <= 15) {
             if (read_reg_value(frame, def, &v) < 0) continue;
             reg_data[def->dwarf_id].v = (uint32_t)v;
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
+        }
+    }
+
+    if (spsr_id > 0) {
+        for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+            uint64_t v = 0;
+            if (def->dwarf_id == spsr_id) {
+                if (search_reg_value(frame, def, &v) < 0) continue;
+                spsr_data.v = (uint32_t)v;
+                spsr_data.o = REG_VAL_OTHER;
+            }
         }
     }
 
@@ -1758,12 +1879,25 @@ int crawl_stack_frame_arm(StackFrame * frame, StackFrame * down) {
             if (!cpsr_data.o) continue;
             if (write_reg_value(down, def, cpsr_data.v) < 0) return -1;
         }
-        else {
-            if (def->dwarf_id < 0 || def->dwarf_id > 15) continue;
-            if (chk_loaded(def->dwarf_id) < 0) continue;
-            if (!reg_data[def->dwarf_id].o) continue;
-            if (write_reg_value(down, def, reg_data[def->dwarf_id].v) < 0) return -1;
-            if (def->dwarf_id == 13) frame->fp = reg_data[def->dwarf_id].v;
+        else if (spsr_id > 0 && def->dwarf_id == spsr_id) {
+            if (!spsr_data.o) continue;
+            if (write_reg_value(down, def, spsr_data.v) < 0) return -1;
+        }
+        else if (def->dwarf_id >= 151 && def->dwarf_id <= 167) {
+            int r = 0;
+            if (!cpsr_data.o) continue;
+            if ((r = is_banked_reg_visible(def, cpsr_data.v & 0x1f)) >= 0) {
+                if (chk_loaded(r) < 0) continue;
+                if (!reg_data[r].o) continue;
+                if (write_reg_value(down, def, reg_data[r].v) < 0) return -1;
+            }
+        }
+        else if (def->dwarf_id >= 0 && def->dwarf_id <= 15) {
+            int r = def->dwarf_id;
+            if (chk_loaded(r) < 0) continue;
+            if (!reg_data[r].o) continue;
+            if (r == 13) frame->fp = reg_data[r].v;
+            if (write_reg_value(down, def, reg_data[r].v) < 0) return -1;
         }
     }
 
