@@ -993,11 +993,7 @@ static BreakInstruction * address_expression_error(Context * ctx, BreakpointInfo
 }
 
 static void plant_breakpoint(Context * ctx, BreakpointInfo * bp, ContextAddress addr, ContextAddress size) {
-    BreakInstruction * v_bi = NULL;
-    v_bi = link_breakpoint_instruction(bp, ctx, addr, size, ctx, 1, addr, NULL);
-    assert(v_bi->virtual_addr);
-    assert(v_bi->ref_cnt > 0);
-    assert(v_bi->ref_cnt > 1 || v_bi->refs[0].bp == bp);
+    link_breakpoint_instruction(bp, ctx, addr, size, ctx, 1, addr, NULL);
 }
 
 static BreakInstruction * plant_at_canonical_address(BreakInstruction * v_bi) {
