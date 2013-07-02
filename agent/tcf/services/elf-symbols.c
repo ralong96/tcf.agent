@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -36,7 +36,7 @@ struct EnumerateSymbols {
     char ctxId[256];
 };
 
-static int enumerate_symbol_table (Context * ctx, ELF_Section * sec,
+static int enumerate_symbol_table(Context * ctx, ELF_Section * sec,
         EnumerateSymbols * enum_syms, EnumerateBatchSymbolsCallBack * call_back, void * args) {
     uint32_t sym_idx;
     int cont = 1;
@@ -48,32 +48,32 @@ static int enumerate_symbol_table (Context * ctx, ELF_Section * sec,
 
         unpack_elf_symbol_info(sec, sym_idx, &sym_info);
 
-        if (elf_tcf_symbol (ctx, &sym_info, &sym) < 0) exception (errno);
+        if (elf_tcf_symbol(ctx, &sym_info, &sym) < 0) exception(errno);
 
-        cont = call_back (args, sym);
+        cont = call_back(args, sym);
     }
     enum_syms->batch_idx = sym_idx;
     if (sym_idx < sec->sym_count && cont != -1) has_more = 1;
     return has_more;
 }
 
-int elf_enumerate_symbols (Context * ctx, const char * file_name, EnumerateSymbols ** enum_syms, EnumerateBatchSymbolsCallBack * call_back, void * args) {
+int elf_enumerate_symbols(Context * ctx, const char * file_name, EnumerateSymbols ** enum_syms, EnumerateBatchSymbolsCallBack * call_back, void * args) {
     Trap trap;
     ELF_File * file;
     unsigned sec_idx;
     int has_more = 0;
 
     if (!set_trap(&trap)) {
-        loc_free (*enum_syms);
+        loc_free(*enum_syms);
         *enum_syms = NULL;
         return -1;
     }
 
     if (ctx == NULL && file_name == NULL) {
-        assert (*enum_syms != NULL);
+        assert(*enum_syms != NULL);
 
-        file = elf_open ((*enum_syms)->file_name);
-        if (file == NULL) exception (errno);
+        file = elf_open((*enum_syms)->file_name);
+        if (file == NULL) exception(errno);
 
         /*
          * Check that the file is identical to the initial file and the context
@@ -85,8 +85,8 @@ int elf_enumerate_symbols (Context * ctx, const char * file_name, EnumerateSymbo
         }
         else {
             ctx = id2ctx((*enum_syms)->ctxId);
-            if (ctx == NULL) exception (ERR_INV_CONTEXT);
-            else if (ctx->exited) exception (ERR_ALREADY_EXITED);
+            if (ctx == NULL) exception(ERR_INV_CONTEXT);
+            else if (ctx->exited) exception(ERR_ALREADY_EXITED);
         }
         sec_idx = (*enum_syms)->sec_idx;
     }
@@ -95,10 +95,10 @@ int elf_enumerate_symbols (Context * ctx, const char * file_name, EnumerateSymbo
         unsigned dynsym_idx = 0;
         unsigned ix;
 
-        assert (file_name != NULL && enum_syms != NULL && *enum_syms == NULL);
+        assert(file_name != NULL && enum_syms != NULL && *enum_syms == NULL);
 
-        file = elf_open (file_name);
-        if (file == NULL) exception (errno);
+        file = elf_open(file_name);
+        if (file == NULL) exception(errno);
 
         if (file->sections == NULL) str_exception(ERR_OTHER, "The file does not have sections");
 
@@ -117,11 +117,11 @@ int elf_enumerate_symbols (Context * ctx, const char * file_name, EnumerateSymbo
         if (symtab_idx != 0) sec_idx = symtab_idx;
         else sec_idx = dynsym_idx;
 
-        *enum_syms = (EnumerateSymbols *)loc_alloc_zero (sizeof (EnumerateSymbols));
-        strlcpy ((*enum_syms)->file_name, file_name, sizeof ((*enum_syms)->file_name));
-        if (strlen (file_name) != strlen ((*enum_syms)->file_name)) str_exception (ERR_OTHER, "File pathname too long");
+        *enum_syms = (EnumerateSymbols *)loc_alloc_zero(sizeof(EnumerateSymbols));
+        strlcpy((*enum_syms)->file_name, file_name, sizeof((*enum_syms)->file_name));
+        if (strlen(file_name) != strlen((*enum_syms)->file_name)) str_exception(ERR_OTHER, "File pathname too long");
 
-        strlcpy ((*enum_syms)->ctxId, ctx->id, sizeof ((*enum_syms)->ctxId));
+        strlcpy((*enum_syms)->ctxId, ctx->id, sizeof((*enum_syms)->ctxId));
         (*enum_syms)->dev = file->dev;
         (*enum_syms)->ino = file->ino;
         (*enum_syms)->mtime = file->mtime;
@@ -133,7 +133,7 @@ int elf_enumerate_symbols (Context * ctx, const char * file_name, EnumerateSymbo
     clear_trap(&trap);
 
     if (has_more == 0) {
-        loc_free (*enum_syms);
+        loc_free(*enum_syms);
         *enum_syms = NULL;
     }
 
