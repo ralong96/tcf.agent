@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,8 +22,13 @@
 #include <machine/x86_64/tcf/dwarfreloc-mdep.h>
 #undef elf_relocate
 
+#define elf_relocate elf_relocate_arm
+#include <machine/arm/tcf/dwarfreloc-mdep.h>
+#undef elf_relocate
+
 static ElfRelocateFunc elf_relocate_funcs[] = {
-    { EM_386, elf_relocate_i386 },
-    { EM_X86_64, elf_relocate_x86_64 },
+    { EM_386,       elf_relocate_i386 },
+    { EM_X86_64,    elf_relocate_x86_64 },
+    { EM_ARM,       elf_relocate_arm },
     { EM_NONE, NULL }
 };
