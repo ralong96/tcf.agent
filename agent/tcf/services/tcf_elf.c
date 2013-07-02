@@ -1424,19 +1424,14 @@ int cmp_symbol_names(const char * x, const char * y) {
 
 void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * info) {
     ELF_File * file = sym_sec->file;
-    ELF_Section * str_sec = NULL;
-    char * str_pool = NULL;
-    size_t str_pool_size = 0;
+    size_t st_name = 0;
+
     memset(info, 0, sizeof(ELF_SymbolInfo));
     if (index >= sym_sec->size / sym_sec->entsize) str_exception(ERR_INV_FORMAT, "Invalid ELF symbol index");
-    if (sym_sec->link == 0 || sym_sec->link >= file->section_cnt) str_exception(ERR_INV_FORMAT, "Invalid symbol section");
-    str_sec = file->sections + sym_sec->link;
     if (elf_load(sym_sec) < 0) exception(errno);
-    if (elf_load(str_sec) < 0) exception(errno);
-    str_pool = (char *)str_sec->data;
-    str_pool_size = (size_t)str_sec->size;
     info->sym_section = sym_sec;
     info->sym_index = index;
+
     if (file->elf64) {
         Elf64_Sym s = *(Elf64_Sym *)((U1_T *)sym_sec->data + sym_sec->entsize * index);
         if (file->byte_swap) {
@@ -1445,14 +1440,8 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
             SWAP(s.st_size);
             SWAP(s.st_value);
         }
+        st_name = (size_t)s.st_name;
         info->section_index = s.st_shndx;
-        if (s.st_shndx > 0 && s.st_shndx < file->section_cnt) {
-            info->section = file->sections + s.st_shndx;
-        }
-        if (s.st_name > 0) {
-            if (s.st_name >= str_pool_size) str_exception(ERR_INV_FORMAT, "Invalid ELF string pool index");
-            info->name = str_pool + s.st_name;
-        }
         info->bind = ELF64_ST_BIND(s.st_info);
         info->type = ELF64_ST_TYPE(s.st_info);
         info->value = s.st_value;
@@ -1466,18 +1455,25 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
             SWAP(s.st_size);
             SWAP(s.st_value);
         }
+        st_name = (size_t)s.st_name;
         info->section_index = s.st_shndx;
-        if (s.st_shndx > 0 && s.st_shndx < file->section_cnt) {
-            info->section = file->sections + s.st_shndx;
-        }
-        if (s.st_name > 0) {
-            if (s.st_name >= str_pool_size) str_exception(ERR_INV_FORMAT, "Invalid ELF string pool index");
-            info->name = str_pool + s.st_name;
-        }
         info->bind = ELF32_ST_BIND(s.st_info);
         info->type = ELF32_ST_TYPE(s.st_info);
         info->value = s.st_value;
         info->size = s.st_size;
+    }
+
+    if (info->section_index > 0 && info->section_index < file->section_cnt) {
+        info->section = file->sections + info->section_index;
+    }
+
+    if (st_name > 0) {
+        ELF_Section * str_sec = NULL;
+        if (sym_sec->link == 0 || sym_sec->link >= file->section_cnt) str_exception(ERR_INV_FORMAT, "Invalid symbol section");
+        str_sec = file->sections + sym_sec->link;
+        if (st_name >= str_sec->size) str_exception(ERR_INV_FORMAT, "Invalid ELF string pool index");
+        if (elf_load(str_sec) < 0) exception(errno);
+        info->name = (char *)str_sec->data + (size_t)st_name;
     }
 
     if (info->name == NULL && info->type == STT_SECTION &&
