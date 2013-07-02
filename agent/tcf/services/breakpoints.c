@@ -110,7 +110,7 @@ struct InstructionRef {
     BreakpointInfo * bp;
     Context * ctx; /* "breakpoint" group context, see CONTEXT_GROUP_BREAKPOINT */
     ContextAddress addr;
-    int cnt;
+    unsigned cnt;
 };
 
 #define MAX_BI_SIZE 16
@@ -118,6 +118,7 @@ struct InstructionRef {
 struct BreakInstruction {
     LINK link_all;
     LINK link_adr;
+    LINK link_lst;
     ContextBreakpoint cb; /* cb.ctx is "canonical" context, see context_get_canonical_addr() */
     char saved_code[MAX_BI_SIZE];
     char planted_code[MAX_BI_SIZE];
@@ -126,22 +127,23 @@ struct BreakInstruction {
     ErrorReport * address_error;
     int stepping_over_bp;
     InstructionRef * refs;
-    int ref_size;
-    int ref_cnt;
+    unsigned ref_size;
+    unsigned ref_cnt;
     uint8_t no_addr;
     uint8_t virtual_addr;
+    uint8_t hardware;
     uint8_t valid;       /* 1 if 'refs' array is valid */
     uint8_t planted;
     uint8_t dirty;       /* the instruction is planted, but planting data is obsolete */
     uint8_t unsupported; /* context_plant_breakpoint() returned ERR_UNSUPPORTED */
-    BreakInstruction * ph_addr_bi;
+    uint8_t planted_as_sw_bp;
 };
 
 struct EvaluationArgs {
     int in_cache;
     BreakpointInfo * bp;
     Context * ctx;
-    int index;
+    unsigned index;
 };
 
 struct ConditionEvaluationRequest {
@@ -155,7 +157,7 @@ struct LocationEvaluationRequest {
 #   define LOC_EVALUATION_BP_MAX 8
 #   define LOC_EVALUATION_BP_ALL 9
     BreakpointInfo * bp_arr[LOC_EVALUATION_BP_MAX];
-    int bp_cnt; /* bp_cnt > LOC_EVALUATION_BP_MAX means all breakpoints */
+    unsigned bp_cnt; /* bp_cnt > LOC_EVALUATION_BP_MAX means all breakpoints */
 };
 
 struct EvaluationRequest {
@@ -165,8 +167,8 @@ struct EvaluationRequest {
     LocationEvaluationRequest loc_posted;
     LocationEvaluationRequest loc_active;
     ConditionEvaluationRequest * bp_arr;
-    int bp_cnt;
-    int bp_max;
+    unsigned bp_cnt;
+    unsigned bp_max;
 };
 
 struct ContextExtensionBP {
@@ -177,6 +179,7 @@ struct ContextExtensionBP {
     Context * bp_grp;
     int empty_bp_grp;
     int instruction_cnt;
+    int flush_mode;
     LINK link_hit_count;
 };
 
@@ -202,6 +205,7 @@ static unsigned listener_max = 0;
 
 #define link_all2bi(A)  ((BreakInstruction *)((char *)(A) - offsetof(BreakInstruction, link_all)))
 #define link_adr2bi(A)  ((BreakInstruction *)((char *)(A) - offsetof(BreakInstruction, link_adr)))
+#define link_lst2bi(A)  ((BreakInstruction *)((char *)(A) - offsetof(BreakInstruction, link_lst)))
 
 #define ID2BP_HASH_SIZE (32 * MEM_USAGE_FACTOR - 1)
 
@@ -255,21 +259,6 @@ static unsigned get_bp_access_types(BreakpointInfo * bp, int virtual_addr) {
     return access_types;
 }
 
-static unsigned get_bi_access_types(BreakInstruction * bi) {
-    int i;
-    unsigned access_types = 0;
-    if (bi->no_addr) access_types |= CTX_BP_ACCESS_NO_ADDRESS;
-    for (i = 0; i < bi->ref_cnt; i++) {
-        if (bi->refs[i].cnt) access_types |= get_bp_access_types(bi->refs[i].bp, bi->virtual_addr);
-    }
-    return access_types;
-}
-
-static int is_software_break_instruction(BreakInstruction * bi) {
-    unsigned mask = ~(unsigned)(CTX_BP_ACCESS_VIRTUAL | CTX_BP_ACCESS_SOFTWARE);
-    return (bi->cb.access_types & mask) == CTX_BP_ACCESS_INSTRUCTION && bi->cb.length == 1 && !bi->virtual_addr;
-}
-
 #ifndef NDEBUG
 static int check_all_stopped(Context * ctx) {
     LINK * l;
@@ -296,17 +285,16 @@ static void plant_instruction(BreakInstruction * bi) {
     assert(!bi->dirty);
     assert(!bi->cb.ctx->exited);
     assert(!bi->cb.ctx->exiting);
-    assert(bi->valid || bi->virtual_addr);
-    if (bi->address_error != NULL) return;
+    assert(bi->valid);
+    assert(bi->address_error == NULL);
     assert(check_all_stopped(bi->cb.ctx));
 
     bi->saved_size = 0;
-    bi->cb.access_types = get_bi_access_types(bi);
 
     if (context_plant_breakpoint(&bi->cb) < 0) error = errno;
-    bi->unsupported = get_error_code(error) == ERR_UNSUPPORTED;
+    bi->unsupported = error && get_error_code(error) == ERR_UNSUPPORTED;
 
-    if (bi->unsupported && is_software_break_instruction(bi)) {
+    if (bi->unsupported && !bi->virtual_addr && !bi->hardware) {
         uint8_t * break_inst = get_break_instruction(bi->cb.ctx, &bi->saved_size);
         if (break_inst == NULL) {
             error = set_errno(ERR_OTHER, "The context does not support software breakpoints");
@@ -333,7 +321,7 @@ static void plant_instruction(BreakInstruction * bi) {
 
     rp = get_error_report(error);
     if (saved_size != bi->saved_size || !compare_error_reports(bi->planting_error, rp)) {
-        int i;
+        unsigned i;
         release_error_report(bi->planting_error);
         bi->planting_error = rp;
         for (i = 0; i < bi->ref_cnt; i++) {
@@ -395,12 +383,12 @@ static BreakInstruction * find_instruction(Context * ctx, int virtual_addr,
         BreakInstruction * bi = link_adr2bi(l);
         if (bi->cb.ctx == ctx &&
             bi->cb.address == address &&
+            bi->cb.length == access_size &&
+            bi->cb.access_types == access_types &&
             bi->virtual_addr == virtual_addr &&
             bi->no_addr == 0)
         {
-            if (bi->cb.access_types == access_types && bi->cb.length == access_size) return bi;
-            if (!virtual_addr && access_types == CTX_BP_ACCESS_INSTRUCTION && access_size == 1 &&
-                is_software_break_instruction(bi)) return bi;
+            return bi;
         }
         l = l->next;
     }
@@ -426,7 +414,7 @@ static BreakInstruction * add_instruction(Context * ctx, int virtual_addr,
 static void clear_instruction_refs(Context * ctx, BreakpointInfo * bp) {
     LINK * l = instructions.next;
     while (l != &instructions) {
-        int i;
+        unsigned i;
         BreakInstruction * bi = link_all2bi(l);
         for (i = 0; i < bi->ref_cnt; i++) {
             InstructionRef * ref = bi->refs + i;
@@ -440,8 +428,10 @@ static void clear_instruction_refs(Context * ctx, BreakpointInfo * bp) {
 }
 
 static void free_instruction(BreakInstruction * bi) {
+    assert(bi->dirty == 0);
     assert(bi->planted == 0);
     assert(bi->ref_cnt == 0);
+    assert(bi->stepping_over_bp == 0);
     list_remove(&bi->link_all);
     list_remove(&bi->link_adr);
     context_unlock(bi->cb.ctx);
@@ -451,58 +441,160 @@ static void free_instruction(BreakInstruction * bi) {
     loc_free(bi);
 }
 
-static void post_location_evaluation_request(Context * ctx, BreakpointInfo * bp);
+static BreakInstruction * plant_at_canonical_address(BreakInstruction * v_bi);
+
+static void validate_bi_refs(BreakInstruction * bi) {
+    unsigned i = 0;
+    assert(!bi->valid);
+    while (i < bi->ref_cnt) {
+        InstructionRef * ref = bi->refs + i;
+        if (ref->cnt == 0 || ref->ctx->exiting || ref->ctx->exited) {
+            ref->bp->instruction_cnt--;
+            ref->bp->status_changed = 1;
+            EXT(ref->ctx)->instruction_cnt--;
+            context_unlock(ref->ctx);
+            memmove(ref, ref + 1, sizeof(InstructionRef) * (bi->ref_cnt - i - 1));
+            if (bi->planted) bi->dirty = 1;
+            bi->ref_cnt--;
+        }
+        else {
+            if (ref->bp->attrs_changed && bi->planted) bi->dirty = 1;
+            i++;
+        }
+    }
+    bi->valid = 1;
+}
 
 static void flush_instructions(void) {
+    LINK lst;
     LINK * l = instructions.next;
     while (l != &instructions) {
-        int i = 0;
+        BreakInstruction * bi = link_all2bi(l);
+        ContextExtensionBP * ext = EXT(bi->cb.ctx);
+        list_init(&bi->link_lst);
+        ext->flush_mode = 0;
+        l = l->next;
+    }
+    list_init(&lst);
+
+    /* Validate references */
+    l = instructions.next;
+    while (l != &instructions) {
         BreakInstruction * bi = link_all2bi(l);
         l = l->next;
-        if (bi->valid) continue;
-        while (i < bi->ref_cnt) {
-            InstructionRef * ref = bi->refs + i;
-            if (ref->cnt == 0 || ref->ctx->exiting || ref->ctx->exited) {
-                ref->bp->instruction_cnt--;
-                ref->bp->status_changed = 1;
-                EXT(ref->ctx)->instruction_cnt--;
-                context_unlock(ref->ctx);
-                memmove(ref, ref + 1, sizeof(InstructionRef) * (bi->ref_cnt - i - 1));
-                if (bi->planted) bi->dirty = 1;
-                bi->ref_cnt--;
-                if (bi->virtual_addr && !bi->cb.ctx->exited) {
-                    /* If hardware breakpoint is changed or removed, it can free hardware resources.
-                     * We have to try to replant other breakpoints in the context.
-                     * Note: bi->cb.ctx cannot be used if 'bi' is non-virtual breakpoint,
-                     * because in such case the context represents canonical address space,
-                     * which can be different from the breakpoint address space. */
-                    post_location_evaluation_request(bi->cb.ctx, NULL);
+        if (!bi->valid) {
+            ContextExtensionBP * ext = EXT(bi->cb.ctx);
+            ext->flush_mode = 1;
+            bi->planted_as_sw_bp = 0;
+            bi->hardware = 1;
+            if (bi->no_addr == 0) {
+                static const unsigned mask = ~(unsigned)(CTX_BP_ACCESS_VIRTUAL | CTX_BP_ACCESS_SOFTWARE);
+                if ((bi->cb.access_types & mask) == CTX_BP_ACCESS_INSTRUCTION && bi->cb.length == 1) {
+                    unsigned i;
+                    bi->hardware = 0;
+                    for (i = 0; i < bi->ref_cnt; i++) {
+                        char * type = bi->refs[i].bp->type;
+                        if (bi->refs[i].cnt == 0) continue;
+                        if (type == NULL) continue;
+                        if (strcmp(type, "Hardware") == 0) {
+                            bi->hardware = 1;
+                            break;
+                        }
+                    }
                 }
             }
-            else {
-                if (ref->bp->attrs_changed && bi->planted) bi->dirty = 1;
-                i++;
+            if (bi->hardware || bi->virtual_addr) {
+                validate_bi_refs(bi);
             }
         }
-        bi->valid = 1;
-        if (!bi->stepping_over_bp) {
-            if (bi->ref_cnt == 0) {
-                if (bi->planted) remove_instruction(bi);
-                if (!bi->planted) {
-                    assert(!bi->dirty);
-                    free_instruction(bi);
+    }
+
+    /* Unplant breakpoints, build planting list */
+    l = instructions.next;
+    while (l != &instructions) {
+        BreakInstruction * bi = link_all2bi(l);
+        ContextExtensionBP * ext = EXT(bi->cb.ctx);
+        l = l->next;
+        if (!bi->valid) {
+            assert(!bi->hardware);
+            assert(!bi->virtual_addr);
+            list_add_last(&bi->link_lst, &lst);
+            continue;
+        }
+        if (bi->stepping_over_bp) continue;
+        if (ext->flush_mode == 0) {
+            if (!bi->planted && bi->ref_cnt == 0) {
+                free_instruction(bi);
+            }
+            continue;
+        }
+        if (bi->planted) {
+            if (bi->dirty || bi->address_error) {
+                remove_instruction(bi);
+            }
+            else if (bi->ref_cnt == 0 && bi->virtual_addr) {
+                remove_instruction(bi);
+            }
+            else if (bi->saved_size == 0 && !bi->hardware) {
+                /* Free space for hardware breakpoints */
+                remove_instruction(bi);
+            }
+        }
+        if (!bi->planted && bi->ref_cnt > 0 && !bi->address_error &&
+                !bi->cb.ctx->exiting && !bi->cb.ctx->exited) {
+            list_add_last(&bi->link_lst, &lst);
+        }
+    }
+
+    /* Plant hardware breakpoints first */
+    l = lst.next;
+    while (l != &lst) {
+        BreakInstruction * bi = link_lst2bi(l);
+        l = l->next;
+        if (bi->hardware) {
+            if (!bi->planted) plant_instruction(bi);
+            list_remove(&bi->link_lst);
+        }
+    }
+
+    /* Plant the rest of virtual address breakpoints */
+    l = lst.next;
+    while (l != &lst) {
+        BreakInstruction * bi = link_lst2bi(l);
+        l = l->next;
+        if (bi->virtual_addr) {
+            if (!bi->planted) plant_instruction(bi);
+            if (!bi->planted && bi->unsupported) {
+                BreakInstruction * ca = plant_at_canonical_address(bi);
+                if (ca != NULL) {
+                    bi->planted_as_sw_bp = 1;
+                    assert(!ca->hardware);
+                    assert(!ca->virtual_addr);
+                    if (list_is_empty(&ca->link_lst)) {
+                        list_add_last(&ca->link_lst, &lst);
+                    }
                 }
             }
-            else if (bi->ph_addr_bi != NULL) {
-                assert(!bi->planted);
-                assert(!bi->dirty);
-            }
-            else if (!bi->planted) {
-                plant_instruction(bi);
-            }
-            else if (bi->dirty && remove_instruction(bi) == 0) {
-                plant_instruction(bi);
-            }
+            list_remove(&bi->link_lst);
+        }
+    }
+
+    /* Plant canonical address breakpoints */
+    l = lst.next;
+    while (l != &lst) {
+        BreakInstruction * bi = link_lst2bi(l);
+        l = l->next;
+        assert(!bi->no_addr);
+        assert(!bi->hardware);
+        assert(!bi->virtual_addr);
+        assert(!bi->address_error);
+        if (!bi->valid) validate_bi_refs(bi);
+        if (bi->stepping_over_bp) continue;
+        if (bi->ref_cnt == 0) {
+            if (bi->planted) remove_instruction(bi);
+        }
+        else {
+            if (!bi->planted) plant_instruction(bi);
         }
     }
 }
@@ -558,7 +650,7 @@ void clone_breakpoints_on_process_fork(Context * parent, Context * child) {
     LINK * l = instructions.next;
     assert(child == context_get_group(child, CONTEXT_GROUP_PROCESS));
     while (l != &instructions) {
-        int i;
+        unsigned i;
         BreakInstruction * ci = NULL;
         BreakInstruction * bi = link_all2bi(l);
         l = l->next;
@@ -589,7 +681,7 @@ int unplant_breakpoints(Context * ctx) {
     int error = 0;
     LINK * l = instructions.next;
     while (l != &instructions) {
-        int i;
+        unsigned i;
         BreakInstruction * bi = link_all2bi(l);
         l = l->next;
         if (bi->cb.ctx != ctx) continue;
@@ -705,10 +797,10 @@ static void write_breakpoint_status(OutputStream * out, BreakpointInfo * bp) {
         write_stream(out, ':');
         write_stream(out, '[');
         while (l != &instructions) {
-            int i = 0;
+            unsigned i;
             BreakInstruction * bi = link_all2bi(l);
             l = l->next;
-            if (bi->ph_addr_bi != NULL) continue;
+            if (bi->planted_as_sw_bp) continue;
             for (i = 0; i < bi->ref_cnt; i++) {
                 if (bi->refs[i].bp != bp) continue;
                 if (cnt > 0) write_stream(out, ',');
@@ -849,6 +941,7 @@ static BreakInstruction * link_breakpoint_instruction(
         context_lock(ctx);
         bi->cb.ctx = ctx;
         bi->no_addr = 1;
+        bi->cb.access_types = CTX_BP_ACCESS_NO_ADDRESS;
         bi->address_error = address_error;
     }
     else {
@@ -858,11 +951,11 @@ static BreakInstruction * link_breakpoint_instruction(
             bi = add_instruction(mem, virtual_addr, mem_addr, access_types, size);
         }
         else {
-            int i = 0;
+            unsigned i = 0;
             while (i < bi->ref_cnt) {
                 ref = bi->refs + i;
                 if (ref->bp == bp && ref->ctx == ctx) {
-                    assert(!bi->valid);
+                    assert(!bi->valid || !bi->virtual_addr);
                     ref->addr = ctx_addr;
                     ref->cnt++;
                     return bi;
@@ -889,53 +982,50 @@ static BreakInstruction * link_breakpoint_instruction(
     return bi;
 }
 
-static void address_expression_error(Context * ctx, BreakpointInfo * bp, int error) {
+static BreakInstruction * address_expression_error(Context * ctx, BreakpointInfo * bp, int error) {
     ErrorReport * rp = NULL;
-    if (get_error_code(errno) == ERR_CACHE_MISS) return;
     assert(error != 0);
+    if (get_error_code(error) == ERR_CACHE_MISS) return NULL;
     assert(bp->instruction_cnt == 0 || bp->error == NULL);
     rp = get_error_report(error);
     assert(rp != NULL);
-    link_breakpoint_instruction(bp, ctx, 0, 0, NULL, 0, 0, rp);
+    return link_breakpoint_instruction(bp, ctx, 0, 0, NULL, 0, 0, rp);
 }
 
 static void plant_breakpoint(Context * ctx, BreakpointInfo * bp, ContextAddress addr, ContextAddress size) {
     BreakInstruction * v_bi = NULL;
-    BreakInstruction * p_bi = NULL;
-    int need_p_bp = 1;
+    v_bi = link_breakpoint_instruction(bp, ctx, addr, size, ctx, 1, addr, NULL);
+    assert(v_bi->virtual_addr);
+    assert(v_bi->ref_cnt > 0);
+    assert(v_bi->ref_cnt > 1 || v_bi->refs[0].bp == bp);
+}
 
-    if (context_get_supported_bp_access_types(ctx) & CTX_BP_ACCESS_VIRTUAL) {
-        v_bi = link_breakpoint_instruction(bp, ctx, addr, size, ctx, 1, addr, NULL);
-        if (v_bi->planted && bp->attrs_changed) remove_instruction(v_bi);
-        if (!v_bi->planted) plant_instruction(v_bi);
-        if (v_bi->planted || !v_bi->unsupported) need_p_bp = 0;
-    }
+static BreakInstruction * plant_at_canonical_address(BreakInstruction * v_bi) {
+    Context * ctx = v_bi->cb.ctx;
+    ContextAddress addr = v_bi->cb.address;
+    ContextAddress size = v_bi->cb.length;
+    BreakInstruction * c_bi = NULL;
+    ContextAddress mem_addr = 0;
+    Context * mem = NULL;
+    int error = 0;
+    unsigned i;
 
-    if (need_p_bp) {
-        Context * mem = NULL;
-        ContextAddress mem_addr = 0;
-        if (context_get_canonical_addr(ctx, addr, &mem, &mem_addr, NULL, NULL) < 0) {
-            address_expression_error(ctx, bp, errno);
+    if (context_get_canonical_addr(ctx, addr, &mem, &mem_addr, NULL, NULL) < 0) error = errno;
+
+    for (i = 0; i < v_bi->ref_cnt; i++) {
+        BreakpointInfo * bp = v_bi->refs[i].bp;
+        assert(v_bi->refs[i].ctx == ctx);
+        if (error) {
+            c_bi = address_expression_error(ctx, bp, error);
         }
         else {
-            p_bi = link_breakpoint_instruction(bp, ctx, addr, size, mem, 0, mem_addr, NULL);
+            c_bi = link_breakpoint_instruction(bp, ctx, addr, size, mem, 0, mem_addr, NULL);
+            assert(c_bi->ref_cnt > 0);
+            assert(c_bi->virtual_addr == 0);
+            assert(c_bi->ref_cnt > 1 || c_bi->refs[0].bp == bp);
         }
     }
-
-    if (v_bi != NULL) {
-        assert(v_bi->virtual_addr);
-        assert(v_bi->ref_cnt > 0);
-        assert(v_bi->ref_cnt > 1 || v_bi->refs[0].bp == bp);
-        if (v_bi->ref_cnt > 1 && v_bi->ph_addr_bi != p_bi) {
-            /* If hardware breakpoint is changed or removed, it can free hardware resources.
-             * We have to try to replant other breakpoints in the context.
-             * Note: bi->cb.ctx cannot be used if 'bi' is non-virtual breakpoint,
-             * because in such case the context represents canonical address space,
-             * which can be different from the breakpoint address space. */
-            post_location_evaluation_request(v_bi->cb.ctx, NULL);
-        }
-        v_bi->ph_addr_bi = p_bi;
-    }
+    return c_bi;
 }
 
 static void event_replant_breakpoints(void * arg);
@@ -954,12 +1044,13 @@ static EvaluationRequest * create_evaluation_request(Context * ctx) {
 }
 
 static ConditionEvaluationRequest * add_condition_evaluation_request(EvaluationRequest * req, Context * ctx, BreakpointInfo * bp) {
-    int i;
+    unsigned i;
     ConditionEvaluationRequest * c = NULL;
 
     assert(bp->instruction_cnt);
     assert(bp->error == NULL);
     assert(list_is_empty(&req->link_active));
+    assert(ctx->stopped_by_bp || ctx->stopped_by_cb);
 
     for (i = 0; i < req->bp_cnt; i++) {
         if (req->bp_arr[i].ctx == ctx && req->bp_arr[i].bp == bp) return NULL;
@@ -1140,13 +1231,17 @@ static void notify_breakpoint_status(BreakpointInfo * bp) {
         LINK * m = NULL;
         int instruction_cnt = 0;
         for (m = instructions.next; m != &instructions; m = m->next) {
-            int i;
+            unsigned i;
             BreakInstruction * bi = link_all2bi(m);
             assert(bi->valid);
             assert(bi->ref_cnt <= bi->ref_size);
             assert(bi->cb.ctx->ref_count > 0);
             for (i = 0; i < bi->ref_cnt; i++) {
                 assert(bi->refs[i].cnt > 0);
+                assert(bi->refs[i].ctx->ref_count > 0);
+                if (bi->virtual_addr || bi->address_error || bi->no_addr) {
+                    assert(bi->refs[i].ctx == bi->cb.ctx);
+                }
                 if (bi->refs[i].bp == bp) {
                     instruction_cnt++;
                     assert(id2ctx(bi->refs[i].ctx->id) == NULL ||
@@ -1200,8 +1295,8 @@ static void done_replanting_breakpoints(void) {
 static void done_condition_evaluation(EvaluationRequest * req) {
     Context ** trig_ctx = (Context **)tmp_alloc_zero(sizeof(Context *) * req->bp_cnt);
     size_t * trig_size = (size_t *)tmp_alloc_zero(sizeof(size_t) * req->bp_cnt);
-    int trig_cnt = 0;
-    int i, j;
+    unsigned trig_cnt = 0;
+    unsigned i, j;
 
     for (i = 0; i < req->bp_cnt; i++) {
         Context * ctx = req->bp_arr[i].ctx;
@@ -1264,7 +1359,7 @@ static void done_all_evaluations(void) {
     l = evaluations_active.next;
     while (l != &evaluations_active) {
         EvaluationRequest * req = link_active2erl(l);
-        int i;
+        unsigned i;
 
         l = l->next;
 
@@ -1578,7 +1673,7 @@ static void evaluate_bp_location(void * x) {
 
 static void event_replant_breakpoints(void * arg) {
     LINK * q;
-    int i;
+    unsigned i;
 
     assert(!list_is_empty(&evaluations_posted));
     if ((uintptr_t)arg != generation_posted) return;
@@ -1691,7 +1786,7 @@ static void replant_breakpoint(BreakpointInfo * bp) {
     if (check_intsructions && bp->instruction_cnt > 0) {
         LINK * l = instructions.next;
         while (l != &instructions) {
-            int i;
+            unsigned i;
             BreakInstruction * bi = link_all2bi(l);
             for (i = 0; i < bi->ref_cnt; i++) {
                 InstructionRef * ref = bi->refs + i;
@@ -2489,7 +2584,7 @@ void delete_breakpoint(BreakpointInfo * bp) {
 }
 
 void iterate_context_breakpoint_links(Context * ctx, ContextBreakpoint * cb, IterateCBLinksCallBack * callback, void * args) {
-    int i;
+    unsigned i;
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT);
     BreakInstruction * bi = (BreakInstruction *)((char *)cb - offsetof(BreakInstruction, cb));
     for (i = 0; i < bi->ref_cnt; i++) {
@@ -2507,7 +2602,7 @@ int is_breakpoint_address(Context * ctx, ContextAddress address) {
 }
 
 void evaluate_breakpoint(Context * ctx) {
-    int i;
+    unsigned i;
     Context * mem = NULL;
     ContextAddress mem_addr = 0;
     BreakInstruction * bi = NULL;
@@ -2609,13 +2704,9 @@ static void safe_restore_breakpoint(void * arg) {
     ext->stepping_over_bp = NULL;
     ext->step_over_bp_cnt = 0;
     bi->stepping_over_bp--;
-    if (bi->stepping_over_bp == 0) {
-        if (generation_done != generation_posted) {
-            bi->valid = 0;
-        }
-        else if (!ctx->exited && !ctx->exiting && bi->ref_cnt > 0 && !bi->planted) {
-            plant_instruction(bi);
-        }
+    if (bi->stepping_over_bp == 0 && bi->valid && bi->ref_cnt > 0 &&
+            !bi->cb.ctx->exited && !bi->cb.ctx->exiting && !bi->planted) {
+        plant_instruction(bi);
     }
     context_unlock(ctx);
 }
@@ -2826,7 +2917,7 @@ static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddre
         if (context_get_canonical_addr(ctx, addr, &mem, &mem_addr, &mem_base, &mem_size) < 0) break;
         if (mem_base + mem_size - mem_addr < sz) sz = mem_base + mem_size - mem_addr;
         while (l != &instructions) {
-            int i;
+            unsigned i;
             BreakInstruction * bi = link_all2bi(l);
             l = l->next;
             if (bi->cb.ctx != mem) continue;
