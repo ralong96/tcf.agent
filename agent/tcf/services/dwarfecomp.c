@@ -27,6 +27,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/dwarf.h>
+#include <tcf/services/dwarfreloc.h>
 #include <tcf/services/dwarfecomp.h>
 #include <tcf/services/elf-loader.h>
 
@@ -128,17 +129,40 @@ static void op_addr(void) {
     ContextAddress addr = 0;
     ELF_Section * section = NULL;
     U8_T pos = 0;
+    int rt = 0;
 
     expr_pos++;
     pos = expr->expr_addr + expr_pos - (U1_T *)expr->section->data;
     dio_EnterSection(&expr->unit->mDesc, expr->section, pos);
-    addr = (ContextAddress)dio_ReadAddress(&section);
+    switch (expr->unit->mDesc.mAddressSize) {
+    case 2: {
+        U2_T x = dio_ReadU2();
+        drl_relocate_in_context(expr_ctx, expr->section, pos, &x, sizeof(x), &section, &rt);
+        addr = x;
+        break;
+    }
+    case 4: {
+        U4_T x = dio_ReadU4();
+        drl_relocate_in_context(expr_ctx, expr->section, pos, &x, sizeof(x), &section, &rt);
+        addr = x;
+        break;
+    }
+    case 8: {
+        U8_T x = dio_ReadU8();
+        drl_relocate_in_context(expr_ctx, expr->section, pos, &x, sizeof(x), &section, &rt);
+        addr = x;
+        break;
+    }
+    default:
+        str_exception(ERR_INV_DWARF, "Invalid data size");
+        return;
+    }
     expr_pos += (size_t)(dio_GetPos() - pos);
     dio_ExitSection();
     if (expr_pos < expr->expr_size && expr->expr_addr[expr_pos] == OP_GNU_push_tls_address) {
-        /* Bug in some versions of GCC: OP_addr used instead of OP_const, don't relocate */
+        /* Bug in some versions of GCC: OP_addr used instead of OP_const, use link-time value */
     }
-    else {
+    else if (!rt) {
         addr = elf_map_to_run_time_address(expr_ctx, expr->unit->mFile, section, addr);
         if (errno) str_exception(errno, "Cannot get object run-time address");
     }

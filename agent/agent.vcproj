@@ -756,6 +756,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\tcf\services\elf-symbols-ext.h"
+				>
+			</File>
+			<File
 				RelativePath=".\tcf\services\elf-symbols.c"
 				>
 			</File>
@@ -1002,6 +1006,10 @@
 						Name="VCCLCompilerTool"
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\tcf\main\main_hooks.h"
+				>
 			</File>
 			<File
 				RelativePath=".\tcf\main\main_log.c"

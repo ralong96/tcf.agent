@@ -210,11 +210,14 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
     return 0;
 }
 
-/* Map ELF symbol table entry value to run-time address in given context address space */
-static int syminfo2address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * address) {
+int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * address) {
     ELF_File * file = info->sym_section->file;
     ELF_Section * sec = NULL;
     U8_T value = info->value;
+
+#ifdef ELF_SYMS_GET_ADDR
+    ELF_SYMS_GET_ADDR;
+#endif
 
     switch (info->type) {
     case STT_NOTYPE:
@@ -301,6 +304,7 @@ static int is_frame_based_object(Symbol * sym) {
 
     if (sym->var != NULL) return 1;
     if (sym->obj != NULL && (sym->obj->mFlags & DOIF_need_frame)) return 1;
+    if (sym->obj != NULL && (sym->obj->mFlags & DOIF_pub_mark)) return 0;
 
     switch (sym->sym_class) {
     case SYM_CLASS_VALUE:
@@ -453,6 +457,7 @@ static void object2symbol(ObjectInfo * obj, Symbol ** res) {
 static ObjectInfo * get_object_type(ObjectInfo * obj) {
     if (obj != NULL) {
         switch (obj->mTag) {
+        case TAG_compile_unit:
         case TAG_global_subroutine:
         case TAG_inlined_subroutine:
         case TAG_subroutine:
@@ -1028,7 +1033,7 @@ static void find_by_name_in_sym_table(ELF_File * file, const char * name, int gl
             unpack_elf_symbol_info(tbl, n, &sym_info);
             if (equ_symbol_names(name, sym_info.name) && (!globals || sym_info.bind == STB_GLOBAL || sym_info.bind == STB_WEAK)) {
                 ContextAddress addr = 0;
-                if (sym_info.section_index != SHN_ABS && syminfo2address(prs, &sym_info, &addr) == 0) {
+                if (sym_info.section_index != SHN_ABS && elf_symbol_address(prs, &sym_info, &addr) == 0) {
                     UnitAddressRange * range = elf_find_unit(sym_ctx, addr, addr, NULL);
                     if (range != NULL) {
                         ObjectInfo * obj = get_dwarf_children(range->mUnit->mObject);
@@ -1459,6 +1464,11 @@ int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol **
                 0, &loc, &ip, res);
         }
     }
+
+#ifdef ELF_SYMS_BY_ADDR
+    ELF_SYMS_BY_ADDR;
+#endif
+
     if (!found) exception(ERR_SYM_NOT_FOUND);
     clear_trap(&trap);
     return 0;
@@ -2719,6 +2729,10 @@ int get_symbol_index_type(const Symbol * sym, Symbol ** index_type) {
 
 int get_symbol_container(const Symbol * sym, Symbol ** container) {
     ObjectInfo * obj = sym->obj;
+    while (is_array_type_pseudo_symbol(sym)) {
+        sym = sym->base;
+        obj = sym->obj;
+    }
     if (obj != NULL) {
         U8_T origin = 0;
         U8_T spec = 0;
@@ -2995,7 +3009,7 @@ static LocationExpressionCommand * add_location_command(int op) {
 
 static void add_dwarf_location_command(LocationInfo * l, PropertyValue * v) {
     DWARFExpressionInfo info;
-    LocationExpressionCommand * cmd = add_location_command(SFT_CMD_LOCATION);
+    LocationExpressionCommand * cmd = NULL;
 
     dwarf_find_expression(v, sym_ip, &info);
     dwarf_transform_expression(sym_ctx, sym_ip, v->mFrame == STACK_NO_FRAME, &info);
@@ -3014,6 +3028,8 @@ static void add_dwarf_location_command(LocationInfo * l, PropertyValue * v) {
             l->code_size = info.code_addr + info.code_size - l->code_addr;
         }
     }
+    /* Only create the command if no exception was thrown */
+    cmd = add_location_command(SFT_CMD_LOCATION);
     cmd->args.loc.code_addr = info.expr_addr;
     cmd->args.loc.code_size = info.expr_size;
     cmd->args.loc.reg_id_scope = v->mObject->mCompUnit->mRegIdScope;
@@ -3359,7 +3375,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         case STT_OBJECT:
         case STT_FUNC:
         case STT_GNU_IFUNC:
-            if (syminfo2address(sym_ctx, &elf_sym_info, &address)) return -1;
+            if (elf_symbol_address(sym_ctx, &elf_sym_info, &address)) return -1;
             add_location_command(SFT_CMD_NUMBER)->args.num = address;
             return 0;
         }

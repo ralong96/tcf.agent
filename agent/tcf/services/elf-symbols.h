@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -26,6 +26,7 @@
 #include <tcf/framework/context.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/tcf_elf.h>
+#include <tcf/services/elf-symbols-ext.h>
 
 typedef struct EnumerateSymbols EnumerateSymbols;
 typedef int EnumerateBatchSymbolsCallBack(void *, Symbol *);
@@ -40,21 +41,27 @@ typedef int EnumerateBatchSymbolsCallBack(void *, Symbol *);
  * On success returns 0 if there isn't more symbols, or a positive value if
  * there are other symbols to retrieve.
  */
-extern int elf_enumerate_symbols (Context * ctx, const char * file_name, EnumerateSymbols ** enum_syms, EnumerateBatchSymbolsCallBack * call_back, void * args);
+extern int elf_enumerate_symbols(Context * ctx, const char * file_name, EnumerateSymbols ** enum_syms,
+                                 EnumerateBatchSymbolsCallBack * call_back, void * args);
 
 /*
  * Get the ELF symbol info from a TCF symbol.
  * On error returns -1 and sets errno.
  * On success returns 0.
  */
-extern int elf_symbol_info (Symbol * sym, ELF_SymbolInfo * elf_sym);
+extern int elf_symbol_info(Symbol * sym, ELF_SymbolInfo * elf_sym);
 
 /*
  * Get the TCF Symbol from ELF symbol info.
  * On error returns -1 and sets errno.
  * On success returns 0.
  */
-extern int elf_tcf_symbol (Context * ctx, ELF_SymbolInfo * elf_sym, Symbol ** sym);
+extern int elf_tcf_symbol(Context * ctx, ELF_SymbolInfo * elf_sym, Symbol ** sym);
+
+/*
+ * Map ELF symbol table entry value to run-time address in given context address space.
+ */
+extern int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * address);
 
 #endif /* SERVICE_Symbols && !ENABLE_SymbolsProxy && ENABLE_ELF */
 

@@ -366,6 +366,14 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\agent\tcf\framework\sigsets.c"
+				>
+			</File>
+			<File
+				RelativePath="..\..\agent\tcf\framework\sigsets.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\agent\tcf\framework\streams.c"
 				>
 			</File>
@@ -527,6 +535,10 @@
 			</File>
 			<File
 				RelativePath="..\..\agent\tcf\services\elf-loader.h"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\services\elf-symbols-ext.h"
 				>
 			</File>
 			<File

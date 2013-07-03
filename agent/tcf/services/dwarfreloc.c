@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,12 +27,15 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
+#include <tcf/services/elf-symbols.h>
 #include <tcf/services/dwarfreloc.h>
 
+static Context * ctx = NULL;
 static ELF_Section * section = NULL;
 static ELF_Section * relocs = NULL;
 static ELF_Section * symbols = NULL;
 static ELF_Section ** destination_section = NULL;
+static int * run_time_addr = NULL;
 
 static U8_T reloc_offset = 0;
 static U4_T reloc_type = 0;
@@ -74,38 +77,6 @@ static void relocate(void * r) {
             reloc_type = ELF32_R_TYPE(bf.r_info);
             reloc_addend = bf.r_addend;
         }
-        if (sym_index != STN_UNDEF) {
-            Elf32_Sym bf = ((Elf32_Sym *)symbols->data)[sym_index];
-            if (symbols->file->byte_swap) {
-                SWAP(bf.st_name);
-                SWAP(bf.st_value);
-                SWAP(bf.st_size);
-                SWAP(bf.st_info);
-                SWAP(bf.st_other);
-                SWAP(bf.st_shndx);
-            }
-            switch (bf.st_shndx) {
-            case SHN_ABS:
-                sym_value = bf.st_value;
-                break;
-            case SHN_COMMON:
-                str_exception(ERR_INV_FORMAT, "Common relocation record unsupported");
-                break;
-            case SHN_UNDEF:
-                str_exception(ERR_INV_FORMAT, "Invalid relocation record");
-                break;
-            default:
-                if (bf.st_shndx >= symbols->file->section_cnt) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
-                if (symbols->file->type != ET_EXEC) {
-                    sym_value = (symbols->file->sections + bf.st_shndx)->addr + bf.st_value;
-                }
-                else {
-                    sym_value = bf.st_value;
-                }
-                *destination_section = symbols->file->sections + bf.st_shndx;
-                break;
-            }
-        }
     }
     else {
         if (relocs->type == SHT_REL) {
@@ -129,37 +100,40 @@ static void relocate(void * r) {
             reloc_type = ELF64_R_TYPE(bf.r_info);
             reloc_addend = bf.r_addend;
         }
-        if (sym_index != STN_UNDEF) {
-            Elf64_Sym bf = ((Elf64_Sym *)symbols->data)[sym_index];
-            if (symbols->file->byte_swap) {
-                SWAP(bf.st_name);
-                SWAP(bf.st_value);
-                SWAP(bf.st_size);
-                SWAP(bf.st_info);
-                SWAP(bf.st_other);
-                SWAP(bf.st_shndx);
-            }
-            switch (bf.st_shndx) {
-            case SHN_ABS:
-                sym_value = bf.st_value;
-                break;
-            case SHN_COMMON:
-                str_exception(ERR_INV_FORMAT, "Common relocation record unsupported");
-                break;
-            case SHN_UNDEF:
-                str_exception(ERR_INV_FORMAT, "Invalid relocation record");
-                break;
-            default:
-                if (bf.st_shndx >= symbols->file->section_cnt) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
-                if (symbols->file->type != ET_EXEC) {
-                    sym_value = (symbols->file->sections + bf.st_shndx)->addr + bf.st_value;
-                }
-                else {
-                    sym_value = bf.st_value;
-                }
-                *destination_section = symbols->file->sections + bf.st_shndx;
+    }
+
+    if (sym_index != STN_UNDEF) {
+        ELF_SymbolInfo info;
+        unpack_elf_symbol_info(symbols, sym_index, &info);
+        switch (info.section_index) {
+        case SHN_ABS:
+            sym_value = info.value;
+            break;
+        case SHN_COMMON:
+#if SERVICE_Symbols && !ENABLE_SymbolsProxy
+            if (ctx != NULL) {
+                ContextAddress addr = 0;
+                if (elf_symbol_address(ctx, &info, &addr) < 0) exception(errno);
+                sym_value = addr;
+                if (run_time_addr) *run_time_addr = 1;
                 break;
             }
+#endif
+            str_exception(ERR_INV_FORMAT, "Common relocation record unsupported");
+            break;
+        case SHN_UNDEF:
+            str_exception(ERR_INV_FORMAT, "Invalid relocation record");
+            break;
+        default:
+            if (info.section == NULL) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
+            if (symbols->file->type != ET_EXEC) {
+                sym_value = info.section->addr + info.value;
+            }
+            else {
+                sym_value = info.value;
+            }
+            *destination_section = info.section;
+            break;
         }
     }
 
@@ -175,19 +149,23 @@ static void relocate(void * r) {
     func->func();
 }
 
-void drl_relocate(ELF_Section * s, U8_T offset, void * buf, size_t size, ELF_Section ** dst) {
+void drl_relocate_in_context(Context * c, ELF_Section * s, U8_T offset,
+                             void * buf, size_t size, ELF_Section ** dst, int * rt_addr) {
     unsigned i;
     ELF_Section * d = NULL;
 
+    if (rt_addr) *rt_addr = 0;
     if (dst == NULL) dst = &d;
     else *dst = NULL;
     if (!s->relocate) return;
 
+    ctx = c;
     section = s;
     destination_section = dst;
     reloc_offset = offset;
     data_buf = buf;
     data_size = size;
+    run_time_addr = rt_addr;
     for (i = 1; i < s->file->section_cnt; i++) {
         ELF_Section * r = s->file->sections + i;
         if (r->size == 0) continue;
@@ -290,6 +268,10 @@ void drl_relocate(ELF_Section * s, U8_T offset, void * buf, size_t size, ELF_Sec
             }
         }
     }
+}
+
+void drl_relocate(ELF_Section * s, U8_T offset, void * buf, size_t size, ELF_Section ** dst) {
+    drl_relocate_in_context(NULL, s, offset, buf, size, dst, NULL);
 }
 
 #endif /* ENABLE_ELF */

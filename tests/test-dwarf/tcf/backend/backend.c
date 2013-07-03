@@ -64,6 +64,7 @@ static uint8_t frame_data[0x1000];
 static ContextAddress frame_addr = 0x40000000u;
 
 static const char * elf_file_name = NULL;
+static ELF_File * elf_file = NULL;
 static int mem_region_pos = 0;
 static ContextAddress pc = 0;
 static unsigned pass_cnt = 0;
@@ -601,18 +602,19 @@ static void loc_var_func(void * args, Symbol * sym) {
             Symbol * sym_container = NULL;
             Symbol * find_container = NULL;
             if (!found_next) {
+                find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, name, &find_sym);
                 errno = ERR_OTHER;
-                error("Invalid result of find_next_symbol()");
+                error_sym("Invalid result of find_next_symbol()", find_sym);
             }
             found_next = 0;
             if (get_symbol_container(sym, &sym_container) < 0) {
-                error("get_symbol_container");
+                error_sym("get_symbol_container", sym);
             }
             if (find_symbol_in_scope(elf_ctx, STACK_TOP_FRAME, 0, sym_container, name, &find_sym) < 0) {
                 error("find_symbol_in_scope");
             }
             if (get_symbol_container(find_sym, &find_container) < 0) {
-                error("get_symbol_container");
+                error_sym("get_symbol_container", find_sym);
             }
             if (symcmp(sym_container, find_container) != 0) {
                 errno = ERR_OTHER;
@@ -710,6 +712,10 @@ static void loc_var_func(void * args, Symbol * sym) {
                 ok = 1;
             }
         }
+        if (!ok && symbol_class == SYM_CLASS_COMP_UNIT) {
+            /* Comp unit with code ranges */
+            ok = 1;
+        }
         if (!ok) {
             errno = err;
             error_sym("get_symbol_size", sym);
@@ -727,7 +733,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (type_sym_class != SYM_CLASS_TYPE) {
             errno = ERR_OTHER;
-            error("Invalid symbol class of a type");
+            error_sym("Invalid symbol class of a type", type);
         }
         if (get_symbol_type_class(sym, &type_class) < 0) {
             error_sym("get_symbol_type_class", sym);
@@ -941,6 +947,21 @@ static void loc_var_func(void * args, Symbol * sym) {
                 test_composite_type(base_type);
                 test_this_pointer(base_type);
             }
+        }
+    }
+}
+
+static void test_public_names(void) {
+    DWARFCache * cache = get_dwarf_cache(elf_file);
+    unsigned n = 0;
+    while (n < cache->mPubNames.mCnt) {
+        ObjectInfo * obj = cache->mPubNames.mNext[n++].mObject;
+        if (obj != NULL) {
+            Symbol * sym = NULL;
+            if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, obj->mName, &sym) < 0) {
+                error("find_symbol_by_name");
+            }
+            loc_var_func(NULL, sym);
         }
     }
 }
@@ -1204,6 +1225,19 @@ static void next_pc(void) {
             fflush(stdout);
             time_start = time_now;
             loaded = 0;
+            test_public_names();
+            clock_gettime(CLOCK_REALTIME, &time_now);
+            time_diff.tv_sec = time_now.tv_sec - time_start.tv_sec;
+            if (time_now.tv_nsec < time_start.tv_nsec) {
+                time_diff.tv_sec--;
+                time_diff.tv_nsec = time_now.tv_nsec + 1000000000 - time_start.tv_nsec;
+            }
+            else {
+                time_diff.tv_nsec = time_now.tv_nsec - time_start.tv_nsec;
+            }
+            printf("pub names time: %ld.%06ld\n", (long)time_diff.tv_sec, time_diff.tv_nsec / 1000);
+            fflush(stdout);
+            time_start = time_now;
         }
         else if (test_cnt >= 10000) {
             print_time(time_start, test_cnt);
@@ -1330,6 +1364,7 @@ static void next_file(void) {
     }
 
     pc = 0;
+    elf_file = f;
     pass_cnt++;
 }
 
