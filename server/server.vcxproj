@@ -176,6 +176,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\agent\tcf\framework\sigsets.c" />
+    <ClCompile Include="..\agent\tcf\services\disassembly.c" />
+    <ClCompile Include="..\agent\tcf\services\elf-symbols.c" />
     <ClCompile Include="tcf\services\context-proxy.c" />
     <ClCompile Include="..\agent\tcf\services\contextquery.c" />
     <ClCompile Include="..\agent\tcf\services\diagnostics.c" />
@@ -228,6 +231,10 @@
     <ClCompile Include="..\agent\system\Windows\tcf\pthreads-win32.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\agent\tcf\framework\sigsets.h" />
+    <ClInclude Include="..\agent\tcf\services\disassembly.h" />
+    <ClInclude Include="..\agent\tcf\services\elf-symbols-ext.h" />
+    <ClInclude Include="..\agent\tcf\services\elf-symbols.h" />
     <ClInclude Include="tcf\services\context-proxy.h" />
     <ClInclude Include="..\agent\tcf\services\contextquery.h" />
     <ClInclude Include="..\agent\tcf\services\diagnostics.h" />

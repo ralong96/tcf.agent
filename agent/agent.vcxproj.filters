@@ -49,6 +49,9 @@
     <Filter Include="machine\i686">
       <UniqueIdentifier>{cbf9f4ad-9e90-4991-9dc4-8feec90e1ac3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="machine\arm">
+      <UniqueIdentifier>{2b8b41e2-5b0a-4b1c-947e-ca1fdc7ceb03}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="tcf\framework\asyncreq.c">
@@ -314,6 +317,24 @@
     </ClCompile>
     <ClCompile Include="tcf\framework\sigsets.c">
       <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="tcf\services\profiler_sst.c">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="tcf\services\elf-symbols.c">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\arm\tcf\cpudefs-mdep.c">
+      <Filter>machine\arm</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\arm\tcf\disassembler-arm.c">
+      <Filter>machine\arm</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\arm\tcf\disassembler-thumb.c">
+      <Filter>machine\arm</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\arm\tcf\stack-crawl-arm.c">
+      <Filter>machine\arm</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -584,6 +605,33 @@
     </ClInclude>
     <ClInclude Include="tcf\framework\sigsets.h">
       <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\services\profiler_sst.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\services\elf-symbols.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\services\elf-symbols-ext.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\arm\tcf\cpudefs-mdep.h">
+      <Filter>machine\arm</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\arm\tcf\disassembler-arm.h">
+      <Filter>machine\arm</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\arm\tcf\dwarfreloc-mdep.h">
+      <Filter>machine\arm</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\arm\tcf\regset-mdep.h">
+      <Filter>machine\arm</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\arm\tcf\stack-crawl-arm.h">
+      <Filter>machine\arm</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\x86_64\tcf\dwarfreloc-mdep.h">
+      <Filter>machine\x86_64</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -255,6 +255,15 @@
     </Bscmake>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="machine\arm\tcf\cpudefs-mdep.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="machine\arm\tcf\disassembler-arm.c" />
+    <ClCompile Include="machine\arm\tcf\disassembler-thumb.c" />
+    <ClCompile Include="machine\arm\tcf\stack-crawl-arm.c" />
     <ClCompile Include="tcf\framework\asyncreq.c" />
     <ClCompile Include="tcf\framework\base64.c" />
     <ClCompile Include="tcf\framework\cache.c" />
@@ -296,6 +305,7 @@
     <ClCompile Include="tcf\services\dwarfio.c" />
     <ClCompile Include="tcf\services\dwarfreloc.c" />
     <ClCompile Include="tcf\services\elf-loader.c" />
+    <ClCompile Include="tcf\services\elf-symbols.c" />
     <ClCompile Include="tcf\services\expressions.c" />
     <ClCompile Include="tcf\services\filesystem.c" />
     <ClCompile Include="tcf\services\funccall.c" />
@@ -309,6 +319,7 @@
     <ClCompile Include="tcf\services\pathmap.c" />
     <ClCompile Include="tcf\services\processes.c" />
     <ClCompile Include="tcf\services\profiler.c" />
+    <ClCompile Include="tcf\services\profiler_sst.c" />
     <ClCompile Include="tcf\services\registers.c" />
     <ClCompile Include="tcf\services\runctrl.c" />
     <ClCompile Include="tcf\services\stacktrace.c" />
@@ -400,6 +411,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="machine\arm\tcf\cpudefs-mdep.h" />
+    <ClInclude Include="machine\arm\tcf\disassembler-arm.h" />
+    <ClInclude Include="machine\arm\tcf\dwarfreloc-mdep.h" />
+    <ClInclude Include="machine\arm\tcf\regset-mdep.h" />
+    <ClInclude Include="machine\arm\tcf\stack-crawl-arm.h" />
+    <ClInclude Include="machine\x86_64\tcf\dwarfreloc-mdep.h" />
     <ClInclude Include="tcf\framework\asyncreq.h" />
     <ClInclude Include="tcf\framework\base64.h" />
     <ClInclude Include="tcf\framework\cache.h" />
@@ -448,6 +465,8 @@
     <ClInclude Include="tcf\services\dwarfio.h" />
     <ClInclude Include="tcf\services\dwarfreloc.h" />
     <ClInclude Include="tcf\services\elf-loader.h" />
+    <ClInclude Include="tcf\services\elf-symbols-ext.h" />
+    <ClInclude Include="tcf\services\elf-symbols.h" />
     <ClInclude Include="tcf\services\expressions.h" />
     <ClInclude Include="tcf\services\filesystem.h" />
     <ClInclude Include="tcf\services\funccall.h" />
@@ -457,6 +476,7 @@
     <ClInclude Include="tcf\services\pathmap.h" />
     <ClInclude Include="tcf\services\processes.h" />
     <ClInclude Include="tcf\services\profiler.h" />
+    <ClInclude Include="tcf\services\profiler_sst.h" />
     <ClInclude Include="tcf\services\registers.h" />
     <ClInclude Include="tcf\services\runctrl.h" />
     <ClInclude Include="tcf\services\stacktrace.h" />
