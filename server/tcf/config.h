@@ -33,13 +33,11 @@
 #if !defined(SERVICE_PathMap)
 #define SERVICE_PathMap         1
 #endif
-#if !defined(SERVICE_MemoryMap)
-#define SERVICE_MemoryMap       1
-#endif
 #if !defined(SERVICE_Disassembly)
 #define SERVICE_Disassembly     1
 #endif
 
+#define SERVICE_MemoryMap       0
 #define SERVICE_StackTrace      0
 #define SERVICE_Processes       0
 #define SERVICE_Terminals       0
@@ -86,6 +84,10 @@
 
 #if !defined(ENABLE_LineNumbers)
 #  define ENABLE_LineNumbers    (ENABLE_LineNumbersProxy || SERVICE_LineNumbers)
+#endif
+
+#if !defined(ENABLE_MemoryMap)
+#  define ENABLE_MemoryMap      ((ENABLE_DebugContext && ENABLE_ContextProxy) || SERVICE_MemoryMap)
 #endif
 
 #if !defined(ENABLE_DebugContext)

@@ -153,7 +153,7 @@ static void get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     if (context_get_isa(ctx, addr, isa) < 0) {
         memset(isa, 0, sizeof(ContextISA));
     }
-#if SERVICE_MemoryMap
+#if ENABLE_MemoryMap
     if (isa->size == 0) {
         unsigned i, j;
         MemoryMap * client_map = NULL;

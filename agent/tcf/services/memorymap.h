@@ -23,7 +23,11 @@
 #include <tcf/framework/context.h>
 #include <tcf/framework/protocol.h>
 
-#if SERVICE_MemoryMap
+#if !defined(ENABLE_MemoryMap)
+#  define ENABLE_MemoryMap      ((ENABLE_DebugContext && ENABLE_ContextProxy) || SERVICE_MemoryMap)
+#endif
+
+#if ENABLE_MemoryMap
 
 /*
  * Get memory maps for given context.
@@ -66,5 +70,5 @@ extern void ini_memory_map_service(Protocol * proto, TCFBroadcastGroup * bcg);
 #define memory_map_event_module_unloaded(ctx)
 #define memory_map_event_mapping_changed(ctx)
 
-#endif /* SERVICE_MemoryMap */
+#endif /* ENABLE_MemoryMap */
 #endif /* D_memorymap */

@@ -176,6 +176,10 @@
 #  define ENABLE_LineNumbersProxy (ENABLE_DebugContext && TARGET_VXWORKS)
 #endif
 
+#if !defined(ENABLE_MemoryMap)
+#  define ENABLE_MemoryMap      ((ENABLE_DebugContext && ENABLE_ContextProxy) || SERVICE_MemoryMap)
+#endif
+
 #if ENABLE_SymbolsProxy || !ENABLE_DebugContext
 #  undef SERVICE_Symbols
 #  define SERVICE_Symbols       0

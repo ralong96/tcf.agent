@@ -61,7 +61,8 @@ struct ContextCache {
     LINK id_hash_link;
 
     /* Memory Map */
-    MemoryMap mmap;
+    MemoryMap client_map;
+    MemoryMap target_map;
     AbstractCache mmap_cache;
     ErrorReport * mmap_error;
     ReplyHandlerInfo * pending_get_mmap;
@@ -164,6 +165,11 @@ struct PeerCache {
     AbstractCache rc_cache;
 };
 
+typedef struct MMListener {
+    MemoryMapEventListener * listener;
+    void * args;
+} MMListener;
+
 #define peers2peer(A)    ((PeerCache *)((char *)(A) - offsetof(PeerCache, link_all)))
 #define ctx2mem(A)       ((MemoryCache *)((char *)(A) - offsetof(MemoryCache, link_ctx)))
 #define ctx2stk(A)       ((StackFrameCache *)((char *)(A) - offsetof(StackFrameCache, link_ctx)))
@@ -182,6 +188,10 @@ static unsigned ids_buf_pos = 0;
 static char * str_buf = NULL;
 static unsigned str_buf_max = 0;
 static unsigned str_buf_pos = 0;
+
+static MMListener * mm_listeners = NULL;
+static unsigned mm_listener_cnt = 0;
+static unsigned mm_listener_max = 0;
 
 static size_t context_extension_offset = 0;
 
@@ -303,8 +313,8 @@ static void free_context_cache(ContextCache * c) {
     release_error_report(c->reg_error);
     loc_free(c->file);
     loc_free(c->name);
-    context_clear_memory_map(&c->mmap);
-    loc_free(c->mmap.regions);
+    context_clear_memory_map(&c->target_map);
+    loc_free(c->target_map.regions);
     loc_free(c->reg_defs);
     loc_free(c->signal_name);
     loc_free(c->bp_ids);
@@ -405,8 +415,8 @@ static void clear_context_suspended_data(ContextCache * ctx) {
     ctx->bp_ids = NULL;
 }
 
-static void crear_memory_map_data(ContextCache * ctx) {
-    context_clear_memory_map(&ctx->mmap);
+static void clear_memory_map_data(ContextCache * ctx) {
+    context_clear_memory_map(&ctx->target_map);
     release_error_report(ctx->mmap_error);
     ctx->mmap_is_valid = 0;
     ctx->mmap_error = NULL;
@@ -674,7 +684,7 @@ static void event_memory_map_changed(Channel * c, void * args) {
     ctx = find_context_cache(p, id);
     if (ctx != NULL) {
         assert(*EXT(ctx->ctx) == ctx);
-        crear_memory_map_data(ctx);
+        clear_memory_map_data(ctx);
     }
     else if (p->rc_done) {
         trace(LOG_ALWAYS, "Invalid ID in 'memory map changed' event: %s", id);
@@ -1295,10 +1305,10 @@ static void validate_memory_map_cache(Channel * c, void * args, int error) {
             error = read_errno(&c->inp);
             mem_buf_pos = 0;
             json_read_array(&c->inp, read_memory_map_item, cache);
-            cache->mmap.region_cnt = mem_buf_pos;
-            cache->mmap.region_max = mem_buf_pos;
-            cache->mmap.regions = (MemoryRegion *)loc_realloc(cache->mmap.regions, sizeof(MemoryRegion) * mem_buf_pos);
-            memcpy(cache->mmap.regions, mem_buf, sizeof(MemoryRegion) * mem_buf_pos);
+            cache->target_map.region_cnt = mem_buf_pos;
+            cache->target_map.region_max = mem_buf_pos;
+            cache->target_map.regions = (MemoryRegion *)loc_realloc(cache->target_map.regions, sizeof(MemoryRegion) * mem_buf_pos);
+            memcpy(cache->target_map.regions, mem_buf, sizeof(MemoryRegion) * mem_buf_pos);
 
             json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
@@ -1314,12 +1324,12 @@ static void validate_memory_map_cache(Channel * c, void * args, int error) {
     context_unlock(cache->ctx);
 }
 
-int context_get_memory_map(Context * ctx, MemoryMap * map) {
+static ContextCache * get_memory_map_cache(Context * ctx) {
     ContextCache * cache = *EXT(ctx);
     Channel * c = cache->peer->target;
     Trap trap;
 
-    if (!set_trap(&trap)) return -1;
+    if (!set_trap(&trap)) return NULL;
     if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
     if (cache->peer != NULL && !cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
 
@@ -1334,24 +1344,80 @@ int context_get_memory_map(Context * ctx, MemoryMap * map) {
         context_lock(ctx);
         cache_wait(&cache->mmap_cache);
     }
-    if (map->region_max < cache->mmap.region_cnt) {
-        map->region_max = cache->mmap.region_cnt;
-        map->regions = (MemoryRegion *)loc_realloc(map->regions, sizeof(MemoryRegion) * map->region_max);
-    }
-    map->region_cnt = cache->mmap.region_cnt;
-    if (map->region_cnt > 0) {
-        memcpy(map->regions, cache->mmap.regions, sizeof(MemoryRegion) * map->region_cnt);
-        memset(cache->mmap.regions, 0, sizeof(MemoryRegion) * map->region_cnt);
-        cache->mmap.region_cnt = 0;
-        cache->mmap_is_valid = 0;
-    }
     clear_trap(&trap);
     if (cache->mmap_error != NULL) {
         set_error_report_errno(cache->mmap_error);
-        return -1;
+        return NULL;
     }
     cache->has_mmap = 1;
+    return cache;
+}
+
+int context_get_memory_map(Context * ctx, MemoryMap * map) {
+    ContextCache * cache = get_memory_map_cache(ctx);
+    if (cache == NULL) return -1;
+    assert(map->region_cnt == 0);
+    if (map->region_max < cache->target_map.region_cnt) {
+        map->region_max = cache->target_map.region_cnt;
+        map->regions = (MemoryRegion *)loc_realloc(map->regions, sizeof(MemoryRegion) * map->region_max);
+    }
+    map->region_cnt = cache->target_map.region_cnt;
+    if (map->region_cnt > 0) {
+        unsigned i;
+        memcpy(map->regions, cache->target_map.regions, sizeof(MemoryRegion) * map->region_cnt);
+        memset(cache->target_map.regions, 0, sizeof(MemoryRegion) * map->region_cnt);
+        for (i = 0; i < map->region_cnt; i++) {
+            MemoryRegion * x = cache->target_map.regions + i;
+            MemoryRegion * y = map->regions + i;
+            if (x->file_name) y->file_name = loc_strdup(x->file_name);
+            if (x->sect_name) y->sect_name = loc_strdup(x->sect_name);
+            if (x->query) y->query = loc_strdup(x->query);
+            if (x->id) y->id = loc_strdup(x->id);
+            if (x->attrs) {
+                MemoryRegionAttribute ** p = NULL;
+                MemoryRegionAttribute * ax = x->attrs;
+                while (ax != NULL) {
+                    MemoryRegionAttribute * ay = (MemoryRegionAttribute *)
+                        loc_alloc_zero(sizeof(MemoryRegionAttribute));
+                    ay->name = loc_strdup(ax->name);
+                    ay->value = loc_strdup(ax->value);
+                    if (p == NULL) y->attrs = ay;
+                    else *p = ay;
+                    p = &ay->next;
+                    ax = ax->next;
+                }
+            }
+        }
+    }
     return 0;
+}
+
+int memory_map_get(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map) {
+    ContextCache * cache = get_memory_map_cache(ctx);
+    if (cache == NULL) return -1;
+    *client_map = &cache->client_map;
+    *target_map = &cache->target_map;
+    return 0;
+}
+
+void add_memory_map_event_listener(MemoryMapEventListener * listener, void * client_data) {
+    MMListener * l = NULL;
+    if (mm_listener_cnt >= mm_listener_max) {
+        mm_listener_max += 8;
+        mm_listeners = (MMListener *)loc_realloc(mm_listeners, mm_listener_max * sizeof(MMListener));
+    }
+    l = mm_listeners + mm_listener_cnt++;
+    l->listener = listener;
+    l->args = client_data;
+}
+
+void memory_map_event_mapping_changed(Context * ctx) {
+    unsigned i;
+    for (i = 0; i < mm_listener_cnt; i++) {
+        MMListener * l = mm_listeners + i;
+        if (l->listener->mapping_changed == NULL) continue;
+        l->listener->mapping_changed(ctx, l->args);
+    }
 }
 
 static void read_ids_item(InputStream * inp, void * args) {
@@ -1776,7 +1842,7 @@ static void event_path_mapping_changed(Channel * c, void * args) {
     while (x != &context_root) {
         Context * ctx = ctxl2ctxp(x);
         ContextCache * p = *EXT(ctx);
-        crear_memory_map_data(p);
+        clear_memory_map_data(p);
         x = x->next;
     }
 }

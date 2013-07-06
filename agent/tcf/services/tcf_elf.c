@@ -35,6 +35,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/events.h>
+#include <tcf/framework/cache.h>
 #include <tcf/framework/trace.h>
 #include <tcf/services/tcf_elf.h>
 #include <tcf/services/memorymap.h>
@@ -161,7 +162,7 @@ static int file_name_equ(ELF_File * file, const char * name) {
     return 0;
 }
 
-#if SERVICE_MemoryMap
+#if ENABLE_MemoryMap
 static int is_file_mapped_by_mem_map(ELF_File * file, MemoryMap * map) {
     unsigned i;
     for (i = 0; i < map->region_cnt; i++) {
@@ -189,9 +190,11 @@ static int is_file_mapped(ELF_File * file) {
     }
     return res;
 }
-#endif /* SERVICE_MemoryMap */
+#endif /* ENABLE_MemoryMap */
 
-static void elf_cleanup_event(void * arg) {
+static void elf_cleanup_event(void * arg);
+
+static void elf_cleanup_cache_client(void * arg) {
     ELF_File * prev = NULL;
     ELF_File * file = NULL;
     unsigned file_cnt = 0;
@@ -199,18 +202,17 @@ static void elf_cleanup_event(void * arg) {
     static unsigned event_cnt = 0;
 
     assert(elf_cleanup_posted);
-    elf_cleanup_posted = 0;
 
-    if (event_cnt % 5 == 0) {
-        file = files;
-        while (file != NULL) {
+    file = files;
+    while (file != NULL) {
+        if (event_cnt % 5 == 0) {
             struct stat st;
             if (!file->mtime_changed && stat(file->name, &st) == 0 && file->mtime != st.st_mtime) {
                 file->mtime_changed = 1;
             }
-            file = file->next;
-            file_cnt++;
         }
+        file = file->next;
+        file_cnt++;
     }
 
     if (file_cnt > MAX_FILE_AGE + MAX_FILE_CNT - MIN_FILE_AGE) {
@@ -220,17 +222,24 @@ static void elf_cleanup_event(void * arg) {
         max_file_age = MAX_FILE_AGE + MAX_FILE_CNT - file_cnt;
     }
 
+#if ENABLE_MemoryMap
     file = files;
     while (file != NULL) {
-        file->age++;
-#if SERVICE_MemoryMap
         if (!file->mtime_changed && file->age > max_file_age && is_file_mapped(file)) {
             file->age = 0;
             if (file->debug_info_file_name) {
                 find_open_file_by_name(file->debug_info_file_name);
             }
         }
+        file = file->next;
+    }
 #endif
+
+    cache_exit();
+    elf_cleanup_posted = 0;
+
+    file = files;
+    while (file != NULL) {
         if (file->age > max_file_age || (file->age > MIN_FILE_AGE && list_is_empty(&context_root))) {
             ELF_File * next = file->next;
             elf_dispose(file);
@@ -242,6 +251,7 @@ static void elf_cleanup_event(void * arg) {
 #if !USE_MMAP
             if (file->fd >= 0 && close(file->fd) >= 0) file->fd = -1;
 #endif
+            file->age++;
             prev = file;
             file = file->next;
         }
@@ -267,6 +277,10 @@ static void elf_cleanup_event(void * arg) {
     }
 
     event_cnt++;
+}
+
+static void elf_cleanup_event(void * arg) {
+    cache_enter(elf_cleanup_cache_client, NULL, NULL, 0);
 }
 
 static ino_t add_ino(const char * fnm, ino_t ino) {
@@ -1036,7 +1050,7 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
 int elf_get_map(Context * ctx, ContextAddress addr0, ContextAddress addr1, MemoryMap * map) {
     map->region_cnt = 0;
     ctx = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
-#if SERVICE_MemoryMap
+#if ENABLE_MemoryMap
     {
         MemoryMap * client_map = NULL;
         MemoryMap * target_map = NULL;

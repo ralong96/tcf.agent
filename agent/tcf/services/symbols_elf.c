@@ -1998,7 +1998,7 @@ const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
     return file->name;
 }
 
-#if SERVICE_MemoryMap
+#if ENABLE_MemoryMap
 static void event_map_changed(Context * ctx, void * args) {
     /* Make sure there is no stale data in the ELF cache */
     elf_invalidate();
@@ -2013,7 +2013,7 @@ static MemoryMapEventListener map_listener = {
 #endif
 
 void ini_symbols_lib(void) {
-#if SERVICE_MemoryMap
+#if ENABLE_MemoryMap
     add_memory_map_event_listener(&map_listener, NULL);
 #endif
 #if ENABLE_SymbolsMux
