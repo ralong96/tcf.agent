@@ -1514,8 +1514,10 @@ static void read_start_params(InputStream * inp, const char * nm, void * arg) {
     else if (strcmp(nm, "StopAtEntry") == 0) params->attach_mode |= json_read_boolean(inp) ? 0 : CONTEXT_ATTACH_NO_STOP;
     else if (strcmp(nm, "StopAtMain") == 0) params->attach_mode |= json_read_boolean(inp) ? 0 : CONTEXT_ATTACH_NO_MAIN;
     else if (strcmp(nm, "UseTerminal") == 0) params->use_terminal = json_read_boolean(inp);
+#if ENABLE_DebugContext
     else if (strcmp(nm, "SigDontStop") == 0) read_sigset(inp, &params->sig_dont_stop);
     else if (strcmp(nm, "SigDontPass") == 0) read_sigset(inp, &params->sig_dont_pass);
+#endif
     else json_skip_object(inp);
 }
 
