@@ -88,6 +88,8 @@ static const char * PROCESSES[2] = { "Processes", "ProcessesV1" };
 typedef struct AttachDoneArgs {
     Channel * c;
     char token[256];
+    SigSet sig_dont_stop;
+    SigSet sig_dont_pass;
 } AttachDoneArgs;
 
 struct ChildProcess {
@@ -605,6 +607,8 @@ static void command_set_signal_mask(char * token, Channel * c) {
     ctx = id2ctx(id);
     if (ctx == NULL) {
         err = ERR_INV_CONTEXT;
+        sigset_clear(&dont_stop);
+        sigset_clear(&dont_pass);
     }
     else {
         sigset_clear(&ctx->sig_dont_stop);
@@ -623,6 +627,26 @@ static void start_done(int error, Context * ctx, void * arg) {
     AttachDoneArgs * data = (AttachDoneArgs *)arg;
     Channel * c = data->c;
 
+    if (ctx == NULL) {
+        sigset_clear(&data->sig_dont_stop);
+        sigset_clear(&data->sig_dont_pass);
+    }
+    else {
+        LINK * l = ctx->children.next;
+        while (l != &ctx->children) {
+            Context * x = cldl2ctxp(l);
+            sigset_clear(&x->sig_dont_stop);
+            sigset_clear(&x->sig_dont_pass);
+            sigset_copy(&x->sig_dont_stop, &data->sig_dont_stop);
+            sigset_copy(&x->sig_dont_pass, &data->sig_dont_pass);
+            l = l->next;
+        }
+        sigset_clear(&ctx->sig_dont_stop);
+        sigset_clear(&ctx->sig_dont_pass);
+        ctx->sig_dont_stop = data->sig_dont_stop;
+        ctx->sig_dont_pass = data->sig_dont_pass;
+    }
+
     if (!is_channel_closed(c)) {
         write_stringz(&c->out, "R");
         write_stringz(&c->out, data->token);
@@ -632,6 +656,7 @@ static void start_done(int error, Context * ctx, void * arg) {
         write_stream(&c->out, 0);
         write_stream(&c->out, MARKER_EOM);
     }
+
     channel_unlock(c);
     loc_free(data);
 }
@@ -1489,6 +1514,8 @@ static void read_start_params(InputStream * inp, const char * nm, void * arg) {
     else if (strcmp(nm, "StopAtEntry") == 0) params->attach_mode |= json_read_boolean(inp) ? 0 : CONTEXT_ATTACH_NO_STOP;
     else if (strcmp(nm, "StopAtMain") == 0) params->attach_mode |= json_read_boolean(inp) ? 0 : CONTEXT_ATTACH_NO_MAIN;
     else if (strcmp(nm, "UseTerminal") == 0) params->use_terminal = json_read_boolean(inp);
+    else if (strcmp(nm, "SigDontStop") == 0) read_sigset(inp, &params->sig_dont_stop);
+    else if (strcmp(nm, "SigDontPass") == 0) read_sigset(inp, &params->sig_dont_pass);
     else json_skip_object(inp);
 }
 
@@ -1503,8 +1530,9 @@ static void command_start(char * token, Channel * c, void * x) {
     ChildProcess * prs = NULL;
     Trap trap;
 
+    memset(&params, 0, sizeof(params));
+
     if (set_trap(&trap)) {
-        memset(&params, 0, sizeof(params));
         params.dir = json_read_alloc_string(&c->inp);
         json_test_char(&c->inp, MARKER_EOA);
         params.exe = json_read_alloc_string(&c->inp);
@@ -1534,6 +1562,8 @@ static void command_start(char * token, Channel * c, void * x) {
             AttachDoneArgs * data = (AttachDoneArgs *)loc_alloc_zero(sizeof *data);
             data->c = c;
             strcpy(data->token, token);
+            sigset_copy(&data->sig_dont_stop, &params.sig_dont_stop);
+            sigset_copy(&data->sig_dont_pass, &params.sig_dont_pass);
             if (selfattach) mode |= CONTEXT_ATTACH_SELF;
             pending = context_attach(prs->pid, start_done, data, mode) == 0;
             if (pending) {
@@ -1560,6 +1590,8 @@ static void command_start(char * token, Channel * c, void * x) {
         clear_trap(&trap);
     }
 
+    sigset_clear(&params.sig_dont_stop);
+    sigset_clear(&params.sig_dont_pass);
     loc_free(params.dir);
     loc_free(params.exe);
     loc_free(params.args);

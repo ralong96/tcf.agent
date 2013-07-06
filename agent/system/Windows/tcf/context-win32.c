@@ -705,9 +705,6 @@ static void debug_event_handler(DebugEvent * debug_event) {
                 win32_event->u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_BREAKPOINT ||
                 win32_event->u.Exception.ExceptionRecord.ExceptionCode == EXCEPTION_WX86_BREAKPOINT)) {
             if (debug_state->ini_thread_handle != NULL) ResumeThread(debug_state->ini_thread_handle);
-            debug_state->attach_callback(0, prs, debug_state->attach_data);
-            debug_state->attach_callback = NULL;
-            debug_state->attach_data = NULL;
             debug_state->state = DEBUG_STATE_PRS_ATTACHED;
             ext = EXT(ctx = create_context(pid2id(debug_state->main_thread_id, win32_event->dwProcessId)));
             ext->regs = (REG_SET *)loc_alloc_zero(sizeof(REG_SET));
@@ -736,6 +733,11 @@ static void debug_event_handler(DebugEvent * debug_event) {
                     EXT(thread)->debug_event = *win32_event;
                 }
                 debug_state->pending_thrs_cnt = 0;
+            }
+            if (debug_state->attach_callback != NULL) {
+                debug_state->attach_callback(0, prs, debug_state->attach_data);
+                debug_state->attach_callback = NULL;
+                debug_state->attach_data = NULL;
             }
         }
         else if (ctx == NULL || ctx->exiting) {
