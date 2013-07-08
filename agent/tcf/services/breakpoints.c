@@ -179,7 +179,6 @@ struct ContextExtensionBP {
     Context * bp_grp;
     int empty_bp_grp;
     int instruction_cnt;
-    int flush_mode;
     LINK link_hit_count;
 };
 
@@ -467,24 +466,17 @@ static void validate_bi_refs(BreakInstruction * bi) {
 
 static void flush_instructions(void) {
     LINK lst;
-    LINK * l = instructions.next;
-    while (l != &instructions) {
-        BreakInstruction * bi = link_all2bi(l);
-        ContextExtensionBP * ext = EXT(bi->cb.ctx);
-        list_init(&bi->link_lst);
-        ext->flush_mode = 0;
-        l = l->next;
-    }
+    LINK * l;
+
     list_init(&lst);
 
     /* Validate references */
     l = instructions.next;
     while (l != &instructions) {
         BreakInstruction * bi = link_all2bi(l);
+        list_init(&bi->link_lst);
         l = l->next;
         if (!bi->valid) {
-            ContextExtensionBP * ext = EXT(bi->cb.ctx);
-            ext->flush_mode = 1;
             bi->planted_as_sw_bp = 0;
             bi->hardware = 1;
             if (bi->no_addr == 0) {
@@ -506,28 +498,21 @@ static void flush_instructions(void) {
             if (bi->hardware || bi->virtual_addr) {
                 validate_bi_refs(bi);
             }
+            list_add_last(&bi->link_lst, &lst);
         }
     }
 
-    /* Unplant breakpoints, build planting list */
-    l = instructions.next;
-    while (l != &instructions) {
-        BreakInstruction * bi = link_all2bi(l);
-        ContextExtensionBP * ext = EXT(bi->cb.ctx);
+    /* Unplant breakpoints */
+    l = lst.next;
+    while (l != &lst) {
+        BreakInstruction * bi = link_lst2bi(l);
         l = l->next;
         if (!bi->valid) {
             assert(!bi->hardware);
             assert(!bi->virtual_addr);
-            list_add_last(&bi->link_lst, &lst);
             continue;
         }
         if (bi->stepping_over_bp) continue;
-        if (ext->flush_mode == 0) {
-            if (!bi->planted && bi->ref_cnt == 0) {
-                free_instruction(bi);
-            }
-            continue;
-        }
         if (bi->planted) {
             if (bi->dirty || bi->address_error) {
                 remove_instruction(bi);
@@ -540,9 +525,9 @@ static void flush_instructions(void) {
                 remove_instruction(bi);
             }
         }
-        if (!bi->planted && bi->ref_cnt > 0 && !bi->address_error &&
-                !bi->cb.ctx->exiting && !bi->cb.ctx->exited) {
-            list_add_last(&bi->link_lst, &lst);
+        if (bi->planted || bi->ref_cnt == 0 || bi->address_error ||
+                bi->cb.ctx->exiting || bi->cb.ctx->exited) {
+            list_remove(&bi->link_lst);
         }
     }
 
@@ -579,7 +564,7 @@ static void flush_instructions(void) {
         }
     }
 
-    /* Plant canonical address breakpoints */
+    /* Validate and plant canonical address breakpoints */
     l = lst.next;
     while (l != &lst) {
         BreakInstruction * bi = link_lst2bi(l);
@@ -590,12 +575,20 @@ static void flush_instructions(void) {
         assert(!bi->address_error);
         if (!bi->valid) validate_bi_refs(bi);
         if (bi->stepping_over_bp) continue;
-        if (bi->ref_cnt == 0) {
-            if (bi->planted) remove_instruction(bi);
-        }
-        else {
-            if (!bi->planted) plant_instruction(bi);
-        }
+        if (bi->ref_cnt == 0) continue;
+        if (!bi->planted) plant_instruction(bi);
+    }
+
+    /* Free unused break instructions */
+    l = instructions.next;
+    while (l != &instructions) {
+        BreakInstruction * bi = link_all2bi(l);
+        l = l->next;
+        list_init(&bi->link_lst);
+        if (bi->ref_cnt > 0) continue;
+        if (bi->stepping_over_bp) continue;
+        if (bi->planted) remove_instruction(bi);
+        if (!bi->planted) free_instruction(bi);
     }
 }
 
@@ -649,6 +642,7 @@ void clone_breakpoints_on_process_fork(Context * parent, Context * child) {
     Context * mem = context_get_group(parent, CONTEXT_GROUP_PROCESS);
     LINK * l = instructions.next;
     assert(child == context_get_group(child, CONTEXT_GROUP_PROCESS));
+    assert(child != mem);
     while (l != &instructions) {
         unsigned i;
         BreakInstruction * ci = NULL;
@@ -685,27 +679,20 @@ int unplant_breakpoints(Context * ctx) {
         BreakInstruction * bi = link_all2bi(l);
         l = l->next;
         if (bi->cb.ctx != ctx) continue;
-        if (bi->planted && remove_instruction(bi) < 0) {
+        if (!bi->planted) continue;
+        if (remove_instruction(bi) < 0) {
             error = errno;
             continue;
         }
         for (i = 0; i < bi->ref_cnt; i++) {
             BreakpointInfo * bp = bi->refs[i].bp;
-            Context * bx = bi->refs[i].ctx;
             assert(bp->instruction_cnt > 0);
-            bp->instruction_cnt--;
             bp->status_changed = 1;
-            EXT(bx)->instruction_cnt--;
-            context_unlock(bx);
         }
-        bi->ref_cnt = 0;
-        free_instruction(bi);
     }
-    if (error) {
-        errno = error;
-        return -1;
-    }
-    return 0;
+    if (!error) return 0;
+    errno = error;
+    return -1;
 }
 
 int check_breakpoints_on_memory_read(Context * ctx, ContextAddress address, void * p, size_t size) {
@@ -874,7 +861,7 @@ static void write_breakpoint_status(OutputStream * out, BreakpointInfo * bp) {
             }
         }
         write_stream(out, ']');
-        assert(cnt > 0);
+        assert(generation_done != generation_active || cnt > 0);
     }
     else if (bp->error) {
         json_write_string(out, "Error");
@@ -1226,6 +1213,7 @@ static void notify_breakpoint_status(BreakpointInfo * bp) {
         /* Verify breakpoints data structure */
         LINK * m = NULL;
         int instruction_cnt = 0;
+        int planted_as_sw_cnt = 0;
         for (m = instructions.next; m != &instructions; m = m->next) {
             unsigned i;
             BreakInstruction * bi = link_all2bi(m);
@@ -1235,11 +1223,17 @@ static void notify_breakpoint_status(BreakpointInfo * bp) {
             for (i = 0; i < bi->ref_cnt; i++) {
                 assert(bi->refs[i].cnt > 0);
                 assert(bi->refs[i].ctx->ref_count > 0);
+                assert(!bi->refs[i].ctx->exited);
+                assert(!bi->cb.ctx->exited);
                 if (bi->virtual_addr || bi->address_error || bi->no_addr) {
                     assert(bi->refs[i].ctx == bi->cb.ctx);
                 }
                 if (bi->refs[i].bp == bp) {
                     instruction_cnt++;
+                    if (bi->planted_as_sw_bp) {
+                        assert(bi->virtual_addr);
+                        planted_as_sw_cnt++;
+                    }
                     assert(id2ctx(bi->refs[i].ctx->id) == NULL ||
                         check_context_ids_location(bp, bi->refs[i].ctx));
                 }
@@ -1247,6 +1241,7 @@ static void notify_breakpoint_status(BreakpointInfo * bp) {
         }
         assert(bp->enabled || instruction_cnt == 0);
         assert(bp->instruction_cnt == instruction_cnt);
+        assert(planted_as_sw_cnt == 0 || planted_as_sw_cnt < instruction_cnt);
         if (*bp->id) {
             int i;
             int client_cnt = 0;
@@ -1394,11 +1389,6 @@ static void done_all_evaluations(void) {
         assert(cache_enter_cnt == 0);
         assert(generation_done != generation_active);
         flush_instructions();
-    }
-
-    if (list_is_empty(&evaluations_posted)) {
-        assert(cache_enter_cnt == 0);
-        assert(generation_done != generation_active);
         generation_done = generation_active;
         done_replanting_breakpoints();
     }
