@@ -674,21 +674,30 @@ void clone_breakpoints_on_process_fork(Context * parent, Context * child) {
 int unplant_breakpoints(Context * ctx) {
     int error = 0;
     LINK * l = instructions.next;
+    /* Note: the function can be called for a fork child process
+     * that we don't want to attach. All references to such process
+     * should be removed immediately, we cannot rely on
+     * event_replant_breakpoints() to do that. */
     while (l != &instructions) {
         unsigned i;
         BreakInstruction * bi = link_all2bi(l);
         l = l->next;
         if (bi->cb.ctx != ctx) continue;
-        if (!bi->planted) continue;
-        if (remove_instruction(bi) < 0) {
+        if (bi->planted && remove_instruction(bi) < 0) {
             error = errno;
             continue;
         }
         for (i = 0; i < bi->ref_cnt; i++) {
             BreakpointInfo * bp = bi->refs[i].bp;
+            Context * bx = bi->refs[i].ctx;
             assert(bp->instruction_cnt > 0);
+            bp->instruction_cnt--;
             bp->status_changed = 1;
+            EXT(bx)->instruction_cnt--;
+            context_unlock(bx);
         }
+        bi->ref_cnt = 0;
+        free_instruction(bi);
     }
     if (!error) return 0;
     errno = error;
