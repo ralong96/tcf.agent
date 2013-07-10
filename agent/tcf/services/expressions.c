@@ -647,7 +647,7 @@ static void next_sy(void) {
         default:
             if (ch >= '0' && ch <= '9') {
                 int pos = text_pos - 2;
-                int64_t value = ch - '0';
+                uint64_t value = ch - '0';
                 while (text_ch >= '0' && text_ch <= '9') {
                     value = (value * 10) + next_dec();
                 }
