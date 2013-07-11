@@ -119,13 +119,58 @@ static TCFBroadcastGroup * broadcast_group = NULL;
 
 static void run_safe_events(void * arg);
 
-static void write_context(OutputStream * out, Context * ctx) {
+static int get_resume_modes(Context * ctx) {
     int md, modes;
+    int has_state = context_has_state(ctx);
+
+    modes = 0;
+    for (md = 0; md < RM_UNDEF; md++) {
+        if (md == RM_DETACH) continue;
+        if (md == RM_TERMINATE) continue;
+        if (context_can_resume(ctx, md)) modes |= 1 << md;
+    }
+    if (!has_state) {
+        modes &= (1 << RM_RESUME) | (1 << RM_REVERSE_RESUME);
+    }
+    else {
+        if (modes & (1 << RM_STEP_INTO)) {
+            modes |= (1 << RM_STEP_INTO_RANGE);
+#if EN_STEP_OVER
+            modes |= (1 << RM_STEP_OVER);
+            modes |= (1 << RM_STEP_OVER_RANGE);
+            modes |= (1 << RM_STEP_OUT);
+#endif
+#if EN_STEP_LINE
+            modes |= (1 << RM_STEP_INTO_LINE);
+#endif
+#if EN_STEP_OVER && EN_STEP_LINE
+            modes |= (1 << RM_STEP_OVER_LINE);
+#endif
+        }
+        if (modes & (1 << RM_REVERSE_STEP_INTO)) {
+            modes |= (1 << RM_REVERSE_STEP_INTO_RANGE);
+#if EN_STEP_OVER
+            modes |= (1 << RM_REVERSE_STEP_OVER);
+            modes |= (1 << RM_REVERSE_STEP_OVER_RANGE);
+            modes |= (1 << RM_REVERSE_STEP_OUT);
+#endif
+#if EN_STEP_LINE
+            modes |= (1 << RM_REVERSE_STEP_INTO_LINE);
+#endif
+#if EN_STEP_OVER && EN_STEP_LINE
+            modes |= (1 << RM_REVERSE_STEP_OVER_LINE);
+#endif
+        }
+    }
+    return modes;
+}
+
+static void write_context(OutputStream * out, Context * ctx) {
+    int modes;
     Context * rc_grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
     Context * bp_grp = context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT);
     Context * ss_grp = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
     Context * cpu_grp = context_get_group(ctx, CONTEXT_GROUP_CPU);
-    int has_state = context_has_state(ctx);
 
     assert(!ctx->exited);
 
@@ -169,48 +214,10 @@ static void write_context(OutputStream * out, Context * ctx) {
     write_stream(out, ',');
     json_write_string(out, "CanResume");
     write_stream(out, ':');
-    modes = 0;
-    for (md = 0; md < RM_UNDEF; md++) {
-        if (md == RM_DETACH) continue;
-        if (md == RM_TERMINATE) continue;
-        if (context_can_resume(ctx, md)) modes |= 1 << md;
-    }
-    if (!has_state) {
-        modes &= (1 << RM_RESUME) | (1 << RM_REVERSE_RESUME);
-    }
-    else {
-        if (modes & (1 << RM_STEP_INTO)) {
-            modes |= (1 << RM_STEP_INTO_RANGE);
-#if EN_STEP_OVER
-            modes |= (1 << RM_STEP_OVER);
-            modes |= (1 << RM_STEP_OVER_RANGE);
-            modes |= (1 << RM_STEP_OUT);
-#endif
-#if EN_STEP_LINE
-            modes |= (1 << RM_STEP_INTO_LINE);
-#endif
-#if EN_STEP_OVER && EN_STEP_LINE
-            modes |= (1 << RM_STEP_OVER_LINE);
-#endif
-        }
-        if (modes & (1 << RM_REVERSE_STEP_INTO)) {
-            modes |= (1 << RM_REVERSE_STEP_INTO_RANGE);
-#if EN_STEP_OVER
-            modes |= (1 << RM_REVERSE_STEP_OVER);
-            modes |= (1 << RM_REVERSE_STEP_OVER_RANGE);
-            modes |= (1 << RM_REVERSE_STEP_OUT);
-#endif
-#if EN_STEP_LINE
-            modes |= (1 << RM_REVERSE_STEP_INTO_LINE);
-#endif
-#if EN_STEP_OVER && EN_STEP_LINE
-            modes |= (1 << RM_REVERSE_STEP_OVER_LINE);
-#endif
-        }
-    }
+    modes = get_resume_modes(ctx);
     json_write_long(out, modes);
 
-    if (has_state) {
+    if (context_has_state(ctx)) {
         write_stream(out, ',');
         json_write_string(out, "HasState");
         write_stream(out, ':');
@@ -828,6 +835,7 @@ static void command_resume(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOM);
 
     if (err == 0 && (ctx = id2ctx(id)) == NULL) err = ERR_INV_CONTEXT;
+    if (err == 0 && ((mode >= RM_UNDEF) || ((get_resume_modes(ctx) & (1 << mode)) == 0))) err = EINVAL;
     if (err == 0 && continue_debug_context(ctx, c, mode, count, args.range_start, args.range_end) < 0) err = errno;
     send_simple_result(c, token, err);
 }
