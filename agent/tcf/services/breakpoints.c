@@ -555,7 +555,10 @@ static void flush_instructions(void) {
                     bi->planted_as_sw_bp = 1;
                     assert(!ca->hardware);
                     assert(!ca->virtual_addr);
-                    if (list_is_empty(&ca->link_lst)) {
+                    if (ca->address_error) {
+                        if (!ca->valid) validate_bi_refs(ca);
+                    }
+                    else if (list_is_empty(&ca->link_lst)) {
                         list_add_last(&ca->link_lst, &lst);
                     }
                 }
@@ -1398,6 +1401,8 @@ static void done_all_evaluations(void) {
         assert(cache_enter_cnt == 0);
         assert(generation_done != generation_active);
         flush_instructions();
+    }
+    if (list_is_empty(&evaluations_posted)) {
         generation_done = generation_active;
         done_replanting_breakpoints();
     }
@@ -2686,15 +2691,22 @@ static void safe_restore_breakpoint(void * arg) {
     ContextExtensionBP * ext = EXT(ctx);
     BreakInstruction * bi = ext->stepping_over_bp;
 
+    assert(!bi->virtual_addr);
     assert(bi->stepping_over_bp > 0);
     assert(find_instruction(bi->cb.ctx, 0, bi->cb.address, bi->cb.access_types, bi->cb.length) == bi);
-    if (!ctx->exiting && ctx->stopped && !ctx->stopped_by_exception && get_regs_PC(ctx) == bi->cb.address) {
-        if (ext->step_over_bp_cnt < 100) {
-            ext->step_over_bp_cnt++;
-            safe_skip_breakpoint(arg);
-            return;
+    if (!ctx->exiting && ctx->stopped && !ctx->stopped_by_exception) {
+        Context * mem = NULL;
+        ContextAddress mem_addr = 0;
+        ContextAddress pc = get_regs_PC(ctx);
+        if (context_get_canonical_addr(ctx, pc, &mem, &mem_addr, NULL, NULL) == 0 &&
+                bi->cb.ctx == mem && bi->cb.address == mem_addr) {
+            if (ext->step_over_bp_cnt < 100) {
+                ext->step_over_bp_cnt++;
+                safe_skip_breakpoint(arg);
+                return;
+            }
+            trace(LOG_ALWAYS, "Skip breakpoint error: wrong PC %#lx", pc);
         }
-        trace(LOG_ALWAYS, "Skip breakpoint error: wrong PC %#lx", get_regs_PC(ctx));
     }
     ext->stepping_over_bp = NULL;
     ext->step_over_bp_cnt = 0;
