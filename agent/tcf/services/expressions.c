@@ -915,6 +915,7 @@ static int sym2value(int mode, Symbol * sym, Value * v) {
     switch (sym_class) {
     case SYM_CLASS_VALUE:
     case SYM_CLASS_REFERENCE:
+    case SYM_CLASS_COMP_UNIT:
         if (mode == MODE_NORMAL) {
             LocationExpressionState * state = NULL;
             LocationInfo * loc_info = NULL;

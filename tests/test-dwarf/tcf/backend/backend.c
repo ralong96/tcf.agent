@@ -31,6 +31,7 @@
 #include <tcf/framework/exceptions.h>
 
 #include <tcf/services/tcf_elf.h>
+#include <tcf/services/elf-symbols.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/linenumbers.h>
 #include <tcf/services/memorymap.h>
@@ -552,6 +553,8 @@ static void loc_var_func(void * args, Symbol * sym) {
     RegisterDefinition * reg = NULL;
     ContextAddress addr = 0;
     ContextAddress size = 0;
+    int addr_ok = 0;
+    int size_ok = 0;
     SYM_FLAGS flags = 0;
     int symbol_class = 0;
     int type_class = 0;
@@ -597,7 +600,7 @@ static void loc_var_func(void * args, Symbol * sym) {
                 found_next = 1;
             }
         }
-        if (symcmp(sym, find_sym) != 0) {
+        if (get_symbol_object(sym) != NULL && symcmp(sym, find_sym) != 0) {
             /* 'sym' is eclipsed in the current scope by a nested declaration */
             Symbol * sym_container = NULL;
             Symbol * find_container = NULL;
@@ -680,6 +683,7 @@ static void loc_var_func(void * args, Symbol * sym) {
                 if (state->stk[0] != addr) str_fmt_exception(ERR_OTHER,
                     "ID 0x%" PRIX64 ": invalid location expression result 0x%" PRIX64 " != 0x%" PRIX64,
                     get_symbol_object(sym)->mID, state->stk[0], addr);
+                addr_ok = 1;
             }
             clear_trap(&trap);
         }
@@ -699,6 +703,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (type_name != NULL) type_name = tmp_strdup(type_name);
     }
+    size_ok = 1;
     if (get_symbol_size(sym, &size) < 0) {
         int ok = 0;
         int err = errno;
@@ -719,6 +724,43 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (!ok) {
             errno = err;
             error_sym("get_symbol_size", sym);
+        }
+        size_ok = 0;
+    }
+    if (get_symbol_frame(sym, &ctx, &frame) < 0) {
+        error_sym("get_symbol_frame", sym);
+    }
+    if (name != NULL) {
+        Symbol * find_sym = NULL;
+        if (find_symbol_by_name(elf_ctx, frame, pc, name, &find_sym) == 0 && symcmp(sym, find_sym) == 0) {
+            Value v;
+            char * expr = (char *)tmp_alloc(strlen(name) + 16);
+            if (size_ok) {
+                sprintf(expr, "$\"%s\"", name);
+                if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
+                    error_sym("evaluate_expression", sym);
+                }
+            }
+            if (addr_ok) {
+                ContextAddress a0 = addr;
+                ContextAddress a1 = 0;
+                if (!elf_file->elf64) a0 &= 0xffffffffu;
+                sprintf(expr, "&$\"%s\"", name);
+                if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
+                    error_sym("evaluate_expression", sym);
+                }
+                if (v.size != (elf_file->elf64 ? 8 : 4)) {
+                    errno = ERR_INV_ADDRESS;
+                    error_sym("evaluate_expression", sym);
+                }
+                if (value_to_address(&v, &a1) < 0) {
+                    error_sym("value_to_address", sym);
+                }
+                if (a0 != a1) {
+                    errno = ERR_INV_ADDRESS;
+                    error_sym("value_to_address", sym);
+                }
+            }
         }
     }
     if (type != NULL) {
@@ -954,6 +996,7 @@ static void loc_var_func(void * args, Symbol * sym) {
 static void test_public_names(void) {
     DWARFCache * cache = get_dwarf_cache(elf_file);
     unsigned n = 0;
+    unsigned m = 0;
     while (n < cache->mPubNames.mCnt) {
         ObjectInfo * obj = cache->mPubNames.mNext[n++].mObject;
         if (obj != NULL) {
@@ -962,6 +1005,28 @@ static void test_public_names(void) {
                 error("find_symbol_by_name");
             }
             loc_var_func(NULL, sym);
+        }
+    }
+    for (m = 1; m < elf_file->section_cnt; m++) {
+        ELF_Section * tbl = elf_file->sections + m;
+        if (tbl->sym_names_hash == NULL) continue;
+        for (n = 0; n < tbl->sym_names_hash_size; n++) {
+            Trap trap;
+            if (set_trap(&trap)) {
+                ELF_SymbolInfo sym_info;
+                unpack_elf_symbol_info(tbl, tbl->sym_names_hash[n], &sym_info);
+                if (sym_info.name) {
+                    Symbol * sym = NULL;
+                    if (elf_tcf_symbol(elf_ctx, &sym_info, &sym) < 0) {
+                        error("elf_tcf_symbol");
+                    }
+                    loc_var_func(NULL, sym);
+                }
+                clear_trap(&trap);
+            }
+            else {
+                error("unpack_elf_symbol_info");
+            }
         }
     }
 }
