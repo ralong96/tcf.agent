@@ -430,7 +430,7 @@ static void command_get_children_cache_client(void * x) {
         }
         else {
             for (i = args->min_frame; i <= args->max_frame && i < stack->frame_cnt; i++) {
-                if (i > 0) write_stream(&c->out, ',');
+                if (i > args->min_frame) write_stream(&c->out, ',');
                 json_write_string(&c->out, frame2id(ctx, i));
             }
         }
