@@ -1032,8 +1032,13 @@ int get_symbol_class(const Symbol * sym, int * symbol_class) {
 int get_symbol_type(const Symbol * sym, Symbol ** type) {
     SymInfoCache * c = get_sym_info_cache(sym, ACC_OTHER);
     if (c == NULL) return -1;
-    if (c->type_id && strcmp(c->type_id, c->id)) return id2symbol(c->type_id, type);
-    *type = (Symbol *)sym;
+    if (c->type_id) {
+        if (strcmp(c->type_id, c->id)) return id2symbol(c->type_id, type);
+        *type = (Symbol *)sym;
+    }
+    else {
+        *type = NULL;
+    }
     return 0;
 }
 
