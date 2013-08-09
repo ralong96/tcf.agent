@@ -356,8 +356,7 @@ static void write_file_attrs(OutputStream * out, FileAttrs * attrs) {
 
 static int to_local_open_flags(int flags) {
     int res = O_BINARY | O_LARGEFILE;
-    if ((flags & TCF_O_READ) && (flags & TCF_O_WRITE)) 
-        res |= O_RDWR;
+    if ((flags & TCF_O_READ) && (flags & TCF_O_WRITE)) res |= O_RDWR;
     else if (flags & TCF_O_READ) res |= O_RDONLY;
     else if (flags & TCF_O_WRITE) res |= O_WRONLY;
 
