@@ -3094,7 +3094,7 @@ static void printf_expression(int mode, Value * v) {
     if (mode == MODE_NORMAL) {
         unsigned i;
         for (i = 0; i < args_cnt; i++) load_value(args + i);
-        dprintf_expression((char *)args[0].value, args + 1, args_cnt - 1);
+        dprintf_expression_ctx(expression_context, (char *)args[0].value, args + 1, args_cnt - 1);
     }
     set_value(v, NULL, 0, big_endian);
 }

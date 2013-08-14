@@ -77,7 +77,34 @@ static void add_ch(char ch) {
     buf[buf_pos++] = ch;
 }
 
-void dprintf_expression(const char * fmt, Value * args, unsigned args_cnt) {
+static const void * load_remote_string(Context * ctx, Value * arg_val) {
+    int error = 0;
+    size_t sbf_pos = 0;
+    size_t sbf_max = 128;
+    char * sbf = (char *)tmp_alloc(sbf_max);
+    ContextAddress addr = 0;
+
+    if (ctx == NULL || ctx->mem_access == 0) error = ERR_INV_CONTEXT;
+    else if (value_to_address(arg_val, &addr) < 0) error = errno;
+    while (!error) {
+        char ch = 0;
+        if (sbf_pos >= sbf_max) {
+            sbf_max *= 2;
+            sbf = (char *)tmp_realloc(sbf, sbf_max);
+        }
+        if (context_read_mem(ctx, addr, &ch, 1) < 0) {
+            error = errno;
+        }
+        else {
+            sbf[sbf_pos++] = ch;
+            if (ch == 0) return sbf;
+            addr++;
+        }
+    }
+    return "???";
+}
+
+void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsigned args_cnt) {
     unsigned fmt_pos = 0;
     unsigned arg_pos = 0;
 
@@ -124,6 +151,7 @@ void dprintf_expression(const char * fmt, Value * args, unsigned args_cnt) {
                 double d = 0;
                 memcpy(arg_fmt, fmt + pos, fmt_pos - pos);
                 arg_fmt[fmt_pos - pos] = 0;
+                arg_buf[0] = 0;
                 switch (fmt_ch) {
                 case 'd':
                 case 'i':
@@ -179,6 +207,15 @@ void dprintf_expression(const char * fmt, Value * args, unsigned args_cnt) {
                     if (value_to_double(arg_val, &d) < 0) exception(errno);
                     if (flag_L) snprintf(arg_buf, sizeof(arg_buf), arg_fmt, (long double)d);
                     else snprintf(arg_buf, sizeof(arg_buf), arg_fmt, d);
+                    break;
+                case 's':
+                    {
+                        const void * value = arg_val->value;
+                        if (arg_val->type_class == TYPE_CLASS_POINTER) {
+                            value = load_remote_string(ctx, arg_val);
+                        }
+                        snprintf(arg_buf, sizeof(arg_buf), arg_fmt, value);
+                    }
                     break;
                 default:
                     snprintf(arg_buf, sizeof(arg_buf), arg_fmt, arg_val->value);

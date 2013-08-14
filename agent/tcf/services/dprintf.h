@@ -27,7 +27,9 @@
 #include <tcf/framework/protocol.h>
 #include <tcf/services/expressions.h>
 
-extern void dprintf_expression(const char * fmt, Value * args, unsigned args_cnt);
+#define dprintf_expression(fmt, args, cnt) dprintf_expression_ctx(NULL, fmt, args, cnt)
+
+extern void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsigned args_cnt);
 
 extern void ini_dprintf_service(Protocol * p);
 
