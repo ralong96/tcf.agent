@@ -870,6 +870,7 @@ static int trace_arm_bx(uint32_t instr) {
     uint8_t rn = instr & 0xf;
 
     if (!reg_data[rn].o) {
+        if ((instr & 0xf0000000) != 0xe0000000) return 0;
         set_errno(ERR_OTHER, "BX to untracked register");
         return -1;
     }
@@ -879,10 +880,19 @@ static int trace_arm_bx(uint32_t instr) {
     chk_loaded(15);
 
     /* Determine the new mode */
-    if (reg_data[15].o && reg_data[15].v & 0x1u) {
-        /* Branch to THUMB */
-        cpsr_data.v |= 0x00000020;
-        reg_data[15].v &= ~0x1u;
+    if (reg_data[15].o) {
+        int thumb_ee = (cpsr_data.v & 0x01000000) && (cpsr_data.v & 0x00000020);
+        if (!thumb_ee) {
+            if ((reg_data[15].v & 0x1u) != 0) {
+                /* Branch to Thumb */
+                cpsr_data.v |= 0x00000020;
+                reg_data[15].v &= ~0x1u;
+            }
+            else if ((reg_data[15].v & 0x2u) == 0) {
+                /* Branch to ARM */
+                cpsr_data.v &= ~0x00000020;
+            }
+        }
     }
 
     /* Check if the return value is from the stack */
@@ -1665,7 +1675,13 @@ static int trace_arm(void) {
     /* Read the instruction */
     if (read_word(reg_data[15].v, &instr) < 0) return -1;
 
-    if ((instr & 0xfffffff0) == 0xe12fff10) {
+    if ((instr & 0xfff10020) == 0xf1000000) { /* CPS */
+        trace_arm_cps(instr);
+    }
+    else if ((instr & 0xfff00000) == 0xf5700000) { /* CLREX, DSB, DMB, ISB */
+        /* No register changes */
+    }
+    else if ((instr & 0x0ffffff0) == 0x012fff10) {
         /* Branch and Exchange (BX)
          *  This is tested prior to data processing to prevent
          *  mis-interpretation as an invalid TEQ instruction.
@@ -1686,12 +1702,6 @@ static int trace_arm(void) {
     }
     else if ((instr & 0x0f9000f0) == 0x01000000) { /* MRS, MSR */
         trace_arm_mrs_msr(instr);
-    }
-    else if ((instr & 0xfff10020) == 0xf1000000) { /* CPS */
-        trace_arm_cps(instr);
-    }
-    else if ((instr & 0xfff00000) == 0xf5700000) { /* CLREX, DSB, DMB, ISB */
-        /* No register changes */
     }
     else if ((instr & 0x0fff00ff) == 0x03200000) { /* NOP */
         /* No register changes */
