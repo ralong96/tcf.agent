@@ -35,6 +35,7 @@ typedef struct WaitingCacheClient {
     size_t args_size;
     int args_copy;
 #ifndef NDEBUG
+    time_t time_stamp;
     const char * file;
     int line;
 #endif
@@ -48,6 +49,38 @@ static unsigned wait_list_max;
 static unsigned id_cnt = 0;
 static LINK cache_list = TCF_LIST_INIT(cache_list);
 static Channel * def_channel = NULL;
+
+#define link_all2cache(x) ((AbstractCache *)((char *)(x) - offsetof(AbstractCache, link)))
+
+#ifndef NDEBUG
+/* Print cache items that are waiting too long to be filled.
+ * In most cases such items indicate a bug in the agent code. */
+static int cache_timer_posted = 0;
+
+static void cache_timer(void * x) {
+    LINK * l;
+    time_t time_now = time(NULL);
+
+    assert(cache_timer_posted);
+    cache_timer_posted = 0;
+    for (l = cache_list.next; l != &cache_list; l = l->next) {
+        unsigned i;
+        AbstractCache * cache = link_all2cache(l);
+        assert(cache->wait_list_cnt > 0);
+        for (i = 0; i < cache->wait_list_cnt; i++) {
+            WaitingCacheClient * client = cache->wait_list_buf + i;
+            if (time_now - client->time_stamp >= 30) {
+                /* Client is waiting longer than 30 sec - it might be a bug */
+                trace(LOG_ALWAYS, "Stalled cache at %s:%d", client->file, client->line);
+            }
+        }
+    }
+    if (!list_is_empty(&cache_list)) {
+        post_event_with_delay(cache_timer, NULL, 5000000);
+        cache_timer_posted = 1;
+    }
+}
+#endif
 
 static void run_cache_client(void) {
     Trap trap;
@@ -115,6 +148,11 @@ void cache_wait_dbg(const char * file, int line, AbstractCache * cache) {
 #ifndef NDEBUG
         current_client.file = file;
         current_client.line = line;
+        current_client.time_stamp = time(NULL);
+        if (!cache_timer_posted) {
+            post_event_with_delay(cache_timer, NULL, 5000000);
+            cache_timer_posted = 1;
+        }
 #endif
         if (cache->wait_list_cnt == 0) list_add_last(&cache->link, &cache_list);
         if (current_client.channel != NULL) channel_lock(current_client.channel);
@@ -122,7 +160,7 @@ void cache_wait_dbg(const char * file, int line, AbstractCache * cache) {
     }
 #ifndef NDEBUG
     else if (current_client.client == NULL) {
-        trace(LOG_ALWAYS, "cache_wait(): illegal cache access at %s:%d", file, line);
+        trace(LOG_ALWAYS, "Illegal cache access at %s:%d", file, line);
     }
 #endif
     cache_miss_cnt++;
