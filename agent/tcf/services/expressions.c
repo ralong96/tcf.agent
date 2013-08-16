@@ -2069,6 +2069,7 @@ static void free_funccall_state(FuncCallState * state) {
     if (state->bp) destroy_eventpoint(state->bp);
     context_unlock(state->ctx);
     release_error_report(state->error);
+    cache_dispose(&state->cache);
     loc_free(state->ret_value);
     loc_free(state->args);
     loc_free(state->cmds);
