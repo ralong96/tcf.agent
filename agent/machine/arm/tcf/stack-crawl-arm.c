@@ -866,6 +866,25 @@ static int is_data_processing_instr(uint32_t instr) {
     return 1;
 }
 
+static void return_from_exception(void) {
+    /* Return from exception - copies the SPSR to the CPSR */
+    RegisterDefinition * def;
+    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+        int r = is_banked_reg_visible(def, spsr_data.v & 0x1f);
+        if (r >= 0 && r != is_banked_reg_visible(def, cpsr_data.v & 0x1f)) {
+            uint64_t v = 0;
+            if (search_reg_value(stk_frame, def, &v) < 0) {
+                reg_data[r].o = 0;
+            }
+            else {
+                reg_data[r].v = (uint32_t)v;
+                reg_data[r].o = REG_VAL_OTHER;
+            }
+        }
+    }
+    cpsr_data = spsr_data;
+}
+
 static int trace_arm_bx(uint32_t instr) {
     uint8_t rn = instr & 0xf;
 
@@ -1403,22 +1422,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     }
 
     if (rd == 15 && (instr & (1 << 20)) != 0) {
-        /* Return from exception - copies the SPSR to the CPSR */
-        RegisterDefinition * def;
-        for (def = get_reg_definitions(stk_ctx); def->name; def++) {
-            int r = is_banked_reg_visible(def, spsr_data.v & 0x1f);
-            if (r >= 0 && r != is_banked_reg_visible(def, cpsr_data.v & 0x1f)) {
-                uint64_t v = 0;
-                if (search_reg_value(stk_frame, def, &v) < 0) {
-                    reg_data[r].o = 0;
-                }
-                else {
-                    reg_data[r].v = (uint32_t)v;
-                    reg_data[r].o = REG_VAL_OTHER;
-                }
-            }
-        }
-        cpsr_data = spsr_data;
+        return_from_exception();
     }
 }
 
@@ -1433,6 +1437,7 @@ static int trace_arm_ldm_stm(uint32_t instr) {
     uint16_t regs = (instr & 0x0000ffff);
     uint32_t addr = 0;
     int addr_valid = 0;
+    uint32_t rn_bank = cpsr_data.v & 0x1f;
     unsigned banked = 0;
     uint8_t r;
 
@@ -1446,7 +1451,7 @@ static int trace_arm_ldm_stm(uint32_t instr) {
      */
     if (S) {
         if (L && (regs & (1 << 15)) != 0) {
-            cpsr_data = spsr_data;
+            return_from_exception();
         }
         else {
             switch (cpsr_data.v & 0x1f) {
@@ -1516,7 +1521,7 @@ static int trace_arm_ldm_stm(uint32_t instr) {
     }
 
     /* Check the writeback bit */
-    if (addr_valid && W) {
+    if (addr_valid && W && rn_bank == (cpsr_data.v & 0x1f)) {
         reg_data[rn].o = cond == 14 ? REG_VAL_OTHER : 0;
         reg_data[rn].v = addr;
     }
