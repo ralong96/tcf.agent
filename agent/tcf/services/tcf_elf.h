@@ -423,6 +423,8 @@ struct ELF_File {
     uint16_t machine;
     uint8_t os_abi;
 
+    ContextAddress entry_address;
+
     unsigned section_cnt;
     ELF_Section * sections;
     char * str_pool;

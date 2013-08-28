@@ -584,6 +584,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
             file->type = hdr.e_type;
             file->machine = hdr.e_machine;
             file->os_abi = hdr.e_ident[EI_OSABI];
+            file->entry_address = (ContextAddress)hdr.e_entry;
             if (error == 0 && hdr.e_type != ET_EXEC && hdr.e_type != ET_DYN && hdr.e_type != ET_REL) {
                 error = set_errno(ERR_INV_FORMAT, "Invalid ELF type ID");
             }
@@ -706,6 +707,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
             file->type = hdr.e_type;
             file->machine = hdr.e_machine;
             file->os_abi = hdr.e_ident[EI_OSABI];
+            file->entry_address = (ContextAddress)hdr.e_entry;
             if (error == 0 && hdr.e_type != ET_EXEC && hdr.e_type != ET_DYN && hdr.e_type != ET_REL) {
                 error = set_errno(ERR_INV_FORMAT, "Invalid ELF type ID");
             }
