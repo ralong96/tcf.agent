@@ -41,6 +41,7 @@
 #include <tcf/services/breakpoints.h>
 #include <tcf/services/linenumbers.h>
 #include <tcf/services/stacktrace.h>
+#include <tcf/services/diagnostics.h>
 #include <tcf/services/symbols.h>
 #include <tcf/main/cmdline.h>
 
@@ -275,6 +276,13 @@ static void write_context(OutputStream * out, Context * ctx) {
         json_write_string(out, "CPUGroup");
         write_stream(out, ':');
         json_write_string(out, cpu_grp->id);
+    }
+
+    if (is_test_process(ctx)) {
+        write_stream(out, ',');
+        json_write_string(out, "DiagnosticTestProcess");
+        write_stream(out, ':');
+        json_write_boolean(out, 1);
     }
 
 #if ENABLE_ContextExtraProperties
@@ -908,6 +916,13 @@ static void terminate_context_tree(Context * ctx) {
         cancel_step_mode(ctx);
         ctx->pending_intercept = 0;
         ext->step_mode = RM_TERMINATE;
+        resume_context_tree(ctx);
+    }
+    else if (EXT(ctx)->intercepted) {
+        ContextExtensionRC * ext = EXT(ctx);
+        cancel_step_mode(ctx);
+        ctx->pending_intercept = 0;
+        ext->step_mode = RM_RESUME;
         resume_context_tree(ctx);
     }
     else {

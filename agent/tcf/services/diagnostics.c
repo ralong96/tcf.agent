@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -142,6 +142,14 @@ static void command_get_test_list(char * token, Channel * c) {
     write_stream(&c->out, MARKER_EOM);
 }
 
+void test_process_done(Context * ctx) {
+#if ENABLE_RCBP_TEST
+    assert(EXT(context_get_group(ctx, CONTEXT_GROUP_PROCESS))->test_process);
+    EXT(context_get_group(ctx, CONTEXT_GROUP_PROCESS))->test_process = 0;
+    send_context_changed_event(ctx);
+#endif
+}
+
 #if ENABLE_RCBP_TEST
 static void run_test_done(int error, Context * ctx, void * arg) {
     RunTestDoneArgs * data = (RunTestDoneArgs *)arg;
@@ -149,7 +157,8 @@ static void run_test_done(int error, Context * ctx, void * arg) {
 
     if (ctx != NULL) {
         EXT(context_get_group(ctx, CONTEXT_GROUP_PROCESS))->test_process = 1;
-        EXT(ctx)->channel = c;
+        if (!is_channel_closed(c)) EXT(ctx)->channel = c;
+        send_context_changed_event(ctx);
     }
     if (!is_channel_closed(c)) {
         write_stringz(&c->out, "R");
@@ -180,11 +189,10 @@ static void command_run_test(char * token, Channel * c) {
         RunTestDoneArgs * data = (RunTestDoneArgs *)loc_alloc_zero(sizeof(RunTestDoneArgs));
         data->c = c;
         strcpy(data->token, token);
-        if (run_test_process(run_test_done, data) == 0) {
-            channel_lock(c);
-            return;
-        }
+        channel_lock(c);
+        if (run_test_process(run_test_done, data) == 0) return;
         err = errno;
+        channel_unlock(c);
         loc_free(data);
 #else
         err = EINVAL;
