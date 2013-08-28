@@ -820,34 +820,43 @@ static void skip_object(InputStream * inp) {
     int ch;
     read_whitespace(inp);
     ch = skip_char(inp);
-    if (ch == 'n') {
+    switch (ch) {
+    case 'n':
         check_char(skip_char(inp), 'u');
         check_char(skip_char(inp), 'l');
         check_char(skip_char(inp), 'l');
         return;
-    }
-    if (ch == 'f') {
+    case 'f':
         check_char(skip_char(inp), 'a');
         check_char(skip_char(inp), 'l');
         check_char(skip_char(inp), 's');
         check_char(skip_char(inp), 'e');
         return;
-    }
-    if (ch == 't') {
+    case 't':
         check_char(skip_char(inp), 'r');
         check_char(skip_char(inp), 'u');
         check_char(skip_char(inp), 'e');
         return;
-    }
-    if (ch == '"') {
+    case '"':
         for (;;) {
-            ch = skip_char(inp);
+            ch = read_stream(inp);
+            if (ch < 0) exception(ERR_JSON_SYNTAX);
+            buf_add(ch);
             if (ch == '"') break;
             if (ch == '\\') skip_char(inp);
         }
         return;
-    }
-    if (ch == '-' || (ch >= '0' && ch <= '9')) {
+    case '-':
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9':
         for (;;) {
             ch = peek_stream(inp);
             if ((ch < '0' || ch > '9') && ch != '.'
@@ -855,8 +864,7 @@ static void skip_object(InputStream * inp) {
             skip_char(inp);
         }
         return;
-    }
-    if (ch == '[') {
+    case '[':
         if (json_peek(inp) == ']') {
             skip_char(inp);
         }
@@ -872,14 +880,12 @@ static void skip_object(InputStream * inp) {
             }
         }
         return;
-    }
-    if (ch == '{') {
+    case '{':
         if (json_peek(inp) == '}') {
             skip_char(inp);
         }
         else {
             for (;;) {
-                int ch;
                 skip_object(inp);
                 read_whitespace(inp);
                 ch = skip_char(inp);
@@ -893,18 +899,22 @@ static void skip_object(InputStream * inp) {
             }
         }
         return;
-    }
-    if (ch == '(') {
-        unsigned long size = json_read_ulong(inp);
-        ch = skip_char(inp);
-        check_char(ch, ')');
-        while (size) {
-            skip_char(inp);
-            size--;
+    case '(':
+        {
+            unsigned long size = json_read_ulong(inp);
+            ch = skip_char(inp);
+            check_char(ch, ')');
+            while (size) {
+                ch = read_stream(inp);
+                if (ch < 0) exception(ERR_JSON_SYNTAX);
+                buf_add(ch);
+                size--;
+            }
         }
         return;
+    default:
+        exception(ERR_JSON_SYNTAX);
     }
-    exception(ERR_JSON_SYNTAX);
 }
 
 char * json_read_object(InputStream * inp) {
