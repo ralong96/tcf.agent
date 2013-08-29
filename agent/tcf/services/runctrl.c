@@ -278,12 +278,14 @@ static void write_context(OutputStream * out, Context * ctx) {
         json_write_string(out, cpu_grp->id);
     }
 
+#if ENABLE_RCBP_TEST
     if (is_test_process(ctx)) {
         write_stream(out, ',');
         json_write_string(out, "DiagnosticTestProcess");
         write_stream(out, ':');
         json_write_boolean(out, 1);
     }
+#endif
 
 #if ENABLE_ContextExtraProperties
     {

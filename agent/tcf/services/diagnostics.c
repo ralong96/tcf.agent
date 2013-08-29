@@ -142,15 +142,13 @@ static void command_get_test_list(char * token, Channel * c) {
     write_stream(&c->out, MARKER_EOM);
 }
 
-void test_process_done(Context * ctx) {
 #if ENABLE_RCBP_TEST
+void test_process_done(Context * ctx) {
     assert(EXT(context_get_group(ctx, CONTEXT_GROUP_PROCESS))->test_process);
     EXT(context_get_group(ctx, CONTEXT_GROUP_PROCESS))->test_process = 0;
     send_context_changed_event(ctx);
-#endif
 }
 
-#if ENABLE_RCBP_TEST
 static void run_test_done(int error, Context * ctx, void * arg) {
     RunTestDoneArgs * data = (RunTestDoneArgs *)arg;
     Channel * c = data->c;

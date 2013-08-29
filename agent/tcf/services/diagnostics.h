@@ -24,6 +24,7 @@
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/context.h>
 
+#if ENABLE_RCBP_TEST
 /*
  * Check if a context is a test started by Diagnostics.runTest command.
  */
@@ -35,6 +36,8 @@ extern int is_test_process(Context * ctx);
  * does not exit after running a dignostic test.
  */
 extern void test_process_done(Context * ctx);
+
+#endif /* ENABLE_RCBP_TEST */
 
 extern void ini_diagnostics_service(Protocol *);
 
