@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -36,7 +36,7 @@
 #include <tcf/framework/trace.h>
 #include <tcf/services/linenumbers.h>
 
-#define MAX_AREA_CNT 256
+#define MAX_AREA_CNT 0x1000
 
 typedef struct MapToSourceArgs {
     char token[256];
@@ -163,7 +163,7 @@ static void write_line_info(OutputStream * out, int cnt) {
 static void add_code_area(CodeArea * area, void * args) {
     if (code_area_cnt >= code_area_max) {
         if (code_area_max >= MAX_AREA_CNT) exception(ERR_BUFFER_OVERFLOW);
-        code_area_max += 8;
+        code_area_max = code_area_max == 0 ? 16 : code_area_max * 2;
         code_area_buf = (CodeArea *)loc_realloc(code_area_buf, sizeof(CodeArea) * code_area_max);
     }
     code_area_buf[code_area_cnt++] = *area;
@@ -188,7 +188,7 @@ static void map_to_source_cache_client(void * x) {
     write_stringz(&c->out, "R");
     write_stringz(&c->out, args->token);
     write_errno(&c->out, err);
-    if (err != 0) {
+    if (code_area_cnt == 0) {
         write_stringz(&c->out, "null");
     }
     else {
@@ -241,7 +241,7 @@ static void map_to_memory_cache_client(void * x) {
     write_stringz(&c->out, "R");
     write_stringz(&c->out, args->token);
     write_errno(&c->out, err);
-    if (err != 0) {
+    if (code_area_cnt == 0) {
         write_stringz(&c->out, "null");
     }
     else {
