@@ -824,21 +824,53 @@ static void add_addr_range(ELF_Section * sec, CompUnit * unit, ContextAddress ad
     range->mUnit = unit;
 }
 
+static void add_object_addr_ranges(ObjectInfo * info) {
+    CompUnit * unit = info->mCompUnit;
+    ContextAddress base = info->u.mCode.mLowPC;
+    assert(info->mFlags & DOIF_low_pc);
+    if (info->mFlags & DOIF_ranges) {
+        if (sCache->mDebugRanges != NULL) {
+            dio_EnterSection(&unit->mDesc, sCache->mDebugRanges, info->u.mCode.mHighPC.mRanges);
+            for (;;) {
+                ELF_Section * sec_x = NULL;
+                ELF_Section * sec_y = NULL;
+                U8_T x = dio_ReadAddress(&sec_x);
+                U8_T y = dio_ReadAddress(&sec_y);
+                if (x == 0 && y == 0) break;
+                if (x == ((U8_T)1 << unit->mDesc.mAddressSize * 8) - 1) {
+                    base = (ContextAddress)y;
+                }
+                else if (y > x) {
+                    ELF_Section * sec = info->u.mCode.mSection;
+                    if (sec == NULL) sec = unit->mTextSection;
+                    x = base + x;
+                    y = base + y;
+                    if (sec_x != NULL) sec = sec_x;
+                    else if (sec_y != NULL) sec = sec_y;
+                    add_addr_range(sec, unit, (ContextAddress)x, (ContextAddress)(y - x));
+                }
+            }
+            dio_ExitSection();
+        }
+    }
+    else if (info->u.mCode.mHighPC.mAddr > base) {
+        ELF_Section * sec = info->u.mCode.mSection;
+        if (sec == NULL) sec = unit->mTextSection;
+        add_addr_range(sec, unit, base, info->u.mCode.mHighPC.mAddr - base);
+    }
+}
+
 static void load_addr_ranges(void) {
     Trap trap;
     unsigned idx;
     ELF_File * file = sCache->mFile;
-    ELF_Section * debug_ranges = NULL;
 
     memset(&trap, 0, sizeof(trap));
     for (idx = 1; idx < file->section_cnt; idx++) {
         ELF_Section * sec = file->sections + idx;
         if (sec->size == 0) continue;
         if (sec->name == NULL) continue;
-        if (strcmp(sec->name, ".debug_ranges") == 0) {
-            debug_ranges = sec;
-        }
-        else if (strcmp(sec->name, ".debug_aranges") == 0) {
+        if (strcmp(sec->name, ".debug_aranges") == 0) {
             sCompUnit = NULL;
             dio_EnterSection(NULL, sec, 0);
             if (set_trap(&trap)) {
@@ -885,34 +917,18 @@ static void load_addr_ranges(void) {
         ObjectInfo * info = sCache->mCompUnits;
         while (info != NULL) {
             if (info->mFlags & DOIF_low_pc) {
-                CompUnit * unit = info->mCompUnit;
-                ContextAddress base = info->u.mCode.mLowPC;
-                if (info->mFlags & DOIF_ranges) {
-                    if (debug_ranges != NULL) {
-                        dio_EnterSection(&unit->mDesc, debug_ranges, info->u.mCode.mHighPC.mRanges);
-                        for (;;) {
-                            ELF_Section * sec_x = NULL;
-                            ELF_Section * sec_y = NULL;
-                            U8_T x = dio_ReadAddress(&sec_x);
-                            U8_T y = dio_ReadAddress(&sec_y);
-                            if (x == 0 && y == 0) break;
-                            if (x == ((U8_T)1 << unit->mDesc.mAddressSize * 8) - 1) {
-                                base = (ContextAddress)y;
-                            }
-                            else if (y > x) {
-                                ELF_Section * sec = unit->mTextSection;
-                                x = base + x;
-                                y = base + y;
-                                if (sec_x != NULL) sec = sec_x;
-                                else if (sec_y != NULL) sec = sec_y;
-                                add_addr_range(sec, unit, (ContextAddress)x, (ContextAddress)(y - x));
-                            }
-                        }
-                        dio_ExitSection();
+                add_object_addr_ranges(info);
+            }
+            else if ((info->mFlags & DOIF_aranges) == 0) {
+                /* No address range at the compile unit level is specified.
+                 * The address ranges are defined by the underlying scopes. */
+                ObjectInfo * obj = info->mChildren;
+                assert(info->mFlags & DOIF_children_loaded);
+                while (obj != NULL) {
+                    if (obj->mFlags & DOIF_low_pc) {
+                        add_object_addr_ranges(obj);
                     }
-                }
-                else if (info->u.mCode.mHighPC.mAddr > base) {
-                    add_addr_range(unit->mTextSection, unit, base, info->u.mCode.mHighPC.mAddr - base);
+                    obj = obj->mSibling;
                 }
             }
             info = info->mSibling;

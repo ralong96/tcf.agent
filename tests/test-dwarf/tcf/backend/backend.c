@@ -1006,6 +1006,7 @@ static void test_public_names(void) {
             }
             loc_var_func(NULL, sym);
         }
+        if ((n % 1000) == 0) tmp_gc();
     }
     for (m = 1; m < elf_file->section_cnt; m++) {
         ELF_Section * tbl = elf_file->sections + m;
@@ -1028,6 +1029,7 @@ static void test_public_names(void) {
                 error("unpack_elf_symbol_info");
             }
         }
+        tmp_gc();
     }
 }
 
