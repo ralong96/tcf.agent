@@ -682,6 +682,20 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
             break;
         }
     }
+    if (error == ESRCH && ctx == ctx->mem) {
+        /* Main thread is zombie, use another thread to access process memory */
+        LINK * l = ctx->children.next;
+        while (l != &ctx->children) {
+            Context * c = cldl2ctxp(l);
+            pid_t pid = EXT(c)->pid;
+            assert(c->parent == ctx);
+            if (pid != ext->pid && get_process_state(EXT(c)->pid) == 't') {
+                if (check_breakpoints_on_memory_read(ctx, address, buf, size) < 0) return -1;
+                return context_write_mem(c, address, buf, size);
+            }
+            l = l->next;
+        }
+    }
     if (error) {
 #if ENABLE_ExtendedMemoryErrorReports
         size_t size_valid = 0;
@@ -741,6 +755,19 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
         }
         else {
             memcpy((char *)buf + (word_addr - address), &word, word_size);
+        }
+    }
+    if (error == ESRCH && ctx == ctx->mem) {
+        /* Main thread is zombie, use another thread to access process memory */
+        LINK * l = ctx->children.next;
+        while (l != &ctx->children) {
+            Context * c = cldl2ctxp(l);
+            pid_t pid = EXT(c)->pid;
+            assert(c->parent == ctx);
+            if (pid != ext->pid && get_process_state(EXT(c)->pid) == 't') {
+                return context_read_mem(c, address, buf, size);
+            }
+            l = l->next;
         }
     }
     if (word_addr > address) size_valid = (size_t)(word_addr - address);
