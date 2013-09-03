@@ -276,6 +276,9 @@ static void print_symbol(Symbol * sym) {
         if (obj->mType != NULL) {
             printf("  Type  : 0x%" PRIX64 "\n", (uint64_t)obj->mType->mID);
         }
+        if (obj->mDefinition != NULL) {
+            printf("  Def   : 0x%" PRIX64 "\n", (uint64_t)obj->mDefinition->mID);
+        }
     }
 }
 

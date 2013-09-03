@@ -676,6 +676,7 @@ static int symbol_priority(ObjectInfo * obj) {
     int p = 0;
     if (obj->mFlags & DOIF_external) p += 2;
     if (obj->mFlags & DOIF_declaration) p -= 4;
+    if (obj->mFlags & DOIF_abstract_origin) p += 1;
     switch (obj->mTag) {
     case TAG_class_type:
     case TAG_structure_type:
@@ -769,7 +770,7 @@ static void sort_find_symbol_buf(void) {
     buf = (Symbol **)tmp_alloc(sizeof(Symbol *) * cnt);
     while (s != NULL) {
         s->dup = 0;
-        s->pos = pos;
+        s->pos = cnt - pos;
         buf[pos++] = s;
         s = s->next;
     }
@@ -1075,7 +1076,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
 
     if (sym_ip != 0) {
 
-        if (error == 0 && find_symbol_list == NULL) {
+        if (error == 0) {
             /* Search the name in the current compilation unit */
             Trap trap;
             if (set_trap(&trap)) {
@@ -1097,7 +1098,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                 if (set_trap(&trap)) {
                     DWARFCache * cache = get_dwarf_cache(get_dwarf_file(file));
                     find_by_name_in_pub_names(cache, name);
-                    if (find_symbol_list == NULL) find_by_name_in_sym_table(file, name, 0);
+                    find_by_name_in_sym_table(file, name, 0);
                     clear_trap(&trap);
                 }
                 else {
@@ -1187,8 +1188,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                 if (set_trap(&trap)) {
                     DWARFCache * cache = get_dwarf_cache(get_dwarf_file(file));
                     find_by_name_in_pub_names(cache, name);
-                    if (sym_ip == 0 || find_symbol_list == NULL)
-                        find_by_name_in_sym_table(file, name, sym_ip != 0);
+                    find_by_name_in_sym_table(file, name, sym_ip != 0);
                     clear_trap(&trap);
                 }
                 else {
@@ -1286,9 +1286,7 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
                 if (range != NULL) {
                     find_in_object_tree(range->mUnit->mObject, 2, NULL, name);
                 }
-                if (find_symbol_list == NULL) {
-                    find_by_name_in_sym_table(file, name, 0);
-                }
+                find_by_name_in_sym_table(file, name, 0);
             }
             clear_trap(&trap);
         }
@@ -2158,7 +2156,8 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
     case TAG_catch_block:
     case TAG_subroutine:
     case TAG_subprogram:
-        if ((obj->mFlags & DOIF_ranges) == 0 && obj->u.mCode.mHighPC.mAddr > obj->u.mCode.mLowPC) {
+        if ((obj->mFlags & DOIF_ranges) == 0 && (obj->mFlags & DOIF_low_pc) != 0 &&
+                obj->u.mCode.mHighPC.mAddr >= obj->u.mCode.mLowPC) {
             *byte_size = obj->u.mCode.mHighPC.mAddr - obj->u.mCode.mLowPC;
             return 1;
         }
