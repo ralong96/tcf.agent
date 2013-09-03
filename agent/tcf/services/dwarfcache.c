@@ -766,7 +766,7 @@ static void read_object_refs(void) {
             if (ref.org->mFlags & DOIF_load_mark) str_fmt_exception(ERR_INV_DWARF,
                 "Invalid forward reference at %x", (unsigned)ref.obj->mID);
             if (ref.obj->mName == NULL) ref.obj->mName = ref.org->mName;
-            if (ref.obj->mType == NULL) ref.obj->mType = ref.org->mType;
+            if (ref.obj->mType == NULL || ref.obj->mType->mID == OBJECT_ID_VOID) ref.obj->mType = ref.org->mType;
             ref.obj->mFlags |= ref.org->mFlags & ~(DOIF_children_loaded | DOIF_declaration | DOIF_specification);
             if (ref.obj->mFlags & DOIF_specification) {
                 ref.org->mDefinition = ref.obj;
@@ -939,9 +939,55 @@ static void load_addr_ranges(void) {
     }
 }
 
+static int cmp_pub_objects(ObjectInfo * x, ObjectInfo * y) {
+    static const U4_T flags =
+        DOIF_declaration |
+        DOIF_external |
+        DOIF_artificial |
+        DOIF_specification |
+        DOIF_abstract_origin |
+        DOIF_extension |
+        DOIF_private |
+        DOIF_protected |
+        DOIF_public |
+        DOIF_ranges |
+        DOIF_low_pc |
+        DOIF_linkage_name |
+        DOIF_mangled_name;
+
+    if ((x->mFlags & flags) != (y->mFlags & flags)) return 0;
+    switch (x->mTag) {
+    case TAG_base_type:
+    case TAG_fund_type:
+        if (x->u.mFundType != y->u.mFundType) return 0;
+        break;
+    }
+    if (strcmp(x->mName, y->mName) != 0) return 0;
+    return 1;
+}
+
 static void add_pub_name(PubNamesTable * tbl, ObjectInfo * obj) {
     PubNamesInfo * info = NULL;
     unsigned h = calc_symbol_name_hash(obj->mName) % tbl->mHashSize;
+    obj->mFlags |= DOIF_pub_mark;
+    switch (obj->mTag) {
+    case TAG_base_type:
+    case TAG_typedef:
+    case TAG_class_type:
+    case TAG_structure_type:
+    case TAG_union_type:
+    case TAG_interface_type:
+    case TAG_variable:
+        {
+            /* Check for duplicates */
+            unsigned n = tbl->mHash[h];
+            while (n != 0) {
+                ObjectInfo * pub = tbl->mNext[n].mObject;
+                if (pub->mTag == obj->mTag && cmp_pub_objects(pub, obj)) return;
+                n = tbl->mNext[n].mNext;
+            }
+        }
+    }
     if (tbl->mCnt >= tbl->mMax) {
         tbl->mMax = tbl->mMax * 3 / 2;
         tbl->mNext = (PubNamesInfo *)loc_realloc(tbl->mNext, sizeof(PubNamesInfo) * tbl->mMax);
@@ -950,7 +996,6 @@ static void add_pub_name(PubNamesTable * tbl, ObjectInfo * obj) {
     info->mObject = obj;
     info->mNext = tbl->mHash[h];
     tbl->mHash[h] = tbl->mCnt++;
-    obj->mFlags |= DOIF_pub_mark;
 }
 
 static void load_pub_names(ELF_Section * debug_info, ELF_Section * pub_names) {
