@@ -3016,7 +3016,7 @@ static void add_dwarf_location_command(LocationInfo * l, PropertyValue * v) {
         l->code_addr = info.code_addr;
         l->code_size = info.code_size;
     }
-    else {
+    else if (info.code_size > 0) {
         if (l->code_addr < info.code_addr) {
             assert(l->code_addr + l->code_size > info.code_addr);
             l->code_size = l->code_addr + l->code_size - info.code_addr;
