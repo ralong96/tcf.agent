@@ -1544,9 +1544,6 @@ static void create_symbol_addr_search_index(ELF_Section * sec) {
     int rel = file->type == ET_REL;
     unsigned m = 0;
 
-    sec->sym_addr_max = (unsigned)(sec->size / 16) + 16;
-    sec->sym_addr_table = (ELF_SecSymbol *)loc_alloc(sec->sym_addr_max * sizeof(ELF_SecSymbol));
-
     for (m = 1; m < file->section_cnt; m++) {
         unsigned n = 1;
         ELF_Section * tbl = file->sections + m;
@@ -1586,7 +1583,13 @@ static void create_symbol_addr_search_index(ELF_Section * sec) {
                     }
                 }
                 if (sec->sym_addr_cnt >= sec->sym_addr_max) {
-                    sec->sym_addr_max = sec->sym_addr_max * 3 / 2;
+                    if (sec->sym_addr_table == NULL) {
+                        sec->sym_addr_max = (unsigned)(tbl->sym_count / 2) + 16;
+                        if (sec->sym_addr_max > 0x10000) sec->sym_addr_max = 0x10000;
+                    }
+                    else {
+                        sec->sym_addr_max = sec->sym_addr_max * 3 / 2;
+                    }
                     sec->sym_addr_table = (ELF_SecSymbol *)loc_realloc(sec->sym_addr_table, sec->sym_addr_max * sizeof(ELF_SecSymbol));
                 }
                 s = sec->sym_addr_table + sec->sym_addr_cnt++;

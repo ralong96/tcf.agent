@@ -607,6 +607,11 @@ static int cmp_object_profiles(ObjectInfo * x, ObjectInfo * y) {
     }
     if (x == NULL || y == NULL) return 0;
     if (x->mTag != y->mTag) return 0;
+    if (x->mName != y->mName) {
+        if (x->mName == NULL || y->mName == NULL) return 0;
+        if (strcmp(x->mName, y->mName) != 0) return 0;
+    }
+    if (!cmp_object_profiles(x->mType, y->mType)) return 0;
     switch (x->mTag) {
     case TAG_subprogram:
         {
@@ -630,21 +635,8 @@ static int cmp_object_profiles(ObjectInfo * x, ObjectInfo * y) {
             if (px != NULL || py != NULL) return 0;
         }
         break;
-    case TAG_packed_type:
-    case TAG_const_type:
-    case TAG_volatile_type:
-    case TAG_restrict_type:
-    case TAG_shared_type:
-    case TAG_pointer_type:
-    case TAG_mod_pointer:
-    case TAG_string_type:
-    case TAG_array_type:
-        if (!cmp_object_profiles(x->mType, y->mType)) return 0;
-        break;
     }
-    if (x->mName == y->mName) return 1;
-    if (x->mName == NULL || y->mName == NULL) return 0;
-    return strcmp(x->mName, y->mName) == 0;
+    return 1;
 }
 
 static const char * get_linkage_name(ObjectInfo * obj) {
@@ -824,6 +816,7 @@ static ObjectInfo * find_definition(ObjectInfo * decl) {
                     n = tbl->mNext[n].mNext;
                     if (obj->mTag != decl->mTag) continue;
                     if (obj->mFlags & DOIF_declaration) continue;
+                    if (obj->mFlags & DOIF_specification) continue;
                     if (!equ_symbol_names(obj->mName, decl->mName)) continue;
                     if (!cmp_object_profiles(decl, obj)) continue;
                     if (!cmp_object_linkage_names(decl, obj)) continue;
@@ -3417,6 +3410,7 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
         if (obj->mFlags & DOIF_private) *flags |= SYM_FLAG_PRIVATE;
         if (obj->mFlags & DOIF_protected) *flags |= SYM_FLAG_PROTECTED;
         if (obj->mFlags & DOIF_public) *flags |= SYM_FLAG_PUBLIC;
+        if (obj->mFlags & DOIF_optional) *flags |= SYM_FLAG_OPTIONAL;
         switch (obj->mTag) {
         case TAG_subrange_type:
             *flags |= SYM_FLAG_SUBRANGE_TYPE;
@@ -3474,7 +3468,6 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
         case TAG_base_type:
             if (obj->mTag == TAG_formal_parameter) {
                 *flags |= SYM_FLAG_PARAMETER;
-                if (get_num_prop(obj, AT_is_optional, &v) && v != 0) *flags |= SYM_FLAG_OPTIONAL;
             }
             else if (obj->mTag == TAG_base_type) {
                 if (obj->u.mFundType == ATE_boolean) *flags |= SYM_FLAG_BOOL_TYPE;

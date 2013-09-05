@@ -622,6 +622,10 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     case AT_mangled:
         Info->mFlags |= DOIF_mangled_name;
         break;
+    case AT_is_optional:
+        dio_ChkFlag(Form);
+        if (dio_gFormData) Info->mFlags |= DOIF_optional;
+        break;
     case AT_low_pc:
         dio_ChkAddr(Form);
         Info->u.mCode.mLowPC = (ContextAddress)dio_gFormData;
@@ -953,7 +957,8 @@ static int cmp_pub_objects(ObjectInfo * x, ObjectInfo * y) {
         DOIF_ranges |
         DOIF_low_pc |
         DOIF_linkage_name |
-        DOIF_mangled_name;
+        DOIF_mangled_name |
+        DOIF_optional;
 
     if ((x->mFlags & flags) != (y->mFlags & flags)) return 0;
     switch (x->mTag) {

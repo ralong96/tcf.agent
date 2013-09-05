@@ -459,23 +459,23 @@ static void test_composite_type(Symbol * type) {
             error_sym("get_symbol_class", children[i]);
         }
         if (get_symbol_container(children[i], &member_container) < 0) {
-            error("get_symbol_container");
+            error_sym("get_symbol_container", children[i]);
         }
         if (get_symbol_class(member_container, &container_class) < 0) {
-            error("get_symbol_class");
+            error_sym("get_symbol_class", member_container);
         }
         if (container_class != SYM_CLASS_TYPE) {
             errno = ERR_OTHER;
-            error("Invalid result of get_symbol_container()");
+            error_sym("Invalid result of get_symbol_container()", children[i]);
         }
         if (type_name != NULL) {
             char * container_name = NULL;
             if (get_symbol_name(member_container, &container_name) < 0) {
-                error("get_symbol_name");
+                error_sym("get_symbol_name", member_container);
             }
             if (container_name == NULL || strcmp(container_name, type_name) != 0) {
                 errno = ERR_OTHER;
-                error("Invalid result of get_symbol_container()");
+                error_sym("Invalid result of get_symbol_container()", children[i]);
             }
         }
         if (member_class == SYM_CLASS_REFERENCE) {
@@ -724,6 +724,10 @@ static void loc_var_func(void * args, Symbol * sym) {
             /* Comp unit with code ranges */
             ok = 1;
         }
+        if (!ok && symbol_class == SYM_CLASS_REFERENCE && addr_ok && type == NULL && name == NULL) {
+            /* GCC C++ 4.1 produces entries like this */
+            ok = 1;
+        }
         if (!ok) {
             errno = err;
             error_sym("get_symbol_size", sym);
@@ -735,7 +739,9 @@ static void loc_var_func(void * args, Symbol * sym) {
     }
     if (name != NULL) {
         Symbol * find_sym = NULL;
-        if (find_symbol_by_name(elf_ctx, frame, pc, name, &find_sym) == 0 && symcmp(sym, find_sym) == 0) {
+        if (find_symbol_by_name(elf_ctx, frame, pc, name, &find_sym) == 0 &&
+                symcmp(sym, find_sym) == 0 &&
+                symbol_class != SYM_CLASS_COMP_UNIT) {
             Value v;
             char * expr = (char *)tmp_alloc(strlen(name) + 16);
             if (size_ok) {

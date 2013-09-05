@@ -85,6 +85,7 @@ struct FileInfo {
 #define DOIF_need_frame         0x10000
 #define DOIF_linkage_name       0x20000
 #define DOIF_mangled_name       0x40000
+#define DOIF_optional           0x80000
 
 struct ObjectInfo {
 
