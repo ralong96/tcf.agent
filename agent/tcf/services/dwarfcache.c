@@ -887,10 +887,7 @@ static void load_addr_ranges(void) {
                         size = dio_ReadU8();
                     }
                     next = dio_GetPos() + size;
-                    if (dio_ReadU2() != 2) {
-                        dio_SetPos(next);
-                    }
-                    else {
+                    if (dio_ReadU2() == 2) {
                         U8_T offs = dio_ReadAddressX(NULL, dwarf64 ? 8 : 4);
                         U1_T addr_size = dio_ReadU1();
                         U1_T segm_size = dio_ReadU1();
@@ -909,6 +906,7 @@ static void load_addr_ranges(void) {
                             add_addr_range(addr_sec, sCompUnit, addr, size);
                         }
                     }
+                    dio_SetPos(next);
                 }
                 clear_trap(&trap);
             }
@@ -1086,8 +1084,41 @@ static int unit_id_comparator(const void * x1, const void * x2) {
     return 0;
 }
 
-static void load_debug_sections(void) {
+static void load_debug_info_section(ELF_Section * sec) {
     Trap trap;
+    sObjRefsCnt = 0;
+    sDebugSection = sec;
+    sParentObject = NULL;
+    sPrevSibling = NULL;
+    dio_EnterSection(NULL, sec, 0);
+    if (set_trap(&trap)) {
+        while (dio_GetPos() < sec->size) {
+            dio_ReadUnit(&sUnitDesc, read_object_info);
+        }
+        clear_trap(&trap);
+    }
+    dio_ExitSection();
+    sDebugSection = NULL;
+    sParentObject = NULL;
+    sPrevSibling = NULL;
+    sCompUnit = NULL;
+    if (sCache->mCompUnitsCnt > 0) {
+        unsigned i = 0;
+        ObjectInfo * unit = sCache->mCompUnits;
+        sCache->mCompUnitsIndex = (CompUnit **)loc_alloc(sizeof(CompUnit *) * sCache->mCompUnitsCnt);
+        while (unit != NULL) {
+            assert(unit->mTag == TAG_compile_unit);
+            sCache->mCompUnitsIndex[i++] = unit->mCompUnit;
+            unit = unit->mSibling;
+        }
+        assert(sCache->mCompUnitsCnt == i);
+        qsort(sCache->mCompUnitsIndex, sCache->mCompUnitsCnt, sizeof(CompUnit *), unit_id_comparator);
+    }
+    if (trap.error) exception(trap.error);
+    read_object_refs();
+}
+
+static void load_debug_sections(void) {
     unsigned idx;
     ELF_Section * pub_names = NULL;
     ELF_Section * pub_types = NULL;
@@ -1096,47 +1127,37 @@ static void load_debug_sections(void) {
     FrameInfoIndex * frame_info_e = NULL;
     ELF_File * file = sCache->mFile;
 
-    memset(&trap, 0, sizeof(trap));
+    for (idx = 1; idx < file->section_cnt; idx++) {
+        ELF_Section * sec = file->sections + idx;
+        if (sec->size == 0) continue;
+        if (sec->name == NULL) continue;
+        if (sec->type == SHT_NOBITS) continue;
+        if (strcmp(sec->name, ".debug_info") == 0) {
+            load_debug_info_section(sec);
+            debug_info = sec;
+        }
+    }
+
+    if (debug_info == NULL) {
+        /* TODO: loading both .debug and .debug_info sections */
+        for (idx = 1; idx < file->section_cnt; idx++) {
+            ELF_Section * sec = file->sections + idx;
+            if (sec->size == 0) continue;
+            if (sec->name == NULL) continue;
+            if (sec->type == SHT_NOBITS) continue;
+            if (strcmp(sec->name, ".debug") == 0) {
+                load_debug_info_section(sec);
+                debug_info = sec;
+            }
+        }
+    }
 
     for (idx = 1; idx < file->section_cnt; idx++) {
         ELF_Section * sec = file->sections + idx;
         if (sec->size == 0) continue;
         if (sec->name == NULL) continue;
         if (sec->type == SHT_NOBITS) continue;
-        if (strcmp(sec->name, ".debug") == 0 || strcmp(sec->name, ".debug_info") == 0) {
-            debug_info = sec;
-            sObjRefsCnt = 0;
-            sDebugSection = sec;
-            sParentObject = NULL;
-            sPrevSibling = NULL;
-            dio_EnterSection(NULL, sec, 0);
-            if (set_trap(&trap)) {
-                while (dio_GetPos() < sec->size) {
-                    dio_ReadUnit(&sUnitDesc, read_object_info);
-                }
-                clear_trap(&trap);
-            }
-            dio_ExitSection();
-            sDebugSection = NULL;
-            sParentObject = NULL;
-            sPrevSibling = NULL;
-            sCompUnit = NULL;
-            if (sCache->mCompUnitsCnt > 0) {
-                unsigned i = 0;
-                ObjectInfo * unit = sCache->mCompUnits;
-                sCache->mCompUnitsIndex = (CompUnit **)loc_alloc(sizeof(CompUnit *) * sCache->mCompUnitsCnt);
-                while (unit != NULL) {
-                    assert(unit->mTag == TAG_compile_unit);
-                    sCache->mCompUnitsIndex[i++] = unit->mCompUnit;
-                    unit = unit->mSibling;
-                }
-                assert(sCache->mCompUnitsCnt == i);
-                qsort(sCache->mCompUnitsIndex, sCache->mCompUnitsCnt, sizeof(CompUnit *), unit_id_comparator);
-            }
-            if (trap.error) break;
-            read_object_refs();
-        }
-        else if (strcmp(sec->name, ".line") == 0) {
+        if (strcmp(sec->name, ".line") == 0) {
             sCache->mDebugLineV1 = sec;
         }
         else if (strcmp(sec->name, ".debug_line") == 0) {
@@ -1191,8 +1212,6 @@ static void load_debug_sections(void) {
         if (pub_types) load_pub_names(debug_info, pub_types);
         create_pub_names(debug_info);
     }
-
-    if (trap.error) exception(trap.error);
 }
 
 #if ENABLE_DWARF_LAZY_LOAD
