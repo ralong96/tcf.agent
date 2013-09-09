@@ -76,6 +76,12 @@
 #define ILLEGAL_OPTION_HOOK  do {} while(0)
 #endif
 
+/* Signal handler. This hook extends behavior when process 
+ * exitis due to received signal. */
+#ifndef SIGNAL_HANDLER_HOOK
+#define SIGNAL_HANDLER_HOOK do {} while(0)
+#endif
+
 static const char * progname;
 static unsigned int idle_timeout;
 static unsigned int idle_count;
@@ -106,6 +112,7 @@ static void shutdown_event(void * args) {
 }
 
 static void signal_handler(int sig) {
+    SIGNAL_HANDLER_HOOK;
     if (is_dispatch_thread()) {
         discovery_stop();
         signal(sig, SIG_DFL);
