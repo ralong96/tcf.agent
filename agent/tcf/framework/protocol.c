@@ -69,6 +69,7 @@ struct ReplyHandlerInfo {
     unsigned long tokenid;
     Channel * c;
     ReplyHandlerCB handler;
+    ProgressHandlerCB progress;
     void * client_data;
     struct ReplyHandlerInfo * next;
 };
@@ -277,6 +278,14 @@ void handle_protocol_message(Channel * c) {
                     exception(ERR_PROTOCOL);
                 }
             }
+            else if (type[0] == 'P') {
+                if (rh->progress) {
+                    rh->progress(c, rh->client_data);
+                }
+                else {
+                    skip_until_EOM(c);
+                }
+            }
             else {
                 int n = 0;
                 if (type[0] == 'N') {
@@ -284,7 +293,7 @@ void handle_protocol_message(Channel * c) {
                     n = ERR_INV_COMMAND;
                 }
                 rh->handler(c, rh->client_data, n);
-                if (type[0] != 'P') loc_free(rh);
+                loc_free(rh);
             }
             clear_trap(&trap);
         }
@@ -421,12 +430,13 @@ static void send_command_failed(void * args) {
     loc_free(rh);
 }
 
-ReplyHandlerInfo * protocol_send_command(Channel * c, const char * service, const char * name, ReplyHandlerCB handler, void * client_data) {
+ReplyHandlerInfo * protocol_send_command_with_progress(Channel * c, const char * service, const char * name, ReplyHandlerCB handler, ProgressHandlerCB progress, void * client_data) {
     Protocol * p = c->protocol;
     ReplyHandlerInfo * rh = (ReplyHandlerInfo *)loc_alloc(sizeof(ReplyHandlerInfo));
 
     rh->c = c;
     rh->handler = handler;
+    rh->progress = progress;
     rh->client_data = client_data;
     if (is_channel_closed(c) || c->peer_service_list == NULL) {
         post_event(send_command_failed, rh);
@@ -447,6 +457,10 @@ ReplyHandlerInfo * protocol_send_command(Channel * c, const char * service, cons
         reply_handlers[h] = rh;
     }
     return rh;
+}
+
+ReplyHandlerInfo * protocol_send_command(Channel * c, const char * service, const char * name, ReplyHandlerCB handler, void * client_data) {
+    return protocol_send_command_with_progress(c, service, name, handler, NULL, client_data);
 }
 
 struct sendRedirectInfo {

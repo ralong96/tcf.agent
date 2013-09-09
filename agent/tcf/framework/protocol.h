@@ -44,11 +44,15 @@ typedef void (*ProtocolCommandHandler2)(char *, Channel *, void * client_data);
 typedef void (*ProtocolEventHandler2)(Channel *, void * client_data);
 
 /*
- * Callback fucntion for replies of commands.  If error is non-zero
+ * Callback function for replies of commands.  If error is non-zero
  * then no data should be read of the input steam.
  */
-/* TODO: need additional argument in ReplyHandlerCB to distinguish R and P responses */
 typedef void (*ReplyHandlerCB)(Channel *, void * client_data, int error);
+
+/*
+ * Callback function for progress of commands.
+ */
+typedef void (*ProgressHandlerCB)(Channel *, void * client_data);
 
 /*
  * Read and dispatch one protocol message.
@@ -99,6 +103,9 @@ extern void set_default_message_handler2(Protocol *, ProtocolMessageHandler2 han
  */
 extern ReplyHandlerInfo * protocol_send_command(Channel * c,
      const char * service, const char * name, ReplyHandlerCB handler, void * client_data);
+extern ReplyHandlerInfo * protocol_send_command_with_progress(Channel * c,
+     const char * service, const char * name, ReplyHandlerCB handler,
+     ProgressHandlerCB progress, void * client_data);
 
 /*
  * Cancel pending command.  Returns true if the commands was cancelled
