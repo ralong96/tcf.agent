@@ -367,6 +367,15 @@ void send_event_register_changed(const char * id) {
     }
 }
 
+void send_event_register_definitions_changed(void) {
+    OutputStream * out = &broadcast_group->out;
+
+    write_stringz(out, "E");
+    write_stringz(out, REGISTERS);
+    write_stringz(out, "contextChanged");
+    write_stream(out, MARKER_EOM);
+}
+
 typedef struct GetArgs {
     char token[256];
     char id[256];
