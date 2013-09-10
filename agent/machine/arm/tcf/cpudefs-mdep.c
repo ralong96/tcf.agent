@@ -38,7 +38,9 @@
 
 RegisterDefinition regs_def[] = {
 #   define REG_FP user.regs.uregs[11]
+#   define REG_IP user.regs.uregs[12]
 #   define REG_SP user.regs.uregs[13]
+#   define REG_LR user.regs.uregs[14]
 #   define REG_PC user.regs.uregs[15]
 #   define REG_CPSR user.regs.uregs[16]
     { "r0",      REG_OFFSET(user.regs.uregs[0]),      4, 0, 0},
@@ -123,10 +125,12 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
     return crawl_stack_frame_arm(frame, down);
 }
 
+#if defined(ENABLE_add_cpudefs_disassembler) && ENABLE_add_cpudefs_disassembler
 void add_cpudefs_disassembler(Context * cpu_ctx) {
     add_disassembler(cpu_ctx, "ARM", disassemble_arm);
     add_disassembler(cpu_ctx, "Thumb", disassemble_thumb);
 }
+#endif
 
 static int read_reg(Context *ctx, RegisterDefinition * def, size_t size, ContextAddress * addr) {
     size_t i;
@@ -835,7 +839,7 @@ static void ini_reg_defs(void) {
             r->role = "PC";
             pc_def = r;
         }
-        else if (r->offset == REG_OFFSET(user.regs.uregs[14])) {
+        else if (r->offset == offsetof(REG_SET, REG_LR)) {
             r->role = "LR";
             lr_def = r;
         }
