@@ -770,6 +770,222 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
     add_dec_uint32(imm);
 }
 
+static void disassemble_branches_and_misc_32(uint16_t suffix) {
+    if ((suffix & 0xd000) == 0x8000) {
+        uint16_t op = (instr >> 4) & 0x7f;
+        if ((op & 0x38) != 0x38) {
+            /* Conditional branch */
+            int J1 = (suffix & (1 << 13)) != 0;
+            int J2 = (suffix & (1 << 11)) != 0;
+            int S = (instr & (1 << 10)) != 0;
+            int32_t offset = suffix & 0x7ff;
+            offset |= (instr & 0x3f) << 11;
+            if (J2) offset |= 1 << 17;
+            if (J1) offset |= 1 << 18;
+            if (S) offset |= 0xfff80000;
+            offset = offset << 1;
+            add_char('b');
+            add_str(cond_names[(instr >> 6) & 0xf]);
+            add_str(".w");
+            add_branch_address(offset);
+            return;
+        }
+        if ((op & 0x7e) == 0x38) {
+            /* Move to Special Register */
+            int R = 0;
+            uint32_t mask = (suffix >> 8) & 0xf;
+            if ((suffix & 0x0300) != 0x0000) {
+                R = (instr & (1 << 4)) != 0;
+            }
+            if (mask) {
+                add_str("msr");
+                if (it_cond_name) add_str(it_cond_name);
+                add_char(' ');
+                add_str(R ? "spsr" : "cpsr");
+                add_char('_');
+                if (mask & 8) add_char('f');
+                if (mask & 4) add_char('s');
+                if (mask & 2) add_char('x');
+                if (mask & 1) add_char('c');
+                add_str(", ");
+                add_reg_name(instr & 0xf);
+                return;
+            }
+            return;
+        }
+        if (op == 0x3a) {
+            /* Change Processor State, and hints */
+            uint32_t imod = (suffix >> 9) & 3;
+            int M = (suffix & (1 << 8)) != 0;
+            if (imod || M) {
+                uint32_t mode = instr & 0x1f;
+                add_str("cps");
+                if (imod >= 2) {
+                    add_str(imod == 2 ? "ie" : "id");
+                    add_str(".w");
+                    add_char(' ');
+                    if (instr & (1 << 7)) add_char('a');
+                    if (instr & (1 << 6)) add_char('i');
+                    if (instr & (1 << 5)) add_char('f');
+                    if (M) {
+                        add_str(", #");
+                        add_dec_uint32(mode);
+                    }
+                }
+                else {
+                    add_str(".w #");
+                    add_dec_uint32(mode);
+                }
+                return;
+            }
+            switch (suffix & 0xff) {
+            case 0: add_str("nop.w"); break;
+            case 1: add_str("yield"); break;
+            case 2: add_str("wfe"); break;
+            case 3: add_str("wfi"); break;
+            case 4: add_str("sev"); break;
+            }
+            if (buf_pos > 0) {
+                if (it_cond_name) add_str(it_cond_name);
+                return;
+            }
+            if ((suffix & 0x00f0) == 0x00f0) {
+                add_str("bdg");
+                if (it_cond_name) add_str(it_cond_name);
+                add_str(" #");
+                add_dec_uint32(suffix & 0xf);
+                return;
+            }
+            return;
+        }
+        if (op == 0x3b) {
+            /* Miscellaneous control instructions */
+            uint32_t op = (suffix >> 4) & 0xf;
+            switch (op) {
+            case 0: add_str("leavex"); break;
+            case 1: add_str("enterx"); break;
+            case 2: add_str("clrex"); break;
+            case 4: add_str("dsb"); break;
+            case 5: add_str("dmb"); break;
+            case 6: add_str("isb"); break;
+            }
+            if (op >= 4 && op <= 6) {
+                if (it_cond_name) add_str(it_cond_name);
+                add_char(' ');
+                switch (suffix & 0xf) {
+                case 15: add_str("sy"); break;
+                case 14: add_str("st"); break;
+                case 11: add_str("ish"); break;
+                case 10: add_str("ishst"); break;
+                case 7: add_str("nsh"); break;
+                case 6: add_str("nshst"); break;
+                case 3: add_str("osh"); break;
+                case 2: add_str("oshst"); break;
+                default:
+                    add_str(" #");
+                    add_dec_uint32(suffix & 0xf);
+                }
+                return;
+            }
+            return;
+        }
+        if (op == 0x3c) {
+            /* Branch and Exchange Jazelle */
+            return;
+        }
+        if (op == 0x3d) {
+            /* Exception Return */
+            return;
+        }
+        if ((op & 0x7e) == 0x3e) {
+            /* Move from Special Register */
+            add_str("mrs");
+            if (it_cond_name) add_str(it_cond_name);
+            add_char(' ');
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", cpsr");
+            return;
+        }
+        if (op == 0x7f) {
+            if (suffix & 0x2000) {
+                /* Permanently UNDEFINED.
+                 * This space will not be allocated in future */
+                return;
+            }
+            /* Secure Monitor Call */
+            return;
+        }
+        /* Undefined */
+        return;
+    }
+
+    {
+        /* B/BL/BLX */
+        int w = 0;
+        int J1 = (suffix & (1 << 13)) != 0;
+        int J2 = (suffix & (1 << 11)) != 0;
+        int S = (instr & (1 << 10)) != 0;
+        int32_t offset = suffix & 0x7ff;
+        offset |= (instr & 0x3ff) << 11;
+        if (S == J2) offset |= 1 << 21;
+        if (S == J1) offset |= 1 << 22;
+        if (S) offset |= 0xff800000;
+        offset = offset << 1;
+        if ((suffix & 0xd000) == 0x9000) {
+            add_str("b");
+            w = 1;
+        }
+        else if ((suffix & 0xf800) == 0xe800) {
+            add_str("blx");
+        }
+        else {
+            add_str("bl");
+        }
+        if (it_cond_name) add_str(it_cond_name);
+        if (w) add_str(".w");
+        add_branch_address(offset);
+        return;
+    }
+}
+
+static void disassemble_memory_hints(uint16_t suffix) {
+    if ((instr & 0xff50) == 0xf810) {
+        int U = instr & (1 << 7);
+        int W = instr & (1 << 5);
+        uint32_t rn = instr & 0xf;
+        uint32_t imm = suffix & 0xfff;
+        add_str("pld");
+        if (W) add_char('w');
+        add_str(" [");
+        add_reg_name(rn);
+        if (!U && rn != 15) {
+            if ((suffix & 0xff00) != 0xfc00) {
+                if ((suffix & 0xffc0) == 0xf000) {
+                    uint32_t imm2 = (suffix >> 4) & 3;
+                    add_str(", ");
+                    add_reg_name(suffix & 0xf);
+                    if (imm2) {
+                        add_str(", lsl #");
+                        add_dec_uint32(imm2);
+                    }
+                    add_char(']');
+                    return;
+                }
+                buf_pos = 0;
+                return;
+            }
+            imm &= 0xff;
+        }
+        if (imm != 0 || !U) {
+            add_str(", #");
+            if (!U) add_char('-');
+            add_dec_uint32(imm);
+        }
+        add_char(']');
+        return;
+    }
+}
+
 static void disassemble_thumb7(void) {
     unsigned i;
     uint16_t suffix = 0;
@@ -800,7 +1016,6 @@ static void disassemble_thumb7(void) {
     }
 
     if ((instr & 0xf800) == 0xf000) {
-
         if ((suffix & 0x8000) == 0) {
             if (instr & (1 << 9)) {
                 disassemble_data_processing_pbi_32(suffix);
@@ -808,189 +1023,17 @@ static void disassemble_thumb7(void) {
             else {
                 disassemble_data_processing_32(suffix);
             }
-            return;
         }
-
-        if ((suffix & 0xd000) == 0x8000) {
-            uint16_t op = (instr >> 4) & 0x7f;
-            if ((op & 0x38) != 0x38) {
-                /* Conditional branch */
-                int J1 = (suffix & (1 << 13)) != 0;
-                int J2 = (suffix & (1 << 11)) != 0;
-                int S = (instr & (1 << 10)) != 0;
-                int32_t offset = suffix & 0x7ff;
-                offset |= (instr & 0x3f) << 11;
-                if (J2) offset |= 1 << 17;
-                if (J1) offset |= 1 << 18;
-                if (S) offset |= 0xfff80000;
-                offset = offset << 1;
-                add_char('b');
-                add_str(cond_names[(instr >> 6) & 0xf]);
-                add_str(".w");
-                add_branch_address(offset);
-                return;
-            }
-            if ((op & 0x7e) == 0x38) {
-                /* Move to Special Register */
-                int R = 0;
-                uint32_t mask = (suffix >> 8) & 0xf;
-                if ((suffix & 0x0300) != 0x0000) {
-                    R = (instr & (1 << 4)) != 0;
-                }
-                if (mask) {
-                    add_str("msr");
-                    if (it_cond_name) add_str(it_cond_name);
-                    add_char(' ');
-                    add_str(R ? "spsr" : "cpsr");
-                    add_char('_');
-                    if (mask & 8) add_char('f');
-                    if (mask & 4) add_char('s');
-                    if (mask & 2) add_char('x');
-                    if (mask & 1) add_char('c');
-                    add_str(", ");
-                    add_reg_name(instr & 0xf);
-                    return;
-                }
-                return;
-            }
-            if (op == 0x3a) {
-                /* Change Processor State, and hints */
-                uint32_t imod = (suffix >> 9) & 3;
-                int M = (suffix & (1 << 8)) != 0;
-                if (imod || M) {
-                    uint32_t mode = instr & 0x1f;
-                    add_str("cps");
-                    if (imod >= 2) {
-                        add_str(imod == 2 ? "ie" : "id");
-                        add_str(".w");
-                        add_char(' ');
-                        if (instr & (1 << 7)) add_char('a');
-                        if (instr & (1 << 6)) add_char('i');
-                        if (instr & (1 << 5)) add_char('f');
-                        if (M) {
-                            add_str(", #");
-                            add_dec_uint32(mode);
-                        }
-                    }
-                    else {
-                        add_str(".w #");
-                        add_dec_uint32(mode);
-                    }
-                    return;
-                }
-                switch (suffix & 0xff) {
-                case 0: add_str("nop"); break;
-                case 1: add_str("yield"); break;
-                case 2: add_str("wfe"); break;
-                case 3: add_str("wfi"); break;
-                case 4: add_str("sev"); break;
-                }
-                if (buf_pos > 0) {
-                    if (it_cond_name) add_str(it_cond_name);
-                    return;
-                }
-                if ((suffix & 0x00f0) == 0x00f0) {
-                    add_str("bdg");
-                    if (it_cond_name) add_str(it_cond_name);
-                    add_str(" #");
-                    add_dec_uint32(suffix & 0xf);
-                    return;
-                }
-                return;
-            }
-            if (op == 0x3b) {
-                /* Miscellaneous control instructions */
-                uint32_t op = (suffix >> 4) & 0xf;
-                switch (op) {
-                case 0: add_str("leavex"); break;
-                case 1: add_str("enterx"); break;
-                case 2: add_str("clrex"); break;
-                case 4: add_str("dsb"); break;
-                case 5: add_str("dmb"); break;
-                case 6: add_str("isb"); break;
-                }
-                if (op >= 4 && op <= 6) {
-                    if (it_cond_name) add_str(it_cond_name);
-                    add_char(' ');
-                    switch (suffix & 0xf) {
-                    case 15: add_str("sy"); break;
-                    case 14: add_str("st"); break;
-                    case 11: add_str("ish"); break;
-                    case 10: add_str("ishst"); break;
-                    case 7: add_str("nsh"); break;
-                    case 6: add_str("nshst"); break;
-                    case 3: add_str("osh"); break;
-                    case 2: add_str("oshst"); break;
-                    default:
-                        add_str(" #");
-                        add_dec_uint32(suffix & 0xf);
-                    }
-                    return;
-                }
-                return;
-            }
-            if (op == 0x3c) {
-                /* Branch and Exchange Jazelle */
-                return;
-            }
-            if (op == 0x3d) {
-                /* Exception Return */
-                return;
-            }
-            if ((op & 0x7e) == 0x3e) {
-                /* Move from Special Register */
-                add_str("mrs");
-                if (it_cond_name) add_str(it_cond_name);
-                add_char(' ');
-                add_reg_name((suffix >> 8) & 0xf);
-                add_str(", cpsr");
-                return;
-            }
-            if (op == 0x7f) {
-                if (suffix & 0x2000) {
-                    /* Permanently UNDEFINED.
-                     * This space will not be allocated in future */
-                    return;
-                }
-                /* Secure Monitor Call */
-                return;
-            }
-            /* Undefined */
-            return;
+        else {
+            disassemble_branches_and_misc_32(suffix);
         }
-
-        {
-            /* B/BL/BLX */
-            int w = 0;
-            int J1 = (suffix & (1 << 13)) != 0;
-            int J2 = (suffix & (1 << 11)) != 0;
-            int S = (instr & (1 << 10)) != 0;
-            int32_t offset = suffix & 0x7ff;
-            offset |= (instr & 0x3ff) << 11;
-            if (S == J2) offset |= 1 << 21;
-            if (S == J1) offset |= 1 << 22;
-            if (S) offset |= 0xff800000;
-            offset = offset << 1;
-            if ((suffix & 0xd000) == 0x9000) {
-                add_str("b");
-                w = 1;
-            }
-            else if ((suffix & 0xf800) == 0xe800) {
-                add_str("blx");
-            }
-            else {
-                add_str("bl");
-            }
-            if (it_cond_name) add_str(it_cond_name);
-            if (w) add_str(".w");
-            add_branch_address(offset);
-            return;
-        }
+        return;
     }
 
     if ((instr & 0xfe00) == 0xf800) {
         if ((instr & (1 << 4)) && (suffix & 0xf000) == 0xf000) {
             /* Memory hints */
+            disassemble_memory_hints(suffix);
             return;
         }
 
@@ -1120,6 +1163,10 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
         tmp[3] = code[1];
         tmp[0] = code[2];
         tmp[1] = code[3];
+        if ((instr & 0xef00) == 0xef00) {
+            /* Advanced SIMD data-processing instructions */
+            tmp[3] = 0xf2 | ((instr >> 12) & 1);
+        }
         return disassemble_arm_ti(tmp, addr, 4);
     }
 
@@ -1149,7 +1196,7 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
     dr.incomplete = it_cnt > 0;
     if (buf_pos == 0) {
         if (dr.size == 2) snprintf(buf, sizeof(buf), ".half 0x%04x", instr);
-        else dr.text = NULL;
+        else return NULL;
     }
     else {
         buf[buf_pos] = 0;

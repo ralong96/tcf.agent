@@ -316,6 +316,7 @@ static uint64_t adv_simd_expand_imm(uint32_t instr) {
 
 static void disassemble_advanced_simd_data_processing(uint32_t instr) {
     if ((instr & 0xfe800000) == 0xf2000000) {
+        /* Three registers of the same length */
         uint32_t sz = (instr >> 20) & 3;
         int U = (instr & (1 << 24)) != 0;
         int D = (instr & (1 << 22)) != 0;
@@ -333,7 +334,6 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         if (instr & (1 << 23)) {
         }
         else {
-            /* Three registers of the same length */
             uint32_t A = (instr >> 8) & 0xf;
             uint32_t B = (instr >> 4) & 1;
             switch (A) {
@@ -409,7 +409,7 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
             case 13:
                 if (!B) {
                     if (!U) {
-                        add_str(sz & 2 ? "vsub" : "vqdmulh");
+                        add_str(sz & 2 ? "vsub" : "vadd");
                     }
                     else {
                         add_str(sz & 2 ? "vabd" : "vpadd");
@@ -417,7 +417,7 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
                 }
                 else {
                     if (!U) {
-                        add_str(instr & (1 << 6) ? "vmls" : "vmla");
+                        add_str(instr & (1 << 21) ? "vmls" : "vmla");
                     }
                     else {
                         add_str("vmul");
@@ -477,22 +477,23 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
             }
             add_char(' ');
             add_char(Q ? 'q' : 'd');
-            add_dec_uint32(vd);
+            add_dec_uint32(Q ? vd / 2 : vd);
             add_str(", ");
             add_char(Q ? 'q' : 'd');
-            add_dec_uint32(vn);
+            add_dec_uint32(Q ? vn / 2 : vn);
             add_str(", ");
             add_char(Q ? 'q' : 'd');
-            add_dec_uint32(vm);
+            add_dec_uint32(Q ? vm / 2 : vm);
             return;
         }
     }
 
     if ((instr & 0xfeb80090) == 0xf2800010) {
-        /* VMOV (immediate) */
+        /* One register and a modified immediate value */
         int Q = (instr & (1 << 6)) != 0;
         int op = (instr & (1 << 5)) != 0;
         uint32_t vd = (instr >> 12) & 0xf;
+        uint32_t cmode = (instr >> 8) & 0xf;
         if (instr & (1 << 22)) vd |= 0x10;
         if (Q) vd /= 2;
         if ((instr & 0x00000900) == 0x00000100 || (instr & 0x00000d00) == 0x00000900) {
@@ -504,41 +505,332 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         else {
             add_str("vmov");
         }
-        add_str(Q ? ".i64 q" : ".i32 d");
+        if (cmode == 0xe) add_str(op == 0 ? ".i8" : ".i64");
+        else if (cmode == 0xf) add_str(op == 0 ? ".f32" : "");
+        else if ((cmode & 0xc) == 0x8) add_str(".i16");
+        else add_str(".i32");
+        add_char(' ');
+        add_char(Q ? 'q' : 'd');
         add_dec_uint32(vd);
         add_str(", #");
         add_dec_uint64(adv_simd_expand_imm(instr));
         return;
     }
+
+    if ((instr & 0xfe800010) == 0xf2800010) {
+        /* TODO: Two registers and a shift amount */
+        return;
+    }
+
+    if ((instr & 0xfea00050) == 0xf2800000 || (instr & 0xfeb00050) == 0xf2a00000) {
+        /* TODO: Three registers of different lengths */
+        return;
+    }
+
+    if ((instr & 0xfea00050) == 0xf2800040 || (instr & 0xfeb00050) == 0xf2a00040) {
+        /* TODO: Two registers and a scalar */
+        return;
+    }
+
+    if ((instr & 0xffb00010) == 0xf2b00000) {
+        /* TODO: Vector Extract */
+        return;
+    }
+
+    if ((instr & 0xffb00810) == 0xf3b00000) {
+        /* Two registers, miscellaneous */
+        uint32_t size = (instr >> 18) & 3;
+        uint32_t A = (instr >> 16) & 3;
+        uint32_t B = (instr >> 6) & 0x1f;
+        int Q = (instr & (1 << 6)) != 0;
+        uint32_t vd = (instr >> 12) & 0xf;
+        uint32_t vm = instr & 0xf;
+        if (instr & (1 << 22)) vd |= 0x10;
+        if (instr & (1 << 5)) vm |= 0x10;
+        if (A == 0) {
+            if ((B & 0x1e) == 0) add_str("vrev64");
+            else if ((B & 0x1e) == 2) add_str("vrev32");
+            else if ((B & 0x1e) == 4) add_str("vrev16");
+            else if (B >= 8 && B <= 0xb) add_str("vpaddl");
+            else if ((B & 0x1e) == 0x10) add_str("vcls");
+            else if ((B & 0x1e) == 0x12) add_str("vclz");
+            else if ((B & 0x1e) == 0x14) add_str("vcnt");
+            else if ((B & 0x1e) == 0x16) add_str("vmvn");
+            else if (B >= 0x18 && B <= 0x1b) add_str("vpadal");
+            else if ((B & 0x1e) == 0x1c) add_str("vqabs");
+            else if ((B & 0x1e) == 0x1e) add_str("vqneg");
+        }
+        else if (A == 1) {
+            if ((B & 0xe) == 0) add_str("vcgt");
+            else if ((B & 0xe) == 2) add_str("vcge");
+            else if ((B & 0xe) == 4) add_str("vceq");
+            else if ((B & 0xe) == 6) add_str("vcle");
+            else if ((B & 0xe) == 8) add_str("vclt");
+            else if ((B & 0xe) == 0xc) add_str("vabs");
+            else if ((B & 0xe) == 0xe) add_str("vneg");
+        }
+        else if (A == 2) {
+            if ((B & 0x1e) == 0) add_str("vswp");
+            else if ((B & 0x1e) == 2) add_str("vtrn");
+            else if ((B & 0x1e) == 4) add_str("vuzp");
+            else if ((B & 0x1e) == 6) add_str("vzip");
+            else if ((B & 0x1f) == 8) add_str("vmovn");
+            else if ((B & 0x1f) == 9) add_str("vqmovun");
+            else if ((B & 0x1e) == 0xa) add_str("vqmovn");
+            else if ((B & 0x1f) == 0xc) add_str("vshll");
+            else if ((B & 0x1b) == 0x18) add_str("vcvt");
+        }
+        else {
+            if ((B & 0x1a) == 0x10) add_str("vrecpe");
+            else if ((B & 0x1a) == 0x12) add_str("vrsqrte");
+            else if ((B & 0x18) == 0x18) add_str("vcvt");
+        }
+        if (A == 0 && B >= 0x16 && B <= 0x17) {
+        }
+        else if (A == 2 && (B & 0x1e) == 0) {
+        }
+        else if (A == 2 && (B & 0x1f) == 0x18) {
+            add_str(".f16.f32");
+        }
+        else if (A == 2 && (B & 0x1f) == 0x1c) {
+            add_str(".f32.f16");
+        }
+        else if (A == 3 && (B & 0x18) == 0x18) {
+            if (size != 2) return;
+            switch ((instr >> 7) & 3) {
+            case 0: add_str(".f32.s32"); break;
+            case 1: add_str(".f32.u32"); break;
+            case 2: add_str(".s32.f32"); break;
+            case 3: add_str(".u32.f32"); break;
+            }
+        }
+        else {
+            add_char('.');
+            if (A == 0) {
+                if (B >= 8 && B <= 0xb) add_char(instr & (1 << 7) ? 'u' : 's');
+                else if ((B & 0x1e) == 0x10) add_char('s');
+                else if ((B & 0x1e) == 0x12) add_char('i');
+                else if (B >= 0x18 && B <= 0x1b) add_char(instr & (1 << 7) ? 'u' : 's');
+                else if ((B & 0x1e) == 0x1c) add_char('s');
+                else if ((B & 0x1e) == 0x1e) add_char('s');
+            }
+            else if (A == 1) {
+                add_char(instr & (1 << 10) ? 'f' : 's');
+            }
+            else if (A == 2) {
+                if ((B & 0x1f) == 8) {
+                    add_char('i');
+                    size++;
+                }
+                else if ((B & 0x1f) == 9) add_char('s');
+                else if ((B & 0x1e) == 0xa) add_char(instr & (1 << 7) ? 'u' : 's');
+                else if ((B & 0x1f) == 0xc) add_char('i');
+            }
+            else {
+                if ((B & 0x18) == 0x10) add_char(instr & (1 << 8) ? 'f' : 'u');
+            }
+            add_dec_uint32(8 << size);
+        }
+        add_char(' ');
+        if (A == 2 && (B & 0x1f) == 8) add_char('d');
+        else if (A == 2 && (B & 0x1f) == 0x18) add_char('d');
+        else if (A == 2 && (B & 0x1f) == 0x18) add_char('q');
+        else add_char(Q ? 'q' : 'd');
+        if (buf[buf_pos - 1] == 'q') vd /= 2;
+        add_dec_uint32(vd);
+        add_str(", ");
+        if (A == 2 && (B & 0x1f) == 8) add_char('q');
+        else if (A == 2 && (B & 0x1f) == 0x18) add_char('q');
+        else if (A == 2 && (B & 0x1f) == 0x18) add_char('d');
+        else add_char(Q ? 'q' : 'd');
+        if (buf[buf_pos - 1] == 'q') vm /= 2;
+        add_dec_uint32(vm);
+        if (A == 1 && (B & 0xf) >= 0 && (B & 0xf) <= 9) {
+            add_str(", #0");
+        }
+        else if (A == 2 && (B & 0x1f) == 0xc) {
+            add_str(", #");
+            add_dec_uint32(8 << size);
+        }
+        return;
+    }
+
+    if ((instr & 0xffb00c10) == 0xf3b00800) {
+        /* TODO: Vector Table Lookup */
+        return;
+    }
+
+    if ((instr & 0xffb00f90) == 0xf3b00c00) {
+        /* TODO: Vector Duplicate */
+        return;
+    }
 }
 
 static void disassemble_advanced_simd_load_store(uint32_t instr) {
-    if ((instr & 0xffb00000) == 0xf4000000) {
-        uint32_t type = (instr >> 8) & 0xf;
-        uint32_t size = (instr >> 6) & 3;
-        uint32_t align = (instr >> 4) & 3;
-        int D = (instr & (1 << 22)) != 0;
-        uint32_t vd = (instr >> 12) & 0xf;
-        if (D) vd |= 0x10;
-        add_str("vst4.");
-        add_dec_uint32(8 << size);
-        add_str(" {d");
-        if (type == 0) {
+    if ((instr & 0xff100000) == 0xf4000000) {
+        uint32_t align = 0;
+        if (instr & (1 << 23)) {
+            uint32_t size = (instr >> 10) & 3;
+            uint32_t index_align = (instr >> 4) & 0xf;
+            int D = (instr & (1 << 22)) != 0;
+            int L = (instr & (1 << 21)) != 0;
+            int all_lanes = 0;
+            uint32_t index = 0;
+            uint32_t vd = (instr >> 12) & 0xf;
+            uint32_t n = (instr >> 8) & 3;
+            int double_spaced = 0;
+            if (D) vd |= 0x10;
+            if (size == 3) {
+                /* single structure to all lanes */
+                int a = (instr & (1 << 4)) != 0;
+                if (!L) return;
+                size = (instr >> 6) & 3;
+                if (a) {
+                    if (size == 2) return;
+                    if (size == 3) align = size + 2;
+                    else align = size + n;
+                }
+                all_lanes = 1;
+            }
+            else {
+                /* single structure to one lane */
+                switch (size) {
+                case 0:
+                    if (index_align & 1) {
+                        if (n == 0) return;
+                        align = n;
+                    }
+                    index = index_align >> 1;
+                    break;
+                case 1:
+                    double_spaced = (index_align & 2) != 0;
+                    if (n == 0 && double_spaced) return;
+                    index = index_align >> 2;
+                    if (index_align & 1) align = n + 1;
+                    break;
+                case 2:
+                    double_spaced = (index_align & 4) != 0;
+                    if (n == 0 && double_spaced) return;
+                    index = index_align >> 3;
+                    if (index_align & 3) align = n + 2;
+                    break;
+                }
+                if (n == 2 && align) return;
+            }
+            add_str(L ? "vld" : "vst");
+            add_dec_uint32(n + 1);
+            add_char('.');
+            add_dec_uint32(8 << size);
+            add_str(" {d");
             add_dec_uint32(vd);
-            add_str("-d");
-            add_dec_uint32(vd + 3);
-        }
-        else if (type == 1) {
-            add_dec_uint32(vd);
-            add_str(",d");
-            add_dec_uint32(vd + 2);
-            add_str(",d");
-            add_dec_uint32(vd + 4);
-            add_str(",d");
-            add_dec_uint32(vd + 6);
+            if (all_lanes) {
+                int T = (instr & (1 << 5)) != 0;
+                if (!T) {
+                    if (n > 0) {
+                        add_str("-d");
+                        add_dec_uint32(vd + n);
+                    }
+                }
+                else {
+                    if (n == 0) {
+                        add_str("-d");
+                        add_dec_uint32(vd + 1);
+                    }
+                    else {
+                        /* double-spaced register transfer */
+                        unsigned i;
+                        for (i = 1; i <= n; i++) {
+                            add_str(",d");
+                            add_dec_uint32(vd + i * 2);
+                        }
+                    }
+                }
+            }
+            else {
+                unsigned i;
+                add_char('[');
+                add_dec_uint32(index);
+                add_char(']');
+                for (i = 1; i <= n; i++) {
+                    add_str(",d");
+                    add_dec_uint32(vd + i * (double_spaced ? 2 : 1));
+                    add_char('[');
+                    add_dec_uint32(index);
+                    add_char(']');
+                }
+            }
         }
         else {
-            buf_pos = 0;
+            uint32_t type = (instr >> 8) & 0xf;
+            uint32_t size = (instr >> 6) & 3;
+            int D = (instr & (1 << 22)) != 0;
+            int L = (instr & (1 << 21)) != 0;
+            uint32_t vd = (instr >> 12) & 0xf;
+            if (D) vd |= 0x10;
+            align = (instr >> 4) & 3;
+            switch (type) {
+            case 2:
+            case 6:
+            case 7:
+            case 10:
+                add_str(L ? "vld1." : "vst1.");
+                break;
+            case 8:
+            case 9:
+            case 3:
+                add_str(L ? "vld2." : "vst2.");
+                break;
+            case 4:
+            case 5:
+                add_str(L ? "vld3." : "vst3.");
+                break;
+            case 0:
+            case 1:
+                add_str(L ? "vld4." : "vst4.");
+                break;
+            }
+            add_dec_uint32(8 << size);
+            add_str(" {d");
+            add_dec_uint32(vd);
+            switch (type) {
+            case 0:
+            case 2:
+            case 3:
+                add_str("-d");
+                add_dec_uint32(vd + 3);
+                break;
+            case 1:
+                add_str(",d");
+                add_dec_uint32(vd + 2);
+                add_str(",d");
+                add_dec_uint32(vd + 4);
+                add_str(",d");
+                add_dec_uint32(vd + 6);
+                break;
+            case 5:
+                add_str(",d");
+                add_dec_uint32(vd + 2);
+                add_str(",d");
+                add_dec_uint32(vd + 4);
+                break;
+            case 4:
+            case 6:
+            case 9:
+                add_str("-d");
+                add_dec_uint32(vd + 2);
+                break;
+            case 7:
+                break;
+            case 8:
+            case 10:
+                add_str("-d");
+                add_dec_uint32(vd + 1);
+                break;
+            default:
+                buf_pos = 0;
+                break;
+            }
+            if (align) align += 2;
         }
         if (buf_pos > 0) {
             uint32_t rm = instr & 0xf;
@@ -546,7 +838,7 @@ static void disassemble_advanced_simd_load_store(uint32_t instr) {
             add_reg_name((instr >> 16) & 0xf);
             if (align) {
                 add_char('@');
-                add_dec_uint32(21 << align);
+                add_dec_uint32(8 << align);
             }
             if (rm == 0xf) {
                 add_char(']');
