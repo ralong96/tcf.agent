@@ -699,6 +699,9 @@ static int symbol_prt_comparator(const void * x, const void * y) {
     Symbol * sx = *(Symbol **)x;
     Symbol * sy = *(Symbol **)y;
 
+    /* Symbols order by priority, from low to high,
+     * most likely match must be last */
+
     if (sx->level < sy->level) return -1;
     if (sx->level > sy->level) return +1;
 
@@ -711,13 +714,14 @@ static int symbol_prt_comparator(const void * x, const void * y) {
         if (px < py) return -1;
         if (px > py) return +1;
     }
-    else {
-        if (sx->var == NULL && sy->var != NULL) return -1;
-        if (sx->var != NULL && sy->var == NULL) return +1;
-    }
 
-    if (sx->pos < sy->pos) return -1;
-    if (sx->pos > sy->pos) return +1;
+    /* 'this' members have lower priority than local variables */
+    if (sx->var == NULL && sy->var != NULL) return +1;
+    if (sx->var != NULL && sy->var == NULL) return -1;
+
+    /* First added to the results list has higher priority */
+    if (sx->pos < sy->pos) return +1;
+    if (sx->pos > sy->pos) return -1;
     return 0;
 }
 
