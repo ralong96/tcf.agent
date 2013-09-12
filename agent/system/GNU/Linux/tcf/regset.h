@@ -31,6 +31,13 @@ struct user_vfpregs {
 };
 #endif
 
+#if defined(__powerpc__)
+struct user_fpregs_struct {
+    uint64_t fpregs[32];
+    uint32_t fpscr;
+};
+#endif
+
 typedef struct REG_SET {
     struct user user;
 #if defined(__arm__)
