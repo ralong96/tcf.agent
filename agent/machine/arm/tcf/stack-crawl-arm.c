@@ -414,6 +414,80 @@ static uint32_t calc_shift(uint32_t shift_type, uint32_t shift_imm, uint32_t val
     return val;
 }
 
+static void trace_bx(unsigned rn) {
+    /* Set the new PC value */
+    reg_data[15] = reg_data[rn];
+    chk_loaded(15);
+
+    /* Determine the new mode */
+    if (reg_data[15].o) {
+        int thumb_ee = (cpsr_data.v & 0x01000000) && (cpsr_data.v & 0x00000020);
+        if (!thumb_ee) {
+            if ((reg_data[15].v & 0x1u) != 0) {
+                /* Branch to Thumb */
+                cpsr_data.v |= 0x00000020;
+                reg_data[15].v &= ~0x1u;
+            }
+            else if ((reg_data[15].v & 0x2u) == 0) {
+                /* Branch to ARM */
+                cpsr_data.v &= ~0x00000020;
+            }
+        }
+    }
+
+    /* Check if the return value is from the stack */
+    if (rn == 14 || reg_data[rn].o == REG_VAL_STACK) {
+        /* Found the return address */
+        trace_return = 1;
+    }
+    else {
+        trace_branch = 1;
+    }
+}
+
+static int trace_thumb_data_processing_pbi_32(uint16_t instr, uint16_t suffix) {
+    uint32_t op_code = (instr >> 4) & 0x1f;
+    uint32_t rn = instr & 0xf;
+    uint32_t rd = (suffix >> 8) & 0xf;
+    uint32_t imm = suffix & 0xff;
+
+    imm |= (suffix & 0x7000) >> 4;
+    if (instr & (1 << 10)) imm |= 0x800;
+
+    switch (op_code) {
+    case 0:
+        chk_loaded(rn);
+        reg_data[rd].v = reg_data[rn].v + imm;
+        reg_data[rd].o = reg_data[rn].o ? REG_VAL_OTHER : 0;
+        break;
+    case 4:
+        imm |= rn << 12;
+        reg_data[rd].v = imm;
+        reg_data[rd].o = REG_VAL_OTHER;
+        break;
+    case 10:
+        chk_loaded(rn);
+        reg_data[rd].v = reg_data[rn].v - imm;
+        reg_data[rd].o = reg_data[rn].o ? REG_VAL_OTHER : 0;
+        break;
+    default:
+        reg_data[rd].o = 0;
+        break;
+    }
+
+    return 0;
+}
+
+static int trace_thumb_data_processing_32(uint16_t instr, uint16_t suffix) {
+    uint32_t rd = (suffix >> 8) & 0xf;
+    reg_data[rd].o = 0;
+    return 0;
+}
+
+static int trace_thumb_branches_and_misc_32(uint16_t instr, uint16_t suffix) {
+    return 0;
+}
+
 static int trace_thumb(void) {
     uint16_t instr;
 
@@ -421,13 +495,13 @@ static int trace_thumb(void) {
     assert(reg_data[15].o != REG_VAL_STACK);
 
     /* Check that the PC is still on Thumb alignment */
-    if (!(reg_data[15].v & 0x1)) {
+    if (reg_data[15].v & 0x1) {
         set_errno(ERR_OTHER, "PC misalignment");
         return -1;
     }
 
     /* Attempt to read the instruction */
-    if (read_half(reg_data[15].v & ~0x1, &instr) < 0) return -1;
+    if (read_half(reg_data[15].v, &instr) < 0) return -1;
 
     /* Format 1: Move shifted register
      *  LSL Rd, Rs, #Offset5
@@ -706,21 +780,11 @@ static int trace_thumb(void) {
             break;
 
         case 3: /* BX */
-            /* Only follow BX if the data was from the stack */
-            if (reg_data[rhs].o == REG_VAL_STACK) {
-                /* Update the PC */
-                chk_loaded(rhs);
-                reg_data[15] = reg_data[rhs];
-                if (reg_data[rhs].v & 0x1) {
-                    /* Account for the auto-increment which isn't needed */
-                    reg_data[15].v -= 2;
-                }
-                trace_return = 1;
-            }
-            else {
-                set_fmt_errno(ERR_OTHER, "BX to invalid register: r%d", rhs);
+            if (!reg_data[rhs].o) {
+                set_errno(ERR_OTHER, "BX to untracked register");
                 return -1;
             }
+            trace_bx(rhs);
         }
     }
     /* Format 9: PC-relative load
@@ -737,7 +801,7 @@ static int trace_thumb(void) {
      *  ADD sp,#+imm
      *  ADD sp,#-imm
      */
-    else if ((instr & 0xff00) == 0xB000) {
+    else if ((instr & 0xff00) == 0xb000) {
         uint8_t value = (instr & 0x7f) * 4;
 
         chk_loaded(13);
@@ -827,15 +891,67 @@ static int trace_thumb(void) {
             }
         }
     }
+    /* Format 17: conditional branch
+     *  B<c> label
+     */
+    else if ((instr & 0xf000) == 0xd000) {
+        uint16_t cond = (instr >> 8) & 0xf;
+        int32_t offset = instr & 0xff;
+        if (offset & 0x0080) offset |= ~0xff;
+        add_branch(reg_data[15].v + offset * 2 + 2);
+        if (cond == 14) trace_branch = 1;
+    }
     /* Format 18: unconditional branch
      *  B label
      */
     else if ((instr & 0xf800) == 0xe000) {
-        uint32_t addr = instr & 0x07ff;
-        if (addr & 0x400) addr |= 0xf800;
-        addr = reg_data[15].v + addr * 2 + 2;
-        add_branch(addr);
+        int32_t offset = instr & 0x07ff;
+        if (offset & 0x400) offset |= ~0x7ff;
+        add_branch(reg_data[15].v + offset * 2 + 2);
         trace_branch = 1;
+    }
+    else if ((instr & 0xf800) == 0xf000) {
+        uint16_t suffix = 0;
+        if (read_half(reg_data[15].v + 2, &suffix) < 0) return -1;
+        if ((suffix & 0x8000) == 0) {
+            if (instr & (1 << 9)) {
+                if (trace_thumb_data_processing_pbi_32(instr, suffix) < 0) return -1;
+            }
+            else {
+                if (trace_thumb_data_processing_32(instr, suffix) < 0) return -1;
+            }
+        }
+        else {
+            if (trace_thumb_branches_and_misc_32(instr, suffix) < 0) return -1;
+        }
+    }
+    else if ((instr & 0xfe00) == 0xf800) {
+        uint16_t suffix = 0;
+        if (read_half(reg_data[15].v + 2, &suffix) < 0) return -1;
+        if ((instr & (1 << 4)) && (suffix & 0xf000) == 0xf000) {
+            /* Memory hints */
+        }
+        else {
+            /* Load/Store single data item */
+            if (instr & (1 << 4)) { /* LDR */
+                uint16_t rn = instr & 0xf;
+                uint16_t rt = (suffix >> 12) & 0xf;
+                reg_data[rn].o = 0;
+                reg_data[rt].o = 0;
+            }
+            else { /* STR */
+                uint16_t rn = instr & 0xf;
+                reg_data[rn].o = 0;
+            }
+        }
+    }
+    else if ((instr & 0xef00) == 0xef00) {
+        /* Advanced SIMD data-processing instructions */
+    }
+    else if ((instr & 0xff10) == 0xf900) {
+        /* Advanced SIMD element or structure load/store instructions */
+        uint16_t rn = instr & 0xf;
+        reg_data[rn].o = 0;
     }
     else {
         /* Unknown/undecoded.  May alter some register, so invalidate file */
@@ -845,7 +961,12 @@ static int trace_thumb(void) {
 
     if (!trace_return && !trace_branch) {
         /* Check next address */
-        reg_data[15].v += 2;
+        if ((instr >> 11) >= 0x1d) {
+            reg_data[15].v += 4;
+        }
+        else {
+            reg_data[15].v += 2;
+        }
     }
     return 0;
 }
@@ -889,36 +1010,13 @@ static int trace_arm_bx(uint32_t instr) {
     uint8_t rn = instr & 0xf;
 
     if (!reg_data[rn].o) {
+        /* If conditional, continue to next instruction */
         if ((instr & 0xf0000000) != 0xe0000000) return 0;
         set_errno(ERR_OTHER, "BX to untracked register");
         return -1;
     }
 
-    /* Set the new PC value */
-    reg_data[15] = reg_data[rn];
-    chk_loaded(15);
-
-    /* Determine the new mode */
-    if (reg_data[15].o) {
-        int thumb_ee = (cpsr_data.v & 0x01000000) && (cpsr_data.v & 0x00000020);
-        if (!thumb_ee) {
-            if ((reg_data[15].v & 0x1u) != 0) {
-                /* Branch to Thumb */
-                cpsr_data.v |= 0x00000020;
-                reg_data[15].v &= ~0x1u;
-            }
-            else if ((reg_data[15].v & 0x2u) == 0) {
-                /* Branch to ARM */
-                cpsr_data.v &= ~0x00000020;
-            }
-        }
-    }
-
-    /* Check if the return value is from the stack */
-    if (rn == 14 || reg_data[rn].o == REG_VAL_STACK) {
-        /* Found the return address */
-        trace_return = 1;
-    }
+    trace_bx(rn);
     return 0;
 }
 
@@ -1685,6 +1783,12 @@ static int trace_arm(void) {
     }
     else if ((instr & 0xfff00000) == 0xf5700000) { /* CLREX, DSB, DMB, ISB */
         /* No register changes */
+    }
+    else if ((instr & 0xfd300000) == 0xf5100000) { /* PLD */
+        /* No register changes */
+    }
+    else if ((instr & 0xfe000000) == 0xf2000000) {
+        /* Advanced SIMD data processing - no register changes */
     }
     else if ((instr & 0x0ffffff0) == 0x012fff10) {
         /* Branch and Exchange (BX)

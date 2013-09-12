@@ -766,6 +766,9 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
         add_str(", ");
         add_reg_name(rn);
     }
+    else {
+        imm |= rn << 12;
+    }
     add_str(", #");
     add_dec_uint32(imm);
 }
