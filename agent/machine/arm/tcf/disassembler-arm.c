@@ -518,8 +518,117 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
     }
 
     if ((instr & 0xfe800010) == 0xf2800010) {
-        /* TODO: Two registers and a shift amount */
-        return;
+        /* Two registers and a shift amount */
+        uint32_t A = (instr >> 8) & 0xf;
+        int B = (instr & (1 << 6)) != 0;
+        int L = (instr & (1 << 7)) != 0;
+        int U = (instr & (1 << 24)) != 0;
+        uint32_t imm = (instr >> 19) & 7;
+        uint32_t imm6 = (instr >> 16) & 0x3f;
+        int D = (instr & (1 << 22)) != 0;
+        int M = (instr & (1 << 5)) != 0;
+        uint32_t vd = (instr >> 12) & 0xf;
+        uint32_t vm = instr & 0xf;
+        uint32_t size = 0;
+        uint32_t shift = 0;
+        int shift_left = A >= 5 && A <= 7 || A == 10;
+
+        if (D) vd |= 0x10;
+        if (M) vm |= 0x10;
+
+        if (L) {
+            size = 8;
+            shift = shift_left ? imm6 : 64 - imm6;
+        }
+        else if (imm6 & 0x20) {
+            size = 4;
+            shift = shift_left ? imm6 - 32 : 64 - imm6;
+        }
+        else if (imm6 & 0x10) {
+            size = 2;
+            shift = shift_left ? imm6 - 16 : 32 - imm6;
+        }
+        else if (imm6 & 0x08) {
+            size = 1;
+            shift = shift_left ? imm6 - 8 : 16 - imm6;
+        }
+
+        switch (A) {
+        case 0: add_str("vshr"); break;
+        case 1: add_str("vsra"); break;
+        case 2: add_str("vrshr"); break;
+        case 3: add_str("vrsra"); break;
+        case 4: add_str(U ? "vsri" : ""); break;
+        case 5: add_str(U ? "vsli" : "vshl"); break;
+        case 6: add_str("vqshlu"); break;
+        case 7: add_str("vqshl"); break;
+        case 8:
+            if (L) break;
+            if (!U) add_str(B ? "vrshrn" : "vshrn");
+            else add_str(B ? "vqrshrun" : "vqshrun");
+            break;
+        case 9:
+            if (L) break;
+            add_str(B ? "vqrshrn" : "vqshrn");
+            break;
+        case 10:
+            if (B || L) break;
+            if (imm == 0) break;
+            add_str(shift ? "vshll" : "vmovl");
+            break;
+        case 14:
+        case 15:
+            if (L) break;
+            add_str("vcvt");
+            break;
+        }
+        if (buf_pos > 0) {
+            add_char('.');
+            if (A == 14) {
+                add_str(U ? "f32.u32" : "f32.s32");
+            }
+            else if (A == 15) {
+                add_str(U ? "u32.f32" : "s32.f32");
+            }
+            else {
+                if (A == 5) {
+                    if (!U) add_char('i');
+                }
+                else if (A == 6) {
+                    add_char('s');
+                }
+                else if (A == 8) {
+                    if (!U) add_char('i');
+                    else add_char('s');
+                }
+                else if (A != 4) {
+                    add_char(U ? 'u' : 's');
+                }
+                add_dec_uint32(8 << size);
+            }
+            add_char(' ');
+            if ((B && A != 8 && A != 9) || A == 10) {
+                add_char('q');
+                add_dec_uint32(vd / 2);
+            }
+            else {
+                add_char('d');
+                add_dec_uint32(vd);
+            }
+            add_str(", ");
+            if (B) {
+                add_char('q');
+                add_dec_uint32(vm / 2);
+            }
+            else {
+                add_char('d');
+                add_dec_uint32(vm);
+            }
+            if (A == 10 && shift == 0) return;
+            add_str(", #");
+            add_dec_uint32(shift);
+            return;
+        }
     }
 
     if ((instr & 0xfea00050) == 0xf2800000 || (instr & 0xfeb00050) == 0xf2a00000) {
@@ -1330,36 +1439,66 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
     }
 
     if ((instr & 0x0f900f10) == 0x0e000b10) {
-        uint32_t size = 32;
+        /* VMOV (ARM core register to scalar) */
+        uint32_t size = 0;
         uint32_t dn = (instr >> 16) & 0xf;
+        uint32_t x = 0;
         add_str("vmov");
         add_str(cond);
-        if (instr & (1 << 22)) size = 8;
-        else if (instr & (1 << 5)) size = 16;
+        if (instr & (1 << 22)) {
+            size = 8;
+            x = (instr >> 5) & 3;
+            if (instr & (1 << 22)) x |= 4;
+        }
+        else if (instr & (1 << 5)) {
+            size = 16;
+            if (instr & (1 << 6)) x |= 1;
+            if (instr & (1 << 22)) x |= 2;
+        }
+        else {
+            size = 32;
+            if (instr & (1 << 22)) x |= 1;
+        }
         if (instr & (1 << 7)) dn |= 0x10;
-        if (size != 32) {
+        if (size != 0) {
             add_char('.');
             add_dec_uint32(size);
         }
         add_str(" d");
         add_dec_uint32(dn);
-        add_str(", ");
+        add_char('[');
+        add_dec_uint32(x);
+        add_str("], ");
         add_reg_name((instr >> 12) & 0xf);
         return;
     }
 
     if ((instr & 0x0f100f10) == 0x0e100b10) {
+        /* VMOV (scalar to ARM core register) */
         uint32_t size = 32;
         int U = (instr & (1 << 23)) != 0;
         uint32_t dn = (instr >> 16) & 0xf;
+        uint32_t x = 0;
         add_str("vmov");
         add_str(cond);
-        if (instr & (1 << 22)) size = 8;
-        else if (instr & (1 << 5)) size = 16;
+        if (instr & (1 << 22)) {
+            size = 8;
+            x = (instr >> 5) & 3;
+            if (instr & (1 << 22)) x |= 4;
+        }
+        else if (instr & (1 << 5)) {
+            size = 16;
+            if (instr & (1 << 6)) x |= 1;
+            if (instr & (1 << 22)) x |= 2;
+        }
+        else {
+            size = 32;
+            if (instr & (1 << 22)) x |= 1;
+        }
         if (instr & (1 << 7)) dn |= 0x10;
-        if (size != 32) {
+        if (size != 0) {
             add_char('.');
-            add_char(U ? 'u' : 's');
+            if (size != 32) add_char(U ? 'u' : 's');
             add_dec_uint32(size);
         }
         add_char(' ');
@@ -1367,6 +1506,9 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
         add_str(", ");
         add_str(" d");
         add_dec_uint32(dn);
+        add_char('[');
+        add_dec_uint32(x);
+        add_char(']');
         return;
     }
 
@@ -2051,7 +2193,7 @@ static void disassemble_media_instr(uint32_t instr, const char * cond) {
             add_char(' ');
             add_reg_name((instr >> 12) & 0xf);
             add_str(", #");
-            add_dec_uint32(((instr >> 16) & 0x1f) + 1);
+            add_dec_uint32((instr >> 16) & 0x1f);
             add_str(", ");
             add_reg_name(instr & 0xf);
             if (imm) {
