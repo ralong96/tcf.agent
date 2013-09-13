@@ -344,6 +344,7 @@ void send_event_register_changed(const char * id) {
     OutputStream * out = &broadcast_group->out;
 
     id2register(id, &ctx, &frame, &def);
+    if (ctx == NULL) return;
 
     for (i = 0; i < listener_cnt; i++) {
         Listener * l = listeners + i;

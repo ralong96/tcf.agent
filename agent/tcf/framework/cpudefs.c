@@ -152,6 +152,8 @@ const char * frame2id(Context * ctx, int frame) {
 const char * register2id(Context * ctx, int frame, RegisterDefinition * reg) {
     char id[256];
     RegisterDefinition * defs = get_reg_definitions(ctx);
+    assert(defs != NULL);
+    assert(reg >= defs);
     if (frame < 0) {
         snprintf(id, sizeof(id), "R%d.%s", (int)(reg - defs), ctx->id);
     }
