@@ -775,8 +775,8 @@ static int trace_thumb(void) {
 
         case 2: /* MOV */
             chk_loaded(rhs);
-            reg_data[rhd].v += reg_data[rhs].v;
-            reg_data[rhd].o  = reg_data[rhd].o;
+            reg_data[rhd].v = reg_data[rhs].v;
+            reg_data[rhd].o = reg_data[rhs].o;
             break;
 
         case 3: /* BX */
