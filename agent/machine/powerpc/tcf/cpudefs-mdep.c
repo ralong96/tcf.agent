@@ -11,6 +11,7 @@
  *
  * Contributors:
  *     Stanislav Yakovlev - initial API and implementation
+ *     Stanislav Yakovlev - [417363] add support for PowerPC floating point registers
  *******************************************************************************/
 
 #include <tcf/config.h>
@@ -77,6 +78,40 @@ RegisterDefinition regs_def[] = {
     { "dar",       REG_OFFSET(user.regs.dar),         4, 119, -1, 1},
     { "dsisr",     REG_OFFSET(user.regs.dsisr),       4, 118, -1, 1},
     { "result",    REG_OFFSET(user.regs.result),      4, -1, -1, 1},
+
+    { "f0",        REG_OFFSET(fp.fpregs[0]),          8, 32, 32, 1},
+    { "f1",        REG_OFFSET(fp.fpregs[1]),          8, 33, 33, 1},
+    { "f2",        REG_OFFSET(fp.fpregs[2]),          8, 34, 34, 1},
+    { "f3",        REG_OFFSET(fp.fpregs[3]),          8, 35, 35, 1},
+    { "f4",        REG_OFFSET(fp.fpregs[4]),          8, 36, 36, 1},
+    { "f5",        REG_OFFSET(fp.fpregs[5]),          8, 37, 37, 1},
+    { "f6",        REG_OFFSET(fp.fpregs[6]),          8, 38, 38, 1},
+    { "f7",        REG_OFFSET(fp.fpregs[7]),          8, 39, 39, 1},
+    { "f8",        REG_OFFSET(fp.fpregs[8]),          8, 40, 40, 1},
+    { "f9",        REG_OFFSET(fp.fpregs[9]),          8, 41, 41, 1},
+    { "f10",       REG_OFFSET(fp.fpregs[10]),         8, 42, 42, 1},
+    { "f11",       REG_OFFSET(fp.fpregs[11]),         8, 43, 43, 1},
+    { "f12",       REG_OFFSET(fp.fpregs[12]),         8, 44, 44, 1},
+    { "f13",       REG_OFFSET(fp.fpregs[13]),         8, 45, 45, 1},
+    { "f14",       REG_OFFSET(fp.fpregs[14]),         8, 46, 46, 1},
+    { "f15",       REG_OFFSET(fp.fpregs[15]),         8, 47, 47, 1},
+    { "f16",       REG_OFFSET(fp.fpregs[16]),         8, 48, 48, 1},
+    { "f17",       REG_OFFSET(fp.fpregs[17]),         8, 49, 49, 1},
+    { "f18",       REG_OFFSET(fp.fpregs[18]),         8, 50, 50, 1},
+    { "f19",       REG_OFFSET(fp.fpregs[19]),         8, 51, 51, 1},
+    { "f20",       REG_OFFSET(fp.fpregs[20]),         8, 52, 52, 1},
+    { "f21",       REG_OFFSET(fp.fpregs[21]),         8, 53, 53, 1},
+    { "f22",       REG_OFFSET(fp.fpregs[22]),         8, 54, 54, 1},
+    { "f23",       REG_OFFSET(fp.fpregs[23]),         8, 55, 55, 1},
+    { "f24",       REG_OFFSET(fp.fpregs[24]),         8, 56, 56, 1},
+    { "f25",       REG_OFFSET(fp.fpregs[25]),         8, 57, 57, 1},
+    { "f26",       REG_OFFSET(fp.fpregs[26]),         8, 58, 58, 1},
+    { "f27",       REG_OFFSET(fp.fpregs[27]),         8, 59, 59, 1},
+    { "f28",       REG_OFFSET(fp.fpregs[28]),         8, 60, 60, 1},
+    { "f29",       REG_OFFSET(fp.fpregs[29]),         8, 61, 61, 1},
+    { "f30",       REG_OFFSET(fp.fpregs[30]),         8, 62, 62, 1},
+    { "f31",       REG_OFFSET(fp.fpregs[31]),         8, 63, 63, 1},
+    { "fpscr",     REG_OFFSET(fp.fpscr),              4, 65, 65, 1},
 
     { NULL,     0,                    0,  0,  0},
 };
