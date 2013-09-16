@@ -86,7 +86,6 @@ typedef struct RunTestDoneArgs RunTestDoneArgs;
 
 struct RunTestDoneArgs {
     Channel * c;
-    Context * ctx;
     char token[256];
 };
 
@@ -146,7 +145,7 @@ static void command_get_test_list(char * token, Channel * c) {
 void test_process_done(Context * ctx) {
     assert(EXT(context_get_group(ctx, CONTEXT_GROUP_PROCESS))->test_process);
     EXT(context_get_group(ctx, CONTEXT_GROUP_PROCESS))->test_process = 0;
-    send_context_changed_event(ctx);
+    if (!ctx->exited) send_context_changed_event(ctx);
 }
 
 static void run_test_done(int error, Context * ctx, void * arg) {
