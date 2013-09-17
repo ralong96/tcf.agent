@@ -691,6 +691,18 @@
 				>
 			</File>
 			<File
+				RelativePath="..\agent\tcf\framework\mdep-fs.h"
+				>
+			</File>
+			<File
+				RelativePath="..\agent\tcf\framework\mdep-inet.h"
+				>
+			</File>
+			<File
+				RelativePath="..\agent\tcf\framework\mdep-threads.h"
+				>
+			</File>
+			<File
 				RelativePath="..\agent\tcf\framework\mdep.c"
 				>
 			</File>

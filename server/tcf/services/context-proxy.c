@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <sys/stat.h>
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
