@@ -38,6 +38,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <assert.h>
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/trace.h>
@@ -47,6 +48,7 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/waitpid.h>
 #include <tcf/framework/signames.h>
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/services/streamsservice.h>
 #include <tcf/services/runctrl.h>
 #include <tcf/services/processes.h>

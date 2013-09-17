@@ -47,6 +47,7 @@
 #else
    typedef void SSL;
 #endif
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/mdep-inet.h>
 #include <tcf/framework/tcf.h>
 #include <tcf/framework/channel.h>

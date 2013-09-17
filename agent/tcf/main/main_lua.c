@@ -38,6 +38,7 @@ extern "C" {
 }
 #endif
 
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/asyncreq.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/trace.h>

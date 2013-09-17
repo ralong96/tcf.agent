@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/myalloc.h>

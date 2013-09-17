@@ -512,6 +512,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\tcf\framework\mdep-fs.h"
+				>
+			</File>
+			<File
 				RelativePath=".\tcf\framework\mdep-inet.h"
 				>
 			</File>

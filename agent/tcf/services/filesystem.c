@@ -45,6 +45,7 @@
 #if defined(_WRS_KERNEL)
 #  include <ioLib.h>
 #endif
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/asyncreq.h>
 #include <tcf/framework/streams.h>

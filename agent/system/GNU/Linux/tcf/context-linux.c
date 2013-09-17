@@ -35,6 +35,7 @@
 #include <sys/ptrace.h>
 #include <sys/utsname.h>
 #include <linux/kdev_t.h>
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/errors.h>

@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/events.h>

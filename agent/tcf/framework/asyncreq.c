@@ -28,6 +28,7 @@
 #endif
 #include <tcf/framework/mdep-threads.h>
 #include <tcf/framework/mdep-inet.h>
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
 #include <tcf/framework/events.h>

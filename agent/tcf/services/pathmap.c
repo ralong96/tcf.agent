@@ -19,7 +19,10 @@
  */
 
 #include <tcf/config.h>
+#include <stdio.h>
+#include <sys/stat.h>
 #include <assert.h>
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/mdep-inet.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/proxy.h>
@@ -86,8 +89,6 @@ int is_absolute_path(const char * fnm) {
 
 #if SERVICE_PathMap
 
-#include <stdio.h>
-#include <sys/stat.h>
 #include <tcf/framework/json.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/exceptions.h>

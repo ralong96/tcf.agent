@@ -103,7 +103,6 @@ typedef int socklen_t;
 
 #else /* not __CYGWIN__ */
 
-#include <direct.h>
 #include <errno.h>
 
 #if !defined(HAVE_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED)
@@ -158,67 +157,6 @@ extern int getegid(void);
 
 extern ssize_t pread(int fd, void * buf, size_t size, off_t offset);
 extern ssize_t pwrite(int fd, const void * buf, size_t size, off_t offset);
-
-/* UTF-8 support */
-struct utf8_stat {
-    dev_t      st_dev;
-    ino_t      st_ino;
-    unsigned short st_mode;
-    short      st_nlink;
-    short      st_uid;
-    short      st_gid;
-    dev_t      st_rdev;
-    int64_t    st_size;
-    int64_t    st_atime;
-    int64_t    st_mtime;
-    int64_t    st_ctime;
-};
-#define stat   utf8_stat
-#define lstat  utf8_stat
-#define fstat  utf8_fstat
-#define open   utf8_open
-#define chmod  utf8_chmod
-#define remove utf8_remove
-#define rmdir  utf8_rmdir
-#define mkdir  utf8_mkdir
-#define rename utf8_rename
-extern int utf8_stat(const char * name, struct utf8_stat * buf);
-extern int utf8_fstat(int fd, struct utf8_stat * buf);
-extern int utf8_open(const char * name, int flags, int perms);
-extern int utf8_chmod(const char * name, int mode);
-extern int utf8_remove(const char * path);
-extern int utf8_rmdir(const char * path);
-extern int utf8_mkdir(const char * path, int mode);
-extern int utf8_rename(const char * path1, const char * path2);
-
-/*
- * readdir() emulation with UTF-8 support
- */
-struct UTF8_DIR {
-  intptr_t hdl;
-  struct _wfinddatai64_t blk;
-  wchar_t * path;
-};
-
-struct utf8_dirent {
-  char d_name[FILE_PATH_SIZE];
-  int64_t d_size;
-  time_t d_atime;
-  time_t d_ctime;
-  time_t d_wtime;
-};
-
-typedef struct UTF8_DIR UTF8_DIR;
-
-#define DIR UTF8_DIR
-#define dirent   utf8_dirent
-#define opendir  utf8_opendir
-#define closedir utf8_closedir
-#define readdir  utf8_readdir
-
-extern DIR * utf8_opendir(const char * path);
-extern int utf8_closedir(DIR * dir);
-extern struct utf8_dirent * readdir(DIR * dir);
 
 #endif /* __CYGWIN__ */
 
