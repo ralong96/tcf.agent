@@ -129,7 +129,11 @@ typedef unsigned int useconds_t;
 #  define __x86_64__
 #endif
 #define strcasecmp(x,y) stricmp(x,y)
+#if defined(USE_WINDOWS_SCHED_H)
+#  include <windows/sched.h>
+#else
 typedef unsigned long pid_t;
+#endif
 typedef unsigned long useconds_t;
 #endif
 
