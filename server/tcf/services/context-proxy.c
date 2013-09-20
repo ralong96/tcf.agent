@@ -45,6 +45,9 @@ typedef struct StackFrameCache StackFrameCache;
 typedef struct PeerCache PeerCache;
 typedef struct RegisterProps RegisterProps;
 typedef struct RegisterCache RegisterCache;
+#if ENABLE_ContextISA
+typedef struct DefIsaCache DefIsaCache;
+#endif
 
 #define CTX_ID_HASH_SIZE 101
 
@@ -103,6 +106,11 @@ struct ContextCache {
 
     /* Stack trace */
     LINK stk_cache_list;
+
+#if ENABLE_ContextISA
+    /* Default Isa cache */
+    DefIsaCache * def_isa_cache; 
+#endif
 };
 
 struct RegisterProps {
@@ -166,6 +174,19 @@ struct PeerCache {
     ErrorReport * rc_error;
     AbstractCache rc_cache;
 };
+
+#if ENABLE_ContextISA
+struct DefIsaCache {
+    ContextCache * ctx;
+    AbstractCache cache;
+    ErrorReport * error;
+    ContextAddress addr;
+    int isa_valid;
+    char * def_isa;
+    ReplyHandlerInfo * pending;
+    int disposed;
+};
+#endif 
 
 typedef struct MMListener {
     MemoryMapEventListener * listener;
@@ -286,6 +307,18 @@ static void free_memory_cache(MemoryCache * m) {
     }
 }
 
+#if ENABLE_ContextISA
+static void free_isa_cache(DefIsaCache * i) {
+    i->disposed = 1;
+    if (i->pending == NULL) {
+        release_error_report(i->error);
+        cache_dispose(&i->cache);
+        if (i->def_isa != NULL) loc_free(i->def_isa);
+        loc_free(i);
+    }
+}
+#endif
+
 static void free_stack_frame_cache(StackFrameCache * s) {
     list_remove(&s->link_ctx);
     s->disposed = 1;
@@ -347,6 +380,9 @@ static void free_context_cache(ContextCache * c) {
             free_stack_frame_cache(s);
         }
     }
+#if ENABLE_ContextISA
+    if (c->def_isa_cache != NULL) free_isa_cache(c->def_isa_cache);
+#endif
     loc_free(c);
 }
 
@@ -1794,9 +1830,88 @@ unsigned context_word_size(Context * ctx) {
 }
 
 #if ENABLE_ContextISA
+static void read_isa_attr(InputStream * inp, const char * nm, void * args) {
+    DefIsaCache * i = (DefIsaCache *)args;
+
+    if (strcmp(nm, "DefISA") == 0) {
+	i->def_isa = json_read_alloc_string(inp);
+    }
+    else {
+	json_skip_object(inp);
+    }
+}
+
+static void validate_cache_isa(Channel * c, void * args, int error) {
+    DefIsaCache * i = (DefIsaCache *)args;
+    Context * ctx = i->ctx->ctx;
+    Trap trap;
+
+    assert(i->pending != NULL);
+    assert(i->error == NULL);
+
+    if (set_trap(&trap)) {
+   	i->pending = NULL;
+        if (!error) {
+ 	    error = read_errno(&c->inp);
+    	    json_read_struct(&c->inp, read_isa_attr, i);
+
+            json_test_char(&c->inp, MARKER_EOA);
+            json_test_char(&c->inp, MARKER_EOM);
+        }
+        clear_trap(&trap);
+    }
+    else {
+        error = trap.error;
+    }
+    i->error = get_error_report(error);
+    i->isa_valid = 1;
+    cache_notify(&i->cache);
+    if (i->disposed) free_isa_cache(i);
+    context_unlock(ctx);
+}
+
+static int get_context_defisa_from_rc (Context * ctx, ContextISA * isa) {
+   ContextCache * cache = *EXT(ctx);
+   Channel * c = cache->peer->target;
+   DefIsaCache * i = NULL;
+   Trap trap;
+
+   if (cache->def_isa_cache == NULL) {
+       cache->def_isa_cache = (DefIsaCache *)loc_alloc_zero(sizeof(DefIsaCache));
+   }
+   i = cache->def_isa_cache;
+
+   if (!set_trap(&trap)) return -1;
+   if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
+   if (!cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
+
+   if (i->pending != NULL) cache_wait(&i->cache);
+
+   if (i->isa_valid) {
+	if (i->def_isa != NULL) isa->def = loc_strdup(i->def_isa);
+	set_error_report_errno(i->error);
+        clear_trap(&trap);
+        return !errno ? 0 : -1;
+    }
+
+    i->ctx = cache;
+    i->pending = protocol_send_command(c, "RunControl", "getISA", validate_cache_isa, i);
+    json_write_string(&c->out, cache->ctx->id);
+    write_stream(&c->out, 0);
+    json_write_uint64(&c->out, (uint64_t)0);
+    write_stream(&c->out, 0);
+    write_stream(&c->out, MARKER_EOM);
+    context_lock(ctx);
+    cache_wait(&i->cache);
+    return -1;
+}
+
 int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     memset(isa, 0, sizeof(ContextISA));
     if (get_context_isa(ctx, addr, &isa->isa, &isa->addr, &isa->size) < 0) return -1;
+    else if (isa->isa == NULL) {
+	if (get_context_defisa_from_rc(ctx, isa) < 0) return -1;
+    }
     return 0;
 }
 #endif
