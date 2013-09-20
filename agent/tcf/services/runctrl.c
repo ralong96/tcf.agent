@@ -621,7 +621,7 @@ static void command_get_isa_cache_client(void * x) {
     ctx = id2ctx(args->id);
 
     memset(&isa, 0, sizeof(isa));
-    if (ctx == NULL || !context_has_state(ctx)) err = ERR_INV_CONTEXT;
+    if (ctx == NULL) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
     else if (context_get_isa(ctx, args->addr, &isa) < 0) err = errno;
 
