@@ -287,6 +287,13 @@ static void write_context(OutputStream * out, Context * ctx) {
     }
 #endif
 
+    if (ctx->big_endian) {
+        write_stream(out, ',');
+        json_write_string(out, "BigEndian");
+        write_stream(out, ':');
+        json_write_boolean(out, 1);
+    }
+
 #if ENABLE_ContextExtraProperties
     {
         /* Back-end context properties */

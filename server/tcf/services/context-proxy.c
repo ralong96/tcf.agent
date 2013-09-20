@@ -57,6 +57,7 @@ struct ContextCache {
     char cpu_id[256];
     char * file;
     char * name;
+    int  big_endian;
     Context * ctx;
     PeerCache * peer;
     LINK id_hash_link;
@@ -223,6 +224,7 @@ static ContextCache * find_context_cache(PeerCache * p, const char * id) {
 static void set_context_links(ContextCache * c) {
     assert(c->peer->rc_done);
     loc_free(c->ctx->name);
+    c->ctx->big_endian = c->big_endian;
     c->ctx->name = c->name ? loc_strdup(c->name) : NULL;
     if (c->parent_id[0] && c->ctx->parent == NULL) {
         ContextCache * h = find_context_cache(c->peer, c->parent_id);
@@ -393,6 +395,7 @@ static void read_run_control_context_property(InputStream * inp, const char * na
     else if (strcmp(name, "CanResume") == 0) ctx->can_resume = json_read_long(inp);
     else if (strcmp(name, "CanCount") == 0) ctx->can_count = json_read_long(inp);
     else if (strcmp(name, "CanTerminate") == 0) ctx->can_terminate = json_read_boolean(inp);
+    else if (strcmp(name, "BigEndian") == 0) ctx->big_endian = json_read_boolean(inp);
     else json_skip_object(inp);
 }
 
