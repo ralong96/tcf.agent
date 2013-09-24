@@ -109,7 +109,7 @@ struct ContextCache {
 
 #if ENABLE_ContextISA
     /* Default Isa cache */
-    DefIsaCache * def_isa_cache; 
+    DefIsaCache * def_isa_cache;
 #endif
 };
 
@@ -186,7 +186,7 @@ struct DefIsaCache {
     ReplyHandlerInfo * pending;
     int disposed;
 };
-#endif 
+#endif
 
 typedef struct MMListener {
     MemoryMapEventListener * listener;
@@ -1834,10 +1834,10 @@ static void read_isa_attr(InputStream * inp, const char * nm, void * args) {
     DefIsaCache * i = (DefIsaCache *)args;
 
     if (strcmp(nm, "DefISA") == 0) {
-	i->def_isa = json_read_alloc_string(inp);
+        i->def_isa = json_read_alloc_string(inp);
     }
     else {
-	json_skip_object(inp);
+        json_skip_object(inp);
     }
 }
 
@@ -1850,10 +1850,10 @@ static void validate_cache_isa(Channel * c, void * args, int error) {
     assert(i->error == NULL);
 
     if (set_trap(&trap)) {
-   	i->pending = NULL;
+        i->pending = NULL;
         if (!error) {
- 	    error = read_errno(&c->inp);
-    	    json_read_struct(&c->inp, read_isa_attr, i);
+            error = read_errno(&c->inp);
+            json_read_struct(&c->inp, read_isa_attr, i);
 
             json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
@@ -1888,8 +1888,8 @@ static int get_context_defisa_from_rc (Context * ctx, ContextISA * isa) {
    if (i->pending != NULL) cache_wait(&i->cache);
 
    if (i->isa_valid) {
-	if (i->def_isa != NULL) isa->def = loc_strdup(i->def_isa);
-	set_error_report_errno(i->error);
+        if (i->def_isa != NULL) isa->def = loc_strdup(i->def_isa);
+        set_error_report_errno(i->error);
         clear_trap(&trap);
         return !errno ? 0 : -1;
     }
@@ -1910,7 +1910,7 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     memset(isa, 0, sizeof(ContextISA));
     if (get_context_isa(ctx, addr, &isa->isa, &isa->addr, &isa->size) < 0) return -1;
     else if (isa->isa == NULL) {
-	if (get_context_defisa_from_rc(ctx, isa) < 0) return -1;
+        if (get_context_defisa_from_rc(ctx, isa) < 0) return -1;
     }
     return 0;
 }

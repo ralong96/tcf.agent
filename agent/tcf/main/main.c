@@ -76,7 +76,7 @@
 #define ILLEGAL_OPTION_HOOK  do {} while(0)
 #endif
 
-/* Signal handler. This hook extends behavior when process 
+/* Signal handler. This hook extends behavior when process
  * exitis due to received signal. */
 #ifndef SIGNAL_HANDLER_HOOK
 #define SIGNAL_HANDLER_HOOK do {} while(0)
