@@ -901,11 +901,9 @@ static void load_addr_ranges(void) {
                             ELF_Section * size_sec = NULL;
                             ContextAddress addr = (ContextAddress)dio_ReadAddressX(&addr_sec, addr_size);
                             ContextAddress size = (ContextAddress)dio_ReadAddressX(&size_sec, addr_size);
-			    /* GCC 4.1.2 can generate 'empty entries' at the
-			     * beginning of the list ! */
-                            if  (addr == 0 && size == 0 && (dio_GetPos()==next)) break;
-                            if (size == 0) continue;
-                            add_addr_range(addr_sec, sCompUnit, addr, size);
+                            /* GCC 4.1.2 can generate 'empty entries' at the beginning of the list */
+                            if (addr == 0 && size == 0 && dio_GetPos() + addr_size * 2 > next) break;
+                            if (size != 0) add_addr_range(addr_sec, sCompUnit, addr, size);
                         }
                     }
                     dio_SetPos(next);
