@@ -1043,9 +1043,12 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
 #if ENABLE_Symbols
     {
         Symbol * sym = NULL;
-        int n = scope != NULL ?
-            find_symbol_in_scope(expression_context, expression_frame, expression_addr, scope->type, name, &sym) :
-            find_symbol_by_name(expression_context, expression_frame, expression_addr, name, &sym);
+        int n = 0;
+
+        if (scope != NULL) n = find_symbol_in_scope(
+            expression_context, expression_frame, expression_addr, scope->type, name, &sym);
+        else n = find_symbol_by_name(
+            expression_context, expression_frame, expression_addr, name, &sym);
 
         if (n < 0) {
             if (get_error_code(errno) != ERR_SYM_NOT_FOUND) error(errno, "Cannot read symbol data");
@@ -3142,13 +3145,6 @@ static int evaluate_script(int mode, char * s, int load, Value * v) {
     return 0;
 }
 
-static int evaluate_type(Context * ctx, int frame, ContextAddress addr, char * s, Value * v) {
-    expression_context = ctx;
-    expression_frame = frame;
-    expression_addr = addr;
-    return evaluate_script(MODE_TYPE, s, 0, v);
-}
-
 int evaluate_expression(Context * ctx, int frame, ContextAddress addr, char * s, int load, Value * v) {
     expression_context = ctx;
     expression_frame = frame;
@@ -3206,6 +3202,8 @@ typedef struct CommandArgs {
 typedef struct CommandCreateArgs {
     char token[256];
     char id[256];
+    int use_state;
+    ContextAddress addr;
     char language[256];
     char * script;
 } CommandCreateArgs;
@@ -3223,6 +3221,8 @@ typedef struct Expression {
     char id[256];
     char var_id[256];
     char parent[256];
+    int use_state;
+    ContextAddress addr;
     char language[256];
     Channel * channel;
     char * script;
@@ -3327,6 +3327,7 @@ static int symbol_to_expression(char * expr_id, char * parent, char * sym_id, Ex
     strlcpy(expr->id, expr_id, sizeof(expr->id));
     strlcpy(expr->var_id, sym_id, sizeof(expr->var_id));
     strlcpy(expr->parent, parent, sizeof(expr->parent));
+    expr->use_state = 1;
 
     if (id2symbol(sym_id, &sym) < 0) return -1;
 
@@ -3380,7 +3381,7 @@ static int expression_context_id(char * id, Context ** ctx, int * frame, Express
 
     if (!err) {
         if ((*ctx = id2ctx(e->parent)) != NULL) {
-            *frame = context_has_state(*ctx) ? STACK_TOP_FRAME : STACK_NO_FRAME;
+            *frame = e->use_state && context_has_state(*ctx) ? STACK_TOP_FRAME : STACK_NO_FRAME;
         }
         else if (id2frame(e->parent, ctx, frame) < 0) {
             err = errno;
@@ -3608,18 +3609,25 @@ static void command_create_cache_client(void * x) {
     strlcpy(e->language, args->language, sizeof(e->language));
     e->channel = c;
     e->script = args->script;
+    e->use_state = args->use_state;
+    e->addr = args->addr;
 
     if (!err) {
         Value value;
         Context * ctx = NULL;
         memset(&value, 0, sizeof(value));
         if ((ctx = id2ctx(e->parent)) != NULL) {
-            frame = context_has_state(ctx) ? STACK_TOP_FRAME : STACK_NO_FRAME;
+            frame = args->use_state && context_has_state(ctx) ? STACK_TOP_FRAME : STACK_NO_FRAME;
         }
         else if (id2frame(e->parent, &ctx, &frame) < 0) {
             err = errno;
         }
-        if (!err && evaluate_type(ctx, frame, 0, e->script, &value) < 0) err = errno;
+        if (!err) {
+            expression_context = ctx;
+            expression_frame = frame;
+            expression_addr = e->addr;
+            if (evaluate_script(MODE_TYPE, e->script, 0, &value) < 0) err = errno;
+        }
         if (!err) {
             e->can_assign = value.remote || (value.loc != NULL && value.loc->pieces_cnt > 0);
             e->has_func_call = expression_has_func_call;
@@ -3656,9 +3664,33 @@ static void command_create_cache_client(void * x) {
 static void command_create(char * token, Channel * c) {
     CommandCreateArgs args;
 
+    memset(&args, 0, sizeof(args));
     json_read_string(&c->inp, args.id, sizeof(args.id));
     json_test_char(&c->inp, MARKER_EOA);
     json_read_string(&c->inp, args.language, sizeof(args.language));
+    json_test_char(&c->inp, MARKER_EOA);
+    args.script = json_read_alloc_string(&c->inp);
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    args.use_state = 1;
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(command_create_cache_client, c, &args, sizeof(args));
+}
+
+static void read_expression_scope(InputStream * inp, const char * name, void * x) {
+    CommandCreateArgs * args = (CommandCreateArgs *)x;
+    if (strcmp(name, "ContextID") == 0) json_read_string(inp, args->id, sizeof(args->id));
+    else if (strcmp(name, "Address") == 0) args->addr = (ContextAddress)json_read_uint64(inp);
+    else if (strcmp(name, "Language") == 0) json_read_string(inp, args->language, sizeof(args->language));
+    else json_skip_object(inp);
+}
+
+static void command_create_in_scope(char * token, Channel * c) {
+    CommandCreateArgs args;
+
+    memset(&args, 0, sizeof(args));
+    json_read_struct(&c->inp, read_expression_scope, &args);
     json_test_char(&c->inp, MARKER_EOA);
     args.script = json_read_alloc_string(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
@@ -3673,14 +3705,19 @@ static void command_evaluate_cache_client(void * x) {
     Channel * c = cache_channel();
     Context * ctx = NULL;
     int frame = STACK_NO_FRAME;
-    Expression * expr = NULL;
+    Expression * e = NULL;
     Value value;
     void * buf = NULL;
     int err = 0;
 
     memset(&value, 0, sizeof(value));
-    if (expression_context_id(args->id, &ctx, &frame, &expr) < 0) err = errno;
-    if (!err && evaluate_expression(ctx, frame, 0, expr->script, 0, &value) < 0) err = errno;
+    if (expression_context_id(args->id, &ctx, &frame, &e) < 0) err = errno;
+    if (!err) {
+        expression_context = ctx;
+        expression_frame = frame;
+        expression_addr = e->addr;
+        if (evaluate_script(MODE_NORMAL, e->script, 0, &value) < 0) err = errno;
+    }
     if (!err && value.remote && value.size <= 0x10000) {
         buf = tmp_alloc_zero((size_t)value.size);
         if (!err && context_read_mem(ctx, value.address, buf, (size_t)value.size) < 0)
@@ -3833,14 +3870,19 @@ static void command_assign_cache_client(void * x) {
     Channel * c = cache_channel();
     Context * ctx = NULL;
     int frame = STACK_NO_FRAME;
-    Expression * expr = NULL;
+    Expression * e = NULL;
     Value value;
     int err = 0;
 
     memset(&value, 0, sizeof(value));
-    if (expression_context_id(args->id, &ctx, &frame, &expr) < 0) err = errno;
+    if (expression_context_id(args->id, &ctx, &frame, &e) < 0) err = errno;
     if (!err && frame != STACK_NO_FRAME && !ctx->stopped) err = ERR_IS_RUNNING;
-    if (!err && evaluate_expression(ctx, frame, 0, expr->script, 0, &value) < 0) err = errno;
+    if (!err) {
+        expression_context = ctx;
+        expression_frame = frame;
+        expression_addr = e->addr;
+        if (evaluate_script(MODE_NORMAL, e->script, 0, &value) < 0) err = errno;
+    }
     if (!err) {
         if (value.remote) {
             if (context_write_mem(ctx, value.address, args->value_buf, args->value_size) < 0) err = errno;
@@ -3985,6 +4027,7 @@ void ini_expressions_service(Protocol * proto) {
     add_command_handler(proto, EXPRESSIONS, "getContext", command_get_context);
     add_command_handler(proto, EXPRESSIONS, "getChildren", command_get_children);
     add_command_handler(proto, EXPRESSIONS, "create", command_create);
+    add_command_handler(proto, EXPRESSIONS, "createInScope", command_create_in_scope);
     add_command_handler(proto, EXPRESSIONS, "evaluate", command_evaluate);
     add_command_handler(proto, EXPRESSIONS, "assign", command_assign);
     add_command_handler(proto, EXPRESSIONS, "dispose", command_dispose);
