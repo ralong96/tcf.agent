@@ -650,7 +650,7 @@ static void command_unsubscribe(char * token, Channel * c) {
 
 int virtual_stream_read(Channel * c, char * token, char * id, size_t size) {
     int err = 0;
-    StreamClient * client= find_client(id, c);
+    StreamClient * client = find_client(id, c);
 
     if (client == NULL) err = errno;
     if (!err && (client->stream->access & VS_ENABLE_REMOTE_READ) == 0) err = ERR_UNSUPPORTED;

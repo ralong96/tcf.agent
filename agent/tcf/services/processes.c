@@ -1125,22 +1125,27 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
 #           undef cmd_append
         }
         if (envp != NULL) {
-            char ** p = envp;
-            size_t env_size = 1;
-            char * s = NULL;
-            char * path = getenv("PATH");
-            if (path == NULL) env_path = "PATH=";
-            else env_path = tmp_strdup2("PATH=", path);
-            while (*p != NULL) env_size += strlen(*p++) + 1;
-            s = env = (char *)tmp_alloc(env_size);
-            for (p = envp; *p != NULL; p++) {
-                size_t l = strlen(*p) + 1;
-                if (strncmp(*p, "PATH=", 5) == 0) putenv(*p);
-                memcpy(s, *p, l);
-                s += l;
+            if (*envp == NULL) {
+                env = (char *)tmp_alloc_zero(2);
             }
-            *s++ = 0;
-            assert((size_t)(s - env) == env_size);
+            else {
+                char ** p = envp;
+                size_t env_size = 1;
+                char * s = NULL;
+                char * path = getenv("PATH");
+                if (path == NULL) env_path = "PATH=";
+                else env_path = tmp_strdup2("PATH=", path);
+                while (*p != NULL) env_size += strlen(*p++) + 1;
+                s = env = (char *)tmp_alloc(env_size);
+                for (p = envp; *p != NULL; p++) {
+                    size_t l = strlen(*p) + 1;
+                    if (strncmp(*p, "PATH=", 5) == 0) putenv(*p);
+                    memcpy(s, *p, l);
+                    s += l;
+                }
+                *s++ = 0;
+                assert((size_t)(s - env) == env_size);
+            }
         }
         /* If 'exe' is not a full file path, use PATH to search for program file */
         if (stat(exe, &st) != 0) fnm = NULL;
