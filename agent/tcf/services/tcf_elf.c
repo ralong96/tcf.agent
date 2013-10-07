@@ -176,20 +176,23 @@ static int is_file_mapped_by_mem_map(ELF_File * file, MemoryMap * map) {
     return 0;
 }
 
-static int is_file_mapped(ELF_File * file) {
-    int res = 0;
+static int is_file_mapped(ELF_File * file, int * cache_miss) {
     LINK * l = context_root.next;
-    while (!res && l != &context_root) {
+    while (l != &context_root) {
         MemoryMap * client_map = NULL;
         MemoryMap * target_map = NULL;
         Context * c = ctxl2ctxp(l);
         l = l->next;
         if (c->mem_access == 0 || c->exited) continue;
         if (c != context_get_group(c, CONTEXT_GROUP_PROCESS)) continue;
-        if (memory_map_get(c, &client_map, &target_map) < 0) continue;
-        res = is_file_mapped_by_mem_map(file, client_map) || is_file_mapped_by_mem_map(file, target_map);
+        if (memory_map_get(c, &client_map, &target_map) < 0) {
+            if (get_error_code(errno) == ERR_CACHE_MISS) *cache_miss = 1;
+            continue;
+        }
+        if (is_file_mapped_by_mem_map(file, client_map) ||
+            is_file_mapped_by_mem_map(file, target_map)) return 1;
     }
-    return res;
+    return 0;
 }
 #endif /* ENABLE_MemoryMap */
 
@@ -226,10 +229,21 @@ static void elf_cleanup_cache_client(void * arg) {
 #if ENABLE_MemoryMap
     file = files;
     while (file != NULL) {
-        if (!file->mtime_changed && file->age > max_file_age && is_file_mapped(file)) {
+        int cache_miss = 0;
+        if (!file->mtime_changed && file->age > max_file_age && is_file_mapped(file, &cache_miss)) {
             file->age = 0;
             if (file->debug_info_file_name) {
-                find_open_file_by_name(file->debug_info_file_name);
+                ELF_File * dbg = find_open_file_by_name(file->debug_info_file_name);
+                if (dbg != NULL) dbg->age = 0;
+            }
+        }
+        else if (cache_miss) {
+            /* May be mapped, don't dispose this time */
+            assert(file->age > max_file_age);
+            file->age = max_file_age;
+            if (file->debug_info_file_name) {
+                ELF_File * dbg = find_open_file_by_name(file->debug_info_file_name);
+                if (dbg != NULL && dbg->age > max_file_age) dbg->age = max_file_age;
             }
         }
         file = file->next;
@@ -332,7 +346,6 @@ static ELF_File * find_open_file_by_name(const char * name) {
                 file->next = files;
                 files = file;
             }
-            file->age = 0;
             return file;
         }
         prev = file;
@@ -493,7 +506,10 @@ static ELF_File * create_elf_cache(const char * file_name) {
     char * real_name = NULL;
 
     file = find_open_file_by_name(file_name);
-    if (file != NULL) return file;
+    if (file != NULL) {
+        file->age = 0;
+        return file;
+    }
 
     if (stat(file_name, &st) < 0) {
         error = errno;
