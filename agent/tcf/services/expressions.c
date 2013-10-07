@@ -2165,7 +2165,7 @@ static void op_call(int mode, Value * v) {
 
     for (l = func_call_state.next; l != &func_call_state; l = l->next) {
         FuncCallState * s = link_all2fc(l);
-        if (s->id == id || s->pos == text_pos) {
+        if (s->id == id && s->pos == text_pos) {
             state = s;
             break;
         }
