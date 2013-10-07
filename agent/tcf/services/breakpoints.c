@@ -240,6 +240,9 @@ static int planting_instruction = 0;
 static int cache_enter_cnt = 0;
 
 static ErrorReport * bp_location_error = NULL;
+#if ENABLE_LineNumbers
+static int bp_line_cnt = 0;
+#endif
 
 static TCFBroadcastGroup * broadcast_group = NULL;
 
@@ -1477,6 +1480,7 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
 #if ENABLE_LineNumbers
 static void plant_breakpoint_address_iterator(CodeArea * area, void * x) {
     EvaluationArgs * args = (EvaluationArgs *)x;
+    bp_line_cnt++;
     if (args->bp->location == NULL) {
         ContextAddress addr = area->start_address;
         if ((addr == area->end_address || area->start_line != args->bp->line) &&
@@ -1647,7 +1651,12 @@ static void evaluate_bp_location(void * x) {
             !is_disabled(bp) && check_context_ids_location(bp, ctx)) {
         if (bp->file != NULL) {
 #if ENABLE_LineNumbers
+            bp_line_cnt = 0;
             if (line_to_address(ctx, bp->file, bp->line, bp->column, plant_breakpoint_address_iterator, args) < 0) {
+                address_expression_error(ctx, bp, errno);
+            }
+            else if (bp_line_cnt == 0) {
+                set_errno(ERR_OTHER, "Unresolved source line information");
                 address_expression_error(ctx, bp, errno);
             }
 #else
