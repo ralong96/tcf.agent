@@ -130,6 +130,7 @@ struct MemoryRegion {
     ContextAddress addr;            /* Region address in context memory */
     ContextAddress size;            /* Region size */
     uint64_t file_offs;             /* File offset of the region */
+    uint64_t file_size;             /* File size of the region */
     int bss;                        /* 1 if the region is BSS segment */
     dev_t dev;                      /* Region file device ID */
     ino_t ino;                      /* Region file inode */

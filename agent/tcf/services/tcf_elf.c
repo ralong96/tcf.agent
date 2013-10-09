@@ -1014,7 +1014,7 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
     for (i = 0; i < map->region_cnt; i++) {
         MemoryRegion * r = map->regions + i;
         if (r->file_name == NULL) continue;
-        if (r->addr == 0 && r->size == 0 && r->file_offs == 0 && r->sect_name == NULL) {
+        if (r->addr == 0 && r->size == 0 && r->file_offs == 0 && r->file_size == 0 && r->sect_name == NULL) {
             ELF_File * file = elf_open_memory_region_file(r, NULL);
             if (file != NULL) {
                 unsigned j;
@@ -1030,8 +1030,46 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                         x.ino = file->ino;
                         x.file_name = file->name;
                         x.file_offs = p->offset;
+                        x.file_size = p->file_size;
                         x.flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
                         add_region(res, &x);
+                    }
+                }
+            }
+        }
+        else if (r->file_size == 0 && r->sect_name == NULL) {
+            /* Linux module */
+            if (r->file_offs == 0) {
+                ELF_File * file = elf_open_memory_region_file(r, NULL);
+                if (file != NULL) {
+                    unsigned j;
+                    ContextAddress base_addr = 0;
+                    for (j = 0; j < file->pheader_cnt; j++) {
+                        ELF_PHeader * p = file->pheaders + j;
+                        if (p->type == PT_LOAD && p->offset == 0) {
+                            base_addr = r->addr - (ContextAddress)p->address;
+                            break;
+                        }
+                    }
+                    for (j = 0; j < file->pheader_cnt; j++) {
+                        ELF_PHeader * p = file->pheaders + j;
+                        if (p->type == PT_LOAD && p->mem_size > 0) {
+                            ContextAddress p_addr0 = (ContextAddress)p->address + base_addr;
+                            ContextAddress p_addr1 = (ContextAddress)(p->address + p->mem_size - 1) + base_addr;
+                            if (p_addr0 <= addr1 && p_addr1 >= addr0) {
+                                MemoryRegion x;
+                                memset(&x, 0, sizeof(x));
+                                x.addr = p_addr0;
+                                x.size = (ContextAddress)p->mem_size;
+                                x.dev = file->dev;
+                                x.ino = file->ino;
+                                x.file_name = file->name;
+                                x.file_offs = p->offset;
+                                x.file_size = p->file_size;
+                                x.flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
+                                add_region(res, &x);
+                            }
+                        }
                     }
                 }
             }
@@ -1178,6 +1216,19 @@ static ELF_Section * find_section_by_offset(ELF_File * file, U8_T offs) {
     return NULL;
 }
 
+static int is_p_header_region(ELF_PHeader * p, MemoryRegion * r) {
+    if (p->type != PT_LOAD) return 0;
+    if (r->sect_name != NULL) return 0;
+    if (r->flags) {
+        if ((p->flags & PF_R) && !(r->flags & MM_FLAG_R)) return 0;
+        if ((p->flags & PF_W) && !(r->flags & MM_FLAG_W)) return 0;
+        if ((p->flags & PF_X) && !(r->flags & MM_FLAG_X)) return 0;
+    }
+    if (r->file_offs + r->file_size <= p->offset) return 0;
+    if (r->file_offs >= p->offset + p->file_size) return 0;
+    return 1;
+}
+
 UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, ContextAddress addr_max, ContextAddress * range_rt_addr) {
     unsigned i, j;
     UnitAddressRange * range = NULL;
@@ -1206,19 +1257,14 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
                 U8_T offs_max = 0;
                 ELF_PHeader * p = debug->pheaders + j;
                 ELF_Section * sec = NULL;
-                if (p->type != PT_LOAD) continue;
-                if (r->flags) {
-                    if ((p->flags & PF_R) && !(r->flags & MM_FLAG_R)) continue;
-                    if ((p->flags & PF_W) && !(r->flags & MM_FLAG_W)) continue;
-                    if ((p->flags & PF_X) && !(r->flags & MM_FLAG_X)) continue;
-                }
+                if (!is_p_header_region(p, r)) continue;
                 offs_min = addr_min - r->addr + r->file_offs;
                 offs_max = addr_max - r->addr + r->file_offs;
-                if (p->offset >= offs_max || p->offset + p->mem_size <= offs_min) continue;
+                if (p->offset >= offs_max || p->offset + p->file_size <= offs_min) continue;
                 link_addr_min = (ContextAddress)(offs_min - p->offset + p->address);
                 link_addr_max = (ContextAddress)(offs_max - p->offset + p->address);
                 if (link_addr_min < p->address) link_addr_min = (ContextAddress)p->address;
-                if (link_addr_max >= p->address + p->mem_size) link_addr_max = (ContextAddress)(p->address + p->mem_size);
+                if (link_addr_max >= p->address + p->file_size) link_addr_max = (ContextAddress)(p->address + p->file_size);
                 sec = find_section_by_offset(file, offs_min);
                 range = find_comp_unit_addr_range(get_dwarf_cache(debug), sec, link_addr_min, link_addr_max);
                 if (range != NULL && range_rt_addr != NULL) {
@@ -1252,18 +1298,10 @@ ContextAddress elf_run_time_address_in_region(Context * ctx, MemoryRegion * r, E
     errno = 0;
     if (r->sect_name == NULL) {
         for (i = 0; i < file->pheader_cnt; i++) {
-            U8_T offs;
             ELF_PHeader * p = file->pheaders + i;
-            if (p->type != PT_LOAD) continue;
+            if (!is_p_header_region(p, r)) continue;
             if (addr < p->address || addr >= p->address + p->mem_size) continue;
-            if (r->flags) {
-                if ((p->flags & PF_R) && !(r->flags & MM_FLAG_R)) continue;
-                if ((p->flags & PF_W) && !(r->flags & MM_FLAG_W)) continue;
-                if ((p->flags & PF_X) && !(r->flags & MM_FLAG_X)) continue;
-            }
-            offs = addr - p->address + p->offset;
-            if (offs < r->file_offs || offs >= r->file_offs + r->size) continue;
-            return (ContextAddress)(offs - r->file_offs + r->addr);
+            return (ContextAddress)(addr - p->address + p->offset - r->file_offs + r->addr);
         }
     }
     else if (sec != NULL) {
@@ -1351,13 +1389,8 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
             for (j = 0; j < f->pheader_cnt; j++) {
                 U8_T offs = addr - r->addr + r->file_offs;
                 ELF_PHeader * p = f->pheaders + j;
-                if (p->type != PT_LOAD) continue;
+                if (!is_p_header_region(p, r)) continue;
                 if (offs < p->offset || offs >= p->offset + p->mem_size) continue;
-                if (r->flags) {
-                    if ((p->flags & PF_R) && !(r->flags & MM_FLAG_R)) continue;
-                    if ((p->flags & PF_W) && !(r->flags & MM_FLAG_W)) continue;
-                    if ((p->flags & PF_X) && !(r->flags & MM_FLAG_X)) continue;
-                }
                 *file = f;
                 addr = (ContextAddress)(offs - p->offset + p->address);
                 if (sec != NULL) {
