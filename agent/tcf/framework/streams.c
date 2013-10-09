@@ -59,7 +59,11 @@ void write_string(OutputStream * out, const char * str) {
         unsigned char * s = (unsigned char *)str;
         for (;;) {
             unsigned char ch = *s++;
-            if (ch > ESC && d < e) {
+            if (ch != ESC && d < e) {
+                if (ch == 0) {
+                    out->cur = d;
+                    break;
+                }
                 *d++ = ch;
             }
             else {
@@ -83,8 +87,12 @@ void write_stringz(OutputStream * out, const char * str) {
         unsigned char * s = (unsigned char *)str;
         for (;;) {
             unsigned char ch = *s++;
-            if (ch > ESC && d < e) {
+            if (ch != ESC && d < e) {
                 *d++ = ch;
+                if (ch == 0) {
+                    out->cur = d;
+                    break;
+                }
             }
             else {
                 out->cur = d;

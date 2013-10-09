@@ -502,12 +502,12 @@ static void tcp_write_block_stream(OutputStream * out, const char * bytes, size_
             size -= n;
             src += n;
         }
-        else if (*src > ESC) {
+        else if (*src != ESC) {
             unsigned char * dst = out->cur;
             unsigned char * end = dst + n;
             do {
                 unsigned char ch = *src;
-                if (ch <= ESC) break;
+                if (ch == ESC) break;
                 *dst++ = ch;
                 src++;
             }

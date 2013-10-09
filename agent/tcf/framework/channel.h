@@ -39,6 +39,7 @@ typedef struct Channel Channel;
 
 struct TCFBroadcastGroup {
     int magic;
+    unsigned char buf[256];
     OutputStream out;                   /* Broadcast stream */
     LINK channels;                      /* Channels in group */
 };

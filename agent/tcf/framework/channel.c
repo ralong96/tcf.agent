@@ -91,12 +91,24 @@ static void trigger_channel_shutdown(ShutdownInfo * obj) {
     }
 }
 
+static void flush_bcg_buf(TCFBroadcastGroup * bcg) {
+    LINK * l = bcg->channels.next;
+    size_t size = bcg->out.cur - bcg->buf;
+    while (l != &bcg->channels) {
+        Channel * c = bclink2channel(l);
+        if (isBoardcastOkay(c)) c->out.write_block(&c->out, (char *)bcg->buf, size);
+        l = l->next;
+    }
+    bcg->out.cur = bcg->buf;
+}
+
 static void write_all(OutputStream * out, int byte) {
     TCFBroadcastGroup * bcg = out2bcast(out);
     LINK * l = bcg->channels.next;
 
     assert(is_dispatch_thread());
     assert(bcg->magic == BCAST_MAGIC);
+    if (bcg->out.cur != bcg->buf) flush_bcg_buf(bcg);
     while (l != &bcg->channels) {
         Channel * c = bclink2channel(l);
         if (isBoardcastOkay(c)) write_stream(&c->out, byte);
@@ -110,6 +122,7 @@ static void write_block_all(OutputStream * out, const char * bytes, size_t size)
 
     assert(is_dispatch_thread());
     assert(bcg->magic == BCAST_MAGIC);
+    if (bcg->out.cur != bcg->buf) flush_bcg_buf(bcg);
     while (l != &bcg->channels) {
         Channel * c = bclink2channel(l);
         if (isBoardcastOkay(c)) c->out.write_block(&c->out, bytes, size);
@@ -178,6 +191,8 @@ TCFBroadcastGroup * broadcast_group_alloc(void) {
     p->out.write = write_all;
     p->out.write_block = write_block_all;
     p->out.splice_block = splice_block_all;
+    p->out.cur = p->buf;
+    p->out.end = p->buf + sizeof(p->buf);
     return p;
 }
 
