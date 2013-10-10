@@ -3148,8 +3148,11 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
     if (obj != NULL) {
         Trap trap;
         PropertyValue v;
+        ObjectInfo * org_type;
 
         obj = find_definition(obj);
+        org_type = obj;
+        while (org_type != NULL && org_type->mType != NULL && is_modified_type(org_type)) org_type = org_type->mType;
         info->big_endian = obj->mCompUnit->mFile->big_endian;
         if ((obj->mFlags & DOIF_external) == 0 && sym->var != NULL) {
             /* The symbol represents a member of a class instance */
@@ -3172,21 +3175,22 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
             clear_trap(&trap);
             return 0;
         }
-        if (obj->mTag == TAG_ptr_to_member_type) {
+        if (org_type->mTag == TAG_ptr_to_member_type) {
+            add_location_command(SFT_CMD_ARG)->args.arg_no = 1;
+            add_location_command(SFT_CMD_ARG)->args.arg_no = 0;
+            info->args_cnt = 2;
             if (set_trap(&trap)) {
-                read_dwarf_object_property(sym_ctx, sym_frame, obj, AT_use_location, &v);
-                add_location_command(SFT_CMD_ARG)->args.arg_no = 1;
-                add_location_command(SFT_CMD_ARG)->args.arg_no = 0;
+                read_dwarf_object_property(sym_ctx, sym_frame, org_type, AT_use_location, &v);
                 add_dwarf_location_command(info, &v);
-                info->args_cnt = 2;
                 clear_trap(&trap);
                 return 0;
             }
-            else {
-                if (errno != ERR_SYM_NOT_FOUND) set_errno(errno, "Cannot read member location expression");
-                else set_errno(ERR_OTHER, "Member location info not avaiable");
+            else if (errno != ERR_SYM_NOT_FOUND) {
+                set_errno(errno, "Cannot read member location expression");
                 return -1;
             }
+            add_location_command(SFT_CMD_ADD);
+            return 0;
         }
         if (obj->mTag != TAG_inlined_subroutine) {
             if (set_trap(&trap)) {

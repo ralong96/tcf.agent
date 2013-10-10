@@ -67,6 +67,7 @@ public:
 
 class tcf_cpp_test_class_extension : tcf_cpp_test_class {
 public:
+    char f_char;
     int f_int;
 };
 
@@ -76,10 +77,24 @@ public:
     int f_int;
 };
 
+typedef int tcf_cpp_test_class_extension::* tcf_cpp_test_class_extension_member_ptr_type;
+
+class tcf_cpp_test_anonymous_union_class {
+public:
+    int f1;
+    union {
+        int f2;
+        int f3;
+    };
+};
+
 int tcf_cpp_test_class::s_int = 1;
 int tcf_cpp_test_class::tcf_cpp_test_class_nested::s_int = 2;
-tcf_cpp_test_class_extension * tcf_cpp_text_ce = (tcf_cpp_test_class_extension *)3;
-int tcf_cpp_test_class_extension::* tcf_cpp_test_member_ptr = &tcf_cpp_test_class_extension::f_int;
+tcf_cpp_test_class_extension tcf_cpp_test_class_extension_var;
+tcf_cpp_test_class_extension * tcf_cpp_test_class_extension_ptr = &tcf_cpp_test_class_extension_var;
+tcf_cpp_test_class_extension_member_ptr_type tcf_cpp_test_class_extension_member_ptr = &tcf_cpp_test_class_extension::f_int;
+int tcf_cpp_test_class_extension_member_val = tcf_cpp_test_class_extension_var.*tcf_cpp_test_class_extension_member_ptr;
+tcf_cpp_test_anonymous_union_class tcf_cpp_test_anonymous_union_var;
 
 extern "C" {
 
@@ -205,10 +220,15 @@ void test_proc(void) {
     int i;
     pthread_t thread[4];
     int test_done = 0;
-    tcf_test_func0(enum_val1);
     for (i = 0; i < 4; i++) {
         thread[i] = 0;
     }
+#ifdef __cplusplus
+    tcf_cpp_test_anonymous_union_var.f1 = 234;
+    tcf_cpp_test_anonymous_union_var.f2 = 235;
+    tcf_cpp_test_class_extension_var.f_int = 345;
+#endif
+    tcf_test_func0(enum_val1);
     for (i = 0; i < 4; i++) {
         if (pthread_create(thread + i, &pthread_create_attr, test_sub, &test_done) != 0) {
             perror("pthread_create");

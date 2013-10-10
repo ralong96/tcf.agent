@@ -1470,7 +1470,7 @@ static uint64_t to_uns(int mode, Value * v) {
     if (v->type_class == TYPE_CLASS_ARRAY && v->remote) {
         return (uint64_t)v->address;
     }
-    if (v->type_class == TYPE_CLASS_POINTER) {
+    if (v->type_class == TYPE_CLASS_POINTER || v->type_class == TYPE_CLASS_MEMBER_PTR) {
         load_value(v);
         to_host_endianness(v);
         switch (v->size)  {
@@ -1775,10 +1775,14 @@ static void find_field(int mode,
     }
     for (i = 0; i < count; i++) {
         char * s = NULL;
+        int sym_class = 0;
+        if (get_symbol_class(children[i], &sym_class) < 0) {
+            error(errno, "Cannot retrieve field symbol class");
+        }
         if (get_symbol_name(children[i], &s) < 0) {
             error(errno, "Cannot retrieve field name");
         }
-        if (s == NULL) {
+        if (s == NULL && sym_class == SYM_CLASS_REFERENCE) {
             if (inheritance == NULL) inheritance = (Symbol **)tmp_alloc(sizeof(Symbol *) * count);
             inheritance[h++] = children[i];
         }
@@ -1825,6 +1829,9 @@ static void op_field(int mode, Value * v) {
         if (get_symbol_class(sym, &sym_class) < 0) {
             error(errno, "Cannot retrieve symbol class");
         }
+        v->reg = NULL;
+        v->sym = NULL;
+        v->sym_list = NULL;
         if (sym_class == SYM_CLASS_FUNCTION) {
             ContextAddress addr = 0;
             if (mode == MODE_NORMAL) {
@@ -1847,14 +1854,10 @@ static void op_field(int mode, Value * v) {
             }
             if (mode == MODE_NORMAL) {
                 if (loc->stk_pos == 1) {
-                    ContextAddress size = 0;
-                    if (get_symbol_size(sym, &size) < 0) {
+                    if (get_symbol_size(sym, &v->size) < 0) {
                         error(errno, "Cannot retrieve field size");
                     }
                     v->address = (ContextAddress)loc->stk[0];
-                    v->size = size;
-                    v->sym = NULL;
-                    v->reg = NULL;
                     set_value_endianness(v, sym, v->type);
                 }
                 else {
@@ -2610,27 +2613,43 @@ static void pm_expression(int mode, Value * v) {
             error(ERR_INV_EXPRESSION, "Invalid type: pointer to member expected");
         }
         if (mode != MODE_SKIP) {
-            ContextAddress obj = 0;
-            ContextAddress ptr = 0;
-            LocationExpressionState * loc = NULL;
-            if (sy == SY_PM_D) {
-                if (!v->remote) error(ERR_INV_EXPRESSION, "L-value expected");
-                obj = v->address;
+            if (mode == MODE_NORMAL) {
+                ContextAddress obj = 0;
+                ContextAddress ptr = 0;
+                LocationExpressionState * loc = NULL;
+                if (sy == SY_PM_D) {
+                    if (!v->remote) error(ERR_INV_EXPRESSION, "L-value expected");
+                    obj = v->address;
+                }
+                else {
+                    obj = (ContextAddress)to_uns(mode, v);
+                }
+                ptr = (ContextAddress)to_uns(mode, &x);
+                evaluate_symbol_location(x.type, obj, ptr, &loc);
+                if (loc->stk_pos != 1) error(ERR_INV_EXPRESSION, "Cannot evaluate symbol address");
+                v->address = (ContextAddress)loc->stk[0];
             }
             else {
-                obj = (ContextAddress)to_uns(mode, v);
+                v->address = 0;
             }
-            ptr = (ContextAddress)to_uns(mode, &x);
-            evaluate_symbol_location(x.type, obj, ptr, &loc);
-            if (loc->stk_pos != 1) error(ERR_INV_EXPRESSION, "Cannot evaluate symbol address");
-            set_ctx_word_value(v, (ContextAddress)loc->stk[0]);
+            v->sym = NULL;
+            v->reg = NULL;
+            v->loc = NULL;
+            v->remote = 1;
+            v->function = 0;
+            v->sym_list = NULL;
+            v->value = NULL;
             v->constant = 0;
             if (get_symbol_base_type(x.type, &v->type) < 0) {
                 error(ERR_INV_EXPRESSION, "Cannot get pointed type");
             }
-            if (get_symbol_type_class(x.type, &v->type_class) < 0) {
+            if (get_symbol_type_class(v->type, &v->type_class) < 0) {
                 error(ERR_INV_EXPRESSION, "Cannot get pointed type class");
             }
+            if (get_symbol_size(v->type, &v->size) < 0) {
+                error(errno, "Cannot retrieve field size");
+            }
+            set_value_endianness(v, x.type, v->type);
         }
     }
 #endif
