@@ -14,7 +14,7 @@
  *******************************************************************************/
 
 /*
- * This module implements specific ELF symbol's API
+ * This module implements ELF specific symbol's API
  */
 
 #include <tcf/config.h>
@@ -138,6 +138,24 @@ int elf_enumerate_symbols(Context * ctx, const char * file_name, EnumerateSymbol
     }
 
     return has_more;
+}
+
+#elif ENABLE_ELF
+
+#include <tcf/framework/exceptions.h>
+#include <tcf/services/elf-symbols.h>
+
+int elf_save_symbols_state(ELFSymbolsRecursiveCall * func, void * args) {
+    Trap trap;
+
+    if (set_trap(&trap)) {
+        func(args);
+        clear_trap(&trap);
+    }
+
+    if (!trap.error) return 0;
+    errno = trap.error;
+    return -1;
 }
 
 #endif

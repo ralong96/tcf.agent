@@ -14,7 +14,7 @@
  *******************************************************************************/
 
 /*
- * This module implements specific ELF symbol's API
+ * This module implements ELF-specific symbol's API
  */
 #ifndef D_symbols_elf
 #define D_symbols_elf
@@ -64,5 +64,15 @@ extern int elf_tcf_symbol(Context * ctx, ELF_SymbolInfo * elf_sym, Symbol ** sym
 extern int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * address);
 
 #endif /* SERVICE_Symbols && !ENABLE_SymbolsProxy && ENABLE_ELF */
+
+#if ENABLE_ELF
+
+/*
+ * Save/restore ELF/DWARF symbols reader state to allow recursion in the symbols service implementation.
+ */
+typedef void ELFSymbolsRecursiveCall(void *);
+extern int elf_save_symbols_state(ELFSymbolsRecursiveCall * func, void * args);
+
+#endif /* ENABLE_ELF */
 
 #endif /* D_symbols_elf */

@@ -30,6 +30,7 @@
 #include <tcf/services/dwarfreloc.h>
 #include <tcf/services/dwarfecomp.h>
 #include <tcf/services/elf-loader.h>
+#include <tcf/services/elf-symbols.h>
 
 typedef struct JumpInfo {
     U1_T op;
@@ -675,7 +676,25 @@ static void add_expression(DWARFExpressionInfo * info) {
     jumps = org_jumps;
 }
 
+static void transform_expression(void * args) {
+    add_expression((DWARFExpressionInfo *)args);
+}
+
 void dwarf_transform_expression(Context * ctx, ContextAddress ip, int chk_frame, DWARFExpressionInfo * info) {
+    int error = 0;
+
+    /* Save state - some expressions need to make recursive calls to symbols API */
+    U1_T * org_buf = buf;
+    size_t org_buf_pos = buf_pos;
+    size_t org_buf_max = buf_max;
+    JumpInfo * org_jumps = jumps;
+    DWARFExpressionInfo * org_expr = expr;
+    size_t org_expr_pos = expr_pos;
+    Context * org_expr_ctx = expr_ctx;
+    U8_T org_expr_ip = expr_ip;
+    int org_expr_chk_frame = expr_chk_frame;
+
+    /* Initialize state */
     buf_pos = 0;
     buf_max = info->expr_size * 2;
     buf = (U1_T *)tmp_alloc(buf_max);
@@ -684,17 +703,24 @@ void dwarf_transform_expression(Context * ctx, ContextAddress ip, int chk_frame,
     expr_chk_frame = chk_frame;
     expr = NULL;
     jumps = NULL;
-    add_expression(info);
+
+    /* Run transformation */
+    if (elf_save_symbols_state(transform_expression, info) < 0) error = errno;
     info->expr_addr = buf;
     info->expr_size = buf_pos;
-    buf_pos = 0;
-    buf_max = 0;
-    buf = NULL;
-    jumps = NULL;
-    expr = NULL;
-    expr_pos = 0;
-    expr_ctx = NULL;
-    expr_ip = 0;
+
+    /* Restore state */
+    buf = org_buf;
+    buf_pos = org_buf_pos;
+    buf_max = org_buf_max;
+    jumps = org_jumps;
+    expr = org_expr;
+    expr_pos = org_expr_pos;
+    expr_ctx = org_expr_ctx;
+    expr_ip = org_expr_ip;
+    expr_chk_frame = org_expr_chk_frame;
+
+    if (error) exception(error);
 }
 
 #endif

@@ -65,9 +65,7 @@ struct Symbol {
     ObjectInfo * obj;
     ObjectInfo * var; /* 'this' object if the symbol represents implicit 'this' reference */
     ELF_Section * tbl;
-    int has_size;
     int has_address;
-    ContextAddress size;
     ContextAddress address;
     int sym_class;
     Context * ctx;
@@ -91,9 +89,7 @@ struct Symbol {
 static Context * sym_ctx;
 static int sym_frame;
 static ContextAddress sym_ip;
-
-#define save_sym_values() Context * org_ctx = sym_ctx; int org_frame = sym_frame; ContextAddress org_ip = sym_ip
-#define restore_sym_values() sym_ctx = org_ctx; sym_frame = org_frame; sym_ip = org_ip
+static Symbol * find_symbol_list = NULL;
 
 typedef struct {
     ELF_File * file;
@@ -160,16 +156,36 @@ static struct BaseTypeAlias {
     { NULL, NULL }
 };
 
-static Symbol * find_symbol_list = NULL;
-
 #define SYMBOL_MAGIC 0x34875234
 
 #define equ_symbol_names(x, y) (*x == *y && cmp_symbol_names(x, y) == 0)
 
-/* This function is used for DWARF testing */
+/* This function is used for DWARF reader testing */
 extern ObjectInfo * get_symbol_object(Symbol * sym);
 ObjectInfo * get_symbol_object(Symbol * sym) {
     return sym->obj;
+}
+
+int elf_save_symbols_state(ELFSymbolsRecursiveCall * func, void * args) {
+    Context * org_ctx = sym_ctx;
+    int org_frame = sym_frame;
+    ContextAddress org_ip = sym_ip;
+    Symbol * org_symbol_list = find_symbol_list;
+    Trap trap;
+
+    if (set_trap(&trap)) {
+        func(args);
+        clear_trap(&trap);
+    }
+
+    find_symbol_list = org_symbol_list;
+    sym_ctx = org_ctx;
+    sym_frame = org_frame;
+    sym_ip = org_ip;
+
+    if (!trap.error) return 0;
+    errno = trap.error;
+    return -1;
 }
 
 static Symbol * alloc_symbol(void) {
@@ -183,7 +199,6 @@ static Symbol * alloc_symbol(void) {
 
 static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
     if (frame == STACK_NO_FRAME) {
-        ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
         sym_ip = addr;
     }
     else if (frame == STACK_TOP_FRAME) {
@@ -296,11 +311,31 @@ int elf_symbol_info(Symbol * sym, ELF_SymbolInfo * elf_sym) {
     return 0;
 }
 
+static void check_addr_and_size(void * args) {
+    Symbol * sym = (Symbol *) args;
+    ContextAddress addr = 0;
+    ContextAddress size = 0;
+
+    assert(sym->frame == STACK_NO_FRAME);
+
+    if (get_symbol_size(sym, &size) < 0) {
+         exception(errno);
+    }
+
+    if (sym->sym_class == SYM_CLASS_REFERENCE) {
+        if (sym->obj->mTag == TAG_member || sym->obj->mTag == TAG_inheritance) {
+            if (get_symbol_offset(sym, &addr) < 0) exception(errno);
+        }
+        else if (get_symbol_address(sym, &addr) < 0) {
+            exception(errno);
+        }
+    }
+}
+
 /* Return 1 if evaluation of symbol properties requires a stack frame.
  * Return 0 otherwise.
  * In case of a doubt, should return 1. */
 static int is_frame_based_object(Symbol * sym) {
-    int res = 0;
 
     if (sym->var != NULL) return 1;
     if (sym->obj != NULL && (sym->obj->mFlags & DOIF_need_frame)) return 1;
@@ -346,35 +381,19 @@ static int is_frame_based_object(Symbol * sym) {
     }
 
     if (sym->obj != NULL) {
-        ContextAddress addr = 0;
-        ContextAddress size = 0;
-        save_sym_values();
-
-        assert(sym->frame == STACK_NO_FRAME);
-
-        if (sym->sym_class == SYM_CLASS_REFERENCE) {
-            if (sym->obj->mTag == TAG_member || sym->obj->mTag == TAG_inheritance) {
-                if (get_symbol_offset(sym, &addr) < 0) res = 1;
-            }
-            else if (get_symbol_address(sym, &addr) < 0) {
-                res = 1;
-            }
-        }
-
-        if (!res) {
-            if (get_symbol_size(sym, &size) < 0) {
-                res = 1;
-            }
-            else {
-                sym->has_size = 1;
-                sym->size = size;
-            }
-        }
-
-        restore_sym_values();
+        if (elf_save_symbols_state(check_addr_and_size, sym) < 0) return 1;
     }
 
-    return res;
+    return 0;
+}
+
+/* Return 1 if evaluation of symbol properties requires a thread.
+ * Return 0 otherwise.
+ * In case of a doubt, should return 1. */
+static int is_thread_based_object(Symbol * sym) {
+    /* Variables can be thread local */
+    if (sym->sym_class == SYM_CLASS_REFERENCE) return 1;
+    return 0;
 }
 
 static void object2symbol(ObjectInfo * obj, Symbol ** res) {
@@ -449,6 +468,9 @@ static void object2symbol(ObjectInfo * obj, Symbol ** res) {
     sym->ctx = context_get_group(sym_ctx, CONTEXT_GROUP_SYMBOLS);
     if (sym_frame != STACK_NO_FRAME && is_frame_based_object(sym)) {
         sym->frame = sym_frame;
+        sym->ctx = sym_ctx;
+    }
+    else if (sym_ctx != sym->ctx && is_thread_based_object(sym)) {
         sym->ctx = sym_ctx;
     }
     *res = sym;
@@ -1479,8 +1501,19 @@ int find_next_symbol(Symbol ** sym) {
     return -1;
 }
 
+typedef struct LocalVarsCallBack {
+    EnumerateSymbolsCallBack * call_back;
+    void * args;
+    Symbol * sym;
+} LocalVarsCallBack;
+
+static void local_vars_call_back(void * args) {
+    LocalVarsCallBack * cb = (LocalVarsCallBack *)args;
+    cb->call_back(cb->args, cb->sym);
+}
+
 static void enumerate_local_vars(ObjectInfo * obj, int level,
-        UnitAddress * ip, EnumerateSymbolsCallBack * call_back, void * args) {
+        UnitAddress * ip, LocalVarsCallBack * call_back) {
     while (obj != NULL) {
         switch (obj->mTag) {
         case TAG_compile_unit:
@@ -1495,7 +1528,7 @@ static void enumerate_local_vars(ObjectInfo * obj, int level,
         case TAG_subroutine:
         case TAG_subprogram:
             if (check_in_range(obj, ip)) {
-                enumerate_local_vars(get_dwarf_children(obj), level + 1, ip, call_back, args);
+                enumerate_local_vars(get_dwarf_children(obj), level + 1, ip, call_back);
                 if (level == 0) return;
             }
             break;
@@ -1504,11 +1537,9 @@ static void enumerate_local_vars(ObjectInfo * obj, int level,
         case TAG_local_variable:
         case TAG_variable:
             if (level > 0) {
-                save_sym_values();
-                Symbol * sym = NULL;
-                object2symbol(find_definition(obj), &sym);
-                call_back(args, sym);
-                restore_sym_values();
+                call_back->sym = NULL;
+                object2symbol(find_definition(obj), &call_back->sym);
+                if (elf_save_symbols_state(local_vars_call_back, call_back) < 0) exception(errno);
             }
             break;
         }
@@ -1523,9 +1554,13 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * call_
     if (sym_ip != 0) {
         UnitAddress ip;
         find_unit(sym_ctx, sym_ip, &ip);
-        if (ip.unit != NULL) enumerate_local_vars(
-            get_dwarf_children(ip.unit->mObject),
-            0, &ip, call_back, args);
+        if (ip.unit != NULL) {
+            LocalVarsCallBack cb;
+            memset(&cb, 0, sizeof(LocalVarsCallBack));
+            cb.args = args;
+            cb.call_back = call_back;
+            enumerate_local_vars(get_dwarf_children(ip.unit->mObject), 0, &ip, &cb);
+        }
     }
     clear_trap(&trap);
     return 0;
@@ -2540,10 +2575,6 @@ static int err_wrong_obj(void) {
 int get_symbol_size(const Symbol * sym, ContextAddress * size) {
     ObjectInfo * obj = sym->obj;
     assert(sym->magic == SYMBOL_MAGIC);
-    if (sym->has_size != 0) {
-        *size = sym->size;
-        return 0;
-    }
     if (is_constant_pseudo_symbol(sym)) return get_symbol_size(sym->base, size);
     if (is_array_type_pseudo_symbol(sym)) {
         if (sym->length > 0) {
@@ -2977,27 +3008,24 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
     return 0;
 }
 
-static LocationCommands * location_cmds = NULL;
-static LocationExpressionState * location_command_state = NULL;
-
 static void dwarf_location_operation(uint8_t op) {
     str_fmt_exception(ERR_UNSUPPORTED, "Unsupported location expression op 0x%02x", op);
 }
 
 static int dwarf_location_callback(LocationExpressionState * state) {
-    location_command_state = state;
     state->client_op = dwarf_location_operation;
     return evaluate_vm_expression(state);
 }
 
-static LocationExpressionCommand * add_location_command(int op) {
+static LocationExpressionCommand * add_location_command(LocationInfo * l, int op) {
+    LocationCommands * cmds = &l->value_cmds;
     LocationExpressionCommand * cmd = NULL;
-    if (location_cmds->cnt >= location_cmds->max) {
-        location_cmds->max += 4;
-        location_cmds->cmds = (LocationExpressionCommand *)tmp_realloc(location_cmds->cmds,
-            sizeof(LocationExpressionCommand) * location_cmds->max);
+    if (cmds->cnt >= cmds->max) {
+        cmds->max += 4;
+        cmds->cmds = (LocationExpressionCommand *)tmp_realloc(cmds->cmds,
+            sizeof(LocationExpressionCommand) * cmds->max);
     }
-    cmd = location_cmds->cmds + location_cmds->cnt++;
+    cmd = cmds->cmds + cmds->cnt++;
     memset(cmd, 0, sizeof(LocationExpressionCommand));
     cmd->cmd = op;
     return cmd;
@@ -3025,7 +3053,7 @@ static void add_dwarf_location_command(LocationInfo * l, PropertyValue * v) {
         }
     }
     /* Only create the command if no exception was thrown */
-    cmd = add_location_command(SFT_CMD_LOCATION);
+    cmd = add_location_command(l, SFT_CMD_LOCATION);
     cmd->args.loc.code_addr = info.expr_addr;
     cmd->args.loc.code_size = info.expr_size;
     cmd->args.loc.reg_id_scope = v->mObject->mCompUnit->mRegIdScope;
@@ -3045,9 +3073,9 @@ static void add_member_location_command(LocationInfo * info, ObjectInfo * obj) {
     case FORM_DATA8     :
     case FORM_SDATA     :
     case FORM_UDATA     :
-        add_location_command(SFT_CMD_ARG)->args.arg_no = 0;
-        add_location_command(SFT_CMD_NUMBER)->args.num = get_numeric_property_value(&v);
-        add_location_command(SFT_CMD_ADD);
+        add_location_command(info, SFT_CMD_ARG)->args.arg_no = 0;
+        add_location_command(info, SFT_CMD_NUMBER)->args.num = get_numeric_property_value(&v);
+        add_location_command(info, SFT_CMD_ADD);
         break;
     case FORM_BLOCK1    :
     case FORM_BLOCK2    :
@@ -3055,7 +3083,7 @@ static void add_member_location_command(LocationInfo * info, ObjectInfo * obj) {
     case FORM_BLOCK     :
     case FORM_EXPRLOC   :
     case FORM_SEC_OFFSET:
-        add_location_command(SFT_CMD_ARG)->args.arg_no = 0;
+        add_location_command(info, SFT_CMD_ARG)->args.arg_no = 0;
         add_dwarf_location_command(info, &v);
         break;
     default:
@@ -3063,7 +3091,7 @@ static void add_member_location_command(LocationInfo * info, ObjectInfo * obj) {
         break;
     }
     if (get_num_prop(obj, AT_bit_size, &bit_size)) {
-        LocationExpressionCommand * cmd = add_location_command(SFT_CMD_PIECE);
+        LocationExpressionCommand * cmd = add_location_command(info, SFT_CMD_PIECE);
         cmd->args.piece.bit_size = (unsigned)bit_size;
         if (get_num_prop(obj, AT_bit_offset, &bit_offs)) {
             if (obj->mCompUnit->mFile->big_endian) {
@@ -3096,11 +3124,11 @@ static int add_member_location(LocationInfo * info, ObjectInfo * type, ObjectInf
     obj = get_dwarf_children(type);
     while (obj != NULL) {
         if (obj->mTag == TAG_inheritance) {
-            unsigned cnt = location_cmds->cnt;
+            unsigned cnt = info->value_cmds.cnt;
             add_member_location_command(info, obj);
-            add_location_command(SFT_CMD_SET_ARG)->args.arg_no = 0;
+            add_location_command(info, SFT_CMD_SET_ARG)->args.arg_no = 0;
             if (add_member_location(info, obj->mType, member)) return 1;
-            location_cmds->cnt = cnt;
+            info->value_cmds.cnt = cnt;
         }
         obj = obj->mSibling;
     }
@@ -3112,18 +3140,17 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
     LocationInfo * info = *res = (LocationInfo *)tmp_alloc_zero(sizeof(LocationInfo));
 
     assert(sym->magic == SYMBOL_MAGIC);
-    location_cmds = &info->value_cmds;
 
     if (sym->has_address) {
         info->big_endian = big_endian_host();
-        add_location_command(SFT_CMD_NUMBER)->args.num = sym->address;
+        add_location_command(info, SFT_CMD_NUMBER)->args.num = sym->address;
         return 0;
     }
 
     if (is_constant_pseudo_symbol(sym)) {
         void * value = NULL;
         ContextAddress size = 0;
-        LocationExpressionCommand * cmd = add_location_command(SFT_CMD_PIECE);
+        LocationExpressionCommand * cmd = add_location_command(info, SFT_CMD_PIECE);
 
         if (get_symbol_size(sym->base, &size) < 0) return -1;
         info->big_endian = big_endian_host();
@@ -3166,18 +3193,18 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
             if ((type->mTag != TAG_pointer_type && type->mTag != TAG_mod_pointer) || type->mType == NULL) exception(ERR_INV_CONTEXT);
             read_dwarf_object_property(sym_ctx, sym_frame, sym->var, AT_location, &v);
             add_dwarf_location_command(info, &v);
-            cmd = add_location_command(SFT_CMD_LOAD);
+            cmd = add_location_command(info, SFT_CMD_LOAD);
             cmd->args.mem.size = obj->mCompUnit->mDesc.mAddressSize;
             cmd->args.mem.big_endian = obj->mCompUnit->mFile->big_endian;
-            add_location_command(SFT_CMD_SET_ARG)->args.arg_no = 0;
+            add_location_command(info, SFT_CMD_SET_ARG)->args.arg_no = 0;
             type = get_original_type(type->mType);
             if (!add_member_location(info, type, obj)) exception(ERR_INV_CONTEXT);
             clear_trap(&trap);
             return 0;
         }
         if (org_type->mTag == TAG_ptr_to_member_type) {
-            add_location_command(SFT_CMD_ARG)->args.arg_no = 1;
-            add_location_command(SFT_CMD_ARG)->args.arg_no = 0;
+            add_location_command(info, SFT_CMD_ARG)->args.arg_no = 1;
+            add_location_command(info, SFT_CMD_ARG)->args.arg_no = 0;
             info->args_cnt = 2;
             if (set_trap(&trap)) {
                 read_dwarf_object_property(sym_ctx, sym_frame, org_type, AT_use_location, &v);
@@ -3189,7 +3216,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                 set_errno(errno, "Cannot read member location expression");
                 return -1;
             }
-            add_location_command(SFT_CMD_ADD);
+            add_location_command(info, SFT_CMD_ADD);
             return 0;
         }
         if (obj->mTag != TAG_inlined_subroutine) {
@@ -3201,7 +3228,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                 assert(v.mForm != FORM_EXPRLOC);
                 if (v.mAddr != NULL) {
                     assert(v.mBigEndian == info->big_endian);
-                    cmd = add_location_command(SFT_CMD_PIECE);
+                    cmd = add_location_command(info, SFT_CMD_PIECE);
                     cmd->args.piece.bit_size = v.mSize * 8;
                     cmd->args.piece.value = v.mAddr;
                 }
@@ -3220,7 +3247,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                     memcpy(bf, p, (size_t)val_size);
                     info->big_endian = big_endian_host();
                     if (bit_size % 8 != 0) bf[bit_size / 8] &= (1 << (bit_size % 8)) - 1;
-                    cmd = add_location_command(SFT_CMD_PIECE);
+                    cmd = add_location_command(info, SFT_CMD_PIECE);
                     cmd->args.piece.bit_size = (unsigned)(bit_size ? bit_size : val_size * 8);
                     cmd->args.piece.value = bf;
                 }
@@ -3256,9 +3283,9 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                     UnitAddressRange * range = NULL;
                     Symbol * caller = NULL;
                     StackFrame * info = NULL;
-                    save_sym_values();
+                    save_sym_context();
                     int frame = get_prev_frame(sym_ctx, sym_frame);
-                    restore_sym_values();
+                    restore_sym_context();
                     if (get_frame_info(sym_ctx, frame, &info) < 0) exception(errno);
                     if (read_reg_value(info, reg_def, &addr) < 0) exception(errno);
                     range = elf_find_unit(sym_ctx, addr, addr, &rt_addr);
@@ -3304,14 +3331,14 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
             case SYM_CLASS_COMP_UNIT:
             case SYM_CLASS_BLOCK:
                 if (get_num_prop(obj, AT_entry_pc, &addr)) {
-                    add_location_command(SFT_CMD_NUMBER)->args.num = addr;
+                    add_location_command(info, SFT_CMD_NUMBER)->args.num = addr;
                     return 0;
                 }
                 else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
                     return -1;
                 }
                 if (get_num_prop(obj, AT_low_pc, &addr)) {
-                    add_location_command(SFT_CMD_NUMBER)->args.num = addr;
+                    add_location_command(info, SFT_CMD_NUMBER)->args.num = addr;
                     return 0;
                 }
                 else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
@@ -3333,7 +3360,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         if (sym->dimension != 0) {
             /* @plt symbol */
             address = sym->tbl->addr + sym->cardinal + sym->index * sym->dimension;
-            add_location_command(SFT_CMD_NUMBER)->args.num = address;
+            add_location_command(info, SFT_CMD_NUMBER)->args.num = address;
             return 0;
         }
         unpack_elf_symbol_info(sym->tbl, sym->index, &elf_sym_info);
@@ -3359,7 +3386,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
             }
             elf_list_done(sym_ctx);
             if (found) {
-                add_location_command(SFT_CMD_NUMBER)->args.num = address;
+                add_location_command(info, SFT_CMD_NUMBER)->args.num = address;
                 return 0;
             }
             if (error) {
@@ -3376,11 +3403,11 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         case STT_FUNC:
         case STT_GNU_IFUNC:
             if (elf_symbol_address(sym_ctx, &elf_sym_info, &address)) return -1;
-            add_location_command(SFT_CMD_NUMBER)->args.num = address;
+            add_location_command(info, SFT_CMD_NUMBER)->args.num = address;
             return 0;
         }
         info->big_endian = big_endian_host();
-        cmd = add_location_command(SFT_CMD_PIECE);
+        cmd = add_location_command(info, SFT_CMD_PIECE);
         if (elf_sym_info.sym_section->file->elf64) {
             static U8_T buf = 0;
             buf = elf_sym_info.value;
