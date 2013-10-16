@@ -52,15 +52,7 @@ static const char * TERMINALS = "Terminals";
 #if defined(_WIN32)
 #  define TERM_LAUNCH_EXEC "cmd"
 #  define TERM_LAUNCH_ARGS {TERM_LAUNCH_EXEC, NULL}
-    struct winsize {
-        unsigned ws_col;
-        unsigned ws_row;
-    };
 #else
-#  include <termios.h>
-#  ifndef TIOCGWINSZ
-#    include <sys/ioctl.h>
-#  endif
 #  include <sys/stat.h>
 #  include <unistd.h>
 #  include <dirent.h>
@@ -84,8 +76,6 @@ typedef struct Terminal {
 
     char pty_type[TERM_PROP_DEF_SIZE];
     char encoding[TERM_PROP_DEF_SIZE];
-    unsigned long width;
-    unsigned long height;
     int terminated;
 
     Channel * channel;
@@ -139,6 +129,10 @@ static void write_context(OutputStream * out, int tid) {
     write_stream(out, '{');
 
     if (term != NULL) {
+        unsigned ws_col = 0;
+        unsigned ws_row = 0;
+        get_process_tty_win_size(term->prs, &ws_col, &ws_row);
+
         json_write_string(out, "ProcessID");
         write_stream(out, ':');
         json_write_string(out, pid2id(get_process_pid(term->prs), 0));
@@ -160,12 +154,12 @@ static void write_context(OutputStream * out, int tid) {
 
         json_write_string(out, "Width");
         write_stream(out, ':');
-        json_write_ulong(out, term->width);
+        json_write_ulong(out, ws_col);
         write_stream(out, ',');
 
         json_write_string(out, "Height");
         write_stream(out, ':');
-        json_write_ulong(out, term->height);
+        json_write_ulong(out, ws_row);
         write_stream(out, ',');
 
         id = get_process_stream_id(term->prs, 0);
@@ -213,6 +207,11 @@ static void send_event_terminal_exited(OutputStream * out, Terminal * term) {
 }
 
 static void send_event_terminal_win_size_changed(OutputStream * out, Terminal * term) {
+    unsigned ws_col = 0;
+    unsigned ws_row = 0;
+
+    get_process_tty_win_size(term->prs, &ws_col, &ws_row);
+
     write_stringz(out, "E");
     write_stringz(out, TERMINALS);
     write_stringz(out, "winSizeChanged");
@@ -220,10 +219,10 @@ static void send_event_terminal_win_size_changed(OutputStream * out, Terminal * 
     json_write_string(out, tid2id(get_process_pid(term->prs)));
     write_stream(out, 0);
 
-    json_write_long(out, term->width);
+    json_write_long(out, ws_col);
     write_stream(out, 0);
 
-    json_write_long(out, term->height);
+    json_write_long(out, ws_row);
     write_stream(out, 0);
 
     write_stream(out, MARKER_EOM);
@@ -464,17 +463,6 @@ static void command_launch(char * token, Channel * c) {
     if (err == 0 && start_process(c, &prms, &selfattach, &term->prs) < 0) err = errno;
 
     if (!err) {
-#if !defined(_WIN32)
-        struct winsize size;
-        int tty = get_process_tty(term->prs);
-        memset(&size, 0, sizeof(struct winsize));
-        if (tty < 0 || ioctl(tty, TIOCGWINSZ, &size) < 0 || size.ws_col <= 0 || size.ws_row <= 0) {
-            size.ws_col = 80;
-            size.ws_row = 24;
-        }
-        term->width = size.ws_row;
-        term->height = size.ws_col;
-#endif
         term->bcg = c->bcg;
         channel_lock(term->channel = c);
         strlcpy(term->pty_type, pty_type, sizeof(term->pty_type));
@@ -503,16 +491,18 @@ static void command_launch(char * token, Channel * c) {
 
 static void command_set_win_size(char * token, Channel * c) {
     int err = 0;
-    struct winsize size;
     char id[256];
     unsigned tid;
     Terminal * term = NULL;
+    unsigned ws_col;
+    unsigned ws_row;
+    int changed = 0;
 
     json_read_string(&c->inp, id, sizeof(id));
     json_test_char(&c->inp, MARKER_EOA);
-    size.ws_col = json_read_ulong(&c->inp);
+    ws_col = json_read_ulong(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
-    size.ws_row = json_read_ulong(&c->inp);
+    ws_row = json_read_ulong(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
@@ -521,18 +511,11 @@ static void command_set_win_size(char * token, Channel * c) {
     if (tid == 0 || (term = find_terminal(tid)) == NULL) {
         err = ERR_INV_CONTEXT;
     }
-    else if (term->width != size.ws_col || term->height != size.ws_row) {
-#if defined(_WIN32)
-#else
-        int tty = get_process_tty(term->prs);
-        if (ioctl(tty, TIOCSWINSZ, &size) < 0) err = errno;
-#endif
-        if (!err) {
-            term->width = size.ws_col;
-            term->height = size.ws_row;
-            send_event_terminal_win_size_changed(&term->bcg->out, term);
-        }
+    else if (set_process_tty_win_size(term->prs, ws_col, ws_row, &changed) < 0) {
+        err = errno;
     }
+
+    if (changed) send_event_terminal_win_size_changed(&term->bcg->out, term);
 
     write_stringz(&c->out, "R");
     write_stringz(&c->out, token);

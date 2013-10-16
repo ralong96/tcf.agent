@@ -78,6 +78,10 @@ static const char * PROCESSES[2] = { "Processes", "ProcessesV1" };
 #  include <ptyDrv.h>
 #  include <taskHookLib.h>
 #else
+#  include <termios.h>
+#  ifndef TIOCGWINSZ
+#    include <sys/ioctl.h>
+#  endif
 #  include <sys/stat.h>
 #  include <unistd.h>
 #  include <dirent.h>
@@ -108,6 +112,8 @@ struct ChildProcess {
     long exit_code;
     EventCallBack * exit_cb;
     void * exit_args;
+    unsigned ws_col;
+    unsigned ws_row;
 };
 
 typedef struct ProcessOutput {
@@ -1476,6 +1482,22 @@ int start_process(Channel * c, ProcessStartParams * params, int * selfattach, Ch
         (*prs)->exit_args = params->exit_args;
         (*prs)->exit_cb = params->exit_cb;
     }
+    if (!err) {
+#if defined(_WIN32)
+#elif defined(_WRS_KERNEL)
+#else
+        if ((*prs)->tty >= 0) {
+            struct winsize size;
+            memset(&size, 0, sizeof(struct winsize));
+            if ((*prs)->tty < 0 || ioctl((*prs)->tty, TIOCGWINSZ, &size) < 0 || size.ws_col <= 0 || size.ws_row <= 0) {
+                size.ws_col = 80;
+                size.ws_row = 24;
+            }
+            (*prs)->ws_col = size.ws_col;
+            (*prs)->ws_row = size.ws_row;
+        }
+#endif
+    }
     if (!err) return 0;
     errno = err;
     return -1;
@@ -1510,6 +1532,35 @@ int get_process_out_state(ChildProcess * prs) {
 
 int get_process_exit_code(ChildProcess * prs) {
     return prs->exit_code;
+}
+
+int get_process_tty_win_size(ChildProcess * prs, unsigned * ws_col, unsigned * ws_row) {
+    *ws_col = prs->ws_col;
+    *ws_row = prs->ws_row;
+    return 0;
+}
+
+int set_process_tty_win_size(ChildProcess * prs, unsigned ws_col, unsigned ws_row, int * changed) {
+    if (changed) *changed = 0;
+    if (prs->ws_col != ws_col || prs->ws_row != ws_row) {
+#if defined(_WIN32)
+#elif defined(_WRS_KERNEL)
+#else
+        struct winsize size;
+        if (prs->tty < 0) {
+            set_errno(ERR_OTHER, "Process is not connected to sudo-terminal");
+            return -1;
+        }
+        memset(&size, 0, sizeof(size));
+        size.ws_col = ws_col;
+        size.ws_row = ws_row;
+        if (ioctl(prs->tty, TIOCSWINSZ, &size) < 0) return -1;
+#endif
+        prs->ws_col = ws_col;
+        prs->ws_row = ws_row;
+        if (changed) *changed = 1;
+    }
+    return 0;
 }
 
 #if SERVICE_Processes
@@ -1609,6 +1660,38 @@ static void command_start(char * token, Channel * c, void * x) {
     if (trap.error) exception(trap.error);
 }
 
+static void command_set_win_size(char * token, Channel * c) {
+    int err = 0;
+    char id[256];
+    pid_t pid, parent;
+    ChildProcess * prs = NULL;
+    unsigned ws_col;
+    unsigned ws_row;
+
+    json_read_string(&c->inp, id, sizeof(id));
+    json_test_char(&c->inp, MARKER_EOA);
+    ws_col = json_read_ulong(&c->inp);
+    json_test_char(&c->inp, MARKER_EOA);
+    ws_row = json_read_ulong(&c->inp);
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    pid = id2pid(id, &parent);
+
+    if (pid == 0 || parent != 0 || (prs = find_process(pid)) == NULL) {
+        err = ERR_INV_CONTEXT;
+    }
+    else if (set_process_tty_win_size(prs, ws_col, ws_row, NULL) < 0) {
+        err = errno;
+    }
+
+    write_stringz(&c->out, "R");
+    write_stringz(&c->out, token);
+    write_errno(&c->out, err);
+    write_stream(&c->out, MARKER_EOM);
+
+}
+
 void ini_processes_service(Protocol * proto) {
     int v;
     static int vs[] = { 0, 1 };
@@ -1628,6 +1711,7 @@ void ini_processes_service(Protocol * proto) {
         add_command_handler(proto, PROCESSES[v], "setSignalMask", command_set_signal_mask);
 #endif /* ENABLE_DebugContext */
     }
+    add_command_handler(proto, PROCESSES[1], "setWinSize", command_set_win_size);
 }
 #endif /* SERVICE_Processes */
 

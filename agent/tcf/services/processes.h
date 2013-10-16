@@ -52,6 +52,8 @@ extern int get_process_tty(ChildProcess * prs);
 extern int get_process_pid(ChildProcess * prs);
 extern int get_process_out_state(ChildProcess * prs);
 extern int get_process_exit_code(ChildProcess * prs);
+extern int get_process_tty_win_size(ChildProcess * prs, unsigned * ws_col, unsigned * ws_row);
+extern int set_process_tty_win_size(ChildProcess * prs, unsigned ws_col, unsigned ws_row, int * changed);
 
 
 /*
