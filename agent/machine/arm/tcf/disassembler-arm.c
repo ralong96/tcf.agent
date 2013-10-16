@@ -531,7 +531,7 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         uint32_t vm = instr & 0xf;
         uint32_t size = 0;
         uint32_t shift = 0;
-        int shift_left = A >= 5 && A <= 7 || A == 10;
+        int shift_left = (A >= 5 && A <= 7) || A == 10;
 
         if (D) vd |= 0x10;
         if (M) vm |= 0x10;
