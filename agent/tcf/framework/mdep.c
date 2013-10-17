@@ -1394,6 +1394,8 @@ void close_out_and_err(void) {
 
     dup2(fd, 1);
     dup2(fd, 2);
+    if (fd != 1 && fd != 2)
+        close(fd);
 }
 
 #elif defined(_WRS_KERNEL) || defined (__SYMBIAN32__)
@@ -1499,6 +1501,8 @@ void become_daemon(void) {
         dup2(fd, 0);
         dup2(fdpairs[1], 1);
         dup2(fdpairs[3], 2);
+        if (fd != 0)
+            close(fd);
 
         /* Close all open files except stdin, stdout and stderr */
         fd = sysconf(_SC_OPEN_MAX);
@@ -1545,6 +1549,8 @@ void close_out_and_err(void) {
 
     dup2(fd, 1);
     dup2(fd, 2);
+    if (fd != 1 && fd != 2)
+        close(fd);
 }
 #endif
 
