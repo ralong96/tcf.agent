@@ -3297,7 +3297,8 @@ static void command_start(CacheClient * client, Channel * channel, void * args, 
 }
 
 static void command_start_next(void * args) {
-    PendingCommand * cmd = (PendingCommand *)args;
+    PendingCommand * cmd = NULL;
+    assert(pending_cmd == NULL);
     pending_cmd = cmd = link_cmds2cmd(cmd_queue.next);
     cache_enter(cmd->client, cmd->channel, cmd->args, cmd->args_size);
 }
@@ -3311,7 +3312,7 @@ static void command_done(void) {
     list_remove(cmd_queue.next);
     loc_free(cmd);
     if (list_is_empty(&cmd_queue)) return;
-    post_event(command_start_next, cmd);
+    post_event(command_start_next, NULL);
 }
 
 #else
