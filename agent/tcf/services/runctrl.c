@@ -51,6 +51,10 @@
 #define STOP_ALL_TIMEOUT 1000000
 #define STOP_ALL_MAX_CNT 20
 
+#ifndef RC_STEP_MAX_STACK_FRAMES
+#define RC_STEP_MAX_STACK_FRAMES 10000
+#endif
+
 typedef struct Listener {
     RunControlEventListener * listener;
     void * args;
@@ -1472,6 +1476,7 @@ static int update_step_machine_state(Context * ctx) {
                 if (n < 0) return -1;
                 if (get_frame_info(ctx, n, &info) < 0) return -1;
                 if (ext->step_frame_fp != info->fp) {
+                    unsigned frame_cnt;
                     if (do_reverse && is_within_function_epilogue(ctx, addr)) {
                         /* With some compilers, the stack walking code based on debug information does not work
                          * correctly if we are in the middle of the function epilogue. In this case, an invalid
@@ -1483,7 +1488,7 @@ static int update_step_machine_state(Context * ctx) {
                         ext->step_continue_mode = RM_REVERSE_STEP_INTO;
                         return 0;
                     }
-                    for (;;) {
+                    for (frame_cnt = 0; frame_cnt < RC_STEP_MAX_STACK_FRAMES; frame_cnt++) {
                         n = get_prev_frame(ctx, n);
                         if (n < 0) {
                             if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
