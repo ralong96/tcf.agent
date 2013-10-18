@@ -161,7 +161,15 @@ static int get_bp_info(Context * ctx) {
     uint32_t buf = 0;
     ContextExtensionARM * bps = EXT(ctx);
     if (bps->info_ok) return 0;
-    if (ptrace(PTRACE_GETHBPREGS, id2pid(ctx->id, NULL), 0, &buf) < 0) return -1;
+    if (ptrace(PTRACE_GETHBPREGS, id2pid(ctx->id, NULL), 0, &buf) < 0) {
+        /* Kernel does not support hardware breakpoints */
+        bps->arch = 0;
+        bps->wp_size = 0;
+        bps->wp_cnt = 0;
+        bps->bp_cnt = 0;
+        bps->info_ok = 1;
+        return 0;
+    }
     bps->arch = (uint8_t)(buf >> 24);
     bps->wp_size = (uint8_t)(buf >> 16);
     bps->wp_cnt = (uint8_t)(buf >> 8);
