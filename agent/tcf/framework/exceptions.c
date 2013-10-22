@@ -81,18 +81,24 @@ void str_exception(int error, const char * msg) {
 }
 
 void str_fmt_exception(int error, const char * fmt, ...) {
-    va_list vaList;
+    va_list ap;
     char * buf = NULL;
     size_t len = 100;
     int n;
 
     while (1) {
         buf = (char *)loc_realloc(buf, len);
-        va_start(vaList, fmt);
-        n = vsnprintf(buf, len, fmt, vaList);
-        va_end(vaList);
-        if (n < (int)len) break;
-        len = n + 1;
+        va_start(ap, fmt);
+        n = vsnprintf(buf, len, fmt, ap);
+        va_end(ap);
+        if (n < 0) {
+            if (len > 0x1000) break;
+            len *= 2;
+        }
+        else {
+            if (n < (int)len) break;
+            len = n + 1;
+        }
     }
     error = set_errno(error, buf);
     loc_free(buf);
