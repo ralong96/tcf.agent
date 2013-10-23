@@ -1829,6 +1829,9 @@ static void op_field(int mode, Value * v) {
         if (get_symbol_class(sym, &sym_class) < 0) {
             error(errno, "Cannot retrieve symbol class");
         }
+        if (get_symbol_type(sym, &v->type) < 0) {
+            error(errno, "Cannot retrieve symbol type");
+        }
         v->reg = NULL;
         v->sym = NULL;
         v->sym_list = NULL;
@@ -1838,7 +1841,6 @@ static void op_field(int mode, Value * v) {
                 if (loc->stk_pos != 1) error(ERR_INV_EXPRESSION, "Invalid symbol location expression");
                 addr = (ContextAddress)loc->stk[0];
             }
-            get_symbol_type(sym, &v->type);
             v->type_class = TYPE_CLASS_POINTER;
             if (v->type != NULL) get_array_symbol(v->type, 0, &v->type);
             set_ctx_word_value(v, addr);
@@ -1846,9 +1848,6 @@ static void op_field(int mode, Value * v) {
             v->sym = sym;
         }
         else {
-            if (get_symbol_type(sym, &v->type) < 0) {
-                error(errno, "Cannot retrieve symbol type");
-            }
             if (get_symbol_type_class(sym, &v->type_class) < 0) {
                 error(errno, "Cannot retrieve symbol type class");
             }
