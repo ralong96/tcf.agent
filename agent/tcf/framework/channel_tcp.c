@@ -1109,8 +1109,12 @@ static void set_socket_buffer_sizes(int sock) {
     /* Buffer sizes need to be large enough to avoid deadlocking when agent connects to itself */
     int snd_buf = 4 * BUF_SIZE;
     int rcv_buf = 8 * BUF_SIZE;
-    setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *)&snd_buf, sizeof(snd_buf));
-    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *)&rcv_buf, sizeof(rcv_buf));
+    if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *)&snd_buf, sizeof(snd_buf)) < 0) {
+        trace(LOG_ALWAYS, "setsockopt(SOL_SOCKET,SO_SNDBUF,%d) error: %s", snd_buf, errno_to_str(errno));
+    }
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *)&rcv_buf, sizeof(rcv_buf)) < 0) {
+        trace(LOG_ALWAYS, "setsockopt(SOL_SOCKET,SO_RCVBUF,%d) error: %s", rcv_buf, errno_to_str(errno));
+    }
 }
 
 static ChannelServer * channel_server_create(PeerServer * ps, int sock) {
