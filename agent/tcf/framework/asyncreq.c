@@ -76,12 +76,12 @@ static void worker_thread_exit(void * x) {
 
     check_error(pthread_cond_destroy(&wt->cond));
     pthread_join(wt->thread, NULL);
-    loc_free(wt);
     check_error(pthread_mutex_lock(&wtlock));
     if (--wtrunning_count == 0)
         shutdown_set_stopped(&async_shutdown);
     trace(LOG_ASYNCREQ, "worker_thread_exit %p running threads %d", wt, wtrunning_count);
     check_error(pthread_mutex_unlock(&wtlock));
+    loc_free(wt);
 }
 
 static void * worker_thread_handler(void * x) {
