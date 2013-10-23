@@ -948,7 +948,7 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         else add_char(Q ? 'q' : 'd');
         if (buf[buf_pos - 1] == 'q') vm /= 2;
         add_dec_uint32(vm);
-        if (A == 1 && (B & 0xf) >= 0 && (B & 0xf) <= 9) {
+        if (A == 1 && (B & 0xf) <= 9) {
             add_str(", #0");
         }
         else if (A == 2 && (B & 0x1f) == 0xc) {
