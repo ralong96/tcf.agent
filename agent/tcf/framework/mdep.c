@@ -839,11 +839,13 @@ const char * get_os_name(void) {
 }
 
 const char * get_user_home(void) {
-    static char buf[PATH_MAX];
-    if (buf[0] == 0) {
-        struct passwd * pwd = getpwuid(getuid());
+    static char * buf = NULL;
+    if (buf == NULL) {
+        struct passwd * pwd = NULL;
+        errno = 0;
+        pwd = getpwuid(getuid());
         if (pwd == NULL) return NULL;
-        strcpy(buf, pwd->pw_dir);
+        buf = loc_strdup(pwd->pw_dir);
     }
     return buf;
 }
