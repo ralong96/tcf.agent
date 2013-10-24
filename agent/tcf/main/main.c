@@ -77,9 +77,14 @@
 #endif
 
 /* Signal handler. This hook extends behavior when process
- * exitis due to received signal. */
+ * exits due to received signal. */
 #ifndef SIGNAL_HANDLER_HOOK
 #define SIGNAL_HANDLER_HOOK do {} while(0)
+#endif
+
+/* Hook run immediatly after option parsing loop. */
+#ifndef POST_OPTION_HOOK
+#define POST_OPTION_HOOK do {} while(0)
 #endif
 
 static const char * progname;
@@ -328,6 +333,7 @@ int main(int argc, char ** argv) {
         }
     }
 
+    POST_OPTION_HOOK;
     if (daemon) {
 #if defined(_WIN32)
         become_daemon(daemon > 1 ? argv : NULL);
