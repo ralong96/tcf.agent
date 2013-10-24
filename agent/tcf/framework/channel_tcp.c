@@ -1163,7 +1163,7 @@ static int setup_unix_sockaddr(PeerServer * ps, struct sockaddr_un * localhost) 
 
     localhost->sun_family = AF_UNIX;
     // length checked above
-    strncpy(localhost->sun_path, host, sizeof(localhost->sun_path));
+    strlcpy(localhost->sun_path, host, sizeof(localhost->sun_path));
 
 #if defined _WIN32 || defined __SYMBIAN32__
     // For Windows and Symbian, the path needs to be in Unix format
