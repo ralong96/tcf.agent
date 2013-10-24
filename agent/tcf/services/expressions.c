@@ -3353,16 +3353,13 @@ static int symbol_to_expression(char * expr_id, char * parent, char * sym_id, Ex
     snprintf(script, script_len, "${%s}", sym_id);
     expr->script = script;
 
-    get_symbol_type_class(sym, &expr->type_class);
-    get_symbol_size(sym, &expr->size);
+    if (get_symbol_type_class(sym, &expr->type_class) < 0) return -1;
+    if (get_symbol_size(sym, &expr->size) < 0) return -1;
+    if (get_symbol_class(sym, &sym_class) < 0) return -1;
+    if (get_symbol_type(sym, &type) < 0) return -1;
 
-    if (get_symbol_class(sym, &sym_class) == 0) {
-        expr->can_assign = sym_class == SYM_CLASS_REFERENCE;
-    }
-
-    if (get_symbol_type(sym, &type) == 0 && type != NULL) {
-        strlcpy(expr->type, symbol2id(type), sizeof(expr->type));
-    }
+    expr->can_assign = sym_class == SYM_CLASS_REFERENCE;
+    if (type != NULL) strlcpy(expr->type, symbol2id(type), sizeof(expr->type));
 
     *res = expr;
     return 0;
