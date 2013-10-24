@@ -200,7 +200,7 @@ static int mem_hash_index(const uint32_t addr) {
 
         /* Search the next entry */
         s++;
-        if (s > MEM_HASH_SIZE) s = 0;
+        if (s >= MEM_HASH_SIZE) s = 0;
     }
     while(s != v);
 
