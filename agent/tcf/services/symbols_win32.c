@@ -85,6 +85,16 @@ static const TypeInfo basic_type_info[] = {
     { "float",                  sizeof(float),      1, 1 },
     { "double",                 sizeof(double),     1, 1 },
     { "long double",            sizeof(long double), 1, 1 },
+    { "uint8_t",                1,                  0, 0 },
+    { "uint16_t",               2,                  0, 0 },
+    { "uint32_t",               4,                  0, 0 },
+    { "uint64_t",               8,                  0, 0 },
+    { "int8_t",                 1,                  1, 0 },
+    { "int16_t",                2,                  1, 0 },
+    { "int32_t",                4,                  1, 0 },
+    { "int64_t",                8,                  1, 0 },
+    { "char16_t",               2,                  0, 0 },
+    { "char32_t",               4,                  0, 0 },
     { NULL }
 };
 
