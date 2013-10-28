@@ -47,6 +47,7 @@ and rebuild."
 static HINSTANCE dbghelp_dll = NULL;
 
 static wchar_t * pathes[] = {
+    L"%\\Microsoft Visual Studio 10.0\\Common7\\IDE\\dbghelp.dll",
     L"%\\Debugging Tools for Windows (x86)\\dbghelp.dll",
     L"%\\Debugging Tools for Windows\\dbghelp.dll",
     L".\\dbghelp.dll",
