@@ -189,11 +189,11 @@ int wsa_select(int nfds, fd_set * readfds, fd_set * writefds, fd_set * exceptfds
     SetLastError(0);
     WSASetLastError(0);
     res = select(nfds, readfds, writefds, exceptfds, timeout);
-    if (res != 0) {
+    if (res < 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
     }
-    return 0;
+    return res;
 }
 
 /* inet_ntop()/inet_pton() are not available before Windows Vista */
