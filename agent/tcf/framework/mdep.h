@@ -306,6 +306,13 @@ extern int tkill(pid_t pid, int signal);
 #  define MEM_USAGE_FACTOR 32
 #endif
 
+/* Convert the initial portion of the string pointed to by buf
+ * to double according to C/C++/JSON syntax */
+extern double str_to_double(const char * buf, char ** end);
+
+/* Convert double to string according to C/C++/JSON syntax */
+extern const char * double_to_str(double n);
+
 #if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__) && !defined(__VXWORKS__)
 extern size_t strlcpy(char * dst, const char * src, size_t size);
 extern size_t strlcat(char * dst, const char * src, size_t size);

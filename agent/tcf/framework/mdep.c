@@ -565,6 +565,7 @@ void swap_bytes(void * buf, size_t size) {
 
 #if defined(_WIN32)
 
+#include <locale.h>
 #include <shlobj.h>
 
 const char * get_os_name(void) {
@@ -638,6 +639,7 @@ void ini_mdep(void) {
     WSADATA wsaData;
     int err;
 
+    setlocale(LC_ALL, "");
     SetErrorMode(SEM_FAILCRITICALERRORS);
     err = WSAStartup(wVersionRequested, &wsaData);
     if (err != 0) {
@@ -1555,6 +1557,85 @@ void close_out_and_err(void) {
         close(fd);
 }
 #endif
+
+double str_to_double(const char * buf, char ** end) {
+    int sign_val = 0;
+    int exponent = 0;
+    int digits = 0;
+    int fraction = 0;
+    uint64_t val = 0;
+    double p10 = 10.;
+    double res;
+    int n;
+
+    while (isspace(*buf)) buf++;
+    if (*buf == '-') sign_val = 1;
+    if (sign_val || *buf == '+') buf++;
+    while (*buf >= '0' && *buf <= '9') {
+        if (digits < 18) {
+            val = val * 10 + (*buf - '0');
+            digits++;
+        }
+        else {
+            fraction--;
+        }
+        buf++;
+    }
+    if (*buf == '.') {
+        buf++;
+        while (*buf >= '0' && *buf <= '9') {
+            if (digits < 18) {
+                val = val * 10 + (*buf - '0');
+                fraction++;
+                digits++;
+            }
+            buf++;
+        }
+    }
+    if (*buf == 'E' || *buf == 'e') {
+        int sign_exp = 0;
+        buf++;
+        if (*buf == '-') sign_exp = 1;
+        if (sign_exp || *buf == '+') buf++;
+        while (*buf >= '0' && *buf <= '9') {
+            exponent = exponent * 10 + (*buf - '0');
+            buf++;
+        }
+        if (sign_exp) exponent = -exponent;
+    }
+    exponent -= fraction;
+    res = (double)val;
+    n = exponent;
+    if (n < 0) n = -n;
+    while (n) {
+        if (n & 1) {
+            if (exponent < 0) {
+                res /= p10;
+            }
+            else {
+                res *= p10;
+            }
+        }
+        n >>= 1;
+        p10 *= p10;
+    }
+    if (sign_val) res = -res;
+    *end = (char *)buf;
+    return res;
+}
+
+const char * double_to_str(double n) {
+    /* TODO: better implementation of double_to_str() */
+    static char buf[256];
+#ifdef LC_NUMERIC
+    char * saved_locale = setlocale(LC_NUMERIC, "C");
+#endif
+    snprintf(buf, sizeof(buf), "%.18g", n);
+#ifdef LC_NUMERIC
+    setlocale(LC_NUMERIC, saved_locale);
+#endif
+    return buf;
+}
 
 #if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__) && !defined(__VXWORKS__)
 

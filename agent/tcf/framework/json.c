@@ -100,9 +100,7 @@ void json_write_int64(OutputStream * out, int64_t n) {
 }
 
 void json_write_double(OutputStream * out, double n) {
-    char buf[256];
-    snprintf(buf, sizeof(buf), "%.18g", n);
-    write_string(out, buf);
+    write_string(out, double_to_str(n));
 }
 
 void json_write_boolean(OutputStream * out, int b) {
@@ -432,7 +430,7 @@ double json_read_double(InputStream * inp) {
     }
     if (pos == 0) exception(ERR_JSON_SYNTAX);
     buf[pos] = 0;
-    n = strtod(buf, &end);
+    n = str_to_double(buf, &end);
     if (*end != 0) exception(ERR_JSON_SYNTAX);
     return n;
 }

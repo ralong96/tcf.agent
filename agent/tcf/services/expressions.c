@@ -345,7 +345,7 @@ static int is_name_character(int ch) {
 
 static void parse_fp_number(int pos) {
     char * end = NULL;
-    double x = strtod(text + pos, &end);
+    double x = str_to_double(text + pos, &end);
     text_pos = end - text;
     next_ch();
     text_val.type_class = TYPE_CLASS_REAL;
