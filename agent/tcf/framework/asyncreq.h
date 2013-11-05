@@ -27,6 +27,8 @@
 #  include <select.h>
 #endif
 #include <time.h>
+#include <sys/stat.h>
+
 #include <tcf/framework/link.h>
 #include <tcf/framework/events.h>
 
@@ -44,7 +46,12 @@ enum {
     AsyncReqConnectPipe,                /* Connect named pipe (Windows) */
     AsyncReqWaitpid,                    /* Wait for process change */
     AsyncReqSelect,                     /* Do select() on file handles */
-    AsyncReqClose                       /* File close */
+    AsyncReqClose,                      /* File close */
+    AsyncReqOpen,                       /* File open */
+    AsyncReqStat,                       /* File stat */
+    AsyncReqFstat,                      /* File fstat */
+    AsyncReqLstat,                      /* File lstat */
+    AsyncReqRemove                      /* File remove */
 };
 
 typedef struct AsyncReqInfo AsyncReqInfo;
@@ -59,7 +66,13 @@ struct AsyncReqInfo {
             int64_t offset;
             void * bufp;
             size_t bufsz;
-
+            int flags;
+            int permission;
+            char * file_name;
+            struct stat statbuf;
+#if defined(_WIN32)
+    	    DWORD win32_attrs;
+#endif
             /* Out */
             ssize_t rval;
 

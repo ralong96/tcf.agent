@@ -72,6 +72,10 @@ static const int
 #define REQ_FSTAT           3
 #define REQ_FSETSTAT        4
 #define REQ_CLOSE           5
+#define REQ_OPEN            6
+#define REQ_STAT            7
+#define REQ_LSTAT           8
+#define REQ_REMOVE          9
 
 typedef struct OpenFileInfo OpenFileInfo;
 typedef struct IORequest IORequest;
@@ -414,13 +418,23 @@ static void read_path(InputStream * inp, char * path, int size) {
     assert(path[0] == '/');
 }
 
+static void reply_open(char * token, OutputStream * out, int err, OpenFileInfo * handle) {
+    write_stringz(out, "R");
+    write_stringz(out, token);
+    write_fs_errno(out, err);
+    write_file_handle (out, handle);
+    write_stream(out, MARKER_EOM);
+}
+
+static void post_io_request(OpenFileInfo * handle);
+static IORequest * create_io_request(char * token, OpenFileInfo * handle, int type);
+
 static void command_open(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
     unsigned int flags;
     FileAttrs attrs;
-    int file;
-    int err = 0;
     OpenFileInfo * handle = NULL;
+    IORequest * req = NULL;
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
@@ -437,26 +451,17 @@ static void command_open(char * token, Channel * c) {
     if ((attrs.flags & ATTR_PERMISSIONS) == 0) {
         attrs.permissions = 0775;
     }
-    file = open(path, to_local_open_flags(flags), attrs.permissions);
+    handle = create_open_file_info(c, path, -1, NULL);
 
-    if (file < 0) {
-        err = errno;
-    }
-    else {
+    req = create_io_request(token, handle, REQ_OPEN);
+    req->info.type = AsyncReqOpen;
+    req->info.u.fio.permission = attrs.permissions;
+    req->info.u.fio.flags = to_local_open_flags(flags);
+    req->info.u.fio.file_name = loc_strdup(path);
 #if defined(_WIN32)
-        if (attrs.win32_attrs != INVALID_FILE_ATTRIBUTES) {
-            if (SetFileAttributes(path, attrs.win32_attrs) == 0)
-                err = set_win32_errno(GetLastError());
-        }
+    req->info.u.fio.win32_attrs = attrs.win32_attrs;
 #endif
-        handle = create_open_file_info(c, path, file, NULL);
-    }
-
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
-    write_fs_errno(&c->out, err);
-    write_file_handle(&c->out, handle);
-    write_stream(&c->out, MARKER_EOM);
+    post_io_request(handle);
 }
 
 static void reply_close(char * token, OutputStream * out, int err) {
@@ -509,7 +514,12 @@ static void reply_setstat(char * token, OutputStream * out, int err) {
     write_stream(out, MARKER_EOM);
 }
 
-static void post_io_request(OpenFileInfo * handle);
+static void reply_remove(char * token, OutputStream * out, int err) {
+    write_stringz(out, "R");
+    write_stringz(out, token);
+    write_fs_errno(out, err);
+    write_stream(out, MARKER_EOM);
+}
 
 static void done_io_request(void * arg) {
     int err = 0;
@@ -569,6 +579,8 @@ static void done_io_request(void * arg) {
                 case REQ_WRITE:
                     reply_write(req->token, handle->out, EBADF);
                     break;
+                case REQ_STAT:
+                case REQ_LSTAT:
                 case REQ_FSTAT:
                     reply_stat(req->token, handle->out, EBADF, NULL, NULL);
                     break;
@@ -577,6 +589,12 @@ static void done_io_request(void * arg) {
                     break;
                 case REQ_CLOSE:
                     reply_close(req->token, handle->out, EBADF);
+                    break;
+                case REQ_OPEN:
+                    reply_open(req->token, handle->out, EBADF, NULL);
+                    break;
+                case REQ_REMOVE:
+                    reply_remove(req->token, handle->out, EBADF);
                     break;
                 default:
                     assert(0);
@@ -589,6 +607,40 @@ static void done_io_request(void * arg) {
             return;
         }
         break;
+    case REQ_OPEN:
+        err = req->info.error;
+#if defined(_WIN32)
+        if (err == 0) {
+            if (req->info.u.fio.win32_attrs != INVALID_FILE_ATTRIBUTES) {
+                if (SetFileAttributes(req->info.u.fio.file_name, req->info.u.fio.win32_attrs) == 0)
+                    err = set_win32_errno(GetLastError());
+            }
+        }
+#endif
+        if (err != 0) {
+            reply_open(req->token, handle->out, err, NULL);
+            delete_open_file_info(handle);
+        } else {
+            handle->file = req->info.u.fio.rval;
+            reply_open(req->token, handle->out, err, handle);
+        }
+        loc_free(req);
+        return;
+    case REQ_LSTAT:
+    case REQ_STAT:
+        reply_stat(req->token, handle->out, req->info.error, &req->info.u.fio.statbuf, req->info.u.fio.file_name);
+        delete_open_file_info(handle);
+        loc_free(req);
+        return;
+    case REQ_FSTAT:
+        reply_stat(req->token, handle->out, req->info.error, &req->info.u.fio.statbuf, handle->path);
+        loc_free(req);
+        return;
+    case REQ_REMOVE:
+        reply_remove(req->token, handle->out, req->info.error);
+        delete_open_file_info(handle);
+        loc_free(req);
+        return;
     default:
         assert(0);
     }
@@ -603,17 +655,6 @@ static void post_io_request(OpenFileInfo * handle) {
         LINK * link = handle->link_reqs.next;
         IORequest * req = reqs2req(link);
         switch (req->req) {
-        case REQ_FSTAT:
-            {
-                int err = 0;
-                struct stat buf;
-                memset(&buf, 0, sizeof(buf));
-                if (fstat(handle->file, &buf) < 0) err = errno;
-                reply_stat(req->token, handle->out, err, &buf, handle->path);
-                list_remove(link);
-                loc_free(req);
-            }
-            continue;
         case REQ_FSETSTAT:
             {
                 int err = 0;
@@ -787,32 +828,34 @@ static void command_write(char * token, Channel * c) {
 
 static void command_stat(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
-    struct stat buf;
-    int err = 0;
+    OpenFileInfo * handle = NULL;
+    IORequest * req = NULL;
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    memset(&buf, 0, sizeof(buf));
-    if (stat(path, &buf) < 0) err = errno;
-
-    reply_stat(token, &c->out, err, &buf, path);
+    handle = create_open_file_info(c, path, -1, NULL);
+    req = create_io_request(token, handle, REQ_STAT);
+    req->info.type = AsyncReqStat;
+    req->info.u.fio.file_name = loc_strdup(path);
+    post_io_request(handle);
 }
 
 static void command_lstat(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
-    struct stat buf;
-    int err = 0;
+    OpenFileInfo * handle = NULL;
+    IORequest * req = NULL;
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    memset(&buf, 0, sizeof(buf));
-    if (lstat(path, &buf) < 0) err = errno;
-
-    reply_stat(token, &c->out, err, &buf, path);
+    handle = create_open_file_info(c, path, -1, NULL);
+    req = create_io_request(token, handle, REQ_LSTAT);
+    req->info.type = AsyncReqLstat;
+    req->info.u.fio.file_name = loc_strdup(path);
+    post_io_request(handle);
 }
 
 static void command_fstat(char * token, Channel * c) {
@@ -828,7 +871,9 @@ static void command_fstat(char * token, Channel * c) {
         reply_stat(token, &c->out, EBADF, NULL, NULL);
     }
     else {
-        create_io_request(token, h, REQ_FSTAT);
+        IORequest * req = create_io_request(token, h, REQ_FSTAT);
+        req->info.type = AsyncReqFstat;
+        req->info.u.fio.fd = h->file;
         post_io_request(h);
     }
 }
@@ -993,18 +1038,19 @@ static void command_readdir(char * token, Channel * c) {
 
 static void command_remove(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
-    int err = 0;
+    OpenFileInfo * handle = NULL;
+    IORequest * req = NULL;
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    if (remove(path) < 0) err = errno;
+    handle = create_open_file_info(c, path, -1, NULL);
+    req = create_io_request(token, handle, REQ_REMOVE);
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
-    write_fs_errno(&c->out, err);
-    write_stream(&c->out, MARKER_EOM);
+    req->info.type = AsyncReqRemove;
+    req->info.u.fio.file_name = loc_strdup(path);
+    post_io_request(handle);
 }
 
 static void command_rmdir(char * token, Channel * c) {

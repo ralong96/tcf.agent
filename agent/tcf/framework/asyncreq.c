@@ -21,6 +21,9 @@
 #include <tcf/config.h>
 #include <assert.h>
 #include <stddef.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+
 #if defined(_WIN32)
 #elif defined(_WRS_KERNEL)
 #else
@@ -214,6 +217,48 @@ static void * worker_thread_handler(void * x) {
                 req->error = errno;
                 assert(req->error);
             }
+        break;
+        case AsyncReqOpen:
+            req->u.fio.rval = open(req->u.fio.file_name, req->u.fio.flags, req->u.fio.permission);
+            if (req->u.fio.rval == -1) {
+                req->error = errno;
+                assert(req->error); 
+            }
+            loc_free(req->u.fio.file_name);
+            break;
+        case AsyncReqFstat:
+            memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
+            req->u.fio.rval = fstat(req->u.fio.fd, &req->u.fio.statbuf);
+            if (req->u.fio.rval == -1) {
+                req->error = errno;
+                assert(req->error); 
+            }
+            break;
+        case AsyncReqStat:
+            memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
+            req->u.fio.rval = stat(req->u.fio.file_name, &req->u.fio.statbuf);
+            if (req->u.fio.rval == -1) {
+                req->error = errno;
+                assert(req->error); 
+            }
+            loc_free(req->u.fio.file_name);
+            break;
+        case AsyncReqLstat:
+            memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
+            req->u.fio.rval = lstat(req->u.fio.file_name, &req->u.fio.statbuf);
+            if (req->u.fio.rval == -1) {
+                req->error = errno;
+                assert(req->error); 
+            }
+            loc_free(req->u.fio.file_name);
+            break;
+        case AsyncReqRemove:
+            req->u.fio.rval = remove(req->u.fio.file_name);
+            if (req->u.fio.rval == -1) {
+                req->error = errno;
+                assert(req->error); 
+            }
+            loc_free(req->u.fio.file_name);
             break;
         default:
             req->error = ENOSYS;
