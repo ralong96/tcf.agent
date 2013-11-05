@@ -27,6 +27,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <tcf/framework/mdep-threads.h>
 #include <tcf/framework/mdep-inet.h>
 #include <tcf/framework/mdep-fs.h>
