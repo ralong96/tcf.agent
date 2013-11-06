@@ -109,6 +109,11 @@ extern void change_path_mapping_attributes(PathMapRule * rule, PathMapRuleAttrib
  */
 extern void delete_path_mapping(PathMapRule * rule);
 
+/*
+ * Delete all path mapping rules that were created by create_path_mapping().
+ */
+extern void delete_all_path_mappings(void);
+
 #define PATH_MAP_TO_CLIENT 1
 #define PATH_MAP_TO_LOCAL  2
 #define PATH_MAP_TO_TARGET 3

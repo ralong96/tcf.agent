@@ -473,6 +473,22 @@ void delete_path_mapping(PathMapRule * r) {
     }
 }
 
+void delete_all_path_mappings(void) {
+    LINK * l;
+    for (l = maps.next; l != &maps; l = l->next) {
+        PathMap * m = maps2map(l);
+        if (m->channel == NULL && m->rules_cnt > 0) {
+            unsigned i;
+            for (i = 0; i < m->rules_cnt; i++) {
+                free_rule(m->rules + i);
+            }
+            m->rules_cnt = 0;
+            path_map_event_mapping_changed(NULL);
+            break;
+        }
+    }
+}
+
 static void write_rule(OutputStream * out, PathMapRule * r) {
     unsigned i = 0;
     PathMapRuleAttribute * attr = r->attrs;
