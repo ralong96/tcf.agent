@@ -71,7 +71,7 @@ struct AsyncReqInfo {
             char * file_name;
             struct stat statbuf;
 #if defined(_WIN32)
-    	    DWORD win32_attrs;
+            DWORD win32_attrs;
 #endif
             /* Out */
             ssize_t rval;

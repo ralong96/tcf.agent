@@ -222,7 +222,7 @@ static void * worker_thread_handler(void * x) {
             req->u.fio.rval = open(req->u.fio.file_name, req->u.fio.flags, req->u.fio.permission);
             if (req->u.fio.rval == -1) {
                 req->error = errno;
-                assert(req->error); 
+                assert(req->error);
             }
             loc_free(req->u.fio.file_name);
             break;
@@ -231,7 +231,7 @@ static void * worker_thread_handler(void * x) {
             req->u.fio.rval = fstat(req->u.fio.fd, &req->u.fio.statbuf);
             if (req->u.fio.rval == -1) {
                 req->error = errno;
-                assert(req->error); 
+                assert(req->error);
             }
             break;
         case AsyncReqStat:
@@ -239,7 +239,7 @@ static void * worker_thread_handler(void * x) {
             req->u.fio.rval = stat(req->u.fio.file_name, &req->u.fio.statbuf);
             if (req->u.fio.rval == -1) {
                 req->error = errno;
-                assert(req->error); 
+                assert(req->error);
             }
             loc_free(req->u.fio.file_name);
             break;
@@ -248,7 +248,7 @@ static void * worker_thread_handler(void * x) {
             req->u.fio.rval = lstat(req->u.fio.file_name, &req->u.fio.statbuf);
             if (req->u.fio.rval == -1) {
                 req->error = errno;
-                assert(req->error); 
+                assert(req->error);
             }
             loc_free(req->u.fio.file_name);
             break;
@@ -256,7 +256,7 @@ static void * worker_thread_handler(void * x) {
             req->u.fio.rval = remove(req->u.fio.file_name);
             if (req->u.fio.rval == -1) {
                 req->error = errno;
-                assert(req->error); 
+                assert(req->error);
             }
             loc_free(req->u.fio.file_name);
             break;
