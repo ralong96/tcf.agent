@@ -1575,7 +1575,7 @@ double str_to_double(const char * buf, char ** end) {
     while (*buf >= '0' && *buf <= '9') {
         if (digits < 18) {
             val = val * 10 + (*buf - '0');
-            digits++;
+            if (val != 0) digits++;
         }
         else {
             fraction--;
@@ -1587,8 +1587,8 @@ double str_to_double(const char * buf, char ** end) {
         while (*buf >= '0' && *buf <= '9') {
             if (digits < 18) {
                 val = val * 10 + (*buf - '0');
+                if (val != 0) digits++;
                 fraction++;
-                digits++;
             }
             buf++;
         }
@@ -1605,23 +1605,22 @@ double str_to_double(const char * buf, char ** end) {
         if (sign_exp) exponent = -exponent;
     }
     exponent -= fraction;
-    res = (double)val;
     n = exponent;
+    res = 1.0;
     if (n < 0) n = -n;
     while (n) {
-        if (n & 1) {
-            if (exponent < 0) {
-                res /= p10;
-            }
-            else {
-                res *= p10;
-            }
-        }
-        n >>= 1;
+        if (n & 1) res *= p10;
         p10 *= p10;
+        n >>= 1;
+    }
+    if (exponent < 0) {
+        res = (double)val / res;
+    }
+    else {
+        res = (double)val * res;
     }
     if (sign_val) res = -res;
-    *end = (char *)buf;
+    if (end != NULL) *end = (char *)buf;
     return res;
 }
 
