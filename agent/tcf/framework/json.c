@@ -42,6 +42,18 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/base64.h>
 
+#include <math.h>
+#if defined(isfinite)
+#  define is_nan_or_infinity(x) !isfinite(x)
+#elif defined(_MSC_VER)
+#  include <float.h>
+#  define is_nan_or_infinity(x) !_finite(x)
+#elif defined(HUGE_VAL)
+#  define is_nan_or_infinity(x) (!(-HUGE_VAL < (x) && (x) < HUGE_VAL))
+#else
+#  define is_nan_or_infinity(x) ((x) != (x))
+#endif
+
 #define ENCODING_BINARY     0
 #define ENCODING_BASE64     1
 
@@ -100,7 +112,8 @@ void json_write_int64(OutputStream * out, int64_t n) {
 }
 
 void json_write_double(OutputStream * out, double n) {
-    write_string(out, double_to_str(n));
+    if (is_nan_or_infinity(n)) write_string(out, "null");
+    else write_string(out, double_to_str(n));
 }
 
 void json_write_boolean(OutputStream * out, int b) {
