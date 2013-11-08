@@ -2665,9 +2665,6 @@ static void multiplicative_expression(int mode, Value * v) {
             if (!is_number(v) || !is_number(&x)) {
                 error(ERR_INV_EXPRESSION, "Numeric types expected");
             }
-            if (mode == MODE_NORMAL && sy != '*' && to_int(mode, &x) == 0) {
-                error(ERR_INV_EXPRESSION, "Dividing by zero");
-            }
             if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
                 double value = 0;
                 if (mode == MODE_NORMAL) {
@@ -2684,6 +2681,9 @@ static void multiplicative_expression(int mode, Value * v) {
             else if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
                 uint64_t value = 0;
                 if (mode == MODE_NORMAL) {
+                    if (sy != '*' && to_int(mode, &x) == 0) {
+                        error(ERR_INV_EXPRESSION, "Dividing by zero");
+                    }
                     switch (sy) {
                     case '*': value = to_uns(mode, v) * to_uns(mode, &x); break;
                     case '/': value = to_uns(mode, v) / to_uns(mode, &x); break;
@@ -2697,6 +2697,9 @@ static void multiplicative_expression(int mode, Value * v) {
             else {
                 int64_t value = 0;
                 if (mode == MODE_NORMAL) {
+                    if (sy != '*' && to_int(mode, &x) == 0) {
+                        error(ERR_INV_EXPRESSION, "Dividing by zero");
+                    }
                     switch (sy) {
                     case '*': value = to_int(mode, v) * to_int(mode, &x); break;
                     case '/': value = to_int(mode, v) / to_int(mode, &x); break;
