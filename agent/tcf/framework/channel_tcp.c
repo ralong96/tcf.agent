@@ -38,9 +38,6 @@
 #  include <openssl/ssl.h>
 #  include <openssl/rand.h>
 #  include <openssl/err.h>
-#  ifndef _MSC_VER
-#    include <dirent.h>
-#  endif
 #  ifdef _WIN32
 #    include <ShlObj.h>
 #  endif

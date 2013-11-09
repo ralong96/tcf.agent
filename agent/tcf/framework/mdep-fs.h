@@ -85,6 +85,10 @@ extern DIR * utf8_opendir(const char * path);
 extern int utf8_closedir(DIR * dir);
 extern struct utf8_dirent * readdir(DIR * dir);
 
+#else
+
+#include <dirent.h>
+
 #endif
 
 #endif /* D_mdep_fs */

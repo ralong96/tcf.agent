@@ -84,7 +84,6 @@ static const char * PROCESSES[2] = { "Processes", "ProcessesV1" };
 #  endif
 #  include <sys/stat.h>
 #  include <unistd.h>
-#  include <dirent.h>
 #endif
 
 #define PBUF_SIZE 0x400

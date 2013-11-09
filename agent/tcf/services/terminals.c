@@ -55,7 +55,6 @@ static const char * TERMINALS = "Terminals";
 #else
 #  include <sys/stat.h>
 #  include <unistd.h>
-#  include <dirent.h>
 # if TERMINALS_NO_LOGIN
 #  define TERM_LAUNCH_EXEC "/bin/bash"
 #  define TERM_LAUNCH_ARGS {TERM_LAUNCH_EXEC, "-l", NULL}

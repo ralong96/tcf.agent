@@ -21,10 +21,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <fcntl.h>
-#if !defined(WIN32) || defined(__CYGWIN__)
-#  include <dirent.h>
-#endif
 
+#include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/myalloc.h>
@@ -1370,6 +1368,7 @@ static void next_file(void) {
         r->addr = (ContextAddress)p->address;
         r->file_name = loc_strdup(elf_file_name);
         r->file_offs = p->offset;
+        r->file_size = p->file_size;
         r->size = (ContextAddress)p->mem_size;
         if ((p->flags & PF_X) == 0 && (r->addr + r->size) % p->align != 0) {
             r->size = r->size + p->align - (r->addr + r->size) % p->align;

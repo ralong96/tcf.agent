@@ -46,7 +46,6 @@ static const char SYS_MON[] = "SysMonitor";
 #elif defined(__APPLE__)
 
 #include <unistd.h>
-#include <dirent.h>
 #include <pwd.h>
 #include <grp.h>
 #include <stdbool.h>
@@ -1005,7 +1004,6 @@ static void command_get_environment(char * token, Channel * c) {
 #else
 
 #include <unistd.h>
-#include <dirent.h>
 #include <pwd.h>
 #include <grp.h>
 #include <linux/param.h>

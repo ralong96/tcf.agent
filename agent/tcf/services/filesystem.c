@@ -37,7 +37,6 @@
 #endif
 #if !defined(_WIN32) || defined(__CYGWIN__)
 #  include <utime.h>
-#  include <dirent.h>
 #endif
 #if defined(_WIN32)
 #  include <Windows.h>
