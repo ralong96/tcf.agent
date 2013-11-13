@@ -59,9 +59,16 @@ ifeq ($(OPSYS),Darwin)
 endif
 
 ifeq ($(OPSYS),GNU/Linux)
-  LIBS = -lpthread -lssl -lcrypto -lrt
+  ifeq ($(NO_SSL),)
+    LIBS = -lpthread -lssl -lcrypto -lrt
+  else
+    LIBS = -lpthread -lrt
+    OPTS += -DENABLE_SSL=0
+  endif
   ifeq ($(NO_UUID),)
     LIBS += -luuid
+  else
+    OPTS += -DUSE_uuid_generate=0
   endif
 endif
 
