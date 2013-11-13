@@ -411,6 +411,7 @@
 #define OP_GNU_reinterpret          0xf9
 #define OP_GNU_parameter_ref        0xfa
 /* TCF extensions */
+#define OP_TCF_switch               0xfe
 #define OP_TCF_offset               0xff
 
 #define FT_char                     0x0001

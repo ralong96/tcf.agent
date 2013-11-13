@@ -78,6 +78,9 @@ void ini_services(Protocol * proto, TCFBroadcastGroup * bcg) {
 #elif ENABLE_SymbolsProxy
     ini_symbols_lib();
 #endif
+#if ENABLE_SymbolsProxy
+    protocol_get_service(proto, "SymbolsProxyV1");
+#endif
 #if SERVICE_LineNumbers
     ini_line_numbers_service(proto);
 #elif ENABLE_LineNumbersProxy

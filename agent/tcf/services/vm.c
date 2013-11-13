@@ -621,6 +621,40 @@ static void evaluate_expression(void) {
             }
             if (!is_end_of_loc_expr()) inv_dwarf("OP_stack_value must be last instruction");
             break;
+        case OP_TCF_switch:
+            check_e_stack(1);
+            {
+                uint64_t n = state->stk[--state->stk_pos];
+                size_t end_pos = read_u2();
+                end_pos += code_pos;
+                if (end_pos > code_len) inv_dwarf("Invalid command");
+                for (;;) {
+                    uint64_t addr, size;
+                    size_t nxt_pos = read_u2();
+                    nxt_pos += code_pos;
+                    if (nxt_pos > end_pos) inv_dwarf("Invalid command");
+                    if (nxt_pos == code_pos) {
+                        str_exception(ERR_OTHER, "Object is not available at this location in the code");
+                    }
+                    addr = read_u8leb128();
+                    size = read_u8leb128();
+                    if (size == 0 || (n >= addr && n - addr < size)) {
+                        Trap trap;
+                        size_t code_len_org = code_len;
+                        if (set_trap(&trap)) {
+                            code_len = state->code_len = nxt_pos;
+                            evaluate_expression();
+                            clear_trap(&trap);
+                        }
+                        code_len = state->code_len = code_len_org;
+                        if (trap.error) exception(trap.error);
+                        break;
+                    }
+                    code_pos = nxt_pos;
+                }
+                code_pos = end_pos;
+            }
+            break;
         case OP_TCF_offset:
             if (reg_def != NULL || value_addr != NULL) add_piece();
             if (state->pieces) {
