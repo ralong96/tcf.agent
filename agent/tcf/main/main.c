@@ -171,8 +171,10 @@ static const char * help_text[] = {
     "  -t               run in diagnostic mode",
 #endif
     "  -L<file>         enable logging, use -L- to send log to stderr",
+#if ENABLE_Trace
     "  -l<level>        set log level, the level is comma separated list of:",
     "@",
+#endif
     "  -s<url>          set agent listening port and protocol, default is " DEFAULT_SERVER_URL,
     "  -S               print server properties in Json format to stdout",
     "  -I<idle-seconds> exit if are no connections for the specified time",
@@ -190,11 +192,13 @@ static void show_help(void) {
     const char ** p = help_text;
     while (*p != NULL) {
         if (**p == '@') {
+#if ENABLE_Trace
             struct trace_mode * tm = trace_mode_table;
             while (tm->mode != 0) {
                 fprintf(stderr, "      %-12s %s (%#x)\n", tm->name, tm->description, tm->mode);
                 tm++;
             }
+#endif
             p++;
         }
         else {
@@ -284,7 +288,9 @@ int main(int argc, char ** argv) {
                 exit(0);
 
             case 'I':
+#if ENABLE_Trace
             case 'l':
+#endif
             case 'L':
             case 's':
 #if ENABLE_Plugins
@@ -302,10 +308,12 @@ int main(int argc, char ** argv) {
                     idle_timeout = strtol(s, 0, 0);
                     break;
 
+#if ENABLE_Trace
                 case 'l':
                     log_level = s;
                     parse_trace_mode(log_level, &log_mode);
                     break;
+#endif
 
                 case 'L':
                     log_name = s;

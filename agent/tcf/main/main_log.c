@@ -128,8 +128,10 @@ static const char * help_text[] = {
     "This starts the TCF logger on port 1437 on the local machine and "
     "connects to target IP 128.224.218.33 on port 4576.",
     "  -L<file>         log file name, use -L- to send log to stderr",
+#if ENABLE_Trace
     "  -l<level>        set log level, the level is comma separated list of:",
     "@",
+#endif
     "  -s<url>          set agent listening port and protocol, default is TCP::1534",
     NULL
 };
@@ -138,6 +140,7 @@ static void show_help(void) {
     const char ** p = help_text;
     while (*p != NULL) {
         if (**p == '@') {
+#if ENABLE_Trace
             struct trace_mode * tm = trace_mode_table;
             while (tm->mode != 0) {
                 fprintf(stderr,
@@ -145,6 +148,7 @@ static void show_help(void) {
                     tm->description, tm->mode);
                 tm++;
             }
+#endif
             p++;
         }
         else {
@@ -196,7 +200,9 @@ int main(int argc, char ** argv) {
                 show_help();
                 exit (0);
 
+#if ENABLE_Trace
             case 'l':
+#endif
             case 'L':
             case 's':
                 if (*s == '\0') {
@@ -207,12 +213,14 @@ int main(int argc, char ** argv) {
                     s = argv[ind];
                 }
                 switch (c) {
+#if ENABLE_Trace
                 case 'l':
                     if (parse_trace_mode(s, &log_mode) != 0) {
                         fprintf(stderr, "Cannot parse log level: %s\n", s);
                         exit(1);
                     }
                     break;
+#endif
 
                 case 'L':
                     log_name = s;
