@@ -499,6 +499,7 @@ static void event_pid_exited(pid_t pid, int status, int signal) {
         }
         else {
             assert(ctx->ref_count == 0);
+            ctx->ref_count = 1;
             if (EXT(ctx)->attach_callback != NULL) {
                 if (status == 0) status = EINVAL;
                 EXT(ctx)->attach_callback(status, ctx, EXT(ctx)->attach_data);
@@ -506,7 +507,6 @@ static void event_pid_exited(pid_t pid, int status, int signal) {
             assert(list_is_empty(&ctx->children));
             assert(ctx->parent == NULL);
             ctx->exited = 1;
-            ctx->ref_count = 1;
             context_unlock(ctx);
         }
     }
