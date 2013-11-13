@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2008, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -36,14 +36,14 @@ extern U8_T dwarf_expression_pm_value;
 typedef struct DWARFExpressionInfo {
     U8_T code_addr;
     U8_T code_size;
-    CompUnit * unit;
     ObjectInfo * object;
     ELF_Section * section;
     U1_T * expr_addr;
     size_t expr_size;
+    struct DWARFExpressionInfo * next;
 } DWARFExpressionInfo;
 
-extern void dwarf_find_expression(PropertyValue * Value, U8_T IP, DWARFExpressionInfo * info);
+extern void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** List);
 extern void dwarf_evaluate_expression(PropertyValue * value);
 
 #endif /* ENABLE_ELF && ENABLE_DebugContext */

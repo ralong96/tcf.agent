@@ -208,6 +208,15 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
         errno = ERR_INV_CONTEXT;
         return -1;
     }
+    if (def->role != NULL && strcmp(def->role, "PC") == 0) {
+        unsigned i;
+        for (i = 0; i < def->size; i++) {
+            unsigned j = def->big_endian ? def->size - i - 1 : i;
+            if (j < offs || j >= offs + size) continue;
+            ((uint8_t *)buf)[j - offs] = (uint8_t)(pc >> (i * 8));
+        }
+        return 0;
+    }
     memcpy(buf, reg_vals + def->offset + offs, size);
     return 0;
 }
@@ -1423,7 +1432,7 @@ static void next_file(void) {
     for (j = 0; j < MAX_REGS - 1; j++) {
         RegisterDefinition * r = reg_defs + j;
         r->big_endian = f->big_endian;
-        r->dwarf_id = (int16_t)(j == 0 ? -1 : j - 1);
+        r->dwarf_id = (int16_t)(j == 0 ? MAX_REGS : j - 1);
         r->eh_frame_id = r->dwarf_id;
         r->name = reg_names[j];
         if (j == 0) {
@@ -1434,7 +1443,10 @@ static void next_file(void) {
         }
         r->offset = reg_size;
         r->size = f->elf64 ? 8 : 4;
-        if (j == 0) r->role = "PC";
+        if (j == 0) {
+            r->role = "PC";
+            r->no_write = 1;
+        }
         reg_size += r->size;
     }
 

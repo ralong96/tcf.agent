@@ -3032,30 +3032,30 @@ static LocationExpressionCommand * add_location_command(LocationInfo * l, int op
 }
 
 static void add_dwarf_location_command(LocationInfo * l, PropertyValue * v) {
-    DWARFExpressionInfo info;
+    DWARFExpressionInfo * info = NULL;
     LocationExpressionCommand * cmd = NULL;
 
-    dwarf_find_expression(v, sym_ip, &info);
-    dwarf_transform_expression(sym_ctx, sym_ip, v->mFrame == STACK_NO_FRAME, &info);
+    dwarf_get_expression_list(v, &info);
+    dwarf_transform_expression(sym_ctx, v->mFrame, info);
     if (l->code_size == 0) {
-        l->code_addr = info.code_addr;
-        l->code_size = info.code_size;
+        l->code_addr = info->code_addr;
+        l->code_size = info->code_size;
     }
-    else if (info.code_size > 0) {
-        if (l->code_addr < info.code_addr) {
-            assert(l->code_addr + l->code_size > info.code_addr);
-            l->code_size = l->code_addr + l->code_size - info.code_addr;
-            l->code_addr = info.code_addr;
+    else if (info->code_size > 0) {
+        if (l->code_addr < info->code_addr) {
+            assert(l->code_addr + l->code_size > info->code_addr);
+            l->code_size = l->code_addr + l->code_size - info->code_addr;
+            l->code_addr = info->code_addr;
         }
-        if (l->code_addr + l->code_size > info.code_addr + info.code_size) {
-            assert(l->code_addr < info.code_addr + info.code_size);
-            l->code_size = info.code_addr + info.code_size - l->code_addr;
+        if (l->code_addr + l->code_size > info->code_addr + info->code_size) {
+            assert(l->code_addr < info->code_addr + info->code_size);
+            l->code_size = info->code_addr + info->code_size - l->code_addr;
         }
     }
     /* Only create the command if no exception was thrown */
     cmd = add_location_command(l, SFT_CMD_LOCATION);
-    cmd->args.loc.code_addr = info.expr_addr;
-    cmd->args.loc.code_size = info.expr_size;
+    cmd->args.loc.code_addr = info->expr_addr;
+    cmd->args.loc.code_size = info->expr_size;
     cmd->args.loc.reg_id_scope = v->mObject->mCompUnit->mRegIdScope;
     cmd->args.loc.addr_size = v->mObject->mCompUnit->mDesc.mAddressSize;
     cmd->args.loc.func = dwarf_location_callback;

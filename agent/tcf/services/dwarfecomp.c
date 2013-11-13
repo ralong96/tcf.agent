@@ -26,11 +26,13 @@
 #include <assert.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
+#include <tcf/framework/cache.h>
 #include <tcf/services/dwarf.h>
 #include <tcf/services/dwarfreloc.h>
 #include <tcf/services/dwarfecomp.h>
 #include <tcf/services/elf-loader.h>
 #include <tcf/services/elf-symbols.h>
+#include <tcf/services/stacktrace.h>
 
 typedef struct JumpInfo {
     U1_T op;
@@ -49,8 +51,10 @@ static JumpInfo * jumps = NULL;
 static DWARFExpressionInfo * expr = NULL;
 static size_t expr_pos = 0;
 static Context * expr_ctx = NULL;
-static U8_T expr_ip = 0;
-static int expr_chk_frame = 0;
+static int expr_frame = 0;
+static ContextAddress expr_code_addr = 0;
+static ContextAddress expr_code_size = 0;
+static int expr_big_endian = 0;
 
 static void add(unsigned n) {
     if (buf_pos >= buf_max) {
@@ -90,28 +94,51 @@ static void add_uleb128(U8_T x) {
 
 static U4_T read_u4leb128(void) {
     U4_T v = 0;
-    for (;;) {
+    int i = 0;
+    for (;; i += 7) {
         U1_T n = expr->expr_addr[expr_pos++];
-        v = (v << 7) | (n & 0x7f);
+        v |= (U4_T)(n & 0x7f) << i;
         if ((n & 0x80) == 0) break;
     }
     return v;
 }
 
-#if 0
-/* Not used yet */
+static I8_T read_i8leb128(void) {
+    U8_T v = 0;
+    int i = 0;
+    for (;; i += 7) {
+        U1_T n = expr->expr_addr[expr_pos++];
+        v |= (U8_T)(n & 0x7Fu) << i;
+        if ((n & 0x80) == 0) {
+            v |= -(I8_T)(n & 0x40) << i;
+            break;
+        }
+    }
+    return (I8_T)v;
+}
+
 static void add_sleb128(I8_T x) {
     for (;;) {
         U1_T n = (U1_T)(x & 0x7Fu);
         x = x >> 7;
-        if (x == 0 || (x == 0xFFu && (n & 0x40))) {
+        if (x == 0 || (x == -1 && (n & 0x40))) {
             add(n);
             break;
         }
         add(n | 0x80u);
     }
 }
-#endif
+
+static void set_u2(size_t pos, U2_T v) {
+    if (expr_big_endian) {
+        buf[pos++] = (U1_T)((v >> 8) & 0xffu);
+        buf[pos++] = (U1_T)(v & 0xffu);
+    }
+    else {
+        buf[pos++] = (U1_T)(v & 0xffu);
+        buf[pos++] = (U1_T)((v >> 8) & 0xffu);
+    }
+}
 
 static void add_expression(DWARFExpressionInfo * info);
 
@@ -134,8 +161,8 @@ static void op_addr(void) {
 
     expr_pos++;
     pos = expr->expr_addr + expr_pos - (U1_T *)expr->section->data;
-    dio_EnterSection(&expr->unit->mDesc, expr->section, pos);
-    switch (expr->unit->mDesc.mAddressSize) {
+    dio_EnterSection(&expr->object->mCompUnit->mDesc, expr->section, pos);
+    switch (expr->object->mCompUnit->mDesc.mAddressSize) {
     case 2: {
         U2_T x = dio_ReadU2();
         drl_relocate_in_context(expr_ctx, expr->section, pos, &x, sizeof(x), &section, &rt);
@@ -164,7 +191,7 @@ static void op_addr(void) {
         /* Bug in some versions of GCC: OP_addr used instead of OP_const, use link-time value */
     }
     else if (!rt) {
-        addr = elf_map_to_run_time_address(expr_ctx, expr->unit->mFile, section, addr);
+        addr = elf_map_to_run_time_address(expr_ctx, expr->object->mCompUnit->mFile, section, addr);
         if (errno) str_exception(errno, "Cannot get object run-time address");
     }
     add(OP_constu);
@@ -186,38 +213,29 @@ static ObjectInfo * get_parent_function(ObjectInfo * info) {
     return NULL;
 }
 
-static void op_fbreg(void) {
-    PropertyValue fp;
-    DWARFExpressionInfo info;
-    ObjectInfo * parent = get_parent_function(expr->object);
-
-    expr_pos++;
-    memset(&fp, 0, sizeof(fp));
-    if (parent == NULL) str_exception(ERR_INV_DWARF, "OP_fbreg: no parent function");
-    read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, parent, AT_frame_base, &fp);
-    dwarf_find_expression(&fp, expr_ip, &info);
-    switch (*info.expr_addr) {
+static void add_fbreg_expression(DWARFExpressionInfo * info, I8_T offs) {
+    switch (*info->expr_addr) {
     case OP_reg:
         add(OP_basereg);
         {
             unsigned i = 1;
-            while (i < info.unit->mDesc.mAddressSize + 1u) {
-                add(info.expr_addr[i++]);
+            while (i < info->object->mCompUnit->mDesc.mAddressSize + 1u) {
+                add(info->expr_addr[i++]);
             }
         }
-        copy_leb128();
+        add_sleb128(offs);
         return;
     case OP_regx:
         add(OP_bregx);
         {
             unsigned i = 1;
             for (;;) {
-                U1_T n = info.expr_addr[i++];
+                U1_T n = info->expr_addr[i++];
                 add(n);
                 if ((n & 0x80) == 0) break;
             }
         }
-        copy_leb128();
+        add_sleb128(offs);
         return;
     case OP_reg0:
     case OP_reg1:
@@ -251,14 +269,117 @@ static void op_fbreg(void) {
     case OP_reg29:
     case OP_reg30:
     case OP_reg31:
-        add(OP_breg0 + (*info.expr_addr - OP_reg0));
-        copy_leb128();
+        add(OP_breg0 + (*info->expr_addr - OP_reg0));
+        add_sleb128(offs);
         return;
     }
-    add_expression(&info);
+    add_expression(info);
+    if (offs == 0) return;
     add(OP_consts);
-    copy_leb128();
+    add_sleb128(offs);
     add(OP_add);
+}
+
+static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs) {
+    int peer_version = 1;
+    Channel * c = cache_channel();
+    if (c != NULL) {
+        int i;
+        peer_version = 0;
+        for (i = 0; i < c->peer_service_cnt; i++) {
+            char * nm = c->peer_service_list[i];
+            if (strcmp(nm, "SymbolsProxyV1") == 0) peer_version = 1;
+        }
+    }
+
+    if (info->code_size > 0 && peer_version == 0) {
+        /* The peer does not support OP_TCF_switch */
+        uint64_t pc = 0;
+        StackFrame * frame = NULL;
+        if (expr_frame == STACK_NO_FRAME) str_exception(ERR_INV_CONTEXT, "Need stack frame");
+        if (get_frame_info(expr_ctx, expr_frame, &frame) < 0) exception(errno);
+        if (read_reg_value(frame, get_PC_definition(expr_ctx), &pc) < 0) exception(errno);
+        while (info != NULL && info->code_size > 0 && (info->code_addr > pc || pc - info->code_addr >= info->code_size)) {
+            info = info->next;
+        }
+        if (info == NULL) {
+            str_exception(ERR_OTHER, "Object is not available at this location in the code");
+        }
+        if (!fbreg) add_expression(info);
+        else add_fbreg_expression(info, offs);
+        if (info->code_size) {
+            if (expr_code_size) {
+                if (info->code_addr > expr_code_addr) {
+                    U8_T d = info->code_addr - expr_code_addr;
+                    assert(expr_code_size > d);
+                    expr_code_addr += d;
+                    expr_code_size -= d;
+                }
+                if (info->code_addr + info->code_size < expr_code_addr + expr_code_size) {
+                    U8_T d = (expr_code_addr + expr_code_size) - (info->code_addr + info->code_size);
+                    assert(expr_code_size > d);
+                    expr_code_size -= d;
+                }
+            }
+            else {
+                expr_code_addr = info->code_addr;
+                expr_code_size = info->code_size;
+            }
+        }
+    }
+    else if (info->code_size > 0) {
+        size_t switch_pos;
+        RegisterDefinition * pc = get_PC_definition(expr_ctx);
+
+        if (pc == NULL || pc->dwarf_id < 0)
+            str_exception(ERR_INV_DWARF, "Invalid PC register definition");
+
+        add(OP_bregx);
+        add_uleb128(pc->dwarf_id);
+        add_uleb128(0);
+        add(OP_TCF_switch);
+        add(0);
+        add(0);
+        switch_pos = buf_pos;
+        while (info != NULL) {
+            size_t case_pos;
+            add(0);
+            add(0);
+            case_pos = buf_pos;
+            add_uleb128(info->code_addr);
+            add_uleb128(info->code_size);
+            if (!fbreg) add_expression(info);
+            else add_fbreg_expression(info, offs);
+            set_u2(case_pos - 2, buf_pos - case_pos);
+            if (info->code_size == 0) break;
+            info = info->next;
+        }
+        add(0);
+        add(0);
+        set_u2(switch_pos - 2, buf_pos - switch_pos);
+    }
+    else if (fbreg) {
+        add_fbreg_expression(info, offs);
+    }
+    else {
+        assert(offs == 0);
+        add_expression(info);
+    }
+}
+
+static void op_fbreg(void) {
+    PropertyValue fp;
+    DWARFExpressionInfo * info;
+    ObjectInfo * parent = get_parent_function(expr->object);
+    I8_T offs = 0;
+
+    expr_pos++;
+    offs = read_i8leb128();
+    memset(&fp, 0, sizeof(fp));
+    if (parent == NULL) str_exception(ERR_INV_DWARF, "OP_fbreg: no parent function");
+    read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, parent, AT_frame_base, &fp);
+    dwarf_get_expression_list(&fp, &info);
+    add_expression_list(info, 1, offs);
 }
 
 static void op_implicit_pointer(void) {
@@ -275,7 +396,7 @@ static void op_implicit_pointer(void) {
     expr_pos++;
     if (op == OP_GNU_implicit_pointer && unit->mDesc.mVersion < 3) arg_size = unit->mDesc.mAddressSize;
     dio_pos = expr->expr_addr + expr_pos - (U1_T *)expr->section->data;
-    dio_EnterSection(&expr->unit->mDesc, expr->section, dio_pos);
+    dio_EnterSection(&expr->object->mCompUnit->mDesc, expr->section, dio_pos);
     ref_id = dio_ReadAddressX(NULL, arg_size);
     offset = dio_ReadU8LEB128();
     expr_pos += (size_t)(dio_GetPos() - dio_pos);
@@ -286,10 +407,10 @@ static void op_implicit_pointer(void) {
 
     memset(&pv, 0, sizeof(pv));
     if (set_trap(&trap)) {
-        DWARFExpressionInfo info;
+        DWARFExpressionInfo * info = NULL;
         read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, ref_obj, AT_location, &pv);
-        dwarf_find_expression(&pv, expr_ip, &info);
-        add_expression(&info);
+        dwarf_get_expression_list(&pv, &info);
+        add_expression_list(info, 0, 0);
         if (offset != 0) {
             add(OP_TCF_offset);
             add_uleb128(offset);
@@ -360,11 +481,11 @@ static void op_push_tls_address(void) {
 
 static void op_call(void) {
     U8_T ref_id = 0;
-    DIO_UnitDescriptor * desc = &expr->unit->mDesc;
+    DIO_UnitDescriptor * desc = &expr->object->mCompUnit->mDesc;
     U8_T dio_pos = 0;
     U1_T opcode = 0;
     ObjectInfo * ref_obj = NULL;
-    DWARFExpressionInfo info;
+    DWARFExpressionInfo * info = NULL;
     PropertyValue pv;
 
     opcode = expr->expr_addr[expr_pos++];
@@ -389,11 +510,11 @@ static void op_call(void) {
     expr_pos += (size_t)(dio_GetPos() - dio_pos);
     dio_ExitSection();
 
-    ref_obj = find_object(get_dwarf_cache(expr->unit->mFile), ref_id);
+    ref_obj = find_object(get_dwarf_cache(expr->object->mCompUnit->mFile), ref_id);
     if (ref_obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_call");
     read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, ref_obj, AT_location, &pv);
-    dwarf_find_expression(&pv, expr_ip, &info);
-    add_expression(&info);
+    dwarf_get_expression_list(&pv, &info);
+    add_expression_list(info, 0, 0);
 }
 
 static void op_entry_value(void) {
@@ -408,9 +529,7 @@ static void op_entry_value(void) {
     add(0);
     size = read_u4leb128();
     memset(&info, 0, sizeof(info));
-    info.code_addr = expr->code_addr;
-    info.code_size = expr->code_size;
-    info.unit = expr->unit;
+    info.object = expr->object;
     info.section = expr->section;
     info.expr_addr = expr->expr_addr + expr_pos;
     info.expr_size = size;
@@ -443,14 +562,7 @@ static void adjust_jumps(void) {
             }
             if (delta != 0) {
                 U2_T new_offs = (U2_T)(i->jump_offs + delta);
-                if (expr->unit->mFile->big_endian) {
-                    buf[i->dst_pos + 1] = (U1_T)((new_offs >> 8) & 0xffu);
-                    buf[i->dst_pos + 2] = (U1_T)(new_offs & 0xffu);
-                }
-                else {
-                    buf[i->dst_pos + 1] = (U1_T)(new_offs & 0xffu);
-                    buf[i->dst_pos + 2] = (U1_T)((new_offs >> 8) & 0xffu);
-                }
+                set_u2(i->dst_pos + 1, new_offs);
             }
         }
         i = i->next;
@@ -458,8 +570,8 @@ static void adjust_jumps(void) {
 }
 
 static void check_frame(void) {
-    if (!expr_chk_frame) return;
-    str_fmt_exception(ERR_OTHER, "Object location is relative to a stack frame");
+    if (expr_frame != STACK_NO_FRAME) return;
+    str_exception(ERR_OTHER, "Object location is relative to a stack frame");
 }
 
 static void add_expression(DWARFExpressionInfo * info) {
@@ -467,29 +579,12 @@ static void add_expression(DWARFExpressionInfo * info) {
     size_t org_expr_pos = expr_pos;
     JumpInfo * org_jumps = jumps;
 
-    if (expr != NULL && info->code_size) {
-        if (expr->code_size) {
-            if (info->code_addr > expr->code_addr) {
-                U8_T d = info->code_addr - expr->code_addr;
-                assert(expr->code_size > d);
-                expr->code_addr += d;
-                expr->code_size -= d;
-            }
-            if (info->code_addr + info->code_size < expr->code_addr + expr->code_size) {
-                U8_T d = (expr->code_addr + expr->code_size) - (info->code_addr + info->code_size);
-                assert(expr->code_size > d);
-                expr->code_size -= d;
-            }
-        }
-        else {
-            expr->code_addr = info->code_addr;
-            expr->code_size = info->code_size;
-        }
-    }
-
     expr = info;
     expr_pos = 0;
     jumps = NULL;
+    if (expr->object->mCompUnit->mFile->big_endian != expr_big_endian) {
+        str_exception(ERR_OTHER, "Invalid endianness of location expression");
+    }
     while (expr_pos < info->expr_size) {
         size_t op_src_pos = expr_pos;
         size_t op_dst_pos = buf_pos;
@@ -504,11 +599,11 @@ static void add_expression(DWARFExpressionInfo * info) {
             break;
         case OP_const:
         case OP_reg:
-            copy(1 + info->unit->mDesc.mAddressSize);
+            copy(1 + info->object->mCompUnit->mDesc.mAddressSize);
             break;
         case OP_basereg:
             check_frame();
-            copy(1 + info->unit->mDesc.mAddressSize);
+            copy(1 + info->object->mCompUnit->mDesc.mAddressSize);
             break;
         case OP_const2u:
         case OP_const2s:
@@ -573,7 +668,7 @@ static void add_expression(DWARFExpressionInfo * info) {
             {
                 U2_T x0 = info->expr_addr[expr_pos + 1];
                 U2_T x1 = info->expr_addr[expr_pos + 2];
-                U2_T offs = expr->unit->mFile->big_endian ? (x0 << 8) | x1 : x0 | (x1 << 8);
+                U2_T offs = expr_big_endian ? (x0 << 8) | x1 : x0 | (x1 << 8);
                 if (offs != 0) {
                     JumpInfo * i = (JumpInfo *)tmp_alloc_zero(sizeof(JumpInfo));
                     i->op = op;
@@ -642,8 +737,10 @@ static void add_expression(DWARFExpressionInfo * info) {
                 U8_T size = 0;
                 U4_T reg = read_u4leb128();
                 U4_T type = read_u4leb128();
-                ObjectInfo * obj = find_object(get_dwarf_cache(expr->unit->mFile),
-                    expr->unit->mDesc.mSection->addr + expr->unit->mDesc.mUnitOffs + type);
+                ObjectInfo * obj = find_object(
+                    get_dwarf_cache(expr->object->mCompUnit->mFile),
+                    expr->object->mCompUnit->mDesc.mSection->addr +
+                    expr->object->mCompUnit->mDesc.mUnitOffs + type);
                 if (obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_regval_type");
                 if (!get_num_prop(obj, AT_byte_size, &size))str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_regval_type");
                 add(OP_regx);
@@ -677,10 +774,10 @@ static void add_expression(DWARFExpressionInfo * info) {
 }
 
 static void transform_expression(void * args) {
-    add_expression((DWARFExpressionInfo *)args);
+    add_expression_list((DWARFExpressionInfo *)args, 0, 0);
 }
 
-void dwarf_transform_expression(Context * ctx, ContextAddress ip, int chk_frame, DWARFExpressionInfo * info) {
+void dwarf_transform_expression(Context * ctx, int frame, DWARFExpressionInfo * info) {
     int error = 0;
 
     /* Save state - some expressions need to make recursive calls to symbols API */
@@ -691,21 +788,28 @@ void dwarf_transform_expression(Context * ctx, ContextAddress ip, int chk_frame,
     DWARFExpressionInfo * org_expr = expr;
     size_t org_expr_pos = expr_pos;
     Context * org_expr_ctx = expr_ctx;
-    U8_T org_expr_ip = expr_ip;
-    int org_expr_chk_frame = expr_chk_frame;
+    int org_expr_frame = expr_frame;
+    ContextAddress org_expr_code_addr = expr_code_addr;
+    ContextAddress org_expr_code_size = expr_code_size;
+    int org_expr_big_endian = expr_big_endian;
 
     /* Initialize state */
     buf_pos = 0;
     buf_max = info->expr_size * 2;
     buf = (U1_T *)tmp_alloc(buf_max);
     expr_ctx = ctx;
-    expr_ip = ip;
-    expr_chk_frame = chk_frame;
+    expr_frame = frame;
+    expr_code_addr = 0;
+    expr_code_size = 0;
+    expr_big_endian = info->object->mCompUnit->mFile->big_endian;
     expr = NULL;
     jumps = NULL;
 
     /* Run transformation */
     if (elf_save_symbols_state(transform_expression, info) < 0) error = errno;
+    memset(info, 0, sizeof(DWARFExpressionInfo));
+    info->code_addr = expr_code_addr;
+    info->code_size = expr_code_size;
     info->expr_addr = buf;
     info->expr_size = buf_pos;
 
@@ -717,8 +821,10 @@ void dwarf_transform_expression(Context * ctx, ContextAddress ip, int chk_frame,
     expr = org_expr;
     expr_pos = org_expr_pos;
     expr_ctx = org_expr_ctx;
-    expr_ip = org_expr_ip;
-    expr_chk_frame = org_expr_chk_frame;
+    expr_frame = org_expr_frame;
+    expr_code_addr = org_expr_code_addr;
+    expr_code_size = org_expr_code_size;
+    expr_big_endian = org_expr_big_endian;
 
     if (error) exception(error);
 }
