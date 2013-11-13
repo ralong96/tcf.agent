@@ -110,7 +110,7 @@ ifdef OpenSSL
       LIBCRYPTO = $(OpenSSL)/out32.dbg/libeay32.lib
     else
       LIBSSL = $(OpenSSL)/out32/ssleay32.lib
-      LIBCRYOTO = $(OpenSSL)/out32/libeay32.lib
+      LIBCRYPTO = $(OpenSSL)/out32/libeay32.lib
     endif
     LIBS += User32.lib Gdi32.lib
   else
