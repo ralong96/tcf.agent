@@ -1146,6 +1146,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
                 char * s = NULL;
                 env_path = getenv("PATH");
                 if (env_path == NULL) env_path = "";
+                env_path = tmp_strdup(env_path);
                 while (*p != NULL) env_size += strlen(*p++) + 1;
                 s = env = (char *)tmp_alloc(env_size);
                 for (p = envp; *p != NULL; p++) {

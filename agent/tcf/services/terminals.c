@@ -440,14 +440,13 @@ static void command_launch(char * token, Channel * c) {
     }
     set_terminal_env(&prms.envp, pty_type, encoding, exec);
     prms.dir = getenv("HOME");
+    if (prms.dir) prms.dir = tmp_strdup(prms.dir);
 #else
     {
         const char * home_drv = getenv("HOMEDRIVE");
         const char * home_dir = getenv("HOMEPATH");
         if (home_drv && home_dir) {
-            static char fnm[FILE_PATH_SIZE];
-            snprintf(fnm, sizeof(fnm), "%s%s", home_drv, home_dir);
-            prms.dir = fnm;
+            prms.dir = tmp_strdup2(home_drv, home_dir);
         }
     }
 #endif
