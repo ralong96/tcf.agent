@@ -1210,4 +1210,3 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
 }
 
 #endif /* SERVICE_Disassembly */
-

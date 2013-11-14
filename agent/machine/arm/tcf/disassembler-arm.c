@@ -2679,4 +2679,3 @@ DisassemblyResult * disassemble_arm(uint8_t * code,
 }
 
 #endif /* SERVICE_Disassembly */
-
