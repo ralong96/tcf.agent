@@ -15,6 +15,8 @@
 
 #include <tcf/config.h>
 
+#if SERVICE_Disassembly
+
 #include <stdio.h>
 #include <assert.h>
 #include <tcf/framework/context.h>
@@ -1206,3 +1208,6 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
     }
     return &dr;
 }
+
+#endif /* SERVICE_Disassembly */
+

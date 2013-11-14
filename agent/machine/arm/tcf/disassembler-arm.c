@@ -15,6 +15,8 @@
 
 #include <tcf/config.h>
 
+#if SERVICE_Disassembly
+
 #include <assert.h>
 #include <stdio.h>
 #include <tcf/framework/context.h>
@@ -2675,3 +2677,6 @@ DisassemblyResult * disassemble_arm(uint8_t * code,
     dr.text = buf;
     return &dr;
 }
+
+#endif /* SERVICE_Disassembly */
+
