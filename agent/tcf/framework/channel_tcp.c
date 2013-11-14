@@ -38,7 +38,7 @@
 #  include <openssl/ssl.h>
 #  include <openssl/rand.h>
 #  include <openssl/err.h>
-#  ifdef _WIN32
+#  if defined(_WIN32) || defined(__CYGWIN__)
 #    include <ShlObj.h>
 #  endif
 #else
@@ -67,7 +67,7 @@
 #define MSG_MORE 0
 #endif
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 #  define FD_SETX(a,b) FD_SET((unsigned)a, b)
 #  define MKDIR_MODE_TCF 0
 #  define MKDIR_MODE_SSL 0
@@ -87,7 +87,7 @@
 #define MAX_IFC 10
 
 #if !defined(ENABLE_OutputQueue)
-#  if ENABLE_SSL || ENABLE_ContextProxy || defined(_WIN32) || defined(__linux__)
+#  if ENABLE_SSL || ENABLE_ContextProxy || defined(_WIN32) || defined(__CYGWIN__) || defined(__linux__)
 #    define ENABLE_OutputQueue 1
 #  else
 #    define ENABLE_OutputQueue 0
@@ -173,7 +173,7 @@ static void ini_ssl(void) {
         RAND_add(&ts.tv_nsec, sizeof(ts.tv_nsec), 0.1);
     }
     inited = 1;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
     {
         WCHAR fnm[MAX_PATH];
         char buf[MAX_PATH];
@@ -880,7 +880,7 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
             }
         }
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
         {
             unsigned long opts = 1;
             if (ioctlsocket((SOCKET)sock, FIONBIO, &opts) != 0) {
@@ -1206,7 +1206,7 @@ ChannelServer * channel_unix_server(PeerServer * ps) {
     if (error) {
         if (sock >= 0) closesocket(sock);
         trace(LOG_ALWAYS, "Socket %s error on %s: %s", reason, localhost.sun_path, errno_to_str(error));
-        errno = error;
+        set_fmt_errno(error, "Socket %s error", reason);
         return NULL;
     }
 
@@ -1263,7 +1263,7 @@ ChannelServer * channel_tcp_server(PeerServer * ps) {
             reason = "create";
             continue;
         }
-#if !defined(_WIN32)
+#if !(defined(_WIN32) || defined(__CYGWIN__))
         {
             const int i = 1;
             if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&i, sizeof(i)) < 0) {
@@ -1312,7 +1312,7 @@ ChannelServer * channel_tcp_server(PeerServer * ps) {
     loc_freeaddrinfo(reslist);
     if (sock < 0) {
         trace(LOG_ALWAYS, "Socket %s error: %s", reason, errno_to_str(error));
-        errno = error;
+        set_fmt_errno(error, "Socket %s error", reason);
         return NULL;
     }
 
@@ -1509,14 +1509,14 @@ void generate_ssl_certificate(void) {
     if (!err && (fp = fopen(fnm, "w")) == NULL) err = errno;
     if (!err && !PEM_write_PKCS8PrivateKey(fp, rsa_key, NULL, NULL, 0, NULL, NULL)) err = set_ssl_errno();
     if (!err && fclose(fp) != 0) err = errno;
-#ifndef _WIN32
+#if !(defined(_WIN32) || defined(__CYGWIN__))
     if (!err && chmod(fnm, S_IRUSR|S_IWUSR) != 0) err = errno;
 #endif
     snprintf(fnm, sizeof(fnm), "%s/ssl/local.cert", tcf_dir);
     if (!err && (fp = fopen(fnm, "w")) == NULL) err = errno;
     if (!err && !PEM_write_X509(fp, cert)) err = set_ssl_errno();
     if (!err && fclose(fp) != 0) err = errno;
-#ifndef _WIN32
+#if !(defined(_WIN32) || defined(__CYGWIN__))
     if (!err && chmod(fnm, S_IRUSR|S_IWUSR) != 0) err = errno;
 #endif
     if (err) {

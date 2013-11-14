@@ -49,7 +49,7 @@
 #elif defined(_MSC_VER)
 /* Memoy mapped files appear broken on Windows 8 */
 #  define USE_MMAP 0
-#elif defined(_WIN32)
+#elif defined(_WIN32) || defined(__CYGWIN__)
 #  define USE_MMAP 0
 #else
 #  include <sys/mman.h>
@@ -111,7 +111,7 @@ static void elf_dispose(ELF_File * file) {
             ELF_Section * s = file->sections + n;
 #if !USE_MMAP
             loc_free(s->data);
-#elif defined(_WIN32)
+#elif defined(_WIN32) || defined(__CYGWIN__)
             if (s->mmap_addr == NULL) loc_free(s->data);
             else UnmapViewOfFile(s->mmap_addr);
 #else
@@ -125,7 +125,7 @@ static void elf_dispose(ELF_File * file) {
         }
         loc_free(file->sections);
     }
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     if (file->mmap_handle != NULL) CloseHandle(file->mmap_handle);
 #endif
     for (n = 0; n < file->names_cnt; n++) {
@@ -896,7 +896,7 @@ int elf_load(ELF_Section * s) {
     }
 
 #if USE_MMAP
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
     if (s->size >= 0x100000) {
         ELF_File * file = s->file;
         if (file->mmap_handle == NULL) {

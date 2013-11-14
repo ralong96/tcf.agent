@@ -24,7 +24,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
 #else
 #  include <sys/wait.h>
@@ -180,7 +180,7 @@ static void * worker_thread_handler(void * x) {
             break;
 
 /* Platform dependant IO methods */
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
         case AsyncReqConnectPipe:
             req->u.cnp.rval = ConnectNamedPipe(req->u.cnp.pipe, NULL);
             if (!req->u.cnp.rval) {

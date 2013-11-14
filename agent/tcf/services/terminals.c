@@ -49,7 +49,7 @@
 
 static const char * TERMINALS = "Terminals";
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #  define TERM_LAUNCH_EXEC "cmd"
 #  define TERM_LAUNCH_ARGS {TERM_LAUNCH_EXEC, NULL}
 #else
@@ -231,7 +231,7 @@ static int kill_term(Terminal * term) {
     int err = 0;
     int pid = get_process_pid(term->prs);
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
     if (h == NULL) {
         err = set_win32_errno(GetLastError());
@@ -290,7 +290,7 @@ static void terminal_exited(void * args) {
     loc_free(term);
 }
 
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__CYGWIN__)
 /*
  * Set the environment variable "name" to the value "value". If the variable
  * exists already, override it or just skip.
@@ -412,7 +412,7 @@ static void command_launch(char * token, Channel * c) {
     prms.envp = read_env(&c->inp);
     json_test_char(&c->inp, MARKER_EOM);
 
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__CYGWIN__)
     {
         struct stat st;
         if (err == 0 && stat(exec, &st) != 0) {

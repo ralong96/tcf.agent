@@ -24,7 +24,7 @@
 #include <tcf/framework/sigsets.h>
 #include <tcf/framework/signames.h>
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 typedef struct ExceptionName {
     DWORD code;

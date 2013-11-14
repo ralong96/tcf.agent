@@ -39,7 +39,7 @@
 #define REG_OFFSET(name) offsetof(REG_SET, name)
 
 static RegisterDefinition regs_def[] = {
-#if defined(_WIN32) && defined(__i386__)
+#if (defined(_WIN32) || defined(__CYGWIN__)) && defined(__i386__)
 #   define REG_SP Esp
 #   define REG_BP Ebp
 #   define REG_IP Eip
@@ -108,7 +108,7 @@ static RegisterDefinition regs_def[] = {
     { "dr6",    REG_OFFSET(Dr6), 4, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, regs_def + 46 },
     { "dr7",    REG_OFFSET(Dr7), 4, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, regs_def + 46 },
 
-#elif defined(_WIN32) && defined(__x86_64__)
+#elif (defined(_WIN32) || defined(__CYGWIN__)) && defined(__x86_64__)
 #   define REG_SP Rsp
 #   define REG_BP Rbp
 #   define REG_IP Rip

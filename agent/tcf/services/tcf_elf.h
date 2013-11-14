@@ -23,7 +23,7 @@
 
 #if ENABLE_ELF
 
-#if !ENABLE_ContextProxy && !defined(_WIN32) && !defined(__APPLE__)
+#if !ENABLE_ContextProxy && !defined(_WIN32) && !defined(__CYGWIN__) && !defined(__APPLE__)
 #  define INCLUDE_NATIVE_ELF_H 1
 #  include <elf.h>
 #endif
@@ -412,7 +412,7 @@ struct ELF_File {
     unsigned names_cnt;
     unsigned names_max;
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     HANDLE mmap_handle;
 #endif
 

@@ -38,7 +38,7 @@ static unsigned max_reader_count = 0;
 #if ENABLE_ELF
 extern void elf_ini_line_numbers_lib(void);
 #endif
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 extern void win32_ini_line_numbers_lib(void);
 #endif
 

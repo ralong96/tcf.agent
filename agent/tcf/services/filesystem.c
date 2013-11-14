@@ -38,7 +38,7 @@
 #if !defined(_WIN32) || defined(__CYGWIN__)
 #  include <utime.h>
 #endif
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #  include <Windows.h>
 #endif
 #if defined(_WRS_KERNEL)
@@ -88,7 +88,7 @@ struct FileAttrs {
     int permissions;
     uint64_t atime;
     uint64_t mtime;
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     DWORD win32_attrs;
 #endif
 };
@@ -288,7 +288,7 @@ static void read_file_attrs(InputStream * inp, const char * nm, void * arg) {
         attrs->mtime = json_read_uint64(inp);
         attrs->flags |= ATTR_ACMODTIME;
     }
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     else if (strcmp(nm, "Win32Attrs") == 0) {
         attrs->win32_attrs = json_read_ulong(inp);
     }
@@ -340,12 +340,12 @@ static void write_file_attrs(OutputStream * out, FileAttrs * attrs) {
         json_write_string(out, "MTime");
         write_stream(out, ':');
         json_write_uint64(out, attrs->mtime);
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
         cnt++;
 #endif
     }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     if (attrs->win32_attrs != INVALID_FILE_ATTRIBUTES) {
         if (cnt) write_stream(out, ',');
         json_write_string(out, "Win32Attrs");
@@ -440,7 +440,7 @@ static void command_open(char * token, Channel * c) {
     flags = (unsigned int) json_read_ulong(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
     memset(&attrs, 0, sizeof(FileAttrs));
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     attrs.win32_attrs = INVALID_FILE_ATTRIBUTES;
 #endif
     json_read_struct(&c->inp, read_file_attrs, &attrs);
@@ -457,7 +457,7 @@ static void command_open(char * token, Channel * c) {
     req->info.u.fio.permission = attrs.permissions;
     req->info.u.fio.flags = to_local_open_flags(flags);
     req->info.u.fio.file_name = loc_strdup(path);
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     req->info.u.fio.win32_attrs = attrs.win32_attrs;
 #endif
     post_io_request(handle);
@@ -494,7 +494,7 @@ static void reply_stat(char * token, OutputStream * out, int err, struct stat * 
     if (err == 0) fill_attrs(&attrs, buf);
     else memset(&attrs, 0, sizeof(attrs));
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     attrs.win32_attrs = err ? INVALID_FILE_ATTRIBUTES : GetFileAttributes(path);
 #endif
 
@@ -608,7 +608,7 @@ static void done_io_request(void * arg) {
         break;
     case REQ_OPEN:
         err = req->info.error;
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
         if (err == 0) {
             if (req->info.u.fio.win32_attrs != INVALID_FILE_ATTRIBUTES) {
                 if (SetFileAttributes(req->info.u.fio.file_name, req->info.u.fio.win32_attrs) == 0)
@@ -661,11 +661,11 @@ static void post_io_request(OpenFileInfo * handle) {
                 if (attrs.flags & ATTR_SIZE) {
                     if (ftruncate(handle->file, attrs.size) < 0) err = errno;
                 }
-#if defined(_WIN32) || defined(_WRS_KERNEL)
+#if defined(_WIN32) || defined(__CYGWIN__) || defined(_WRS_KERNEL)
                 if (attrs.flags & ATTR_PERMISSIONS) {
                     if (chmod(handle->path, attrs.permissions) < 0) err = errno;
                 }
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
                 if (attrs.win32_attrs != INVALID_FILE_ATTRIBUTES) {
                     if (SetFileAttributes(handle->path, attrs.win32_attrs) == 0)
                         err = set_win32_errno(GetLastError());
@@ -885,7 +885,7 @@ static void command_setstat(char * token, Channel * c) {
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
     memset(&attrs, 0, sizeof(FileAttrs));
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     attrs.win32_attrs = INVALID_FILE_ATTRIBUTES;
 #endif
     json_read_struct(&c->inp, read_file_attrs, &attrs);
@@ -909,7 +909,7 @@ static void command_setstat(char * token, Channel * c) {
         buf.modtime = (time_t)(attrs.mtime / 1000);
         if (utime(path, &buf) < 0) err = errno;
     }
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     if (attrs.win32_attrs != INVALID_FILE_ATTRIBUTES) {
         if (SetFileAttributes(path, attrs.win32_attrs) == 0)
             err = set_win32_errno(GetLastError());
@@ -927,7 +927,7 @@ static void command_fsetstat(char * token, Channel * c) {
     json_read_string(&c->inp, id, sizeof(id));
     json_test_char(&c->inp, MARKER_EOA);
     memset(&attrs, 0, sizeof(FileAttrs));
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     attrs.win32_attrs = INVALID_FILE_ATTRIBUTES;
 #endif
     json_read_struct(&c->inp, read_file_attrs, &attrs);
@@ -1014,7 +1014,7 @@ static void command_readdir(char * token, Channel * c) {
             snprintf(path, sizeof(path), "%s/%s", h->path, e->d_name);
             if (stat(path, &st) == 0) {
                 fill_attrs(&attrs, &st);
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
                 attrs.win32_attrs = GetFileAttributes(path);
 #endif
                 write_stream(&c->out, ',');
@@ -1079,7 +1079,7 @@ static void command_mkdir(char * token, Channel * c) {
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
     memset(&attrs, 0, sizeof(FileAttrs));
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     attrs.win32_attrs = INVALID_FILE_ATTRIBUTES;
 #endif
     json_read_struct(&c->inp, read_file_attrs, &attrs);
@@ -1092,7 +1092,7 @@ static void command_mkdir(char * token, Channel * c) {
     mode = (attrs.flags & ATTR_PERMISSIONS) ? attrs.permissions : 0777;
     if (mkdir(path, mode) < 0) err = errno;
 #endif
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     if (attrs.win32_attrs != INVALID_FILE_ATTRIBUTES) {
         if (SetFileAttributes(path, attrs.win32_attrs) == 0)
             err = set_win32_errno(GetLastError());
@@ -1296,7 +1296,7 @@ static void command_roots(char * token, Channel * c) {
     write_stringz(&c->out, token);
     write_stream(&c->out, '[');
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
     {
         int cnt = 0;
         int disk = 0;

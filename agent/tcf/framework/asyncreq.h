@@ -70,7 +70,7 @@ struct AsyncReqInfo {
             int permission;
             char * file_name;
             struct stat statbuf;
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
             DWORD win32_attrs;
 #endif
             /* Out */
@@ -119,7 +119,7 @@ struct AsyncReqInfo {
             /* Out */
             int rval;
         } con;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
         struct {
             /* In */
             HANDLE pipe;

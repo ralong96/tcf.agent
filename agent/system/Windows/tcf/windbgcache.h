@@ -22,7 +22,7 @@
 
 #include <tcf/config.h>
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 #if defined(__GNUC__)
 #  include <imagehlp.h>
@@ -37,6 +37,9 @@ extern "C" {
 #endif
 
 #if defined(__GNUC__)
+
+#if !defined(API_VERSION_NUMBER) || API_VERSION_NUMBER < 11
+
 typedef enum _IMAGEHLP_SYMBOL_TYPE_INFO {
     TI_GET_SYMTAG,
     TI_GET_SYMNAME,
@@ -78,41 +81,6 @@ typedef struct _TI_FINDCHILDREN_PARAMS {
     ULONG Start;
     ULONG ChildId[1];
 } TI_FINDCHILDREN_PARAMS;
-
-enum SymTagEnum {
-    SymTagNull,
-    SymTagExe,
-    SymTagCompiland,
-    SymTagCompilandDetails,
-    SymTagCompilandEnv,
-    SymTagFunction,
-    SymTagBlock,
-    SymTagData,
-    SymTagAnnotation,
-    SymTagLabel,
-    SymTagPublicSymbol,
-    SymTagUDT,
-    SymTagEnum,
-    SymTagFunctionType,
-    SymTagPointerType,
-    SymTagArrayType,
-    SymTagBaseType,
-    SymTagTypedef,
-    SymTagBaseClass,
-    SymTagFriend,
-    SymTagFunctionArgType,
-    SymTagFuncDebugStart,
-    SymTagFuncDebugEnd,
-    SymTagUsingNamespace,
-    SymTagVTableShape,
-    SymTagVTable,
-    SymTagCustom,
-    SymTagThunk,
-    SymTagCustomType,
-    SymTagManagedType,
-    SymTagDimension,
-    SymTagMax
-};
 
 #define SYMFLAG_VALUEPRESENT     0x00000001
 #define SYMFLAG_REGISTER         0x00000008
@@ -193,6 +161,43 @@ typedef VOID IMAGEHLP_CONTEXT, *PIMAGEHLP_CONTEXT;
 
 typedef BOOL (CALLBACK *PSYM_ENUMERATESYMBOLS_CALLBACK)(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext);
 typedef BOOL (CALLBACK *PENUMLOADED_MODULES_CALLBACKW64)(PCWSTR ModuleName, DWORD64 ModuleBase, ULONG ModuleSize, PVOID UserContext);
+
+#endif
+
+enum SymTagEnum {
+    SymTagNull,
+    SymTagExe,
+    SymTagCompiland,
+    SymTagCompilandDetails,
+    SymTagCompilandEnv,
+    SymTagFunction,
+    SymTagBlock,
+    SymTagData,
+    SymTagAnnotation,
+    SymTagLabel,
+    SymTagPublicSymbol,
+    SymTagUDT,
+    SymTagEnum,
+    SymTagFunctionType,
+    SymTagPointerType,
+    SymTagArrayType,
+    SymTagBaseType,
+    SymTagTypedef,
+    SymTagBaseClass,
+    SymTagFriend,
+    SymTagFunctionArgType,
+    SymTagFuncDebugStart,
+    SymTagFuncDebugEnd,
+    SymTagUsingNamespace,
+    SymTagVTableShape,
+    SymTagVTable,
+    SymTagCustom,
+    SymTagThunk,
+    SymTagCustomType,
+    SymTagManagedType,
+    SymTagDimension,
+    SymTagMax
+};
 
 #endif /* defined(__GNUC__) */
 
@@ -276,5 +281,5 @@ extern BOOL LocEnumerateLoadedModulesW64(HANDLE hProcess, PENUMLOADED_MODULES_CA
 }
 #endif
 
-#endif /* defined(_WIN32) */
+#endif /* defined(_WIN32) || defined(__CYGWIN__) */
 #endif /* D_windbgcache */

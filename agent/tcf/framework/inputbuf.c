@@ -28,7 +28,7 @@
 #include <tcf/framework/inputbuf.h>
 
 #if !defined(ENABLE_InputQueue)
-#  if ENABLE_SSL || ENABLE_ContextProxy || defined(_WIN32) || defined(__linux__)
+#  if ENABLE_SSL || ENABLE_ContextProxy || defined(_WIN32) || defined(__CYGWIN__) || defined(__linux__)
 #    define ENABLE_InputQueue 1
 #  else
 #    define ENABLE_InputQueue 0

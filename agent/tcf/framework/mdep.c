@@ -37,7 +37,7 @@
 pthread_attr_t pthread_create_attr;
 int utf8_locale = 0;
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 #ifndef SIO_UDP_CONNRESET
 #define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR,12)
@@ -189,7 +189,7 @@ int wsa_select(int nfds, fd_set * readfds, fd_set * writefds, fd_set * exceptfds
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = select(nfds, readfds, writefds, exceptfds, timeout);
+    res = select(nfds, readfds, writefds, exceptfds, (PTIMEVAL)timeout);
     if (res < 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -230,7 +230,7 @@ int inet_pton(int af, const char * src, void * dst) {
     return 1;
 }
 
-#endif /* _WIN32 */
+#endif /* defined(_WIN32) || defined(__CYGWIN__)*/
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 
@@ -564,7 +564,7 @@ void swap_bytes(void * buf, size_t size) {
     }
 }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 #include <locale.h>
 #include <shlobj.h>
@@ -890,7 +890,7 @@ void ini_mdep(void) {
 
 /** canonicalize_file_name ****************************************************/
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 char * canonicalize_file_name(const char * name) {
     DWORD len;
@@ -1172,7 +1172,7 @@ const char * loc_gai_strerror(int ecode) {
     return buf;
 }
 
-#elif defined(_WIN32)
+#elif defined(_WIN32) || defined(__CYGWIN__)
 
 const char * loc_gai_strerror(int ecode) {
     WCHAR * buf = NULL;
@@ -1206,7 +1206,7 @@ const char * loc_gai_strerror(int ecode) {
 
 #endif
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #  include <tlhelp32.h>
 #  ifdef _MSC_VER
 #    pragma warning(disable:4201) /* nonstandard extension used : nameless struct/union (in winternl.h) */
@@ -1569,7 +1569,7 @@ double str_to_double(const char * buf, char ** end) {
     double res;
     int n;
 
-    while (isspace(*buf)) buf++;
+    while (isspace((unsigned char)*buf)) buf++;
     if (*buf == '-') sign_val = 1;
     if (sign_val || *buf == '+') buf++;
     while (*buf >= '0' && *buf <= '9') {

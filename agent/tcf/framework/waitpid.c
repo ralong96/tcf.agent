@@ -50,7 +50,7 @@ void add_waitpid_listener(WaitPIDListener * listener, void * args) {
     listener_cnt++;
 }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 #define MAX_HANDLES 64
 

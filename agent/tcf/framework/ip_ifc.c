@@ -36,7 +36,7 @@
 #endif
 
 int build_ifclist(int sock, int max, ip_ifc_info * list) {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
     int i;
     int ind;
     MIB_IPADDRTABLE * info;

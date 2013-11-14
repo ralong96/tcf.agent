@@ -42,7 +42,7 @@
 
 #define MESSAGE_CNT             (ERR_MESSAGE_MAX - ERR_MESSAGE_MIN + 1)
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 #  define ERR_WINDOWS_MIN       (STD_ERR_BASE + 0x10000)
 #  define ERR_WINDOWS_MAX       (ERR_WINDOWS_MIN + 0xffff)
 #  define ERR_WINDOWS_CNT       (ERR_WINDOWS_MAX - ERR_WINDOWS_MIN + 1)
@@ -116,7 +116,7 @@ static ErrorMessage * alloc_msg(int source) {
     return m;
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 static char * system_strerror(DWORD error_code, HMODULE module) {
     WCHAR * buf = NULL;
@@ -371,7 +371,7 @@ const char * errno_to_str(int err) {
                 return "Cannot get error message text: errno_to_str() must be called from the main thread";
             }
         }
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
         if (err >= ERR_WINDOWS_MIN && err <= ERR_WINDOWS_MAX) {
             if (is_dispatch_thread()) {
                 return system_strerror(err - ERR_WINDOWS_MIN, NULL);
@@ -521,7 +521,7 @@ ErrorReport * get_error_report(int err) {
 
         report->pub.format = loc_strdup(errno_to_str(err));
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
         if (err >= ERR_WINDOWS_MIN && err <= ERR_WINDOWS_MAX) {
             add_report_prop_int(report, "AltCode", err - ERR_WINDOWS_MIN);
             add_report_prop_str(report, "AltOrg", "_WIN32");

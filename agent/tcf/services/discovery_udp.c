@@ -265,7 +265,7 @@ static int create_server_socket(void) {
         }
         trace(LOG_ALWAYS, "Discovery service socket %s error: %s",
             reason, errno_to_str(error));
-        return error;
+        return set_fmt_errno(error, "Socket %s error", reason);
     }
 
     if (udp_server_socket >= 0) closesocket(udp_server_socket);

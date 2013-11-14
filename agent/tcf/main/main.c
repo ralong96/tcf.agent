@@ -128,7 +128,7 @@ static void signal_handler(int sig) {
     }
 }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 static LONG NTAPI VectoredExceptionHandler(PEXCEPTION_POINTERS x) {
     if (is_dispatch_thread()) {
         DWORD exception_code = x->ExceptionRecord->ExceptionCode;
@@ -260,7 +260,7 @@ int main(int argc, char ** argv) {
                 break;
 
             case 'd':
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
                 /* For Windows the only way to detach a process is to
                  * create a new process, so we patch the -d option to
                  * -D for the second time we get invoked so we don't
@@ -343,7 +343,7 @@ int main(int argc, char ** argv) {
 
     POST_OPTION_HOOK;
     if (daemon) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
         become_daemon(daemon > 1 ? argv : NULL);
 #else
         become_daemon();
@@ -403,7 +403,7 @@ int main(int argc, char ** argv) {
     signal(SIGILL, signal_handler);
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
     AddVectoredExceptionHandler(1, VectoredExceptionHandler);
 #endif

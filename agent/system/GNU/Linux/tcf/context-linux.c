@@ -434,6 +434,7 @@ static void send_process_exited_event(Context * prs) {
     send_context_exited_event(prs);
 }
 
+#if ENABLE_Trace
 static const char * get_ptrace_cmd_name(int cmd) {
     switch (cmd) {
     case PTRACE_CONT: return "PTRACE_CONT";
@@ -443,6 +444,7 @@ static const char * get_ptrace_cmd_name(int cmd) {
     }
     return "?";
 }
+#endif
 
 static int do_single_step(Context * ctx) {
     uint32_t is_cont;
@@ -1274,9 +1276,8 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
 
     if (ext->ptrace_flags == 0) {
         if (ptrace((enum __ptrace_request)PTRACE_SETOPTIONS, ext->pid, 0, PTRACE_FLAGS) < 0) {
-            int err = errno;
-            trace(LOG_ALWAYS, "error: ptrace(PTRACE_SETOPTIONS) failed: pid %d, error %d %s",
-                ext->pid, err, errno_to_str(err));
+            trace(LOG_ALWAYS, "error: ptrace(PTRACE_SETOPTIONS) failed: pid %d, error %s",
+                ext->pid, errno_to_str(errno));
         }
         else {
             ext->ptrace_flags = PTRACE_FLAGS;
@@ -1550,8 +1551,7 @@ static void eventpoint_at_loader(Context * ctx, void * args) {
         default: assert(0);
         }
         if (elf_read_memory_word(ctx, file, addr, &state) < 0) {
-            int error = errno;
-            trace(LOG_ALWAYS, "Can't read loader state flag: %d %s", error, errno_to_str(error));
+            trace(LOG_ALWAYS, "Can't read loader state flag: %s", errno_to_str(errno));
             ctx->pending_intercept = 1;
             ext->loader_state = 0;
             return;

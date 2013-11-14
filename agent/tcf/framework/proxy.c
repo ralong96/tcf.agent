@@ -250,9 +250,9 @@ static void log_flush(Proxy * proxy) {
 
 #else
 
-#define log_start(a, b, c) 0
-#define log_byte(a) 0
-#define log_flush(a) 0
+#define log_start(a, b, c) do {} while(0)
+#define log_byte(a) do {} while(0)
+#define log_flush(a) do {} while(0)
 
 #endif
 

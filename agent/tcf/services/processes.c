@@ -57,7 +57,7 @@
 static const char * PROCESSES[2] = { "Processes", "ProcessesV1" };
 #endif
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #  include <tlhelp32.h>
 #  ifdef _MSC_VER
 #    pragma warning(disable:4201) /* nonstandard extension used : nameless struct/union (in winternl.h) */
@@ -318,7 +318,7 @@ static void command_get_context(char * token, Channel * c) {
     write_stringz(&c->out, token);
 
     if (pid != 0 && parent == 0) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
         if (TASK_ID_VERIFY(pid) == ERROR) err = ERR_INV_CONTEXT;
 #elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__)
@@ -362,7 +362,7 @@ static void command_get_children(char * token, Channel * c) {
         write_stringz(&c->out, "null");
     }
     else {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     DWORD err = 0;
     HANDLE snapshot;
     PROCESSENTRY32 pe32;
@@ -687,7 +687,7 @@ static void command_terminate(char * token, Channel * c) {
         err = ERR_INV_CONTEXT;
     }
     else {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
         HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
         if (h == NULL) {
             err = set_win32_errno(GetLastError());
@@ -721,7 +721,7 @@ static void command_signal(char * token, Channel * c) {
     write_stringz(&c->out, "R");
     write_stringz(&c->out, token);
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     if (parent != 0) {
         err = ERR_INV_CONTEXT;
     }
@@ -897,8 +897,7 @@ static void write_process_input_done(void * x) {
         int wr = inp->req.u.fio.rval;
 
         if (wr < 0) {
-            int err = inp->req.error;
-            trace(LOG_ALWAYS, "Can't write process input stream: %d %s", err, errno_to_str(err));
+            trace(LOG_ALWAYS, "Can't write process input stream: %s", errno_to_str(inp->req.error));
             inp->buf_pos = inp->buf_len = 0;
         }
         else {
@@ -1012,7 +1011,15 @@ static ProcessOutput * read_process_output(ChildProcess * prs, int fd) {
 #  define context_attach_self() (errno = ERR_UNSUPPORTED, -1)
 #endif
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
+
+#if defined(_MSC_VER)
+static int setenv(const char * name, const char * val, int overwrite) {
+    assert(overwrite);
+    _putenv_s(name, val);
+    return 0;
+}
+#endif
 
 static int start_process_imp(Channel * c, char ** envp, const char * dir, const char * exe, char ** args,
                   ProcessStartParams * params, int * selfattach, ChildProcess ** prs) {
@@ -1093,7 +1100,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
         const char * fnm = exe;
         char * cmd = NULL;
         char * env = NULL;
-        char * env_path = NULL;
+        const char * env_path = NULL;
         SetHandleInformation(hpipes[0][0], HANDLE_FLAG_INHERIT, TRUE);
         SetHandleInformation(hpipes[1][1], HANDLE_FLAG_INHERIT, TRUE);
         SetHandleInformation(hpipes[2][1], HANDLE_FLAG_INHERIT, TRUE);
@@ -1137,14 +1144,13 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
                 char ** p = envp;
                 size_t env_size = 1;
                 char * s = NULL;
-                char * path = getenv("PATH");
-                if (path == NULL) env_path = "PATH=";
-                else env_path = tmp_strdup2("PATH=", path);
+                env_path = getenv("PATH");
+                if (env_path == NULL) env_path = "";
                 while (*p != NULL) env_size += strlen(*p++) + 1;
                 s = env = (char *)tmp_alloc(env_size);
                 for (p = envp; *p != NULL; p++) {
                     size_t l = strlen(*p) + 1;
-                    if (strncmp(*p, "PATH=", 5) == 0) putenv(*p);
+                    if (strncmp(*p, "PATH=", 5) == 0) setenv("PATH", *p + 5, 1);
                     memcpy(s, *p, l);
                     s += l;
                 }
@@ -1165,7 +1171,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
             if (!CloseHandle(prs_info.hThread)) err = set_win32_errno(GetLastError());
             if (!CloseHandle(prs_info.hProcess)) err = set_win32_errno(GetLastError());
         }
-        if (env_path != NULL) putenv(env_path);
+        if (env_path != NULL) setenv("PATH", env_path, 1);
     }
     if (fpipes[0][0] >= 0 && close(fpipes[0][0]) < 0 && !err) err = errno;
     if (fpipes[1][1] >= 0 && close(fpipes[1][1]) < 0 && !err) err = errno;
@@ -1482,7 +1488,7 @@ int start_process(Channel * c, ProcessStartParams * params, int * selfattach, Ch
         (*prs)->exit_cb = params->exit_cb;
     }
     if (!err) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
 #else
         if ((*prs)->tty >= 0) {
@@ -1542,7 +1548,7 @@ int get_process_tty_win_size(ChildProcess * prs, unsigned * ws_col, unsigned * w
 int set_process_tty_win_size(ChildProcess * prs, unsigned ws_col, unsigned ws_row, int * changed) {
     if (changed) *changed = 0;
     if (prs->ws_col != ws_col || prs->ws_row != ws_row) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
 #else
         struct winsize size;

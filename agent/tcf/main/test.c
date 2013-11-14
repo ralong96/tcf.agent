@@ -35,7 +35,7 @@
 #include <tcf/framework/errors.h>
 #include <tcf/services/diagnostics.h>
 #include <tcf/main/test.h>
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #  include <system/Windows/tcf/context-win32.h>
 #endif
 
@@ -269,7 +269,7 @@ int find_test_symbol(Context * ctx, const char * name, void ** addr, int * sym_c
     return -1;
 }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 typedef struct ContextAttachArgs {
     ContextAttachCallBack * done;
     void * data;
@@ -285,10 +285,10 @@ static void done_context_attach(int error, Context * ctx, void * data) {
     CloseHandle(args->process);
     loc_free(args);
 }
-#endif /* defined(_WIN32) */
+#endif /* defined(_WIN32) || defined(__CYGWIN__) */
 
 int run_test_process(ContextAttachCallBack * done, void * data) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
     char fnm[FILE_PATH_SIZE];
     char cmd[FILE_PATH_SIZE];
     int res = 0;

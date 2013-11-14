@@ -27,7 +27,7 @@ int log_mode = LOG_EVENTS | LOG_CHILD | LOG_WAITPID | LOG_CONTEXT | LOG_PROTOCOL
 #include <string.h>
 #include <tcf/framework/mdep-threads.h>
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
 #elif defined(__SYMBIAN32__)
 #else
@@ -70,7 +70,7 @@ int print_trace(int mode, const char * fmt, ...) {
 
     va_start(ap, fmt);
     if (use_syslog) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
 #elif defined(__SYMBIAN32__)
 #else
@@ -178,7 +178,7 @@ void open_log_file(const char * log_name) {
     else if (strcmp(log_name, LOG_NAME_STDERR) == 0) {
         log_file = stderr;
         if (is_daemon()) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
 #elif defined(__SYMBIAN32__)
 #else

@@ -28,7 +28,7 @@
 #define __STDC_FORMAT_MACROS 1
 
 #if defined(_WIN32) || defined(__CYGWIN__)
-/* MS Windows NT/XP */
+/* MS Windows */
 
 #ifndef _WIN32_WINNT
 #  define _WIN32_WINNT 0x0501
@@ -36,6 +36,7 @@
 
 #if defined(__CYGWIN__)
 #  define _WIN32_IE 0x0501
+#  define __USE_W32_SOCKETS
 #elif defined(__MINGW32__)
 #  define _WIN32_IE 0x0501
 #elif defined(_MSC_VER)
@@ -99,6 +100,7 @@ typedef int socklen_t;
 
 #if defined(__CYGWIN__)
 
+#include <sys/ioctl.h>
 #include <sys/unistd.h>
 
 #else /* not __CYGWIN__ */
@@ -346,7 +348,7 @@ extern const char * get_user_name(void);
 extern const char * create_uuid(void);
 
 /* Switch to running in the background, rather than under the direct control of a user */
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 extern void become_daemon(char ** argv);
 #else
 extern void become_daemon(void);

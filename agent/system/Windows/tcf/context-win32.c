@@ -19,7 +19,7 @@
 
 #include <tcf/config.h>
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 
 #if ENABLE_DebugContext && !ENABLE_ContextProxy
 
@@ -39,7 +39,11 @@
 #include <tcf/services/memorymap.h>
 #include <tcf/services/runctrl.h>
 #include <system/Windows/tcf/context-win32.h>
-#include <system/Windows/tcf/regset.h>
+#if defined(__CYGWIN__)
+#  include <system/Cygwin/tcf/regset.h>
+#else
+#  include <system/Windows/tcf/regset.h>
+#endif
 #include <system/Windows/tcf/windbgcache.h>
 
 #define BREAK_TIMEOUT 100000
@@ -1485,4 +1489,4 @@ void init_contexts_sys_dep(void) {
 }
 
 #endif  /* if ENABLE_DebugContext */
-#endif /* _WIN32 */
+#endif /* defined(_WIN32) || defined(__CYGWIN__) */

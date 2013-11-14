@@ -60,7 +60,7 @@ extern FILE * log_file;
 
 #else /* not ENABLE_Trace */
 
-#if _MSC_VER >= 1400 || __GNUC__
+#if (defined(_MSC_VER) && _MSC_VER >= 1400) || __GNUC__
 #  define trace(...) ((void)0)
 #else
 #  define trace 0 &&

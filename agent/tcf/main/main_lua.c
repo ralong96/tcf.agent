@@ -1473,7 +1473,7 @@ int main(int argc, char ** argv) {
 
     log_mode = 0;
 
-#ifndef _WIN32
+#if !(defined(_WIN32) || defined(__CYGWIN__))
     signal(SIGPIPE, SIG_IGN);
 #endif
     ini_mdep();

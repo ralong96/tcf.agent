@@ -28,9 +28,14 @@
 
 #if defined(__CYGWIN__)
 
+#include <cygwin/version.h>
+
+#if CYGWIN_VERSION_CYGWIN_CONV < 157
+
 extern void __stdcall freeaddrinfo(struct addrinfo *);
 extern int __stdcall getaddrinfo(const char *, const char *,
                 const struct addrinfo *, struct addrinfo **);
+#endif
 
 #endif
 
@@ -70,7 +75,7 @@ extern int wsa_sendto(int socket, const void * buf, size_t size, int flags,
                   const struct sockaddr * dest_addr, socklen_t dest_size);
 extern int wsa_setsockopt(int socket, int level, int opt, const char * value, int size);
 extern int wsa_getsockname(int socket, struct sockaddr * name, int * size);
-extern int wsa_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, const struct timeval *timeout);
+extern int wsa_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, const struct timeval * timeout);
 
 #ifndef SHUT_WR
 #define SHUT_WR SD_SEND

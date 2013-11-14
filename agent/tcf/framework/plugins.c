@@ -43,7 +43,7 @@
 #define _QUOTEME(x)     #x
 #define QUOTE(x)      _QUOTEME(x)
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__CYGWIN__)
 #define PLUGINS_DEF_EXT     "dll"       /* Default plugins' extension */
 #else
 #define PLUGINS_DEF_EXT     "so"        /* Default plugins' extension */

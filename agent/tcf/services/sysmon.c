@@ -409,7 +409,7 @@ static void command_get_environment(char * token, Channel * c) {
     write_stream(&c->out, MARKER_EOM);
 }
 
-#elif defined(_WIN32)
+#elif defined(_WIN32) || defined(__CYGWIN__)
 
 #include <windows.h>
 #include <wchar.h>
