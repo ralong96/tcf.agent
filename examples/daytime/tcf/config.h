@@ -34,11 +34,19 @@
 #  define TARGET_UNIX       1
 #endif
 
+#if !defined(SERVICE_FileSystem)
 #define SERVICE_FileSystem  1
+#endif
+#if !defined(SERVICE_SysMonitor)
 #define SERVICE_SysMonitor  TARGET_UNIX
+#endif
 
+#if !defined(ENABLE_Trace)
 #define ENABLE_Trace        1
+#endif
+#if !defined(ENABLE_Discovery)
 #define ENABLE_Discovery    1
+#endif
 
 
 #endif /* D_config */
