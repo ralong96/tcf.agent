@@ -280,6 +280,28 @@ static void add_fbreg_expression(DWARFExpressionInfo * info, I8_T offs) {
     add(OP_add);
 }
 
+static void add_code_range(DWARFExpressionInfo * info) {
+    if (info->code_size) {
+        if (expr_code_size) {
+            if (info->code_addr > expr_code_addr) {
+                U8_T d = info->code_addr - expr_code_addr;
+                assert(expr_code_size > d);
+                expr_code_addr += d;
+                expr_code_size -= d;
+            }
+            if (info->code_addr + info->code_size < expr_code_addr + expr_code_size) {
+                U8_T d = (expr_code_addr + expr_code_size) - (info->code_addr + info->code_size);
+                assert(expr_code_size > d);
+                expr_code_size -= d;
+            }
+        }
+        else {
+            expr_code_addr = info->code_addr;
+            expr_code_size = info->code_size;
+        }
+    }
+}
+
 static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs) {
     int peer_version = 1;
     Channel * c = cache_channel();
@@ -307,25 +329,7 @@ static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs
         }
         if (!fbreg) add_expression(info);
         else add_fbreg_expression(info, offs);
-        if (info->code_size) {
-            if (expr_code_size) {
-                if (info->code_addr > expr_code_addr) {
-                    U8_T d = info->code_addr - expr_code_addr;
-                    assert(expr_code_size > d);
-                    expr_code_addr += d;
-                    expr_code_size -= d;
-                }
-                if (info->code_addr + info->code_size < expr_code_addr + expr_code_size) {
-                    U8_T d = (expr_code_addr + expr_code_size) - (info->code_addr + info->code_size);
-                    assert(expr_code_size > d);
-                    expr_code_size -= d;
-                }
-            }
-            else {
-                expr_code_addr = info->code_addr;
-                expr_code_size = info->code_size;
-            }
-        }
+        add_code_range(info);
     }
     else if (info->code_size > 0) {
         size_t switch_pos;
@@ -342,20 +346,31 @@ static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs
         add(0);
         switch_pos = buf_pos;
         while (info != NULL) {
-            size_t case_pos;
-            add(0);
-            add(0);
-            case_pos = buf_pos;
-            add_uleb128(info->code_addr);
-            add_uleb128(info->code_size);
-            if (!fbreg) add_expression(info);
-            else add_fbreg_expression(info, offs);
-            set_u2(case_pos - 2, buf_pos - case_pos);
-            if (info->code_size == 0) break;
+            if (expr_code_size == 0 || info->code_size == 0 ||
+                    (expr_code_addr + expr_code_size > info->code_addr &&
+                    expr_code_addr < info->code_addr + info->code_size)) {
+                size_t case_pos;
+                U8_T org_expr_code_addr = expr_code_addr;
+                U8_T org_expr_code_size = expr_code_size;
+                add_code_range(info);
+                add(0);
+                add(0);
+                case_pos = buf_pos;
+                add_uleb128(info->code_addr);
+                add_uleb128(info->code_size);
+                if (!fbreg) add_expression(info);
+                else add_fbreg_expression(info, offs);
+                expr_code_addr = org_expr_code_addr;
+                expr_code_size = org_expr_code_size;
+                set_u2(case_pos - 2, buf_pos - case_pos);
+                if (info->code_size == 0) break;
+            }
             info = info->next;
         }
         add(0);
         add(0);
+        if (buf_pos - switch_pos > 0xffff)
+            str_exception(ERR_INV_DWARF, "Location expression is too large");
         set_u2(switch_pos - 2, buf_pos - switch_pos);
     }
     else if (fbreg) {
