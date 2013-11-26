@@ -1472,7 +1472,7 @@ static int update_step_machine_state(Context * ctx) {
             if (ext->step_cnt == 0) {
                 StackFrame * info = NULL;
                 ext->step_frame_fp = 0;
-                if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) break;
+                if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
                 ext->step_frame_fp = info->fp;
             }
             else if (addr < ext->step_range_start || addr >= ext->step_range_end) {
