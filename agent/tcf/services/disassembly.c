@@ -407,7 +407,7 @@ static void safe_event_disassemble(void * x) {
     if (!is_channel_closed(args->c)) {
         cache_enter(disassemble_cache_client, args->c, args, sizeof(DisassembleCmdArgs));
     }
-    channel_unlock(args->c);
+    channel_unlock_with_msg(args->c, DISASSEMBLY);
     loc_free(args);
 }
 #endif
@@ -463,7 +463,7 @@ static void command_disassemble(char * token, Channel * c) {
             loc_free(args);
         }
         else {
-            channel_lock(c);
+            channel_lock_with_msg(c, DISASSEMBLY);
             post_safe_event(ctx, safe_event_disassemble, args);
         }
     }

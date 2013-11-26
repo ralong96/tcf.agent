@@ -359,7 +359,7 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
         *args = buf;
         args->c = c;
         strlcpy(args->token, token, sizeof(args->token));
-        channel_lock(c);
+        channel_lock_with_msg(c, MEMORY);
         context_lock(buf.ctx);
         return args;
     }
@@ -485,7 +485,7 @@ static void safe_memory_set(void * parm) {
     else {
         loc_free(args->buf);
     }
-    channel_unlock(c);
+    channel_unlock_with_msg(c, MEMORY);
     context_unlock(ctx);
     loc_free(args);
 }
@@ -589,7 +589,7 @@ static void safe_memory_get(void * parm) {
     else {
         loc_free(args->buf);
     }
-    channel_unlock(c);
+    channel_unlock_with_msg(c, MEMORY);
     context_unlock(ctx);
     loc_free(args);
 }
@@ -677,7 +677,7 @@ static void safe_memory_fill(void * parm) {
     else {
         loc_free(args->buf);
     }
-    channel_unlock(c);
+    channel_unlock_with_msg(c, MEMORY);
     context_unlock(ctx);
     loc_free(args);
 }

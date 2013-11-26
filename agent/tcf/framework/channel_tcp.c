@@ -792,6 +792,7 @@ static void tcp_channel_read_done(void * x) {
         tcp_post_read(&c->ibuf, c->obuf, sizeof(c->obuf));
     }
     else {
+        check_channel_locks(&c->chan);
         tcp_unlock(&c->chan);
     }
 }

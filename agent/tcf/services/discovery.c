@@ -94,7 +94,7 @@ static void connect_done(void * args, int error, Channel * c2) {
     else if (!error) {
         channel_close(c2);
     }
-    channel_unlock(c1);
+    channel_unlock_with_msg(c1, LOCATOR);
     loc_free(info);
 }
 
@@ -122,7 +122,7 @@ static void command_redirect(char * token, Channel * c) {
 
     if (ps != NULL) {
         RedirectInfo * info = (RedirectInfo *)loc_alloc_zero(sizeof(RedirectInfo));
-        channel_lock(c);
+        channel_lock_with_msg(c, LOCATOR);
         c->state = ChannelStateRedirectReceived;
         info->channel = c;
         strlcpy(info->token, token, sizeof(info->token));

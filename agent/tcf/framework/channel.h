@@ -67,6 +67,7 @@ struct Channel {
     LINK chanlink;                      /* Channel list */
     LINK bclink;                        /* Broadcast list */
     LINK susplink;                      /* Suspend list */
+    LINK locks;                         /* List of channel locks */
     int congestion_level;               /* Congestion level */
     int state;                          /* Current state */
     int disable_zero_copy;              /* Don't send ZeroCopy in Hello message even if we support it */
@@ -195,9 +196,27 @@ extern void channel_lock(Channel *);
 /*
  * Unlock a channel.
  * Each call of this function decrements the channel reference counter.
- * If channel is closed and reference count is zero, then the channel object is deallocated.
+ * If channel is closed and reference count is zero, then the channel object is closed.
  */
 extern void channel_unlock(Channel *);
+
+/*
+ * Lock a channel. Same as channel_lock(), but, if given a message (e.g. a service name),
+ * it will log a warning if the channel is not unlocked after it is closed.
+ * Note: same char pointer must be used for matching channel_unlock_with_msg() call.
+ */
+extern void channel_lock_with_msg(Channel *, const char *);
+
+/*
+ * Unlock a channel. To be used together with channel_lock_with_msg().
+ */
+extern void channel_unlock_with_msg(Channel *, const char *);
+
+/*
+ * Check for leaked channel locks. The function is called by
+ * channel implementation after the channel is disconnected.
+ */
+extern void check_channel_locks(Channel *);
 
 /*
  * Return 1 if channel is closed, otherwise return 0.

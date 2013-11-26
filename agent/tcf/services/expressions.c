@@ -3286,7 +3286,7 @@ static LINK cmd_queue;
 static void command_start(CacheClient * client, Channel * channel, void * args, size_t args_size) {
     PendingCommand * cmd = (PendingCommand *)loc_alloc_zero(sizeof(PendingCommand));
     assert(args_size <= sizeof(cmd->args));
-    channel_lock(cmd->channel = channel);
+    channel_lock_with_msg(cmd->channel = channel, EXPRESSIONS);
     memcpy(cmd->args, args, args_size);
     cmd->args_size = args_size;
     cmd->client = client;
@@ -3310,7 +3310,7 @@ static void command_done(void) {
     pending_cmd = NULL;
     assert(cmd != NULL);
     assert(&cmd->link == cmd_queue.next);
-    channel_unlock(cmd->channel);
+    channel_unlock_with_msg(cmd->channel, EXPRESSIONS);
     list_remove(cmd_queue.next);
     loc_free(cmd);
     if (list_is_empty(&cmd_queue)) return;

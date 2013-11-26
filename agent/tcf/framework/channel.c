@@ -47,6 +47,12 @@
 #  define DEFAULT_SERVER_NAME "TCF Agent"
 #endif
 
+typedef struct ChannelLock {
+    LINK link;
+    const char * msg;
+    unsigned cnt;
+} ChannelLock;
+
 static void trigger_channel_shutdown(ShutdownInfo * obj);
 
 ShutdownInfo channel_shutdown = { trigger_channel_shutdown };
@@ -58,15 +64,19 @@ LINK channel_server_root = TCF_LIST_INIT(channel_server_root);
 #define out2bcast(A)    ((TCFBroadcastGroup *)((char *)(A) - offsetof(TCFBroadcastGroup, out)))
 #define bclink2channel(A) ((Channel *)((char *)(A) - offsetof(Channel, bclink)))
 #define susplink2channel(A) ((Channel *)((char *)(A) - offsetof(Channel, susplink)))
+#define chan2lock(A) ((ChannelLock *)((char *)(A) - offsetof(ChannelLock, link)))
 
-static ChannelCreateListener create_listeners[16];
-static int create_listeners_cnt = 0;
+static ChannelCreateListener * create_listeners = NULL;
+static unsigned create_listeners_cnt = 0;
+static unsigned create_listeners_max = 0;
 
-static ChannelOpenListener open_listeners[16];
-static int open_listeners_cnt = 0;
+static ChannelOpenListener * open_listeners = NULL;
+static unsigned open_listeners_cnt = 0;
+static unsigned open_listeners_max = 0;
 
-static ChannelCloseListener close_listeners[16];
-static int close_listeners_cnt = 0;
+static ChannelCloseListener * close_listeners = NULL;
+static unsigned close_listeners_cnt = 0;
+static unsigned close_listeners_max = 0;
 
 static const int BROADCAST_OK_STATES = (1 << ChannelStateConnected) | (1 << ChannelStateRedirectSent) | (1 << ChannelStateRedirectReceived);
 #define isBoardcastOkay(c) ((1 << (c)->state) & BROADCAST_OK_STATES)
@@ -148,36 +158,45 @@ static ssize_t splice_block_all(OutputStream * out, int fd, size_t size, int64_t
 }
 
 void add_channel_create_listener(ChannelCreateListener listener) {
-    assert(create_listeners_cnt < (int)(sizeof(create_listeners) / sizeof(ChannelCreateListener)));
+    if (create_listeners_cnt >= create_listeners_max) {
+        create_listeners_max += 8;
+        create_listeners = (ChannelCreateListener *)loc_realloc(create_listeners, sizeof(ChannelCreateListener) * create_listeners_max);
+    }
     create_listeners[create_listeners_cnt++] = listener;
 }
 
 void add_channel_open_listener(ChannelOpenListener listener) {
-    assert(open_listeners_cnt < (int)(sizeof(open_listeners) / sizeof(ChannelOpenListener)));
+    if (open_listeners_cnt >= open_listeners_max) {
+        open_listeners_max += 8;
+        open_listeners = (ChannelOpenListener *)loc_realloc(open_listeners, sizeof(ChannelOpenListener) * open_listeners_max);
+    }
     open_listeners[open_listeners_cnt++] = listener;
 }
 
 void add_channel_close_listener(ChannelCloseListener listener) {
-    assert(close_listeners_cnt < (int)(sizeof(close_listeners) / sizeof(ChannelCloseListener)));
+    if (close_listeners_cnt >= close_listeners_max) {
+        close_listeners_max += 8;
+        close_listeners = (ChannelCloseListener *)loc_realloc(close_listeners, sizeof(ChannelCloseListener) * close_listeners_max);
+    }
     close_listeners[close_listeners_cnt++] = listener;
 }
 
 void notify_channel_created(Channel * c) {
-    int i;
+    unsigned i;
     for (i = 0; i < create_listeners_cnt; i++) {
         create_listeners[i](c);
     }
 }
 
 void notify_channel_opened(Channel * c) {
-    int i;
+    unsigned i;
     for (i = 0; i < open_listeners_cnt; i++) {
         open_listeners[i](c);
     }
 }
 
 void notify_channel_closed(Channel * c) {
-    int i;
+    unsigned i;
     for (i = 0; i < close_listeners_cnt; i++) {
         close_listeners[i](c);
     }
@@ -230,6 +249,75 @@ void channel_lock(Channel * c) {
 
 void channel_unlock(Channel * c) {
     c->unlock(c);
+}
+
+void channel_lock_with_msg(Channel * c, const char * msg) {
+    c->lock(c);
+#ifndef NDEBUG
+    if (msg != NULL) {
+        int ok = 0;
+        ChannelLock * l = NULL;
+        if (c->locks.next != NULL) {
+            LINK * p;
+            for (p = c->locks.next; p != &c->locks; p = p->next) {
+                l = chan2lock(p);
+                if (l->msg == msg) {
+                    l->cnt++;
+                    ok = 1;
+                    break;
+                }
+            }
+        }
+        else {
+            list_init(&c->locks);
+        }
+        if (!ok) {
+            l = (ChannelLock *)loc_alloc_zero(sizeof(ChannelLock));
+            l->msg = msg;
+            l->cnt = 1;
+            list_add_first(&l->link, &c->locks);
+        }
+    }
+#endif
+}
+
+void channel_unlock_with_msg(Channel * c, const char * msg) {
+#ifndef NDEBUG
+    if (msg != NULL) {
+        int ok = 0;
+        ChannelLock * l = NULL;
+        if (c->locks.next != NULL) {
+            LINK * p;
+            for (p = c->locks.next; p != &c->locks; p = p->next) {
+                l = chan2lock(p);
+                if (l->msg == msg) {
+                    l->cnt--;
+                    ok = 1;
+                    break;
+                }
+            }
+        }
+        if (!ok) {
+            trace(LOG_ALWAYS, "Invalid channel unlock: %s", msg);
+        }
+        else if (l->cnt == 0) {
+            list_remove(&l->link);
+            loc_free(l);
+        }
+    }
+#endif
+    c->unlock(c);
+}
+
+void check_channel_locks(Channel * c) {
+#ifndef NDEBUG
+        if (c->locks.next != NULL) {
+            LINK * p;
+            for (p = c->locks.next; p != &c->locks; p = p->next) {
+                trace(LOG_ALWAYS, "Invalid channel lock: %s", chan2lock(p)->msg);
+            }
+        }
+#endif
 }
 
 int is_channel_closed(Channel * c) {

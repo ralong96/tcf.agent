@@ -431,6 +431,7 @@ static void pipe_read_done(void * x) {
         pipe_post_read(&c->ibuf, c->obuf, sizeof(c->obuf));
     }
     else {
+        check_channel_locks(&c->chan);
         pipe_unlock(&c->chan);
     }
 }

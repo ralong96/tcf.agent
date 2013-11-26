@@ -49,6 +49,7 @@ static unsigned wait_list_max;
 static unsigned id_cnt = 0;
 static LINK cache_list = TCF_LIST_INIT(cache_list);
 static Channel * def_channel = NULL;
+static const char * channel_lock_msg = "Cache client lock";
 
 #define link_all2cache(x) ((AbstractCache *)((char *)(x) - offsetof(AbstractCache, link)))
 
@@ -155,7 +156,7 @@ void cache_wait_dbg(const char * file, int line, AbstractCache * cache) {
         }
 #endif
         if (cache->wait_list_cnt == 0) list_add_last(&cache->link, &cache_list);
-        if (current_client.channel != NULL) channel_lock(current_client.channel);
+        if (current_client.channel != NULL) channel_lock_with_msg(current_client.channel, channel_lock_msg);
         cache->wait_list_buf[cache->wait_list_cnt++] = current_client;
     }
 #ifndef NDEBUG
@@ -183,7 +184,7 @@ void cache_notify(AbstractCache * cache) {
     for (i = 0; i < cnt; i++) {
         current_client = wait_list_buf[i];
         run_cache_client();
-        if (wait_list_buf[i].channel != NULL) channel_unlock(wait_list_buf[i].channel);
+        if (wait_list_buf[i].channel != NULL) channel_unlock_with_msg(wait_list_buf[i].channel, channel_lock_msg);
     }
 }
 

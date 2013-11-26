@@ -746,7 +746,7 @@ static void cancel_step_mode(Context * ctx) {
     ContextExtensionRC * ext = EXT(ctx);
 
     if (ext->step_channel) {
-        channel_unlock(ext->step_channel);
+        channel_unlock_with_msg(ext->step_channel, RUN_CONTROL);
         ext->step_channel = NULL;
     }
     if (ext->step_bp_info != NULL) {
@@ -777,9 +777,11 @@ static void start_step_mode(Context * ctx, Channel * c, int mode, ContextAddress
         ext->step_error = NULL;
     }
     assert(ext->step_channel == NULL);
+    if (ext->step_mode == RM_RESUME || ext->step_mode == RM_REVERSE_RESUME ||
+        ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) c = NULL;
     if (c != NULL) {
         ext->step_channel = c;
-        channel_lock(ext->step_channel);
+        channel_lock_with_msg(ext->step_channel, RUN_CONTROL);
     }
     ext->step_done = NULL;
     ext->step_mode = mode;
@@ -2258,6 +2260,15 @@ static void event_context_exited(Context * ctx, void * args) {
     if (ext->pending_safe_event) check_safe_events(ctx);
 }
 
+static void channel_closed(Channel * c) {
+    LINK * l;
+    for (l = context_root.next; l != &context_root; l = l ->next) {
+        Context * ctx = ctxl2ctxp(l);
+        ContextExtensionRC * ext = EXT(ctx);
+        if (ext->step_channel == c) cancel_step_mode(ctx);
+    }
+}
+
 static void event_context_disposed(Context * ctx, void * args) {
     cancel_step_mode(ctx);
 }
@@ -2292,6 +2303,7 @@ void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     };
     broadcast_group = bcg;
     add_context_event_listener(&listener, NULL);
+    add_channel_close_listener(channel_closed);
     context_extension_offset = context_extension(sizeof(ContextExtensionRC));
     add_command_handler(proto, RUN_CONTROL, "getContext", command_get_context);
     add_command_handler(proto, RUN_CONTROL, "getChildren", command_get_children);
