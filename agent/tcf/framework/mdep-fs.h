@@ -20,7 +20,7 @@
 #ifndef D_mdep_fs
 #define D_mdep_fs
 
-#if defined(_WIN32) && !defined(__CYGWIN__)
+#if (defined(_WIN32) && !defined(__CYGWIN__)) || defined(__MINGW32__)
 
 #include <direct.h>
 
@@ -38,6 +38,15 @@ struct utf8_stat {
     int64_t    st_mtime;
     int64_t    st_ctime;
 };
+#undef stat
+#undef lstat
+#undef fstat
+#undef open
+#undef chmod
+#undef remove
+#undef rmdir
+#undef mkdir
+#undef rename
 #define stat   utf8_stat
 #define lstat  utf8_stat
 #define fstat  utf8_fstat

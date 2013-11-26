@@ -1011,12 +1011,20 @@ static ProcessOutput * read_process_output(ChildProcess * prs, int fd) {
 #  define context_attach_self() (errno = ERR_UNSUPPORTED, -1)
 #endif
 
-#if defined(_WIN32) || defined(__CYGWIN__)
+#if defined(_WIN32) || defined(__CYGWIN__) || defined(__MINGW32__)
 
 #if defined(_MSC_VER)
 static int setenv(const char * name, const char * val, int overwrite) {
     assert(overwrite);
     _putenv_s(name, val);
+    return 0;
+}
+#elif defined(__MINGW32__)
+static int setenv(const char * name, const char * val, int overwrite) {
+    int len = strlen(name) + strlen(val) + 2;
+    char * str = (char *)loc_alloc(len);
+    snprintf(str, len, "%s=%s", name, val);
+    putenv(str);
     return 0;
 }
 #endif

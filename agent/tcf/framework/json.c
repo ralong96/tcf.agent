@@ -637,13 +637,14 @@ size_t json_read_binary_data(JsonReadBinaryState * state, void * buf, size_t len
     }
     else {
         while (len > 0) {
+            assert(state->rem <= sizeof(state->buf));
             if (state->rem > 0) {
                 unsigned i = 0;
                 while (i < state->rem && i < len) *ptr++ = state->buf[i++];
                 len -= i;
                 res += i;
                 if (i < state->rem) {
-                    int j = 0;
+                    unsigned j = 0;
                     while (i < state->rem) state->buf[j++] = state->buf[i++];
                     state->rem = j;
                     return res;

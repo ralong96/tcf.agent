@@ -78,6 +78,8 @@ ifneq ($(OPSYS),Windows)
   ifneq ($(CC),g++)
     OPTS += -Wmissing-prototypes
   endif
+  # -Warray-bounds appears broken in certain versions of gcc
+  OPTS += -Wno-array-bounds
 endif
 
 # Compiler flags definition
