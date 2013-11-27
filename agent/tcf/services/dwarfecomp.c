@@ -121,7 +121,8 @@ static void add_sleb128(I8_T x) {
     for (;;) {
         U1_T n = (U1_T)(x & 0x7Fu);
         x = x >> 7;
-        if (x == 0 || (x == -1 && (n & 0x40))) {
+        if ((x == 0 && (n & 0x40) == 0) ||
+            (x == -1 && (n & 0x40) != 0)) {
             add(n);
             break;
         }
