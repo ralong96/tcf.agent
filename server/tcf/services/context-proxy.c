@@ -187,6 +187,8 @@ struct DefIsaCache {
     ContextAddress addr;
     int isa_valid;
     char * def_isa;
+    ContextAddress max_instruction_size;
+    ContextAddress alignment;
     ReplyHandlerInfo * pending;
     int disposed;
 };
@@ -1896,6 +1898,12 @@ static void read_isa_attr(InputStream * inp, const char * nm, void * args) {
     if (strcmp(nm, "DefISA") == 0) {
         i->def_isa = json_read_alloc_string(inp);
     }
+    else if (strcmp(nm, "MaxInstrSize") == 0) {
+        i->max_instruction_size = json_read_ulong(inp);
+    }
+    else if (strcmp(nm, "Alignment") == 0) {
+        i->alignment = json_read_ulong(inp);
+    }
     else {
         json_skip_object(inp);
     }
@@ -1949,6 +1957,8 @@ static int get_context_defisa_from_rc (Context * ctx, ContextISA * isa) {
 
    if (i->isa_valid) {
         if (i->def_isa != NULL) isa->def = loc_strdup(i->def_isa);
+        isa->alignment = i->alignment;
+        isa->max_instruction_size = i->max_instruction_size;
         set_error_report_errno(i->error);
         clear_trap(&trap);
         return !errno ? 0 : -1;
