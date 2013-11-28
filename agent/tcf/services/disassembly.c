@@ -149,9 +149,10 @@ static void command_get_capabilities(char * token, Channel * c) {
     cache_enter(command_get_capabilities_cache_client, c, &args, sizeof(args));
 }
 
-static void get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
+static int get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     if (context_get_isa(ctx, addr, isa) < 0) {
         memset(isa, 0, sizeof(ContextISA));
+	    return -1;
     }
 #if ENABLE_MemoryMap
     if (isa->size == 0) {
@@ -175,6 +176,7 @@ static void get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
         }
     }
 #endif
+    return 0;
 }
 
 static void disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_buf,
@@ -338,35 +340,40 @@ static void disassemble_cache_client(void * x) {
             mem_size = (size_t)sym_size;
         }
         else if (sym_addr_ok && sym_addr < args->addr) {
-            get_isa(ctx, sym_addr, &isa);
-            buf_addr = sym_addr;
-            buf_size = args->addr + args->size - sym_addr;
-            if (isa.max_instruction_size > 0) {
-                mem_size = (size_t)(buf_size + isa.max_instruction_size);
-            }
+            if (get_isa(ctx, sym_addr, &isa) < 0) error = errno;
             else {
-                mem_size = (size_t)(buf_size + MAX_INSTRUCTION_SIZE);
+                buf_addr = sym_addr;
+                buf_size = args->addr + args->size - sym_addr;
+                if (isa.max_instruction_size > 0) {
+                    mem_size = (size_t)(buf_size + isa.max_instruction_size);
+                }
+                else {
+                    mem_size = (size_t)(buf_size + MAX_INSTRUCTION_SIZE);
+                }
             }
         }
         else {
             /* Use default address alignment */
-            get_isa(ctx, args->addr, &isa);
-            if (isa.alignment > 0) {
-                buf_addr = args->addr & ~(ContextAddress)(isa.alignment - 1);
-            }
+            if (get_isa(ctx, args->addr, &isa) < 0) error = errno;
             else {
-                buf_addr = args->addr & ~(ContextAddress)(DEFAULT_ALIGMENT - 1);
-            }
-            buf_size = args->addr + args->size - buf_addr;
-            if (isa.max_instruction_size > 0) {
-                mem_size = (size_t)(buf_size + isa.max_instruction_size);
-            }
-            else {
-                mem_size = (size_t)(buf_size + MAX_INSTRUCTION_SIZE);
+                if (isa.alignment > 0) {
+                    buf_addr = args->addr & ~(ContextAddress)(isa.alignment - 1);
+                }
+                else {
+                    buf_addr = args->addr & ~(ContextAddress)(DEFAULT_ALIGMENT - 1);
+                }
+                buf_size = args->addr + args->size - buf_addr;
+                if (isa.max_instruction_size > 0) {
+                    mem_size = (size_t)(buf_size + isa.max_instruction_size);
+                }
+                else {
+                    mem_size = (size_t)(buf_size + MAX_INSTRUCTION_SIZE);
+                }
             }
         }
-        mem_buf = (uint8_t *)loc_alloc(mem_size);
-        if (context_read_mem(ctx, buf_addr, mem_buf, mem_size) < 0) error = errno;
+        
+        if (!error) mem_buf = (uint8_t *)loc_alloc(mem_size);
+        if (!error && context_read_mem(ctx, buf_addr, mem_buf, mem_size) < 0) error = errno;
         if (error) {
 #if ENABLE_ExtendedMemoryErrorReports
             MemoryErrorInfo info;
