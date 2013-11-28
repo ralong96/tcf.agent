@@ -777,8 +777,8 @@ static void start_step_mode(Context * ctx, Channel * c, int mode, ContextAddress
         ext->step_error = NULL;
     }
     assert(ext->step_channel == NULL);
-    if (ext->step_mode == RM_RESUME || ext->step_mode == RM_REVERSE_RESUME ||
-        ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) c = NULL;
+    if (mode == RM_RESUME || mode == RM_REVERSE_RESUME ||
+        mode == RM_TERMINATE || mode == RM_DETACH) c = NULL;
     if (c != NULL) {
         ext->step_channel = c;
         channel_lock_with_msg(ext->step_channel, RUN_CONTROL);
