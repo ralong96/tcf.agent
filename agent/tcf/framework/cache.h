@@ -143,6 +143,13 @@ extern void cache_wait_dbg(const char * file, int line, AbstractCache * cache);
 extern void cache_notify(AbstractCache * cache);
 
 /*
+ * Invoke all items in the cache wait list.
+ * Similar to cache_notify(), but client callbacks are posted to
+ * event queue instead of being invoked immediately.
+ */
+extern void cache_notify_later(AbstractCache * cache);
+
+/*
  * Return TCF channel of current cache client,
  * or NULL if there is no current client.
  */

@@ -188,6 +188,36 @@ void cache_notify(AbstractCache * cache) {
     }
 }
 
+static void cache_notify_event(void * args) {
+    unsigned i;
+    WaitingCacheClient * buf = (WaitingCacheClient *)args;
+    for (i = 0; buf[i].client != NULL; i++) {
+        current_client = buf[i];
+        run_cache_client();
+        if (buf[i].channel != NULL) channel_unlock_with_msg(buf[i].channel, channel_lock_msg);
+    }
+    loc_free(buf);
+}
+
+void cache_notify_later(AbstractCache * cache) {
+    unsigned cnt = cache->wait_list_cnt;
+    unsigned max = cache->wait_list_max;
+    WaitingCacheClient * buf = cache->wait_list_buf;
+
+    assert(is_dispatch_thread());
+    if (cnt == 0) return;
+    list_remove(&cache->link);
+    cache->wait_list_buf = NULL;
+    cache->wait_list_cnt = 0;
+    cache->wait_list_max = 0;
+    if (max <= cnt) {
+        max = cnt + 1;
+        buf = (WaitingCacheClient *)loc_realloc(buf, max * sizeof(WaitingCacheClient));
+    }
+    memset(buf + cnt, 0, sizeof(WaitingCacheClient));
+    post_event(cache_notify_event, buf);
+}
+
 Channel * cache_channel(void) {
     if (current_client.channel != NULL) return current_client.channel;
     return def_channel;
