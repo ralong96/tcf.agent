@@ -1918,6 +1918,7 @@ static void sync_run_state(void) {
             if (update_step_machine_state(ctx) < 0) {
                 int error = errno;
                 if (get_error_code(error) == ERR_CACHE_MISS) return;
+                release_error_report(ext->step_error);
                 ext->step_error = get_error_report(error);
                 cancel_step_mode(ctx);
                 ctx->pending_intercept = 1;
@@ -2270,7 +2271,12 @@ static void channel_closed(Channel * c) {
 }
 
 static void event_context_disposed(Context * ctx, void * args) {
+    ContextExtensionRC * ext = EXT(ctx);
     cancel_step_mode(ctx);
+    if (ext->step_error) {
+        release_error_report(ext->step_error);
+        ext->step_error = NULL;
+    }
 }
 
 static int cmp_has_state(Context * ctx, const char * v) {
