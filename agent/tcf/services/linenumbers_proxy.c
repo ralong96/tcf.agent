@@ -208,7 +208,7 @@ static void validate_cache_entry(Channel * c, void * args, int error) {
         error = trap.error;
     }
     entry->error = get_error_report(error);
-    cache_notify(&entry->cache);
+    cache_notify_later(&entry->cache);
     if (entry->disposed) free_cache_entry(entry);
 }
 

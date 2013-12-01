@@ -521,7 +521,7 @@ static void validate_context(Channel * c, void * args, int error) {
         s->update_owner = NULL;
     }
     s->error_get_context = get_error_report(error);
-    cache_notify(&s->cache);
+    cache_notify_later(&s->cache);
     if (s->disposed) free_sym_info_cache(s);
 }
 
@@ -623,7 +623,7 @@ static void validate_find(Channel * c, void * args, int error) {
         error = trap.error;
     }
     f->error = get_error_report(error);
-    cache_notify(&f->cache);
+    cache_notify_later(&f->cache);
     if (f->disposed) free_find_sym_cache(f);
 }
 
@@ -1159,7 +1159,7 @@ static void validate_children(Channel * c, void * args, int error) {
         error = trap.error;
     }
     s->error_get_children = get_error_report(error);
-    cache_notify(&s->cache);
+    cache_notify_later(&s->cache);
     if (s->disposed) free_sym_info_cache(s);
 }
 
@@ -1219,7 +1219,7 @@ static void validate_array_type_id(Channel * c, void * args, int error) {
         error = trap.error;
     }
     s->error = get_error_report(error);
-    cache_notify(&s->cache);
+    cache_notify_later(&s->cache);
     if (s->disposed) free_arr_sym_cache(s);
 }
 
@@ -1296,7 +1296,7 @@ static void validate_address_info(Channel * c, void * args, int error) {
         error = trap.error;
     }
     f->error = get_error_report(error);
-    cache_notify(&f->cache);
+    cache_notify_later(&f->cache);
     if (f->disposed) free_address_info_cache(f);
 }
 
@@ -1516,7 +1516,7 @@ static void validate_location_info(Channel * c, void * args, int error) {
         error = trap.error;
     }
     f->error = get_error_report(error);
-    cache_notify(&f->cache);
+    cache_notify_later(&f->cache);
     if (f->disposed) free_location_info_cache(f);
 }
 
@@ -1681,7 +1681,7 @@ static void validate_frame(Channel * c, void * args, int error) {
         error = trap.error;
     }
     if (get_error_code(error) != ERR_INV_COMMAND) f->error = get_error_report(error);
-    cache_notify(&f->cache);
+    cache_notify_later(&f->cache);
     if (f->disposed) free_stack_frame_cache(f);
 }
 

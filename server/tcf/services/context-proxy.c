@@ -1021,7 +1021,7 @@ static void validate_memory_cache(Channel * c, void * args, int error) {
         error = trap.error;
     }
     m->error = get_error_report(error);
-    cache_notify(&m->cache);
+    cache_notify_later(&m->cache);
     if (m->disposed) free_memory_cache(m);
     context_unlock(ctx);
 }
@@ -1128,7 +1128,7 @@ static void validate_top_frame_reg_values_cache(Channel * c, void * args, int er
     }
     rc->valid = 1;
     rc->error = get_error_report(error);
-    cache_notify(&fc->cache);
+    cache_notify_later(&fc->cache);
     if (fc->disposed) free_stack_frame_cache(fc);
     context_unlock(ctx);
 }
@@ -1176,7 +1176,7 @@ static void validate_mid_frame_reg_values_cache(Channel * c, void * args, int er
     }
     fc->reg_valid = 1;
     fc->error = get_error_report(error);
-    cache_notify(&fc->cache);
+    cache_notify_later(&fc->cache);
     if (fc->disposed) free_stack_frame_cache(fc);
     context_unlock(ctx);
 }
@@ -1225,7 +1225,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
             for (n = 0; n < fc->reg_cnt; n++) {
                 RegisterDefinition * reg = fc->reg_defs[n];
                 if (reg->size > 0 && reg->dwarf_id >= 0) {
-                    char * id = str_buf + ids_buf[n];
+                    const char * id = register2id(fc->ctx->ctx, frame->frame, reg);
                     if (n > 0) write_stream(&c->out, ',');
                     write_stream(&c->out, '[');
                     json_write_string(&c->out, id);
@@ -1360,7 +1360,7 @@ static void validate_memory_map_cache(Channel * c, void * args, int error) {
     }
     cache->mmap_is_valid = 1;
     cache->mmap_error = get_error_report(error);
-    cache_notify(&cache->mmap_cache);
+    cache_notify_later(&cache->mmap_cache);
     context_unlock(cache->ctx);
 }
 
@@ -1602,7 +1602,7 @@ static void validate_registers_cache(Channel * c, void * args, int error) {
         }
         cache->reg_size = offs;
         cache->regs_done = 1;
-        cache_notify(&cache->regs_cache);
+        cache_notify_later(&cache->regs_cache);
     }
     context_unlock(cache->ctx);
 }
@@ -1668,7 +1668,7 @@ static void validate_reg_children_cache(Channel * c, void * args, int error) {
         error = trap.error;
     }
     s->error = get_error_report(error);
-    cache_notify(&s->cache);
+    cache_notify_later(&s->cache);
     if (s->disposed) free_stack_frame_cache(s);
     context_unlock(ctx);
 }
@@ -1715,7 +1715,7 @@ static void validate_stack_frame_cache(Channel * c, void * args, int error) {
         error = trap.error;
     }
     s->error = get_error_report(error);
-    cache_notify(&s->cache);
+    cache_notify_later(&s->cache);
     if (s->disposed) free_stack_frame_cache(s);
     context_unlock(ctx);
 }
@@ -1865,7 +1865,7 @@ static void validate_cache_isa(Channel * c, void * args, int error) {
     }
     i->error = get_error_report(error);
     i->isa_valid = 1;
-    cache_notify(&i->cache);
+    cache_notify_later(&i->cache);
     if (i->disposed) free_isa_cache(i);
     context_unlock(ctx);
 }
