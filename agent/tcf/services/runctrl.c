@@ -442,6 +442,13 @@ static void write_context_state(OutputStream * out, Context * ctx) {
             write_error_object(out, ext->pc_error);
             fst = 0;
         }
+        if (ext->step_error != NULL) {
+            if (!fst) write_stream(out, ',');
+            json_write_string(out, "StepError");
+            write_stream(out, ':');
+            write_error_object(out, set_error_report_errno(ext->step_error));
+            fst = 0;
+        }
         if (ctx->stopped_by_funccall) {
             if (!fst) write_stream(out, ',');
             json_write_string(out, "FuncCall");
