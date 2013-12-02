@@ -1543,7 +1543,7 @@ static int update_step_machine_state(Context * ctx) {
                     uint64_t ip = 0;
                     int p = get_prev_frame(ctx, n);
                     if (p < 0) {
-                        set_errno(ERR_OTHER, "Cannot step out: no parent stack frame");
+                        set_errno(errno, "Cannot step out");
                         return -1;
                     }
                     if (get_frame_info(ctx, p, &info) < 0) return -1;
