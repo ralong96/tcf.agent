@@ -267,7 +267,10 @@ static int next_dec(void) {
 
 static int next_char_val(void) {
     int n = 0;
-    if (text_ch == '\\') {
+    if (text_ch == 0) {
+        error(ERR_INV_EXPRESSION, "Unexpected end of expression");
+    }
+    else if (text_ch == '\\') {
         next_ch();
         switch (text_ch) {
         case 'n' : n = '\n'; break;
