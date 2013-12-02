@@ -25,6 +25,7 @@
 #include <tcf/framework/errors.h>
 #include <tcf/framework/sigsets.h>
 #include <tcf/framework/link.h>
+#include <tcf/framework/context-ext.h>
 
 extern LINK context_root;
 

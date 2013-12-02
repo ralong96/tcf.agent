@@ -25,6 +25,9 @@
 #include <tcf/framework/context.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/services/symbols.h>
+#if ENABLE_ContextMux
+#include <tcf/framework/cpudefs-mdep-mux.h>
+#endif
 #include <tcf/cpudefs-mdep.h>
 
 #if defined(__i386__) || defined(__x86_64__)

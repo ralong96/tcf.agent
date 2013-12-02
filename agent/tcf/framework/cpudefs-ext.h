@@ -20,6 +20,10 @@
  * If it is not the case, this file needs to be substituted with alternative implementation.
  */
 
+#include <tcf/config.h>
+#if ENABLE_ContextMux
+#include <tcf/framework/cpudefs-mux.h>
+#endif
 #include <tcf/cpudefs-mdep.h>
 
 struct RegisterData {

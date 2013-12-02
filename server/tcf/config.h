@@ -139,6 +139,10 @@
 #define ENABLE_Cmdline          0
 #endif
 
+#if !defined(ENABLE_ContextMux)
+#define ENABLE_ContextMux       0
+#endif
+
 #define ENABLE_RCBP_TEST        0
 
 #define ENABLE_ContextExtraProperties           0

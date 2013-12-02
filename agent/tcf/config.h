@@ -301,4 +301,8 @@
       ENABLE_DebugContext && !ENABLE_ContextProxy)
 #endif
 
+#if !defined(ENABLE_ContextMux)
+#define ENABLE_ContextMux 0
+#endif
+
 #endif /* D_config */

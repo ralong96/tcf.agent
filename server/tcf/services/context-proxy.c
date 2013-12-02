@@ -38,6 +38,10 @@
 #include <tcf/services/memorymap.h>
 #include <tcf/services/stacktrace.h>
 #include <tcf/services/context-proxy.h>
+#if ENABLE_ContextMux
+#include <tcf/framework/context-mux.h>
+#endif
+
 
 typedef struct ContextCache ContextCache;
 typedef struct MemoryCache MemoryCache;
@@ -223,6 +227,62 @@ static size_t context_extension_offset = 0;
 static const char RUN_CONTROL[] = "RunControl";
 static const char MEMORY_MAP[] = "MemoryMap";
 static const char PATH_MAP[] = "PathMap";
+
+#if ENABLE_ContextMux
+/*
+ * When Context Multiplexer is enabled, all context APIs must be defined even for proxy context
+ */
+const char * context_suspend_reason(Context * ctx) {
+    return NULL ;
+}
+
+int context_stop(Context * ctx) {
+    errno = ERR_UNSUPPORTED;
+    return -1;
+}
+
+int context_continue(Context * ctx) {
+    errno = ERR_UNSUPPORTED;
+    return -1;
+}
+
+int context_resume(Context * ctx, int mode, ContextAddress range_start, ContextAddress range_end) {
+    errno = ERR_UNSUPPORTED;
+    return -1;
+}
+
+int context_can_resume(Context * ctx, int mode) {
+    return 0;
+}
+
+int context_single_step(Context * ctx) {
+    errno = ERR_UNSUPPORTED;
+    return -1;
+}
+
+int context_get_canonical_addr(Context * ctx, ContextAddress addr, Context ** canonical_ctx,
+        ContextAddress * canonical_addr, ContextAddress * block_addr, ContextAddress * block_size) {
+    errno = ERR_UNSUPPORTED;
+    return -1;
+}
+
+int context_get_supported_bp_access_types(Context * ctx) {
+    return 0;
+}
+int context_plant_breakpoint(ContextBreakpoint * bp) {
+    errno = ERR_UNSUPPORTED;
+    return -1;
+}
+
+int context_unplant_breakpoint(ContextBreakpoint * bp) {
+    errno = ERR_UNSUPPORTED;
+    return -1;
+}
+
+uint8_t * get_break_instruction(Context * ctx, size_t * size) {
+    return NULL ;
+}
+#endif
 
 static unsigned hash_ctx_id(const char * id) {
     int i;

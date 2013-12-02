@@ -54,6 +54,9 @@
 #include <tcf/services/tcf_elf.h>
 #include <tcf/services/profiler_sst.h>
 #include <system/GNU/Linux/tcf/regset.h>
+#if ENABLE_ContextMux
+#include <tcf/framework/context-mux.h>
+#endif
 
 #if !defined(TRAP_OFFSET)
 #define TRAP_OFFSET -1
