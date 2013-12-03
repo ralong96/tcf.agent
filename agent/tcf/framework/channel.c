@@ -305,7 +305,7 @@ ChannelServer * channel_server(PeerServer * ps) {
 
     if (transportname == NULL) {
         transportname = "TCP";
-        peer_server_addprop(ps, "TransportName", transportname);
+        peer_server_addprop(ps, loc_strdup("TransportName"), loc_strdup(transportname));
     }
 
     if (strcmp(transportname, "TCP") == 0 || strcmp(transportname, "SSL") == 0) {
