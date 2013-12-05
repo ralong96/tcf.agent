@@ -440,6 +440,30 @@
 				>
 			</File>
 			<File
+				RelativePath=".\tcf\framework\context-dispatcher-ext.h"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\framework\context-dispatcher.c"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\framework\context-dispatcher.h"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\framework\context-ext.h"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\framework\context-mux-ext.h"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\framework\context-mux.h"
+				>
+			</File>
+			<File
 				RelativePath=".\tcf\framework\context.c"
 				>
 			</File>
