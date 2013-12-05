@@ -163,8 +163,12 @@
 #  define ENABLE_ContextProxy   0
 #endif
 
+#if !defined(ENABLE_ContextMux)
+#  define ENABLE_ContextMux     0
+#endif
+
 #if !defined(ENABLE_DebugContext)
-#  define ENABLE_DebugContext   (ENABLE_ContextProxy || SERVICE_RunControl || SERVICE_Breakpoints || \
+#  define ENABLE_DebugContext   (ENABLE_ContextProxy || ENABLE_ContextMux || SERVICE_RunControl || SERVICE_Breakpoints || \
         SERVICE_Memory || SERVICE_Registers || SERVICE_StackTrace || SERVICE_Disassembly)
 #endif
 
@@ -299,10 +303,6 @@
 #if !defined(ENABLE_ProfilerSST)
 #  define ENABLE_ProfilerSST (SERVICE_Profiler && SERVICE_RunControl && SERVICE_StackTrace && \
       ENABLE_DebugContext && !ENABLE_ContextProxy)
-#endif
-
-#if !defined(ENABLE_ContextMux)
-#define ENABLE_ContextMux 0
 #endif
 
 #endif /* D_config */

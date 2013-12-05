@@ -79,14 +79,14 @@ typedef struct ContextIf {
 extern ContextIf sys_ctx_if;
 extern CpuDefsIf sys_cpudefs_if;
 
-/* Set the context interface for specified context. 
+/* Set the context interface for specified context.
  * Return -1 and set errno if the context interface cannot be set.
  * Return 0 on success.
  */
 extern int context_set_interface(Context * ctx, ContextIf * ctx_iface);
 
 
-/* Return the current context interface for the specified context. 
+/* Return the current context interface for the specified context.
  * Returns a pointer on context current interface table or NULL if there is non.e
  */
 extern ContextIf * context_get_interface(Context * ctx);

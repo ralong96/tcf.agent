@@ -15,7 +15,7 @@
 
 /*
  * Context dispatcher extension point.
- * If the agent is built with additional context interfaces, 
+ * If the agent is built with additional context interfaces,
  * a customized version of context-dispatcher-ext.h file can be added to
  * compiler headers search path.
  */

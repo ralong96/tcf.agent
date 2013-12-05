@@ -64,6 +64,7 @@
 #define ENABLE_ZeroCopy         0
 #define ENABLE_Trace            1
 #define ENABLE_Discovery        0
+#define ENABLE_ContextMux       0
 #define ENABLE_ContextProxy     1
 #define ENABLE_SymbolsProxy     0
 #define ENABLE_LineNumbersProxy 0
