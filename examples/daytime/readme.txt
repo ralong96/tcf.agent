@@ -22,10 +22,15 @@ The example includes:
 CDT can be used to edit and build the example project.
 Supported agent execution environments: Msys, CygWin, Linux.
 
+The examples below assume running both agent and client on the local host,
+but a connection to a remote host works just the same (using 1.2.3.4 as 
+and example host address, specify "TCP:1.2.3.4:1534" in the connect command).
+
 
 Building and Running the Example on Linux
 ----------------------------
-cd examples/daytime
+git clone http://git.eclipse.org/gitroot/tcf/org.eclipse.tcf.agent.git
+cd org.eclipse.tcf.agent/examples/daytime
 make NO_SSL=1 NO_UUID=1
 make -C ../../agent NO_SSL=1 NO_UUID=1
 obj/*/*/Debug/agent -L- &
@@ -38,7 +43,7 @@ EOF
 
 Building and Running the Example on Windows (MSYS)
 ----------------------------
-cd examples/daytime
+REM git clone and cd like in Linux example (above), then:
 make NO_SSL=1 NO_UUID=1 OPSYS=Msys
 make -C ../../agent NO_SSL=1 NO_UUID=1 OPSYS=Msys
 start obj/Msys/i686/Debug/agent.exe -L-
