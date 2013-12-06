@@ -23,19 +23,40 @@ CDT can be used to edit and build the example project.
 Supported agent execution environments: Msys, CygWin, Linux.
 
 
-Building and Running the Example
+Building and Running the Example on Linux
 ----------------------------
+cd examples/daytime
 make NO_SSL=1 NO_UUID=1
+make -C ../../agent NO_SSL=1 NO_UUID=1
 obj/*/*/Debug/agent -L- &
-../agent/obj/*/*/Debug/client <<<EOF
+../../agent/obj/*/*/Debug/client <<<EOF
 connect TCP::1534
 services
 tcf Daytime getTimeOfDay "de"
 EOF
 
 
+Building and Running the Example on Windows (MSYS)
+----------------------------
+cd examples/daytime
+make NO_SSL=1 NO_UUID=1 OPSYS=Msys
+make -C ../../agent NO_SSL=1 NO_UUID=1 OPSYS=Msys
+start obj/Msys/i686/Debug/agent.exe -L-
+../../agent/obj/Msys/i686/Debug/client.exe
+> connect TCP::1534
+> services
+> tcf Daytime getTimeOfDay "de"
+> exit
+
+
 Building a Minimal-Footprint Agent
 ----------------------------
+The "daytime" example is already quite small, but can still be stripped down
+by removing debug code (Trace service) as well as the auto-discovery service.
+The result is a minimal agent that just has the TCF basic infrastructure
+(event loop, JSON, service manager) as well as the minimal daytime service.
+This minimal agent is 120KB on Linux-x86_64 and 100KB on ARM (Raspberry Pi):
+
 make NO_SSL=1 NO_UUID=1 CONF=Release CFLAGS="-DENABLE_Trace=0 -DENABLE_Discovery=0 -DSERVICE_FileSystem=0 -DSERVICE_SysMonitor=0"
 ls -l obj/GNU/Linux/x86_64/Release/
 total 428
