@@ -152,7 +152,7 @@ static void command_get_capabilities(char * token, Channel * c) {
 static int get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     if (context_get_isa(ctx, addr, isa) < 0) {
         memset(isa, 0, sizeof(ContextISA));
-	    return -1;
+        return -1;
     }
 #if ENABLE_MemoryMap
     if (isa->size == 0) {
@@ -179,7 +179,7 @@ static int get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     return 0;
 }
 
-static void disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_buf,
+static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_buf,
                               ContextAddress buf_addr, ContextAddress buf_size,
                               ContextAddress mem_size, ContextISA * isa,
                               DisassembleCmdArgs * args) {
@@ -205,7 +205,7 @@ static void disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_b
         ContextAddress size = mem_size - offs;
         DisassemblyResult * dr = NULL;
         if ((args->isa == NULL) && (addr < isa->addr || addr >= isa->addr + isa->size)) {
-            get_isa(ctx, addr, isa);
+            if (get_isa(ctx, addr, isa) < 0) return -1;
             disassembler_ok = 0;
         }
         if (!disassembler_ok) {
@@ -265,6 +265,7 @@ static void disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_b
         offs += dr->size;
     }
     write_stream(out, ']');
+    return 0;
 }
 
 #if SERVICE_LineNumbers
@@ -340,7 +341,9 @@ static void disassemble_cache_client(void * x) {
             mem_size = (size_t)sym_size;
         }
         else if (sym_addr_ok && sym_addr < args->addr) {
-            if (get_isa(ctx, sym_addr, &isa) < 0) error = errno;
+            if (get_isa(ctx, sym_addr, &isa) < 0) {
+                error = errno;
+            }
             else {
                 buf_addr = sym_addr;
                 buf_size = args->addr + args->size - sym_addr;
@@ -354,7 +357,9 @@ static void disassemble_cache_client(void * x) {
         }
         else {
             /* Use default address alignment */
-            if (get_isa(ctx, args->addr, &isa) < 0) error = errno;
+            if (get_isa(ctx, args->addr, &isa) < 0) {
+                error = errno;
+            }
             else {
                 if (isa.alignment > 0) {
                     buf_addr = args->addr & ~(ContextAddress)(isa.alignment - 1);
@@ -371,22 +376,32 @@ static void disassemble_cache_client(void * x) {
                 }
             }
         }
-        
-        if (!error) mem_buf = (uint8_t *)loc_alloc(mem_size);
-        if (!error && context_read_mem(ctx, buf_addr, mem_buf, mem_size) < 0) error = errno;
-        if (error) {
+
+        if (!error) {
+            mem_buf = (uint8_t *)tmp_alloc(mem_size);
+            if (context_read_mem(ctx, buf_addr, mem_buf, mem_size) < 0) error = errno;
+            if (error) {
 #if ENABLE_ExtendedMemoryErrorReports
-            MemoryErrorInfo info;
-            if (context_get_mem_error_info(&info) == 0 && info.size_valid > 0) {
-                mem_size = info.size_valid;
-                error = 0;
-            }
+                MemoryErrorInfo info;
+                if (context_get_mem_error_info(&info) == 0 && info.size_valid > 0) {
+                    mem_size = info.size_valid;
+                    error = 0;
+                }
 #endif
+            }
         }
     }
 
-    if (!error) disassemble_block(ctx, buf_out, mem_buf, buf_addr, buf_size,
-                                  mem_size, &isa, args);
+    if (!error && disassemble_block(
+            ctx, buf_out, mem_buf, buf_addr, buf_size,
+            mem_size, &isa, args) < 0) error = errno;
+
+    if (get_error_code(error) == ERR_CACHE_MISS) {
+        loc_free(buf.mem);
+        buf.mem = NULL;
+        buf.max = 0;
+        buf.pos = 0;
+    }
 
     cache_exit();
 
@@ -405,7 +420,6 @@ static void disassemble_cache_client(void * x) {
     write_stream(out, 0);
     write_stream(out, MARKER_EOM);
     loc_free(data);
-    loc_free(mem_buf);
 }
 
 #if SERVICE_RunControl
