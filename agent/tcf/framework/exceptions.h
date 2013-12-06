@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -52,8 +52,18 @@ extern int set_trap_b(Trap * trap);
 
 extern void clear_trap(Trap * trap);
 
-extern void exception(int error);
-extern void str_exception(int error, const char * msg);
-extern void str_fmt_exception(int error, const char * fmt, ...);
+#if defined(__GNUC__) && __GNUC__ >= 3
+    extern void exception(int error) __attribute__ ((noreturn));
+    extern void str_exception(int error, const char * msg) __attribute__ ((noreturn));
+    extern void str_fmt_exception(int error, const char * fmt, ...) __attribute__ ((noreturn));
+#elif defined(_MSC_VER)
+    __declspec(noreturn) extern void exception(int error);
+    __declspec(noreturn) extern void str_exception(int error, const char * msg);
+    __declspec(noreturn) extern void str_fmt_exception(int error, const char * fmt, ...);
+#else
+    extern void exception(int error);
+    extern void str_exception(int error, const char * msg);
+    extern void str_fmt_exception(int error, const char * fmt, ...);
+#endif
 
 #endif /* D_exceptions */

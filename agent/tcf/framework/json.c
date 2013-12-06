@@ -194,12 +194,13 @@ static void check_char(int ch, int exp) {
 }
 
 static int read_hex_digit(InputStream * inp) {
+    int res = 0;
     int ch = read_stream(inp);
-    if (ch >= '0' && ch <= '9') return ch - '0';
-    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
-    exception(ERR_JSON_SYNTAX);
-    return 0;
+    if (ch >= '0' && ch <= '9') res = ch - '0';
+    else if (ch >= 'A' && ch <= 'F') res = ch - 'A' + 10;
+    else if (ch >= 'a' && ch <= 'f') res = ch - 'a' + 10;
+    else exception(ERR_JSON_SYNTAX);
+    return res;
 }
 
 static int read_hex_char(InputStream * inp) {
@@ -309,20 +310,21 @@ char * json_read_alloc_string(InputStream * inp) {
 int json_read_boolean(InputStream * inp) {
     int ch = read_stream(inp);
     ignore_whitespace(ch, inp);
-    if (ch == 'f') {
-        json_test_char(inp, 'a');
-        json_test_char(inp, 'l');
-        json_test_char(inp, 's');
-        json_test_char(inp, 'e');
-        return 0;
-    }
     if (ch == 't') {
         json_test_char(inp, 'r');
         json_test_char(inp, 'u');
         json_test_char(inp, 'e');
         return 1;
     }
-    exception(ERR_JSON_SYNTAX);
+    if (ch == 'f') {
+        json_test_char(inp, 'a');
+        json_test_char(inp, 'l');
+        json_test_char(inp, 's');
+        json_test_char(inp, 'e');
+    }
+    else {
+        exception(ERR_JSON_SYNTAX);
+    }
     return 0;
 }
 
@@ -459,23 +461,23 @@ int json_read_struct(InputStream * inp, JsonStructCallBack * call_back, void * a
     }
     if (ch != '{') {
         exception(ERR_PROTOCOL);
-        return 1;
     }
-    if (json_peek(inp) == '}') {
+    else if (json_peek(inp) == '}') {
         read_stream(inp);
-        return 1;
     }
-    for (;;) {
-        char nm[256];
-        json_read_string(inp, nm, sizeof(nm));
-        read_whitespace(inp);
-        json_test_char(inp, ':');
-        call_back(inp, nm, arg);
-        ch = read_stream(inp);
-        ignore_whitespace(ch, inp);
-        if (ch == ',') continue;
-        check_char(ch, '}');
-        break;
+    else {
+        for (;;) {
+            char nm[256];
+            json_read_string(inp, nm, sizeof(nm));
+            read_whitespace(inp);
+            json_test_char(inp, ':');
+            call_back(inp, nm, arg);
+            ch = read_stream(inp);
+            ignore_whitespace(ch, inp);
+            if (ch == ',') continue;
+            check_char(ch, '}');
+            break;
+        }
     }
     return 1;
 }
@@ -488,11 +490,9 @@ char ** json_read_alloc_string_array(InputStream * inp, int * cnt) {
         json_test_char(inp, 'l');
         json_test_char(inp, 'l');
         if (cnt) *cnt = 0;
-        return NULL;
     }
     else if (ch != '[') {
         exception(ERR_PROTOCOL);
-        return NULL;
     }
     else {
         static size_t * len_buf = NULL;
@@ -564,6 +564,7 @@ char ** json_read_alloc_string_array(InputStream * inp, int * cnt) {
         if (cnt) *cnt = len_pos;
         return arr;
     }
+    return NULL;
 }
 
 /*
@@ -584,19 +585,19 @@ int json_read_array(InputStream * inp, JsonArrayCallBack * call_back, void * arg
     }
     if (ch != '[') {
         exception(ERR_PROTOCOL);
-        return 1;
     }
-    if (json_peek(inp) == ']') {
+    else if (json_peek(inp) == ']') {
         read_stream(inp);
-        return 1;
     }
-    for (;;) {
-        call_back(inp, arg);
-        ch = read_stream(inp);
-        ignore_whitespace(ch, inp);
-        if (ch == ',') continue;
-        check_char(ch, ']');
-        break;
+    else {
+        for (;;) {
+            call_back(inp, arg);
+            ch = read_stream(inp);
+            ignore_whitespace(ch, inp);
+            if (ch == ',') continue;
+            check_char(ch, ']');
+            break;
+        }
     }
     return 1;
 }
@@ -645,6 +646,7 @@ size_t json_read_binary_data(JsonReadBinaryState * state, void * buf, size_t len
                 res += i;
                 if (i < state->rem) {
                     unsigned j = 0;
+                    if (state->rem > sizeof(state->buf)) exception(ERR_JSON_SYNTAX);
                     while (i < state->rem) state->buf[j++] = state->buf[i++];
                     state->rem = j;
                     return res;
