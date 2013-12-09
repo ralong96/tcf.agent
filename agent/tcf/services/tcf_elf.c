@@ -1038,8 +1038,10 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
             }
         }
         else if (r->file_size == 0 && r->sect_name == NULL) {
-            /* Linux module */
             if (r->file_offs == 0) {
+                /* Linux module (shared library): r->addr is "memory load address".
+                 * See System V Application Binary Interface for description of
+                 * "memory load address" and "base address" */
                 ELF_File * file = elf_open_memory_region_file(r, NULL);
                 if (file != NULL) {
                     unsigned j;
