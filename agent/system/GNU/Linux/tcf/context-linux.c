@@ -1535,7 +1535,7 @@ static int expression_identifier_callback(Context * ctx, int frame, char * name,
 }
 
 static void eventpoint_at_loader(Context * ctx, void * args) {
-    typedef enum { RT_CONSISTENT, RT_ADD, RT_DELETE } r_state;
+    enum r_state { RT_CONSISTENT, RT_ADD, RT_DELETE };
     ELF_File * file = NULL;
     ContextAddress addr = elf_get_debug_structure_address(ctx, &file);
     unsigned size = context_word_size(ctx);
