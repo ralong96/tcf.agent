@@ -444,12 +444,14 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     static U8_T Sibling;
     static int HasChildren;
     static int Skip;
+    static int high_pc_offs;
 
     if (Skip && Attr && Attr != AT_sibling) return;
 
     switch (Attr) {
     case 0:
         if (Form) {
+            high_pc_offs = 0;
             if (Tag == TAG_compile_unit) {
                 CompUnit * Unit = add_comp_unit((ContextAddress)(sDebugSection->addr + dio_gEntryPos));
                 assert(sParentObject == NULL);
@@ -481,6 +483,9 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             Info->mCompUnit = sCompUnit;
         }
         else {
+            if (high_pc_offs && !(Info->mFlags & DOIF_ranges) && (Info->mFlags & DOIF_low_pc)) {
+                Info->u.mCode.mHighPC.mAddr += Info->u.mCode.mLowPC;
+            }
             switch (Tag) {
             case TAG_compile_unit:
                 assert(sCache->mCompUnitsIndex == NULL);
@@ -633,10 +638,14 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         Info->mFlags |= DOIF_low_pc;
         break;
     case AT_high_pc:
-        dio_ChkAddr(Form);
         if (Info->mFlags & DOIF_ranges) break;
+        if (Form != FORM_ADDR) {
+            dio_ChkData(Form);
+        }
+        else if (dio_gFormSection) {
+            Info->u.mCode.mSection = dio_gFormSection;
+        }
         Info->u.mCode.mHighPC.mAddr = (ContextAddress)dio_gFormData;
-        if (dio_gFormSection) Info->u.mCode.mSection = dio_gFormSection;
         break;
     case AT_ranges:
         dio_ChkData(Form);
