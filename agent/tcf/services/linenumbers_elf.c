@@ -289,7 +289,7 @@ int line_to_address(Context * ctx, char * file_name, int line, int column,
             }
             else {
                 err = trap.error;
-                trace(LOG_ALWAYS, "Cannot load DWARF line numbers section: %s", err);
+                trace(LOG_ALWAYS, "Cannot load DWARF line numbers section: %s", errno_to_str(err));
                 break;
             }
         }
