@@ -361,6 +361,7 @@ static void dio_ReadFormRelRef(U8_T Offset) {
 static void dio_ReadFormRefAddr(void) {
     dio_gFormData = dio_ReadAddressX(&dio_gFormSection, sRefAddressSize);
     dio_gFormDataSize = sRefAddressSize;
+    dio_gFormData += sSection->addr;
 }
 
 static void dio_ReadFormString(void) {
@@ -576,6 +577,9 @@ void dio_ReadUnit(DIO_UnitDescriptor * Unit, DIO_EntryCallBack CallBack) {
         sUnit->mVersion = 1;
         sUnit->mAddressSize = 4;
     }
+    sAddressSize = Unit->mAddressSize;
+    if (sUnit->mVersion < 3) sRefAddressSize = sUnit->mAddressSize;
+    else sRefAddressSize = sUnit->m64bit ? 8 : 4;
     while (sUnit->mUnitSize == 0 || sDataPos < sUnit->mUnitOffs + sUnit->mUnitSize) {
         dio_ReadEntry(CallBack, 0);
     }
