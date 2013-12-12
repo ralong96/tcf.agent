@@ -21,6 +21,7 @@
 
 #include <tcf/framework/proxy.h>
 #include <tcf/framework/plugins.h>
+#include <tcf/framework/context-dispatcher.h>
 #include <tcf/services/discovery.h>
 #include <tcf/services/runctrl.h>
 #include <tcf/services/breakpoints.h>
@@ -118,6 +119,9 @@ void ini_services(Protocol * proto, TCFBroadcastGroup * bcg) {
 #endif
 #if ENABLE_DebugContext
     ini_contexts();
+#endif
+#if ENABLE_ContextMux
+    ini_context_dispatcher();
 #endif
 #if ENABLE_ELF
     ini_elf();
