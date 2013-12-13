@@ -908,6 +908,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\tcf\services\stacktrace-ext.h"
+				>
+			</File>
+			<File
 				RelativePath=".\tcf\services\stacktrace.c"
 				>
 			</File>
