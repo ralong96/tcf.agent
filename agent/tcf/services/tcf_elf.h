@@ -405,6 +405,7 @@ struct ELF_File {
     int64_t size;
     int mtime_changed;
     ErrorReport * error;
+    unsigned lock_cnt;
     int fd;
 
     /* Other names of the file, e.g. symbolic links */
@@ -440,6 +441,8 @@ struct ELF_File {
     int listed;
     int debug_info_file; /* 1 means this file contains debug info only - no code */
     char * debug_info_file_name;
+    char * dwz_file_name;
+    ELF_File * dwz_file;
 
     int vxworks_got;
 };

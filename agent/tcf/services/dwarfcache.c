@@ -65,16 +65,18 @@ static U4_T sObjRefsMax = 0;
 static int sCloseListenerOK = 0;
 
 unsigned calc_file_name_hash(const char * s) {
-    unsigned l = strlen(s);
     unsigned h = 0;
-    while (l > 0) {
-        unsigned g;
-        unsigned char ch = s[--l];
-        if (ch == '/') break;
-        if (ch == '\\') break;
-        h = (h << 4) + ch;
-        g = h & 0xf0000000;
-        if (g) h = (h ^ (g >> 24)) & ~g;
+    if (s != NULL) {
+        unsigned l = strlen(s);
+        while (l > 0) {
+            unsigned g;
+            unsigned char ch = s[--l];
+            if (ch == '/') break;
+            if (ch == '\\') break;
+            h = (h << 4) + ch;
+            g = h & 0xf0000000;
+            if (g) h = (h ^ (g >> 24)) & ~g;
+        }
     }
     return h;
 }
@@ -184,6 +186,15 @@ static ObjectInfo * find_loaded_object(DWARFCache * Cache, ContextAddress ID) {
         Info = Info->mHashNext;
     }
     return NULL;
+}
+
+static ObjectInfo * find_alt_object_info(ContextAddress ID) {
+    ObjectInfo * Info = NULL;
+    ELF_File * File = sCache->mFile;
+    if (File->dwz_file == NULL) str_exception(errno, "Cannot open DZW file");
+    Info = find_loaded_object(get_dwarf_cache(File->dwz_file), ID);
+    if (Info == NULL) str_exception(errno, "Invalid DZW file reference");
+    return Info;
 }
 
 static void add_object_reference(ObjectInfo * org, ObjectInfo * obj) {
@@ -452,7 +463,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     case 0:
         if (Form) {
             high_pc_offs = 0;
-            if (Tag == TAG_compile_unit) {
+            if (Tag == TAG_compile_unit || Tag == TAG_partial_unit) {
                 CompUnit * Unit = add_comp_unit((ContextAddress)(sDebugSection->addr + dio_gEntryPos));
                 assert(sParentObject == NULL);
                 Unit->mFile = sCache->mFile;
@@ -476,6 +487,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                 /* Object is already loaded */
                 assert(Info->mTag == Tag);
                 assert(Tag != TAG_compile_unit);
+                assert(Tag != TAG_partial_unit);
                 assert(Info->mCompUnit == sCompUnit);
                 return;
             }
@@ -488,6 +500,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             }
             switch (Tag) {
             case TAG_compile_unit:
+            case TAG_partial_unit:
                 assert(sCache->mCompUnitsIndex == NULL);
                 if (Sibling == 0) Sibling = sUnitDesc.mUnitOffs + sUnitDesc.mUnitSize;
                 sCompUnit->mDesc = sUnitDesc;
@@ -527,6 +540,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             if (sPrevSibling != NULL) sPrevSibling->mSibling = Info;
             else if (sParentObject != NULL) sParentObject->mChildren = Info;
             else if (Tag == TAG_compile_unit) sCache->mCompUnits = Info;
+            else if (Tag == TAG_partial_unit) sCache->mCompUnits = Info;
             sPrevSibling = Info;
             if (Skip && Sibling != 0) {
                 dio_SetPos(Sibling);
@@ -534,7 +548,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             }
             if (Tag == TAG_enumerator && Info->mType == NULL) Info->mType = sParentObject;
 #if ENABLE_DWARF_LAZY_LOAD
-            if (Sibling != 0) {
+            if (sCache->mFile->lock_cnt == 0 && Sibling != 0) {
                 switch (Tag) {
                 case TAG_union_type:
                 case TAG_array_type:
@@ -572,6 +586,10 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         Sibling = dio_gFormData - sDebugSection->addr;
         break;
     case AT_type:
+        if (Form == FORM_GNU_REF_ALT) {
+            Info->mType = find_alt_object_info((ContextAddress)dio_gFormData);
+            break;
+        }
         dio_ChkRef(Form);
         Info->mType = add_object_info((ContextAddress)dio_gFormData);
         add_object_reference(Info->mType, NULL);
@@ -607,13 +625,17 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         if (*(char *)dio_gFormDataAddr) Info->mName = (char *)dio_gFormDataAddr;
         break;
     case AT_specification_v2:
-        dio_ChkRef(Form);
-        add_object_reference(add_object_info((ContextAddress)dio_gFormData), Info);
+        if (Form != FORM_GNU_REF_ALT) {
+            dio_ChkRef(Form);
+            add_object_reference(add_object_info((ContextAddress)dio_gFormData), Info);
+        }
         Info->mFlags |= DOIF_specification;
         break;
     case AT_abstract_origin:
-        dio_ChkRef(Form);
-        add_object_reference(add_object_info((ContextAddress)dio_gFormData), Info);
+        if (Form != FORM_GNU_REF_ALT) {
+            dio_ChkRef(Form);
+            add_object_reference(add_object_info((ContextAddress)dio_gFormData), Info);
+        }
         Info->mFlags |= DOIF_abstract_origin;
         break;
     case AT_extension:
@@ -641,6 +663,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         if (Info->mFlags & DOIF_ranges) break;
         if (Form != FORM_ADDR) {
             dio_ChkData(Form);
+            high_pc_offs = 1;
         }
         else if (dio_gFormSection) {
             Info->u.mCode.mSection = dio_gFormSection;
@@ -698,7 +721,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         }
         break;
     }
-    if (Tag == TAG_compile_unit) {
+    if (Tag == TAG_compile_unit || Tag == TAG_partial_unit) {
         CompUnit * Unit = Info->mCompUnit;
         switch (Attr) {
         case AT_low_pc:
@@ -1116,7 +1139,7 @@ static void load_debug_info_section(ELF_Section * sec) {
         ObjectInfo * unit = sCache->mCompUnits;
         sCache->mCompUnitsIndex = (CompUnit **)loc_alloc(sizeof(CompUnit *) * sCache->mCompUnitsCnt);
         while (unit != NULL) {
-            assert(unit->mTag == TAG_compile_unit);
+            assert(unit->mTag == TAG_compile_unit || unit->mTag == TAG_partial_unit);
             sCache->mCompUnitsIndex[i++] = unit->mCompUnit;
             unit = unit->mSibling;
         }
@@ -1264,6 +1287,7 @@ ObjectInfo * get_dwarf_parent(ObjectInfo * obj) {
     ObjectInfo * x;
     if (obj->mParent != NULL) return obj->mParent;
     if (obj->mTag == TAG_compile_unit) return NULL;
+    if (obj->mTag == TAG_partial_unit) return NULL;
     x = get_dwarf_children(obj->mCompUnit->mObject);
     while (x != NULL && x->mID < obj->mID) {
         if (x->mSibling == NULL || x->mSibling->mID > obj->mID) {
@@ -1286,11 +1310,23 @@ static ELF_Section * gop_gFormSection = NULL;
 static U8_T gop_gSpecification = 0;
 static U8_T gop_gAbstractOrigin = 0;
 static U8_T gop_gExtension = 0;
+static U2_T gop_gSpecificationForm = 0;
+static U2_T gop_gAbstractOriginForm = 0;
+static U2_T gop_gExtensionForm = 0;
 
 static void get_object_property_callback(U2_T Tag, U2_T Attr, U2_T Form) {
-    if (Attr == AT_specification_v2) gop_gSpecification = dio_gFormData;
-    if (Attr == AT_abstract_origin) gop_gAbstractOrigin = dio_gFormData;
-    if (Attr == AT_extension) gop_gExtension = dio_gFormData;
+    if (Attr == AT_specification_v2) {
+        gop_gSpecification = dio_gFormData;
+        gop_gSpecificationForm = Form;
+    }
+    if (Attr == AT_abstract_origin) {
+        gop_gAbstractOrigin = dio_gFormData;
+        gop_gAbstractOriginForm = Form;
+    }
+    if (Attr == AT_extension) {
+        gop_gExtension = dio_gFormData;
+        gop_gExtensionForm = Form;
+    }
     if (Attr != gop_gAttr) return;
     gop_gForm = Form;
     gop_gFormData = dio_gFormData;
@@ -1398,12 +1434,34 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
         gop_gSpecification = 0;
         gop_gAbstractOrigin = 0;
         gop_gExtension = 0;
+        gop_gSpecificationForm = 0;
+        gop_gAbstractOriginForm = 0;
+        gop_gExtensionForm = 0;
         dio_ReadEntry(get_object_property_callback, gop_gAttr);
         dio_ExitSection();
         if (gop_gForm != 0) break;
-        if (gop_gSpecification != 0) dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gSpecification - sDebugSection->addr);
-        else if (gop_gAbstractOrigin != 0) dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gAbstractOrigin - sDebugSection->addr);
-        else if (gop_gExtension != 0) dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gExtension - sDebugSection->addr);
+        if (gop_gSpecificationForm == FORM_GNU_REF_ALT) {
+            ObjectInfo * Ref = find_alt_object_info((ContextAddress)gop_gSpecification);
+            ELF_Section * RefSec = Ref->mCompUnit->mDesc.mSection;
+            dio_EnterSection(&Ref->mCompUnit->mDesc, RefSec, Ref->mID - RefSec->addr);
+        }
+        else if (gop_gSpecification != 0) {
+            dio_ChkRef(gop_gSpecificationForm);
+            dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gSpecification - sDebugSection->addr);
+        }
+        else if (gop_gAbstractOriginForm == FORM_GNU_REF_ALT) {
+            ObjectInfo * Ref = find_alt_object_info((ContextAddress)gop_gAbstractOrigin);
+            ELF_Section * RefSec = Ref->mCompUnit->mDesc.mSection;
+            dio_EnterSection(&Ref->mCompUnit->mDesc, RefSec, Ref->mID - RefSec->addr);
+        }
+        else if (gop_gAbstractOrigin != 0) {
+            dio_ChkRef(gop_gAbstractOriginForm);
+            dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gAbstractOrigin - sDebugSection->addr);
+        }
+        else if (gop_gExtension != 0) {
+            dio_ChkRef(gop_gExtensionForm);
+            dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gExtension - sDebugSection->addr);
+        }
         else break;
     }
 
@@ -1666,6 +1724,14 @@ DWARFCache * get_dwarf_cache(ELF_File * file) {
         if (!sCloseListenerOK) {
             elf_add_close_listener(free_dwarf_cache);
             sCloseListenerOK = 1;
+        }
+        if (file->dwz_file_name != NULL) {
+            file->dwz_file = elf_open(file->dwz_file_name);
+            if (file->dwz_file == NULL) {
+                str_exception(errno, "Cannot open DZW file");
+            }
+            file->dwz_file->lock_cnt++;
+            get_dwarf_cache(file->dwz_file);
         }
         sCache = Cache = (DWARFCache *)(file->dwarf_dt_cache = loc_alloc_zero(sizeof(DWARFCache)));
         sCache->magic = DWARF_CACHE_MAGIC;

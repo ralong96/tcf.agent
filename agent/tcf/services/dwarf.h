@@ -123,6 +123,13 @@
 #define FORM_FLAG_PRESENT           0x0019 /* v4 */
 #define FORM_REF_SIG8               0x0020 /* v4 */
 
+/*
+ * GNU "dwz -m" extension.
+ * See http://www.dwarfstd.org/ShowIssue.php?issue=120604.1&type=open
+ */
+#define FORM_GNU_REF_ALT            0x1f20
+#define FORM_GNU_STRP_ALT           0x1f21
+
 #define AT_sibling                  0x0001
 #define AT_location                 0x0002
 #define AT_name                     0x0003

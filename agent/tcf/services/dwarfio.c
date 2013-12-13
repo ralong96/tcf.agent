@@ -294,8 +294,7 @@ char * dio_ReadString(void) {
     return Res;
 }
 
-static U1_T * dio_LoadStringTable(U4_T * StringTableSize) {
-    ELF_File * File = sSection->file;
+static U1_T * dio_LoadStringTable(ELF_File * File, U4_T * StringTableSize) {
     DIO_Cache * Cache = dio_GetCache(File);
 
     if (Cache->mStringTable == NULL) {
@@ -318,13 +317,20 @@ static U1_T * dio_LoadStringTable(U4_T * StringTableSize) {
 
         Cache->mStringTableSize = (size_t)Section->size;
         if (elf_load(Section) < 0) {
-            str_exception(ERR_INV_DWARF, "Invalid .debug_str section");
+            str_exception(errno, "Cannot read .debug_str section");
         }
         Cache->mStringTable = (U1_T *)Section->data;
     }
 
     *StringTableSize = Cache->mStringTableSize;
     return Cache->mStringTable;
+}
+
+static U1_T * dio_LoadAltStringTable(ELF_File * File, U4_T * StringTableSize) {
+    if (File->dwz_file == NULL) {
+        str_exception(errno, "Cannot open DZW file");
+    }
+    return dio_LoadStringTable(File->dwz_file, StringTableSize);
 }
 
 static void dio_ReadFormAddr(void) {
@@ -350,6 +356,13 @@ static void dio_ReadFormRef(void) {
     dio_gFormDataSize = 4;
 }
 
+static void dio_ReadFormAltRef(void) {
+    int size = sUnit->m64bit ? 8 : 4;
+    dio_gFormData = dio_ReadAddressX(&dio_gFormSection, size);
+    dio_gFormDataSize = size;
+    dio_gFormData += sSection->addr;
+}
+
 static void dio_ReadFormRelRef(U8_T Offset) {
     if (sUnit->mUnitSize > 0 && Offset >= sUnit->mUnitSize) {
         str_exception(ERR_INV_DWARF, "Invalid REF attribute value");
@@ -373,12 +386,27 @@ static void dio_ReadFormString(void) {
 static void dio_ReadFormStringRef(void) {
     U8_T Offset = dio_ReadAddressX(&dio_gFormSection, sUnit->m64bit ? 8 : 4);
     U4_T StringTableSize = 0;
-    U1_T * StringTable = dio_LoadStringTable(&StringTableSize);
+    U1_T * StringTable = dio_LoadStringTable(sSection->file, &StringTableSize);
     dio_gFormDataAddr = StringTable + Offset;
     dio_gFormDataSize = 1;
     for (;;) {
         if (Offset >= StringTableSize) {
             str_exception(ERR_INV_DWARF, "Invalid FORM_STRP attribute");
+        }
+        if (StringTable[Offset++] == 0) break;
+        dio_gFormDataSize++;
+    }
+}
+
+static void dio_ReadFormAltStringRef(void) {
+    U8_T Offset = dio_ReadAddressX(&dio_gFormSection, sUnit->m64bit ? 8 : 4);
+    U4_T StringTableSize = 0;
+    U1_T * StringTable = dio_LoadAltStringTable(sSection->file, &StringTableSize);
+    dio_gFormDataAddr = StringTable + Offset;
+    dio_gFormDataSize = 1;
+    for (;;) {
+        if (Offset >= StringTableSize) {
+            str_exception(ERR_INV_DWARF, "Invalid FORM_STRP_ALT attribute");
         }
         if (StringTable[Offset++] == 0) break;
         dio_gFormDataSize++;
@@ -405,6 +433,7 @@ void dio_ReadAttribute(U2_T Attr, U2_T Form) {
     switch (Form) {
     case FORM_ADDR          : dio_ReadFormAddr(); break;
     case FORM_REF           : dio_ReadFormRef(); break;
+    case FORM_GNU_REF_ALT   : dio_ReadFormAltRef(); break;
     case FORM_BLOCK1        : dio_ReadFormBlock(dio_ReadU1()); break;
     case FORM_BLOCK2        : dio_ReadFormBlock(dio_ReadU2()); break;
     case FORM_BLOCK4        : dio_ReadFormBlock(dio_ReadU4()); break;
@@ -419,6 +448,7 @@ void dio_ReadAttribute(U2_T Attr, U2_T Form) {
     case FORM_FLAG_PRESENT  : dio_ReadFormData(0, 1); break;
     case FORM_STRING        : dio_ReadFormString(); break;
     case FORM_STRP          : dio_ReadFormStringRef(); break;
+    case FORM_GNU_STRP_ALT  : dio_ReadFormAltStringRef(); break;
     case FORM_REF_ADDR      : dio_ReadFormRefAddr(); break;
     case FORM_REF1          : dio_ReadFormRelRef(dio_ReadU1()); break;
     case FORM_REF2          : dio_ReadFormRelRef(dio_ReadU2()); break;
@@ -430,7 +460,7 @@ void dio_ReadAttribute(U2_T Attr, U2_T Form) {
                             break;
     case FORM_EXPRLOC       : dio_ReadFormBlock(dio_ReadULEB128()); break;
     case FORM_REF_SIG8      : dio_ReadFormData(8, dio_ReadU8()); break;
-    default: str_exception(ERR_INV_DWARF, "Invalid FORM code");
+    default: str_fmt_exception(ERR_INV_DWARF, "Invalid FORM code 0x%04x", Form);
     }
 }
 
@@ -504,6 +534,7 @@ int dio_ReadEntry(DIO_EntryCallBack CallBack, U2_T TargetAttr) {
                 switch (Form) {
                 case FORM_ADDR          : sDataPos += sAddressSize; continue;
                 case FORM_REF           : sDataPos += 4; continue;
+                case FORM_GNU_REF_ALT   : sDataPos += (sUnit->m64bit ? 8 : 4); continue;
                 case FORM_BLOCK1        : sDataPos += dio_ReadU1F(); continue;
                 case FORM_BLOCK2        : sDataPos += dio_ReadU2(); continue;
                 case FORM_BLOCK4        : sDataPos += dio_ReadU4(); continue;
@@ -518,6 +549,7 @@ int dio_ReadEntry(DIO_EntryCallBack CallBack, U2_T TargetAttr) {
                 case FORM_FLAG_PRESENT  : continue;
                 case FORM_STRING        : dio_ReadFormString(); continue;
                 case FORM_STRP          : sDataPos += (sUnit->m64bit ? 8 : 4); continue;
+                case FORM_GNU_STRP_ALT  : sDataPos += (sUnit->m64bit ? 8 : 4); continue;
                 case FORM_REF_ADDR      : sDataPos += sRefAddressSize; continue;
                 case FORM_REF1          : sDataPos++; continue;
                 case FORM_REF2          : sDataPos += 2; continue;
@@ -531,7 +563,7 @@ int dio_ReadEntry(DIO_EntryCallBack CallBack, U2_T TargetAttr) {
             }
         }
         if (Attr != 0 && Form != 0) dio_ReadAttribute(Attr, Form);
-        if (Tag == TAG_compile_unit) {
+        if (Tag == TAG_compile_unit || Tag == TAG_partial_unit) {
             if (Attr == AT_sibling && sUnit->mUnitSize == 0) {
                 dio_ChkRef(Form);
                 assert(sUnit->mVersion == 1);
@@ -767,6 +799,7 @@ void dio_ChkBlock(U2_T Form, U1_T ** Buf, size_t * Size) {
 void dio_ChkString(U2_T Form) {
     if (Form == FORM_STRING) return;
     if (Form == FORM_STRP) return;
+    if (Form == FORM_GNU_STRP_ALT) return;
     str_exception(ERR_INV_DWARF, "FORM_STRING expected");
 }
 

@@ -101,9 +101,15 @@ void elf_add_close_listener(ELFCloseListener listener) {
 
 static void elf_dispose(ELF_File * file) {
     unsigned n;
+    assert(file->lock_cnt == 0);
     trace(LOG_ELF, "Dispose ELF file cache %s", file->name);
     for (n = 0; n < listeners_cnt; n++) {
         listeners[n](file);
+    }
+    if (file->dwz_file) {
+        assert(file->dwz_file->lock_cnt > 0);
+        file->dwz_file->lock_cnt--;
+        file->dwz_file = NULL;
     }
     if (file->fd >= 0) close(file->fd);
     if (file->sections != NULL) {
@@ -136,6 +142,7 @@ static void elf_dispose(ELF_File * file) {
     loc_free(file->pheaders);
     loc_free(file->str_pool);
     loc_free(file->debug_info_file_name);
+    loc_free(file->dwz_file_name);
     loc_free(file->name);
     loc_free(file);
 }
@@ -255,12 +262,14 @@ static void elf_cleanup_cache_client(void * arg) {
 
     file = files;
     while (file != NULL) {
-        if (file->age > max_file_age || (file->age > MIN_FILE_AGE && list_is_empty(&context_root))) {
-            ELF_File * next = file->next;
+        ELF_File * next = file->next;
+        if (file->lock_cnt > 0) {
+            prev = file;
+        }
+        else if (file->age > max_file_age || (file->age > MIN_FILE_AGE && list_is_empty(&context_root))) {
             elf_dispose(file);
-            file = next;
-            if (prev != NULL) prev->next = file;
-            else files = file;
+            if (prev != NULL) prev->next = next;
+            else files = next;
         }
         else {
 #if !USE_MMAP
@@ -268,8 +277,8 @@ static void elf_cleanup_cache_client(void * arg) {
 #endif
             file->age++;
             prev = file;
-            file = file->next;
         }
+        file = next;
     }
 
     if (files != NULL) {
@@ -451,6 +460,40 @@ static char * get_debug_info_file_name(ELF_File * file, int * error) {
                 snprintf(fnm, sizeof(fnm), "%.*s.debug/%s", l, file->name, name);
                 if (stat(fnm, &buf) == 0) return loc_strdup(fnm);
                 snprintf(fnm, sizeof(fnm), "/usr/lib/debug%.*s%s", l, file->name, name);
+#if SERVICE_PathMap
+                lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
+#endif
+                if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
+            }
+        }
+    }
+    return NULL;
+}
+
+static char * get_dwz_file_name(ELF_File * file, int * error) {
+    unsigned idx;
+
+    for (idx = 1; idx < file->section_cnt; idx++) {
+        ELF_Section * sec = file->sections + idx;
+        if (sec->size == 0) continue;
+        if (sec->name == NULL) continue;
+        if (strcmp(sec->name, ".gnu_debugaltlink") == 0) {
+            if (elf_load(sec) < 0) {
+                *error = errno;
+                return NULL;
+            }
+            else {
+                char * lnm = NULL;
+                struct stat buf;
+                char * name = (char *)sec->data;
+                int l = (int)strlen(file->name);
+                while (l > 0 && file->name[l - 1] != '/' && file->name[l - 1] != '\\') l--;
+                if (strcmp(file->name + l, name) != 0) {
+                    char fnm[FILE_PATH_SIZE];
+                    snprintf(fnm, sizeof(fnm), "%.*s%s", l, file->name, name);
+                    if (stat(fnm, &buf) == 0) return loc_strdup(fnm);
+                }
+                lnm = name;
 #if SERVICE_PathMap
                 lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
 #endif
@@ -855,6 +898,10 @@ static ELF_File * create_elf_cache(const char * file_name) {
         file->debug_info_file = is_debug_info_file(file);
         if (!file->debug_info_file) file->debug_info_file_name = get_debug_info_file_name(file, &error);
         if (file->debug_info_file_name) trace(LOG_ELF, "Debug info file found %s", file->debug_info_file_name);
+    }
+    if (error == 0) {
+        file->dwz_file_name = get_dwz_file_name(file, &error);
+        if (file->dwz_file_name) trace(LOG_ELF, "DZW file found %s", file->dwz_file_name);
     }
     if (error != 0) {
         trace(LOG_ELF, "Error opening ELF file: %d %s", error, errno_to_str(error));
@@ -1862,7 +1909,10 @@ void elf_invalidate(void) {
     while (file != NULL) {
         ELF_File * next = file->next;
         struct stat st;
-        if (file->mtime_changed ||
+        if (file->lock_cnt > 0) {
+            prev = file;
+        }
+        else if (file->mtime_changed ||
                 stat(file->name, &st) < 0 ||
                 file->size != st.st_size ||
                 file->mtime != st.st_mtime ||
