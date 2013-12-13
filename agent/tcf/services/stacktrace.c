@@ -196,6 +196,9 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
                 break;
             }
         }
+#ifdef TRACE_STACK_BOTTOM_CHECK
+        TRACE_STACK_BOTTOM_CHECK;
+#endif
         add_frame(stack, &down);
     }
 

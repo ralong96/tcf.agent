@@ -22,6 +22,7 @@
 
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/context.h>
+#include <tcf/services/stacktrace-ext.h>
 
 #if SERVICE_StackTrace || ENABLE_ContextProxy
 
