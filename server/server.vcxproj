@@ -212,6 +212,7 @@
     <ClCompile Include="..\agent\tcf\framework\channel_pipe.c" />
     <ClCompile Include="..\agent\tcf\framework\channel_tcp.c" />
     <ClCompile Include="..\agent\tcf\framework\context.c" />
+    <ClCompile Include="..\agent\tcf\framework\context-dispatcher.c" />
     <ClCompile Include="..\agent\tcf\framework\cpudefs.c" />
     <ClCompile Include="..\agent\tcf\framework\errors.c" />
     <ClCompile Include="..\agent\tcf\framework\events.c" />

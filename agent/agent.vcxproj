@@ -271,6 +271,7 @@
     <ClCompile Include="tcf\framework\channel_pipe.c" />
     <ClCompile Include="tcf\framework\channel_tcp.c" />
     <ClCompile Include="tcf\framework\context.c" />
+    <ClCompile Include="tcf\framework\context-dispatcher.c" />
     <ClCompile Include="tcf\framework\cpudefs.c" />
     <ClCompile Include="tcf\framework\errors.c" />
     <ClCompile Include="tcf\framework\events.c" />

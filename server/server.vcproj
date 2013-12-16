@@ -623,6 +623,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\agent\tcf\framework\context-dispatcher.c"
+				>
+			</File>
+			<File
 				RelativePath="..\agent\tcf\framework\context.h"
 				>
 			</File>

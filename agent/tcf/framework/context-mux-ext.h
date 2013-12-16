@@ -15,4 +15,4 @@
 
 #include <tcf/framework/context-dispatcher.h>
 
-static ContextExtIf sys_ctxext_if = {};
+static ContextExtIf sys_ctxext_if = {0};

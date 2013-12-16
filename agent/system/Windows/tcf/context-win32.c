@@ -38,6 +38,9 @@
 #include <tcf/services/breakpoints.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/runctrl.h>
+#if ENABLE_ContextMux
+#include <tcf/framework/context-mux.h>
+#endif
 #include <system/Windows/tcf/context-win32.h>
 #if defined(__CYGWIN__)
 #  include <system/Cygwin/tcf/regset.h>
