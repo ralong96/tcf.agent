@@ -300,7 +300,7 @@ static void * worker_thread_handler(void * x) {
 #if defined(_WIN32) || defined(__CYGWIN__)
                     curFileNode->win32_attrs =  GetFileAttributes(path);
 #endif
-                    curFileNode->statbuf = loc_alloc(sizeof(struct stat));
+                    curFileNode->statbuf = (struct stat *)loc_alloc(sizeof(struct stat));
                     memcpy(curFileNode->statbuf, &st, sizeof(struct stat));
                 }
             }
