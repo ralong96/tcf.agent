@@ -21,5 +21,5 @@
  */
 
 typedef struct ContextExtIf {
-    int dummy;			/* please compiler */
+    int dummy;                  /* please compiler */
 } ContextExtIf;

@@ -278,11 +278,11 @@ static void * worker_thread_handler(void * x) {
         case AsyncReqReaddir:
         {
             int cnt = 0;
-            struct DirFileNode * curFileNode;
-            struct dirent * e;
-            struct stat st;
             while (cnt < req->u.dio.max_file_per_dir) {
                 char path[FILE_PATH_SIZE];
+                struct DirFileNode * node = req->u.dio.files + cnt;
+                struct dirent * e;
+                struct stat st;
                 errno = 0;
                 e = readdir(req->u.dio.dir);
                 if (e == NULL) {
@@ -292,21 +292,21 @@ static void * worker_thread_handler(void * x) {
                 }
                 if (strcmp(e->d_name, ".") == 0) continue;
                 if (strcmp(e->d_name, "..") == 0) continue;
-                curFileNode = &req->u.dio.files[cnt++];
-                curFileNode->path = loc_strdup(e->d_name);
+                node->path = loc_strdup(e->d_name);
                 memset(&st, 0, sizeof(st));
                 snprintf(path, sizeof(path), "%s/%s",req->u.dio.path, e->d_name);
                 if (stat(path, &st) == 0) {
 #if defined(_WIN32) || defined(__CYGWIN__)
-                    curFileNode->win32_attrs =  GetFileAttributes(path);
+                    node->win32_attrs =  GetFileAttributes(path);
 #endif
-                    curFileNode->statbuf = (struct stat *)loc_alloc(sizeof(struct stat));
-                    memcpy(curFileNode->statbuf, &st, sizeof(struct stat));
+                    node->statbuf = (struct stat *)loc_alloc(sizeof(struct stat));
+                    memcpy(node->statbuf, &st, sizeof(struct stat));
                 }
+                cnt++;
             }
+            loc_free(req->u.dio.path);
+            break;
         }
-        loc_free(req->u.dio.path);
-        break;
         default:
             req->error = ENOSYS;
             break;

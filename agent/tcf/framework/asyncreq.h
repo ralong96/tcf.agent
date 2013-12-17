@@ -97,7 +97,7 @@ struct AsyncReqInfo {
             /* In */
             char * path;
             int max_file_per_dir;
-            struct DirFileNode *files;
+            struct DirFileNode * files;
             int eof;
 
             /* in/Out */
