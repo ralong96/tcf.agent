@@ -363,7 +363,7 @@ static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs
                 else add_fbreg_expression(info, offs);
                 expr_code_addr = org_expr_code_addr;
                 expr_code_size = org_expr_code_size;
-                set_u2(case_pos - 2, buf_pos - case_pos);
+                set_u2(case_pos - 2, (U2_T)(buf_pos - case_pos));
                 if (info->code_size == 0) break;
             }
             info = info->next;
@@ -372,7 +372,7 @@ static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs
         add(0);
         if (buf_pos - switch_pos > 0xffff)
             str_exception(ERR_INV_DWARF, "Location expression is too large");
-        set_u2(switch_pos - 2, buf_pos - switch_pos);
+        set_u2(switch_pos - 2, (U2_T)(buf_pos - switch_pos));
     }
     else if (fbreg) {
         add_fbreg_expression(info, offs);
