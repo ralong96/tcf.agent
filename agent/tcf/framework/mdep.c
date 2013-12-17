@@ -478,8 +478,6 @@ DIR * utf8_opendir(const char * path) {
 }
 
 struct dirent * utf8_readdir(DIR * d) {
-    static struct dirent de;
-
     if (d->hdl < 0) {
         int error = 0;
         d->hdl = _wfindfirsti64(d->path, &d->blk);
@@ -496,15 +494,15 @@ struct dirent * utf8_readdir(DIR * d) {
             return NULL;
         }
     }
-    if (!WideCharToMultiByte(CP_UTF8, 0, d->blk.name, -1, de.d_name, sizeof(de.d_name), NULL, NULL)) {
+    if (!WideCharToMultiByte(CP_UTF8, 0, d->blk.name, -1, d->de.d_name, sizeof(d->de.d_name), NULL, NULL)) {
         set_win32_errno(GetLastError());
         return 0;
     }
-    de.d_size = d->blk.size;
-    de.d_atime = d->blk.time_access;
-    de.d_ctime = d->blk.time_create;
-    de.d_wtime = d->blk.time_write;
-    return &de;
+    d->de.d_size = d->blk.size;
+    d->de.d_atime = d->blk.time_access;
+    d->de.d_ctime = d->blk.time_create;
+    d->de.d_wtime = d->blk.time_write;
+    return &d->de;
 }
 
 int utf8_closedir(DIR * d) {

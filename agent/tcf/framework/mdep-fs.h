@@ -68,18 +68,19 @@ extern int utf8_rename(const char * path1, const char * path2);
 /*
  * readdir() emulation with UTF-8 support
  */
-struct UTF8_DIR {
-  intptr_t hdl;
-  struct _wfinddatai64_t blk;
-  wchar_t * path;
-};
-
 struct utf8_dirent {
   char d_name[FILE_PATH_SIZE];
   int64_t d_size;
   time_t d_atime;
   time_t d_ctime;
   time_t d_wtime;
+};
+
+struct UTF8_DIR {
+  intptr_t hdl;
+  struct _wfinddatai64_t blk;
+  struct utf8_dirent de;
+  wchar_t * path;
 };
 
 typedef struct UTF8_DIR UTF8_DIR;
