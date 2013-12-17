@@ -529,7 +529,7 @@ static void reply_readdir(char * token, OutputStream * out, int err, struct DirF
     write_stringz(out, "R");
     write_stringz(out, token);
     write_stream(out, '[');
-    while ((curFile != NULL) && (curFile->path != NULL) && (cnt < maxFiles)) {
+    while (curFile != NULL && cnt < maxFiles && curFile->path != NULL) {
         FileAttrs attrs;
         if (cnt++ > 0) write_stream(out, ',');
         write_stream(out, '{');
@@ -559,17 +559,17 @@ static void reply_readdir(char * token, OutputStream * out, int err, struct DirF
     write_stream(out, MARKER_EOM);
 }
 
-static void free_readdir_files (struct DirFileNode *files, int maxFiles){
+static void free_readdir_files (struct DirFileNode * files, int maxFiles){
     int cnt = 0;
     struct DirFileNode * curFile = files;
 
     if (curFile == NULL) return;
-    while ((curFile->path != NULL) && (cnt < maxFiles)) {
+    while (cnt < maxFiles && curFile->path != NULL) {
         loc_free(curFile->path);
         loc_free(curFile->statbuf);
         cnt++;
         curFile++;
-    } 
+    }
     loc_free(files);
 }
 
@@ -684,7 +684,7 @@ static void done_io_request(void * arg) {
         if (err != 0) {
             reply_open(req->token, handle->out, err, NULL);
             delete_open_file_info(handle);
-        } 
+        }
         else {
             if (req->req == REQ_OPEN) handle->file = req->info.u.fio.rval;
             else  handle->dir =  req->info.u.dio.dir;
