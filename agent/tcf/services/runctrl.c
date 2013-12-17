@@ -120,6 +120,8 @@ static int stop_all_timer_cnt = 0;
 static int stop_all_timer_posted = 0;
 static int run_safe_events_posted = 0;
 
+static AbstractCache safe_events_cache;
+
 static TCFBroadcastGroup * broadcast_group = NULL;
 
 static void run_safe_events(void * arg);
@@ -2133,6 +2135,12 @@ void post_safe_event(Context * ctx, EventCallBack * done, void * arg) {
 
 int is_safe_event(void) {
     return safe_event_active;
+}
+
+void check_all_stopped(Context * ctx) {
+    if (is_all_stopped(ctx)) return;
+    post_safe_event(ctx, (EventCallBack *)cache_notify, &safe_events_cache);
+    cache_wait(&safe_events_cache);
 }
 
 int safe_context_single_step(Context * ctx) {

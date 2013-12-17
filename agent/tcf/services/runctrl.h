@@ -91,6 +91,16 @@ extern int is_safe_event(void);
 extern int safe_context_single_step(Context * ctx);
 
 /*
+ * Check that all threads in a context are stopped and
+ * it is safe to access debuggee memory, plant breakpoints, etc.
+ * The function is intended to be used in an ACPM transaction.
+ * If the check fails, the function requests the threads to stop and
+ * calls cache_wait() to abort current transaction. The transaction will
+ * be re-executed later, when relevant threads are stopped.
+ */
+extern void check_all_stopped(Context * ctx);
+
+/*
  * Return 1 if all threads in a debuggee are stopped and handling of incoming messages
  * is suspended, and it is safe to access debuggee memory, plant breakpoints, etc.
  * Only threads that belong to CONTEXT_GROUP_STOP of 'ctx' are checked.
@@ -163,6 +173,7 @@ extern void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg);
 #define is_intercepted(x) 0
 #define is_safe_event() 0
 #define post_safe_event(ctx, done, arg) ((void)ctx, post_event(done, arg))
+#define check_all_stopped(x) do {} while(0)
 
 #endif /* SERVICE_RunControl */
 

@@ -262,7 +262,7 @@ static unsigned get_bp_access_types(BreakpointInfo * bp, int virtual_addr) {
 }
 
 #ifndef NDEBUG
-static int check_all_stopped(Context * ctx) {
+static int print_not_stopped_contexts(Context * ctx) {
     LINK * l;
     Context * grp;
     if (is_all_stopped(ctx)) return 1;
@@ -289,7 +289,7 @@ static void plant_instruction(BreakInstruction * bi) {
     assert(!bi->cb.ctx->exiting);
     assert(bi->valid);
     assert(bi->address_error == NULL);
-    assert(check_all_stopped(bi->cb.ctx));
+    assert(print_not_stopped_contexts(bi->cb.ctx));
 
     bi->saved_size = 0;
 
@@ -340,7 +340,7 @@ static int remove_instruction(BreakInstruction * bi) {
     assert(bi->planted);
     assert(bi->planting_error == NULL);
     assert(bi->address_error == NULL);
-    assert(check_all_stopped(bi->cb.ctx));
+    assert(print_not_stopped_contexts(bi->cb.ctx));
     if (bi->saved_size) {
         if (!bi->cb.ctx->exited) {
             int r = 0;
