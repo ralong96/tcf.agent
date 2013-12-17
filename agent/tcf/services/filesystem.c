@@ -1045,7 +1045,7 @@ static void command_readdir(char * token, Channel * c) {
         IORequest * req = create_io_request(token, h, REQ_READDIR);
         req->info.u.dio.dir = h->dir;
         req->info.u.dio.path = loc_strdup(h->path);
-        req->info.u.dio.files = loc_alloc_zero(sizeof(struct DirFileNode) * 64);
+        req->info.u.dio.files = (struct DirFileNode *)loc_alloc_zero(sizeof(struct DirFileNode) * 64);
         req->info.u.dio.max_file_per_dir = 64;
         req->info.type = AsyncReqReaddir;
         post_io_request(h);
