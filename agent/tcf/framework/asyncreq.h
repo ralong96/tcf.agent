@@ -28,6 +28,7 @@
 #endif
 #include <time.h>
 #include <sys/stat.h>
+#include <dirent.h>
 
 #include <tcf/framework/link.h>
 #include <tcf/framework/events.h>
@@ -47,11 +48,22 @@ enum {
     AsyncReqWaitpid,                    /* Wait for process change */
     AsyncReqSelect,                     /* Do select() on file handles */
     AsyncReqClose,                      /* File close */
+    AsyncReqCloseDir,                   /* Directory close */
     AsyncReqOpen,                       /* File open */
     AsyncReqStat,                       /* File stat */
     AsyncReqFstat,                      /* File fstat */
     AsyncReqLstat,                      /* File lstat */
-    AsyncReqRemove                      /* File remove */
+    AsyncReqRemove,                     /* File remove */
+    AsyncReqOpendir,                    /* Directory open */
+    AsyncReqReaddir                     /* Directory read */
+};
+
+struct DirFileNode {
+    char * path;
+    struct stat * statbuf;
+#if defined(_WIN32) || defined(__CYGWIN__)
+    DWORD win32_attrs;
+#endif
 };
 
 typedef struct AsyncReqInfo AsyncReqInfo;
@@ -81,6 +93,17 @@ struct AsyncReqInfo {
             struct aiocb aio;
 #endif
         } fio;
+        struct {
+            /* In */
+            char * path;
+            int max_file_per_dir;
+            struct DirFileNode *files;
+            int eof;
+
+            /* in/Out */
+            DIR * dir;
+            int rval;
+        } dio;
         struct {
             /* In */
             int sock;

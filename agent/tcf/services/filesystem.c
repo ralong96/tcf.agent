@@ -75,6 +75,8 @@ static const int
 #define REQ_STAT            7
 #define REQ_LSTAT           8
 #define REQ_REMOVE          9
+#define REQ_OPENDIR         10
+#define REQ_READDIR         11
 
 typedef struct OpenFileInfo OpenFileInfo;
 typedef struct IORequest IORequest;
@@ -520,6 +522,57 @@ static void reply_remove(char * token, OutputStream * out, int err) {
     write_stream(out, MARKER_EOM);
 }
 
+static void reply_readdir(char * token, OutputStream * out, int err, struct DirFileNode *files, int maxFiles, int eof) {
+    int cnt = 0;
+    struct DirFileNode * curFile = files;
+
+    write_stringz(out, "R");
+    write_stringz(out, token);
+    write_stream(out, '[');
+    while ((curFile != NULL) && (curFile->path != NULL) && (cnt < maxFiles)) {
+        FileAttrs attrs;
+        if (cnt++ > 0) write_stream(out, ',');
+        write_stream(out, '{');
+        json_write_string(out, "FileName");
+        write_stream(out, ':');
+        json_write_string(out, curFile->path);
+
+        if (curFile->statbuf != NULL) {
+            fill_attrs(&attrs, curFile->statbuf);
+#if defined(_WIN32) || defined(__CYGWIN__)
+            attrs.win32_attrs = curFile->win32_attrs;
+#endif
+            write_stream(out, ',');
+            json_write_string(out, "Attrs");
+            write_stream(out, ':');
+            write_file_attrs(out, &attrs);
+        }
+        write_stream(out, '}');
+        curFile++;
+    }
+    write_stream(out, ']');
+    write_stream(out, 0);
+
+    write_fs_errno(out, err);
+    json_write_boolean(out, eof);
+    write_stream(out, 0);
+    write_stream(out, MARKER_EOM);
+}
+
+static void free_readdir_files (struct DirFileNode *files, int maxFiles){
+    int cnt = 0;
+    struct DirFileNode * curFile = files;
+
+    if (curFile == NULL) return;
+    while ((curFile->path != NULL) && (cnt < maxFiles)) {
+        loc_free(curFile->path);
+        loc_free(curFile->statbuf);
+        cnt++;
+        curFile++;
+    } 
+    loc_free(files);
+}
+
 static void done_io_request(void * arg) {
     int err = 0;
     IORequest * req = (IORequest *)((AsyncReqInfo *)arg)->client_data;
@@ -533,6 +586,10 @@ static void done_io_request(void * arg) {
             close(req->info.u.fio.fd);
             break;
         case REQ_CLOSE:
+            break;
+        case REQ_READDIR:
+            closedir(req->info.u.dio.dir);
+            free_readdir_files((struct DirFileNode *)req->info.u.dio.files, req->info.u.dio.max_file_per_dir);
             break;
         default:
             assert(0);
@@ -592,8 +649,15 @@ static void done_io_request(void * arg) {
                 case REQ_OPEN:
                     reply_open(req->token, handle->out, EBADF, NULL);
                     break;
+                case REQ_OPENDIR:
+                    reply_open(req->token, handle->out, EBADF, NULL);
+                    break;
                 case REQ_REMOVE:
                     reply_remove(req->token, handle->out, EBADF);
+                    break;
+                case REQ_READDIR:
+                    reply_readdir(req->token, handle->out, EBADF, NULL, 0, 0);
+                    free_readdir_files((struct DirFileNode *)req->info.u.dio.files, req->info.u.dio.max_file_per_dir);
                     break;
                 default:
                     assert(0);
@@ -607,9 +671,10 @@ static void done_io_request(void * arg) {
         }
         break;
     case REQ_OPEN:
+    case REQ_OPENDIR:
         err = req->info.error;
 #if defined(_WIN32) || defined(__CYGWIN__)
-        if (err == 0) {
+        if ((req->req == REQ_OPEN) && (err == 0)) {
             if (req->info.u.fio.win32_attrs != INVALID_FILE_ATTRIBUTES) {
                 if (SetFileAttributes(req->info.u.fio.file_name, req->info.u.fio.win32_attrs) == 0)
                     err = set_win32_errno(GetLastError());
@@ -619,8 +684,10 @@ static void done_io_request(void * arg) {
         if (err != 0) {
             reply_open(req->token, handle->out, err, NULL);
             delete_open_file_info(handle);
-        } else {
-            handle->file = req->info.u.fio.rval;
+        } 
+        else {
+            if (req->req == REQ_OPEN) handle->file = req->info.u.fio.rval;
+            else  handle->dir =  req->info.u.dio.dir;
             reply_open(req->token, handle->out, err, handle);
         }
         loc_free(req);
@@ -638,6 +705,11 @@ static void done_io_request(void * arg) {
     case REQ_REMOVE:
         reply_remove(req->token, handle->out, req->info.error);
         delete_open_file_info(handle);
+        loc_free(req);
+        return;
+    case REQ_READDIR:
+        reply_readdir(req->token, handle->out, req->info.error, (struct DirFileNode *)req->info.u.dio.files,req->info.u.dio.max_file_per_dir, req->info.u.dio.eof);
+        free_readdir_files((struct DirFileNode *)req->info.u.dio.files, req->info.u.dio.max_file_per_dir);
         loc_free(req);
         return;
     default:
@@ -659,7 +731,7 @@ static void post_io_request(OpenFileInfo * handle) {
                 int err = 0;
                 FileAttrs attrs = req->attrs;
                 if (attrs.flags & ATTR_SIZE) {
-                    if (ftruncate(handle->file, attrs.size) < 0) err = errno;
+                    if (ftruncate(handle->file, (off_t)attrs.size) < 0) err = errno;
                 }
 #if defined(_WIN32) || defined(__CYGWIN__) || defined(_WRS_KERNEL)
                 if (attrs.flags & ATTR_PERMISSIONS) {
@@ -710,7 +782,6 @@ static IORequest * create_io_request(char * token, OpenFileInfo * handle, int ty
 static void command_close(char * token, Channel * c) {
     char id[256];
     OpenFileInfo * h;
-    int err = 0;
 
     json_read_string(&c->inp, id, sizeof(id));
     json_test_char(&c->inp, MARKER_EOA);
@@ -718,25 +789,21 @@ static void command_close(char * token, Channel * c) {
 
     h = find_open_file_info(id);
     if (h == NULL) {
-        err = EBADF;
-    }
-    else if (h->dir != NULL) {
-        if (closedir(h->dir) < 0) {
-            err = errno;
-        }
-        else {
-            delete_open_file_info(h);
-        }
+        reply_close(token, &c->out, EBADF);
     }
     else {
         IORequest * req = create_io_request(token, h, REQ_CLOSE);
         req->info.type = AsyncReqClose;
-        req->info.u.fio.fd = h->file;
+        if (h->dir != NULL){
+            req->info.u.dio.dir = h->dir;
+            req->info.type = AsyncReqCloseDir;
+        } else {
+            req->info.u.fio.fd = h->file;
+            req->info.type = AsyncReqClose;
+        }
         post_io_request(h);
         return;
     }
-
-    reply_close(token, &c->out, err);
 }
 
 static void command_read(char * token, Channel * c) {
@@ -947,92 +1014,42 @@ static void command_fsetstat(char * token, Channel * c) {
 
 static void command_opendir(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
-    DIR * dir;
-    int err = 0;
     OpenFileInfo * handle = NULL;
+    IORequest * req = NULL;
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    dir = opendir(path);
-    if (dir == NULL) {
-        err = errno;
-    }
-    else {
-        handle = create_open_file_info(c, path, -1, dir);
-    }
+    handle = create_open_file_info(c, path, -1, NULL);
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
-    write_fs_errno(&c->out, err);
-    write_file_handle(&c->out, handle);
-    write_stream(&c->out, MARKER_EOM);
+    req = create_io_request(token, handle, REQ_OPENDIR);
+    req->info.type = AsyncReqOpendir;
+    req->info.u.dio.path = loc_strdup(path);
+    post_io_request(handle);
 }
 
 static void command_readdir(char * token, Channel * c) {
     char id[256];
     OpenFileInfo * h;
-    int err = 0;
-    int eof = 0;
 
     json_read_string(&c->inp, id, sizeof(id));
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
-
     h = find_open_file_info(id);
     if (h == NULL || h->dir == NULL) {
-        write_stringz(&c->out, "null");
-        err = EBADF;
+        reply_readdir(token, &c->out, EBADF, (struct DirFileNode *)NULL, 0, 0);
     }
     else {
-        int cnt = 0;
-        write_stream(&c->out, '[');
-        while (cnt < 64) {
-            struct dirent * e;
-            char path[FILE_PATH_SIZE];
-            struct stat st;
-            FileAttrs attrs;
-            errno = 0;
-            e = readdir(h->dir);
-            if (e == NULL) {
-                err = errno;
-                if (err == 0) eof = 1;
-                break;
-            }
-            if (strcmp(e->d_name, ".") == 0) continue;
-            if (strcmp(e->d_name, "..") == 0) continue;
-            if (cnt > 0) write_stream(&c->out, ',');
-            write_stream(&c->out, '{');
-            json_write_string(&c->out, "FileName");
-            write_stream(&c->out, ':');
-            json_write_string(&c->out, e->d_name);
-            memset(&st, 0, sizeof(st));
-            snprintf(path, sizeof(path), "%s/%s", h->path, e->d_name);
-            if (stat(path, &st) == 0) {
-                fill_attrs(&attrs, &st);
-#if defined(_WIN32) || defined(__CYGWIN__)
-                attrs.win32_attrs = GetFileAttributes(path);
-#endif
-                write_stream(&c->out, ',');
-                json_write_string(&c->out, "Attrs");
-                write_stream(&c->out, ':');
-                write_file_attrs(&c->out, &attrs);
-            }
-            write_stream(&c->out, '}');
-            cnt++;
-        }
-        write_stream(&c->out, ']');
-        write_stream(&c->out, 0);
+        IORequest * req = create_io_request(token, h, REQ_READDIR);
+        req->info.u.dio.dir = h->dir;
+        req->info.u.dio.path = loc_strdup(h->path);
+        req->info.u.dio.files = loc_alloc_zero(sizeof(struct DirFileNode) * 64);
+        req->info.u.dio.max_file_per_dir = 64;
+        req->info.type = AsyncReqReaddir;
+        post_io_request(h);
     }
-
-    write_fs_errno(&c->out, err);
-    json_write_boolean(&c->out, eof);
-    write_stream(&c->out, 0);
-    write_stream(&c->out, MARKER_EOM);
 }
 
 static void command_remove(char * token, Channel * c) {

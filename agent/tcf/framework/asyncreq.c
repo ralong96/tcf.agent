@@ -218,6 +218,13 @@ static void * worker_thread_handler(void * x) {
                 assert(req->error);
             }
         break;
+        case AsyncReqCloseDir:
+            req->u.dio.rval = closedir(req->u.dio.dir);
+            if (req->u.dio.rval == -1) {
+                req->error = errno;
+                assert(req->error);
+            }
+            break;
         case AsyncReqOpen:
             req->u.fio.rval = open(req->u.fio.file_name, req->u.fio.flags, req->u.fio.permission);
             if (req->u.fio.rval == -1) {
@@ -225,6 +232,14 @@ static void * worker_thread_handler(void * x) {
                 assert(req->error);
             }
             loc_free(req->u.fio.file_name);
+            break;
+        case AsyncReqOpendir:
+            req->u.dio.dir = opendir(req->u.dio.path);
+            if (req->u.dio.dir == NULL) {
+                req->error = errno;
+                assert(req->error);
+            }
+            loc_free(req->u.dio.path);
             break;
         case AsyncReqFstat:
             memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
@@ -260,6 +275,38 @@ static void * worker_thread_handler(void * x) {
             }
             loc_free(req->u.fio.file_name);
             break;
+        case AsyncReqReaddir:
+        {
+            int cnt = 0;
+            struct DirFileNode * curFileNode;
+            struct dirent * e;
+            struct stat st;
+            while (cnt < req->u.dio.max_file_per_dir) {
+                char path[FILE_PATH_SIZE];
+                errno = 0;
+                e = readdir(req->u.dio.dir);
+                if (e == NULL) {
+                    req->error = errno;
+                    if (req->error == 0) req->u.dio.eof = 1;
+                    break;
+                }
+                if (strcmp(e->d_name, ".") == 0) continue;
+                if (strcmp(e->d_name, "..") == 0) continue;
+                curFileNode = &req->u.dio.files[cnt++];
+                curFileNode->path = loc_strdup(e->d_name);
+                memset(&st, 0, sizeof(st));
+                snprintf(path, sizeof(path), "%s/%s",req->u.dio.path, e->d_name);
+                if (stat(path, &st) == 0) {
+#if defined(_WIN32) || defined(__CYGWIN__)
+                    curFileNode->win32_attrs =  GetFileAttributes(path);
+#endif
+                    curFileNode->statbuf = loc_alloc(sizeof(struct stat));
+                    memcpy(curFileNode->statbuf, &st, sizeof(struct stat));
+                }
+            }
+        }
+        loc_free(req->u.dio.path);
+        break;
         default:
             req->error = ENOSYS;
             break;
