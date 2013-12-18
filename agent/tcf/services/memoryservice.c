@@ -50,13 +50,12 @@ static TCFBroadcastGroup * broadcast_group = NULL;
 #define BUF_SIZE    (128 * MEM_USAGE_FACTOR)
 
 typedef struct MemoryCommandArgs {
-    Channel * c;
     char token[256];
+    char ctx_id[256];
     ContextAddress addr;
     unsigned long size;
     int word_size;
     int mode;
-    Context * ctx;
     JsonReadBinaryState state;
     char * buf;
     size_t pos;
@@ -227,9 +226,9 @@ static void command_get_context(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOM);
 
     ctx = id2ctx(id);
-
-    if (ctx == NULL || ctx->mem_access == 0) err = ERR_INV_CONTEXT;
+    if (ctx == NULL) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
+    else if (ctx->mem_access == 0) err = ERR_INV_CONTEXT;
 
     write_stringz(&c->out, "R");
     write_stringz(&c->out, token);
@@ -302,12 +301,10 @@ static void read_memory_fill_array_cb(InputStream * inp, void * args) {
 }
 
 static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd) {
-    int err = 0;
-    char id[256];
-    MemoryCommandArgs buf;
+    static MemoryCommandArgs buf;
     memset(&buf, 0, sizeof(buf));
 
-    json_read_string(&c->inp, id, sizeof(id));
+    json_read_string(&c->inp, buf.ctx_id, sizeof(buf.ctx_id));
     json_test_char(&c->inp, MARKER_EOA);
     buf.addr = (ContextAddress)json_read_uint64(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
@@ -334,35 +331,8 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
         break;
     }
 
-    buf.ctx = id2ctx(id);
-    if (buf.ctx == NULL) err = ERR_INV_CONTEXT;
-    else if (buf.ctx->exited) err = ERR_ALREADY_EXITED;
-    else if (buf.ctx->mem_access == 0) err = ERR_INV_CONTEXT;
-
-    if (err != 0) {
-        if (cmd == CMD_SET) {
-            int ch;
-            do ch = read_stream(&c->inp);
-            while (ch != MARKER_EOM && ch != MARKER_EOS);
-        }
-
-        write_stringz(&c->out, "R");
-        write_stringz(&c->out, token);
-        if (cmd == CMD_GET) write_stringz(&c->out, "null");
-        write_errno(&c->out, err);
-        write_stringz(&c->out, "null");
-        write_stream(&c->out, MARKER_EOM);
-        return NULL;
-    }
-    else {
-        MemoryCommandArgs * args = (MemoryCommandArgs *)loc_alloc(sizeof(MemoryCommandArgs));
-        *args = buf;
-        args->c = c;
-        strlcpy(args->token, token, sizeof(args->token));
-        channel_lock_with_msg(c, MEMORY);
-        context_lock(buf.ctx);
-        return args;
-    }
+    strlcpy(buf.token, token, sizeof(buf.token));
+    return &buf;
 }
 
 void send_event_memory_changed(Context * ctx, ContextAddress addr, unsigned long size) {
@@ -400,8 +370,8 @@ void send_event_memory_changed(Context * ctx, ContextAddress addr, unsigned long
 
 static void memory_set_cache_client(void * parm) {
     MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
-    Channel * c = args->c;
-    Context * ctx = args->ctx;
+    Channel * c = cache_channel();
+    Context * ctx = NULL;
     ContextAddress addr0 = args->addr;
     ContextAddress addr = args->addr;
     unsigned long size = 0;
@@ -409,10 +379,14 @@ static void memory_set_cache_client(void * parm) {
     int err = 0;
 
     memset(&err_info, 0, sizeof(err_info));
-    if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
+
+    ctx = id2ctx(args->ctx_id);
+    if (ctx == NULL) err = ERR_INV_CONTEXT;
+    else if (ctx->exited) err = ERR_ALREADY_EXITED;
 
     /* First write needs to be done before cache_exit() */
     if (err == 0) {
+        check_all_stopped(ctx);
         /* TODO: word size, mode */
         if (context_write_mem(ctx, addr, args->buf, args->pos) < 0) {
             err = errno;
@@ -468,36 +442,16 @@ static void memory_set_cache_client(void * parm) {
         write_stream(out, MARKER_EOM);
     }
     loc_free(args->buf);
-    context_unlock(ctx);
-    run_ctrl_unlock();
-}
-
-static void safe_memory_set(void * parm) {
-    MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
-    Channel * c = args->c;
-    Context * ctx = args->ctx;
-
-    if (!is_channel_closed(c)) {
-        run_ctrl_lock();
-        context_lock(ctx);
-        cache_enter(memory_set_cache_client, c, args, sizeof(MemoryCommandArgs));
-    }
-    else {
-        loc_free(args->buf);
-    }
-    channel_unlock_with_msg(c, MEMORY);
-    context_unlock(ctx);
-    loc_free(args);
 }
 
 static void command_set(char * token, Channel * c) {
     MemoryCommandArgs * args = read_command_args(token, c, CMD_SET);
-    if (args != NULL) post_safe_event(args->ctx, safe_memory_set, args);
+    cache_enter(memory_set_cache_client, c, args, sizeof(MemoryCommandArgs));
 }
 
 static void memory_get_cache_client(void * parm) {
     MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
-    Context * ctx = args->ctx;
+    Context * ctx = NULL;
     Channel * c = cache_channel();
     ContextAddress addr0 = args->addr;
     ContextAddress addr = args->addr;
@@ -508,15 +462,19 @@ static void memory_get_cache_client(void * parm) {
     JsonWriteBinaryState state;
 
     memset(&err_info, 0, sizeof(err_info));
-    if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
+
+    ctx = id2ctx(args->ctx_id);
+    if (ctx == NULL) err = ERR_INV_CONTEXT;
+    else if (ctx->exited) err = ERR_ALREADY_EXITED;
 
     /* First read needs to be done before cache_exit() */
     if (size > 0) {
         size_t rd = size;
         if (rd > args->max) rd = args->max;
-        /* TODO: word size, mode */
         memset(args->buf, 0, rd);
         if (err == 0) {
+            check_all_stopped(ctx);
+            /* TODO: word size, mode */
             if (context_read_mem(ctx, addr, args->buf, rd) < 0) {
                 err = errno;
 #if ENABLE_ExtendedMemoryErrorReports
@@ -572,37 +530,17 @@ static void memory_get_cache_client(void * parm) {
         write_stream(out, MARKER_EOM);
     }
     loc_free(args->buf);
-    context_unlock(ctx);
-    run_ctrl_unlock();
-}
-
-static void safe_memory_get(void * parm) {
-    MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
-    Channel * c = args->c;
-    Context * ctx = args->ctx;
-
-    if (!is_channel_closed(c)) {
-        run_ctrl_lock();
-        context_lock(ctx);
-        cache_enter(memory_get_cache_client, c, args, sizeof(MemoryCommandArgs));
-    }
-    else {
-        loc_free(args->buf);
-    }
-    channel_unlock_with_msg(c, MEMORY);
-    context_unlock(ctx);
-    loc_free(args);
 }
 
 static void command_get(char * token, Channel * c) {
     MemoryCommandArgs * args = read_command_args(token, c, CMD_GET);
-    if (args != NULL) post_safe_event(args->ctx, safe_memory_get, args);
+    cache_enter(memory_get_cache_client, c, args, sizeof(MemoryCommandArgs));
 }
 
 static void memory_fill_cache_client(void * parm) {
     MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
-    Channel * c = args->c;
-    Context * ctx = args->ctx;
+    Channel * c = cache_channel();
+    Context * ctx = NULL;
     char * tmp = (char *)tmp_alloc(args->pos);
     ContextAddress addr0 = args->addr;
     ContextAddress addr = args->addr;
@@ -611,14 +549,19 @@ static void memory_fill_cache_client(void * parm) {
     int err = 0;
 
     memset(&err_info, 0, sizeof(err_info));
-    if (ctx->exiting || ctx->exited) err = ERR_ALREADY_EXITED;
+
+    ctx = id2ctx(args->ctx_id);
+    if (ctx == NULL) err = ERR_INV_CONTEXT;
+    else if (ctx->exited) err = ERR_ALREADY_EXITED;
+
+    if (err == 0) check_all_stopped(ctx);
 
     while (err == 0 && addr < addr0 + size) {
         /* Note: context_write_mem() modifies buffer contents */
         unsigned wr = (unsigned)(addr0 + size - addr);
         if (wr > args->pos) wr = args->pos;
-        /* TODO: word size, mode */
         memcpy(tmp, args->buf, wr);
+        /* TODO: word size, mode */
         if (context_write_mem(ctx, addr, tmp, wr) < 0) {
             err = errno;
 #if ENABLE_ExtendedMemoryErrorReports
@@ -650,41 +593,21 @@ static void memory_fill_cache_client(void * parm) {
         write_stream(out, MARKER_EOM);
     }
     loc_free(args->buf);
-    context_unlock(ctx);
-    run_ctrl_unlock();
-}
-
-static void safe_memory_fill(void * parm) {
-    MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
-    Channel * c = args->c;
-    Context * ctx = args->ctx;
-
-    if (!is_channel_closed(c)) {
-        run_ctrl_lock();
-        context_lock(ctx);
-        /* Grow buffer for faster execution */
-        while (args->pos < args->size && args->pos <= args->max / 2) {
-            if (args->pos == 0) {
-                args->buf[args->pos++] = 0;
-            }
-            else {
-                memcpy(args->buf + args->pos, args->buf, args->pos);
-                args->pos *= 2;
-            }
-        }
-        cache_enter(memory_fill_cache_client, c, args, sizeof(MemoryCommandArgs));
-    }
-    else {
-        loc_free(args->buf);
-    }
-    channel_unlock_with_msg(c, MEMORY);
-    context_unlock(ctx);
-    loc_free(args);
 }
 
 static void command_fill(char * token, Channel * c) {
     MemoryCommandArgs * args = read_command_args(token, c, CMD_FILL);
-    if (args != NULL) post_safe_event(args->ctx, safe_memory_fill, args);
+    /* Grow buffer for faster execution */
+    while (args->pos < args->size && args->pos <= args->max / 2) {
+        if (args->pos == 0) {
+            args->buf[args->pos++] = 0;
+        }
+        else {
+            memcpy(args->buf + args->pos, args->buf, args->pos);
+            args->pos *= 2;
+        }
+    }
+    cache_enter(memory_fill_cache_client, c, args, sizeof(MemoryCommandArgs));
 }
 
 static void send_event_context_added(Context * ctx) {
