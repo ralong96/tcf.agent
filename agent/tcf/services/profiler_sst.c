@@ -228,24 +228,6 @@ void profiler_sst_reset(Context * ctx) {
     }
 }
 
-static void * profiler_configure(void * args, Context * ctx, ProfilerParams * params) {
-    ProfilerSST * prf = (ProfilerSST *)args;
-    ContextExtensionPrfSST * ext = EXT(ctx);
-    if (prf == NULL) {
-        prf = (ProfilerSST *)loc_alloc_zero(sizeof(ProfilerSST));
-        if (list_is_empty(&ext->list)) list_init(&ext->list);
-        list_add_last(&prf->link_core, &ext->list);
-        prf->channel = params->channel;
-        prf->ctx = ctx;
-    }
-    else {
-        assert(!prf->disposed);
-        free_buffers(prf);
-    }
-    prf->frame_cnt = params->frame_cnt;
-    return prf;
-}
-
 static void profiler_dispose(void * args) {
     ProfilerSST * prf = (ProfilerSST *)args;
     assert(!prf->disposed);
@@ -253,6 +235,34 @@ static void profiler_dispose(void * args) {
     free_buffers(prf);
     prf->disposed = 1;
     if (prf->lock == 0) loc_free(prf);
+}
+
+static void * profiler_configure(void * args, Context * ctx, ProfilerParams * params) {
+    ProfilerSST * prf = (ProfilerSST *)args;
+    ContextExtensionPrfSST * ext = EXT(ctx);
+    if (params->frame_cnt > 0) {
+        /* Enabled */
+        if (prf == NULL) {
+            prf = (ProfilerSST *)loc_alloc_zero(sizeof(ProfilerSST));
+            if (list_is_empty(&ext->list)) list_init(&ext->list);
+            list_add_last(&prf->link_core, &ext->list);
+            prf->channel = params->channel;
+            prf->ctx = ctx;
+        }
+        else {
+            assert(!prf->disposed);
+            free_buffers(prf);
+        }
+        prf->frame_cnt = params->frame_cnt;
+    }
+    else {
+        /* Disabled */
+        if (prf != NULL) {
+            profiler_dispose(prf);
+            prf = NULL;
+        }
+    }
+    return prf;
 }
 
 static void add_num(uint8_t * buf, unsigned * pos, unsigned size, ContextAddress v) {
