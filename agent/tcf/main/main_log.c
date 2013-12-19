@@ -238,7 +238,7 @@ static int is_log_filtered(Channel * src, Channel * dst, int argc, char ** argv)
     mf = find_message_filter(argc, argv);
     if (mf && mf->flags & FILTER_OUT) {
         if (argc >= 2 && argv[0][0] == 'C' && argv[0][1] == '\0') {
-            TokenFilter * tf = loc_alloc(sizeof *tf + strlen(argv[1]));
+            TokenFilter * tf = (TokenFilter *)loc_alloc_zero(sizeof(TokenFilter) + strlen(argv[1]));
             tf->chan = src;
             strcpy(tf->token, argv[1]);
             list_add_last(&tf->all, &token_filters);

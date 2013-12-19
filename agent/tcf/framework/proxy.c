@@ -256,7 +256,7 @@ static void log_flush(Proxy * proxy) {
 
 #else
 
-#define log_start(a, b, c) do {} while(0)
+#define log_start(a, b, c) 0
 #define log_byte(a) do {} while(0)
 #define log_flush(a) do {} while(0)
 
@@ -305,14 +305,12 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
         }
         else {
             i = read_stream(inp);
-            if (!filtered)
-                log_byte(i);
+            if (!filtered) log_byte(i);
             write_stream(out, i);
         }
     }
     while (i != MARKER_EOM && i != MARKER_EOS);
-    if (!filtered)
-        log_flush(proxy);
+    if (!filtered) log_flush(proxy);
 }
 
 static void proxy_update(Channel * c1, Channel * c2) {
