@@ -1084,7 +1084,7 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                 }
             }
         }
-        else if (r->file_size == 0 && r->sect_name == NULL) {
+        else if (r->size == 0 && r->file_size == 0 && r->sect_name == NULL) {
             if (r->file_offs == 0) {
                 /* Linux module (shared library): r->addr is "memory load address".
                  * See System V Application Binary Interface for description of
@@ -1273,7 +1273,12 @@ static int is_p_header_region(ELF_PHeader * p, MemoryRegion * r) {
         if ((p->flags & PF_W) && !(r->flags & MM_FLAG_W)) return 0;
         if ((p->flags & PF_X) && !(r->flags & MM_FLAG_X)) return 0;
     }
-    if (r->file_offs + r->file_size <= p->offset) return 0;
+    if (r->file_size > 0) {
+        if (r->file_offs + r->file_size <= p->offset) return 0;
+    }
+    else {
+        if (r->file_offs + r->size <= p->offset) return 0;
+    }
     if (r->file_offs >= p->offset + p->file_size) return 0;
     return 1;
 }
