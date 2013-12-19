@@ -48,4 +48,13 @@ extern Channel * proxy_get_host_channel(Channel * c);
  */
 extern Channel * proxy_get_target_channel(Channel * c);
 
+/*
+ * Set listener used to determine filtering of log function.  Return
+ * the previous listener pointer or NULL if no listener is set.
+ *
+ * The listener should return 1 if the log is filtered or 0 if not filtered.
+ */
+typedef int (*ProxyLogFilterListener)(Channel * src, Channel * dst, int argc, char ** argv);
+extern ProxyLogFilterListener set_proxy_log_filter_listener(ProxyLogFilterListener listener);
+
 #endif /* D_proxy */

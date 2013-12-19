@@ -117,6 +117,137 @@ static void channel_new_connection(ChannelServer * serv, Channel * c) {
     channel_start(c);
 }
 
+#define FILTER_IN 1
+#define FILTER_OUT 2
+#define FILTER_MODE (FILTER_IN | FILTER_OUT)
+
+typedef struct MessageFilter {
+    LINK all;
+    int flags;
+    int argc;
+    /* Dynamic array, must be last member in struct */
+    char * argv[1];
+} MessageFilter;
+
+typedef struct TokenFilter {
+    LINK all;
+    Channel * chan;
+    char token[1];
+} TokenFilter;
+
+#define all2mf(A)   ((MessageFilter *)((char *)(A) - offsetof(MessageFilter, all)))
+#define all2tf(A)   ((TokenFilter *)((char *)(A) - offsetof(TokenFilter, all)))
+
+static LINK message_filters = TCF_LIST_INIT(message_filters);
+static LINK token_filters = TCF_LIST_INIT(token_filters);
+
+static int add_message_filter(const char * filter) {
+    MessageFilter * mf;
+    const char * s;
+    int max = 1;
+    int c;
+
+    mf = (MessageFilter *)loc_alloc(sizeof *mf + (max - 1) * sizeof *mf->argv);
+    mf->flags = 0;
+    mf->argc = 0;
+
+    s = filter;
+    while ((c = *s) != '\0' && c != ',') {
+        switch (c) {
+        case 'i':
+            mf->flags |= FILTER_IN;
+            break;
+        case 'o':
+            mf->flags |= FILTER_OUT;
+            break;
+        default:
+            return 1;
+        }
+        s++;
+    }
+    while (c == ',') {
+        const char * start = ++s;
+        while ((c = *s) != '\0' && c != ',')
+            s++;
+        if (mf->argc >= max) {
+            max *= 2;
+            mf = (MessageFilter *)loc_realloc(mf, sizeof *mf + (max - 1) * sizeof *mf->argv);
+        }
+        if (mf->argc == 1 && !strcmp(mf->argv[0], "C")) {
+            /* Match any entry for command token */
+            mf->argv[mf->argc++] = NULL;
+            s = start - 1;
+            c = *s;
+        } else {
+            mf->argv[mf->argc++] = loc_strndup(start, s - start);
+        }
+    }
+    assert(c == '\0');
+
+    if ((mf->flags & FILTER_MODE) != FILTER_IN && (mf->flags & FILTER_MODE) != FILTER_OUT)
+        return 1;
+
+    list_add_last(&mf->all, &message_filters);
+    return 0;
+}
+
+static MessageFilter * find_message_filter(int argc, char ** argv) {
+    LINK * l = message_filters.next;
+    while (l != &message_filters) {
+        MessageFilter *mf = all2mf(l);
+        if (mf != NULL && mf->argc <= argc) {
+            int i;
+            for (i = 0; i < mf->argc; i++) {
+                if (mf->argv[i] != NULL && strcmp(mf->argv[i], argv[i]) != 0)
+                    break;
+            }
+            if (i >= mf->argc)
+                return mf;
+        }
+        l = l->next;
+    }
+    return NULL;
+}
+
+static TokenFilter * find_token_filter(Channel * c, char * token) {
+    LINK * l = token_filters.next;
+    while (l != &token_filters) {
+        TokenFilter *tf = all2tf(l);
+
+        if (tf->chan == c && !strcmp(tf->token, token))
+            return tf;
+        l = l->next;
+    }
+    return NULL;
+}
+
+static int is_log_filtered(Channel * src, Channel * dst, int argc, char ** argv) {
+    MessageFilter * mf;
+
+    if (argc >= 2 && (argv[0][0] == 'P' || argv[0][0] == 'R') && argv[0][1] == '\0') {
+        TokenFilter * tf = find_token_filter(dst, argv[1]);
+        if (tf != NULL) {
+            if (argv[0][0] == 'R') {
+                list_remove(&tf->all);
+                loc_free(tf);
+            }
+            return 1;
+        }
+    }
+
+    mf = find_message_filter(argc, argv);
+    if (mf && mf->flags & FILTER_OUT) {
+        if (argc >= 2 && argv[0][0] == 'C' && argv[0][1] == '\0') {
+            TokenFilter * tf = loc_alloc(sizeof *tf + strlen(argv[1]));
+            tf->chan = src;
+            strcpy(tf->token, argv[1]);
+            list_add_last(&tf->all, &token_filters);
+        }
+        return 1;
+    }
+    return 0;
+}
+
 #if !defined(_WRS_KERNEL)
 static const char * help_text[] = {
     "Usage: tcflog [OPTION]...",
@@ -133,6 +264,20 @@ static const char * help_text[] = {
     "@",
 #endif
     "  -s<url>          set agent listening port and protocol, default is TCP::1534",
+    "  -f<t>,<m>,...    set proxy log filter, <t> is filter type, <m> is message type",
+    "                   matching messages will be filtered out the when <t> is 'i' and",
+    "                   will be filter in and <t> is 'o'. <m> is message type, example",
+    "                   'C' for command, 'E' for event.  Additional fields are message",
+    "                   specific.  Multiple -f options can be specified.  Examples:",
+    "                      -fo,E                filter out all event messages",
+    "                      -fi,C,Memory -fo     filter in Memory service command and",
+    "                                           filter out all other messages",
+    "                   Default filters (use -fi to disable):",
+    "                      -fo,E,Locator,peerHeartBeat",
+    "                      -fo,E,Locator,peerAdded",
+    "                      -fo,E,Locator,peerRemoved",
+    "                      -fo,E,Locator,peerChanged",
+    "                      -fo,C,Locator,getPeers",
     NULL
 };
 
@@ -205,6 +350,7 @@ int main(int argc, char ** argv) {
 #endif
             case 'L':
             case 's':
+            case 'f':
                 if (*s == '\0') {
                     if (++ind >= argc) {
                         fprintf(stderr, "%s: error: no argument given to option '%c'\n", progname, c);
@@ -230,6 +376,13 @@ int main(int argc, char ** argv) {
                     url = s;
                     break;
 
+                case 'f':
+                    if (add_message_filter(s) != 0) {
+                        fprintf(stderr, "Cannot parse filter level: %s\n", s);
+                        exit(1);
+                    }
+                    break;
+
                 default:
                     fprintf(stderr, "%s: error: illegal option '%c'\n", progname, c);
                     show_help();
@@ -251,6 +404,15 @@ int main(int argc, char ** argv) {
     }
 
 #endif
+
+    /* Default filters (use "-fi" to disable). */
+    add_message_filter("o,E,Locator,peerHeartBeat");
+    add_message_filter("o,E,Locator,peerAdded");
+    add_message_filter("o,E,Locator,peerRemoved");
+    add_message_filter("o,E,Locator,peerChanged");
+    add_message_filter("o,C,Locator,getPeers");
+
+    set_proxy_log_filter_listener(is_log_filtered);
 
     ps = channel_peer_from_url(url);
     if (ps == NULL) {

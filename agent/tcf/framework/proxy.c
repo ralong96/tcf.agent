@@ -44,6 +44,8 @@ typedef struct RedirectInfo {
 static ChannelRedirectionListener redirection_listeners[16];
 static int redirection_listeners_cnt = 0;
 
+static ProxyLogFilterListener proxy_log_filter_listener;
+
 static void proxy_update(Channel * c1, Channel * c2);
 
 static void proxy_connecting(Channel * c) {
@@ -229,16 +231,20 @@ static void log_byte_func(int i) {
 
 #define log_byte(b) { if (log_mode & LOG_TCFLOG) log_byte_func(b); }
 
-static void log_start(Proxy * proxy, char ** argv, int argc) {
+static int log_start(Proxy * proxy, char ** argv, int argc) {
     int i;
     log_pos = 0;
     if (log_mode & LOG_TCFLOG) {
+        if (proxy_log_filter_listener &&
+            proxy_log_filter_listener(proxy->c, proxy[proxy->other].c, argc, argv))
+            return 1;
         log_str(proxy->other > 0 ? "---> " : "<--- ");
         for (i = 0; i < argc; i++) {
             log_str(argv[i]);
             log_chr(' ');
         }
     }
+    return 0;
 }
 
 static void log_flush(Proxy * proxy) {
@@ -263,6 +269,7 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
     InputStream * inp = &c->inp;
     OutputStream * out = &otherc->out;
     int i = 0;
+    int filtered = 0;
 
     assert(c == proxy->c);
     assert(argc > 0 && strlen(argv[0]) == 1);
@@ -284,7 +291,7 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
 
     while (i < argc) write_stringz(out, argv[i++]);
 
-    log_start(proxy, argv, argc);
+    filtered = log_start(proxy, argv, argc);
 
     /* Copy body of message */
     do {
@@ -298,12 +305,14 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
         }
         else {
             i = read_stream(inp);
-            log_byte(i);
+            if (!filtered)
+                log_byte(i);
             write_stream(out, i);
         }
     }
     while (i != MARKER_EOM && i != MARKER_EOS);
-    log_flush(proxy);
+    if (!filtered)
+        log_flush(proxy);
 }
 
 static void proxy_update(Channel * c1, Channel * c2) {
@@ -440,4 +449,10 @@ Channel * proxy_get_target_channel(Channel * c) {
 void add_channel_redirection_listener(ChannelRedirectionListener listener) {
     assert(redirection_listeners_cnt < (int)(sizeof(redirection_listeners) / sizeof(ChannelRedirectionListener)));
     redirection_listeners[redirection_listeners_cnt++] = listener;
+}
+
+ProxyLogFilterListener set_proxy_log_filter_listener(ProxyLogFilterListener listener) {
+    ProxyLogFilterListener old = proxy_log_filter_listener;
+    proxy_log_filter_listener = listener;
+    return old;
 }
