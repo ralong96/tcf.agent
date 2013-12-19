@@ -48,6 +48,7 @@ static HINSTANCE dbghelp_dll = NULL;
 
 static wchar_t * pathes[] = {
     L"%\\Microsoft Visual Studio 10.0\\Common7\\IDE\\dbghelp.dll",
+    L"%\\Microsoft Visual Studio 9.0\\Common7\\IDE\\dbghelp.dll",
     L"%\\Debugging Tools for Windows (x86)\\dbghelp.dll",
     L"%\\Debugging Tools for Windows\\dbghelp.dll",
     L".\\dbghelp.dll",
@@ -126,7 +127,7 @@ static void event_module_unloaded(Context * ctx, void * client_data) {
          * On Windows 7 first few UNLOAD_DLL_DEBUG_EVENT come without matching LOAD_DLL_DEBUG_EVENT,
          * SymUnloadModule64() returns error 0x57 "The parameter is incorrect" for such events.
          * No proper fix is found for this issue. */
-        if (err != 0x57) {
+        if (err != 0 && err != 0x57) {
             int n = set_win32_errno(err);
             trace(LOG_ALWAYS, "SymUnloadModule64(0x%Ix,0x%I64x) (unload DLL) error: 0x%08I32x %s",
                 handle, get_context_module_address(ctx), err, errno_to_str(n));
