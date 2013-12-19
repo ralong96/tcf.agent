@@ -2085,21 +2085,24 @@ static void run_safe_events(void * arg) {
         assert(context_get_group(i->ctx, CONTEXT_GROUP_STOP) == grp);
         assert(is_all_stopped(i->ctx));
         safe_event_list = i->next;
-        safe_event_active = 1;
-        if (set_trap(&trap)) {
-            i->done(i->arg);
-            clear_trap(&trap);
+        if (i->done != NULL) {
+            safe_event_active = 1;
+            if (set_trap(&trap)) {
+                i->done(i->arg);
+                clear_trap(&trap);
+            }
+            else {
+                trace(LOG_ALWAYS, "Unhandled exception in \"safe\" event dispatch: %d %s",
+                      trap.error, errno_to_str(trap.error));
+            }
+            safe_event_active = 0;
         }
-        else {
-            trace(LOG_ALWAYS, "Unhandled exception in \"safe\" event dispatch: %d %s",
-                  trap.error, errno_to_str(trap.error));
-        }
-        safe_event_active = 0;
         run_ctrl_unlock();
         context_unlock(i->ctx);
         loc_free(i);
     }
     context_unlock(grp);
+    if (safe_event_list == NULL) cache_notify(&safe_events_cache);
 }
 
 static void check_safe_events(Context * ctx) {
@@ -2139,7 +2142,7 @@ int is_safe_event(void) {
 
 void check_all_stopped(Context * ctx) {
     if (is_all_stopped(ctx)) return;
-    post_safe_event(ctx, (EventCallBack *)cache_notify, &safe_events_cache);
+    post_safe_event(ctx, NULL, NULL);
     cache_wait(&safe_events_cache);
 }
 
