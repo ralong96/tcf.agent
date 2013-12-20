@@ -3277,7 +3277,7 @@ typedef struct PendingCommand {
     LINK link;
     CacheClient * client;
     Channel * channel;
-    char args[sizeof(CommandAssignArgs)];
+    char args[sizeof(CommandCreateArgs)];
     size_t args_size;
 } PendingCommand;
 
@@ -3682,6 +3682,7 @@ static void command_create_cache_client(void * x) {
     }
 
     write_stream(&c->out, MARKER_EOM);
+    command_done();
 }
 
 static void command_create(char * token, Channel * c) {
@@ -3698,7 +3699,7 @@ static void command_create(char * token, Channel * c) {
 
     args.use_state = 1;
     strlcpy(args.token, token, sizeof(args.token));
-    cache_enter(command_create_cache_client, c, &args, sizeof(args));
+    command_start(command_create_cache_client, c, &args, sizeof(args));
 }
 
 static void read_expression_scope(InputStream * inp, const char * name, void * x) {
@@ -3720,7 +3721,7 @@ static void command_create_in_scope(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOM);
 
     strlcpy(args.token, token, sizeof(args.token));
-    cache_enter(command_create_cache_client, c, &args, sizeof(args));
+    command_start(command_create_cache_client, c, &args, sizeof(args));
 }
 
 static void command_evaluate_cache_client(void * x) {
@@ -3975,16 +3976,16 @@ static void command_assign(char * token, Channel * c) {
     command_start(command_assign_cache_client, c, &args, sizeof(args));
 }
 
-static void command_dispose(char * token, Channel * c) {
-    char id[256];
-    int err = 0;
+static void command_dispose_cache_client(void * x) {
+    CommandAssignArgs * args = (CommandAssignArgs *)x;
+    Channel * c = cache_channel();
     Expression * e;
+    int err = 0;
 
-    json_read_string(&c->inp, id, sizeof(id));
-    json_test_char(&c->inp, MARKER_EOA);
-    json_test_char(&c->inp, MARKER_EOM);
+    e = find_expression(args->id);
 
-    e = find_expression(id);
+    cache_exit();
+
     if (e != NULL) {
         list_remove(&e->link_all);
         list_remove(&e->link_id);
@@ -3996,9 +3997,21 @@ static void command_dispose(char * token, Channel * c) {
     }
 
     write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
+    write_stringz(&c->out, args->token);
     write_errno(&c->out, err);
     write_stream(&c->out, MARKER_EOM);
+    command_done();
+}
+
+static void command_dispose(char * token, Channel * c) {
+    CommandArgs args;
+
+    json_read_string(&c->inp, args.id, sizeof(args.id));
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    strlcpy(args.token, token, sizeof(args.token));
+    command_start(command_dispose_cache_client, c, &args, sizeof(args));
 }
 
 static void on_channel_close(Channel * c) {
