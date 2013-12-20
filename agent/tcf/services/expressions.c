@@ -3901,7 +3901,6 @@ static void command_assign_cache_client(void * x) {
 
     memset(&value, 0, sizeof(value));
     if (expression_context_id(args->id, &ctx, &frame, &e) < 0) err = errno;
-    if (!err && frame != STACK_NO_FRAME && !ctx->stopped) err = ERR_IS_RUNNING;
     if (!err) {
         check_all_stopped(ctx);
         expression_context = ctx;
