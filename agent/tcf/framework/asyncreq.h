@@ -20,6 +20,8 @@
 #ifndef D_asyncreq
 #define D_asyncreq
 
+#include <tcf/config.h>
+
 #if ENABLE_AIO
 #  include <aio.h>
 #endif
@@ -31,7 +33,6 @@
 
 #include <tcf/framework/link.h>
 #include <tcf/framework/events.h>
-#include <tcf/framework/mdep-fs.h>
 
 enum {
     AsyncReqRead,                       /* File read */
@@ -48,15 +49,22 @@ enum {
     AsyncReqWaitpid,                    /* Wait for process change */
     AsyncReqSelect,                     /* Do select() on file handles */
     AsyncReqClose,                      /* File close */
-    AsyncReqCloseDir,                   /* Directory close */
     AsyncReqOpen,                       /* File open */
     AsyncReqStat,                       /* File stat */
-    AsyncReqFstat,                      /* File fstat */
     AsyncReqLstat,                      /* File lstat */
+    AsyncReqFstat,                      /* File fstat */
+    AsyncReqFSetStat,                   /* File fsetstat */
+    AsyncReqSetStat,                    /* File setstat */
     AsyncReqRemove,                     /* File remove */
-    AsyncReqOpendir,                    /* Directory open */
-    AsyncReqReaddir                     /* Directory read */
+    AsyncReqOpenDir,                    /* Directory open */
+    AsyncReqReadDir,                    /* Directory read */
+    AsyncReqCloseDir                    /* Directory close */
 };
+
+#define AsyncReqSetSize         1
+#define AsyncReqSetUidGid       2
+#define AsyncReqSetPermissions  4
+#define AsyncReqSetAcModTime    8
 
 struct DirFileNode {
     char * path;
@@ -82,6 +90,7 @@ struct AsyncReqInfo {
             int permission;
             char * file_name;
             struct stat statbuf;
+            int set_stat_flags;
 #if defined(_WIN32) || defined(__CYGWIN__)
             DWORD win32_attrs;
 #endif
@@ -96,12 +105,12 @@ struct AsyncReqInfo {
         struct {
             /* In */
             char * path;
-            int max_file_per_dir;
+            int max_files;
             struct DirFileNode * files;
             int eof;
 
             /* in/Out */
-            DIR * dir;
+            void * dir;
             int rval;
         } dio;
         struct {

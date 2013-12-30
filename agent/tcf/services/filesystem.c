@@ -35,9 +35,6 @@
 #if defined(__CYGWIN__)
 #  include <ctype.h>
 #endif
-#if !defined(_WIN32) || defined(__CYGWIN__)
-#  include <utime.h>
-#endif
 #if defined(_WIN32) || defined(__CYGWIN__)
 #  include <Windows.h>
 #endif
@@ -57,6 +54,7 @@
 #include <tcf/services/filesystem.h>
 
 #define BUF_SIZE (128 * MEM_USAGE_FACTOR)
+#define DIR_BUF_SIZE 64
 
 static const char * FILE_SYSTEM = "FileSystem";
 
@@ -65,18 +63,6 @@ static const int
     ATTR_UIDGID             = 0x00000002,
     ATTR_PERMISSIONS        = 0x00000004,
     ATTR_ACMODTIME          = 0x00000008;
-
-#define REQ_READ            1
-#define REQ_WRITE           2
-#define REQ_FSTAT           3
-#define REQ_FSETSTAT        4
-#define REQ_CLOSE           5
-#define REQ_OPEN            6
-#define REQ_STAT            7
-#define REQ_LSTAT           8
-#define REQ_REMOVE          9
-#define REQ_OPENDIR         10
-#define REQ_READDIR         11
 
 typedef struct OpenFileInfo OpenFileInfo;
 typedef struct IORequest IORequest;
@@ -109,10 +95,8 @@ struct OpenFileInfo {
 };
 
 struct IORequest {
-    int req;
     char token[256];
     OpenFileInfo * handle;
-    FileAttrs attrs;
     AsyncReqInfo info;
     LINK link_reqs;
 };
@@ -177,6 +161,41 @@ static void delete_open_file_info(OpenFileInfo * h) {
     loc_free(h);
 }
 
+static void free_io_req(IORequest * req) {
+    switch (req->info.type) {
+    case AsyncReqStat:
+    case AsyncReqLstat:
+    case AsyncReqFstat:
+    case AsyncReqFSetStat:
+    case AsyncReqSetStat:
+    case AsyncReqRemove:
+    case AsyncReqOpen:
+    case AsyncReqRead:
+    case AsyncReqWrite:
+    case AsyncReqSeekRead:
+    case AsyncReqSeekWrite:
+        loc_free(req->info.u.fio.file_name);
+        loc_free(req->info.u.fio.bufp);
+        break;
+    case AsyncReqOpenDir:
+    case AsyncReqReadDir:
+    case AsyncReqCloseDir:
+        if (req->info.u.dio.files != NULL) {
+            int cnt = 0;
+            while (cnt < req->info.u.dio.max_files) {
+                struct DirFileNode * file = req->info.u.dio.files + cnt++;
+                if (file->path == NULL) break;
+                loc_free(file->path);
+                loc_free(file->statbuf);
+            }
+            loc_free(req->info.u.dio.files);
+        }
+        loc_free(req->info.u.dio.path);
+        break;
+    }
+    loc_free(req);
+}
+
 static void channel_close_listener(Channel * c) {
     LINK list;
     LINK * list_next;
@@ -202,8 +221,7 @@ static void channel_close_listener(Channel * c) {
                         posted = 1;
                     }
                     else {
-                        loc_free(req->info.u.fio.bufp);
-                        loc_free(req);
+                        free_io_req(req);
                     }
                 }
                 if (!posted) close(h->file);
@@ -454,7 +472,7 @@ static void command_open(char * token, Channel * c) {
     }
     handle = create_open_file_info(c, path, -1, NULL);
 
-    req = create_io_request(token, handle, REQ_OPEN);
+    req = create_io_request(token, handle, AsyncReqOpen);
     req->info.type = AsyncReqOpen;
     req->info.u.fio.permission = attrs.permissions;
     req->info.u.fio.flags = to_local_open_flags(flags);
@@ -490,14 +508,14 @@ static void reply_write(char * token, OutputStream * out, int err) {
     write_stream(out, MARKER_EOM);
 }
 
-static void reply_stat(char * token, OutputStream * out, int err, struct stat * buf, const char * path) {
+static void reply_stat(char * token, OutputStream * out, int err, AsyncReqInfo * buf) {
     FileAttrs attrs;
 
-    if (err == 0) fill_attrs(&attrs, buf);
+    if (err == 0) fill_attrs(&attrs, &buf->u.fio.statbuf);
     else memset(&attrs, 0, sizeof(attrs));
 
 #if defined(_WIN32) || defined(__CYGWIN__)
-    attrs.win32_attrs = err ? INVALID_FILE_ATTRIBUTES : GetFileAttributes(path);
+    attrs.win32_attrs = err ? INVALID_FILE_ATTRIBUTES : buf->u.fio.win32_attrs;
 #endif
 
     write_stringz(out, "R");
@@ -522,25 +540,25 @@ static void reply_remove(char * token, OutputStream * out, int err) {
     write_stream(out, MARKER_EOM);
 }
 
-static void reply_readdir(char * token, OutputStream * out, int err, struct DirFileNode *files, int maxFiles, int eof) {
+static void reply_readdir(char * token, OutputStream * out, int err, struct DirFileNode * files, int max_files, int eof) {
     int cnt = 0;
-    struct DirFileNode * curFile = files;
+    struct DirFileNode * file = files;
 
     write_stringz(out, "R");
     write_stringz(out, token);
     write_stream(out, '[');
-    while (curFile != NULL && cnt < maxFiles && curFile->path != NULL) {
+    while (file != NULL && cnt < max_files && file->path != NULL) {
         FileAttrs attrs;
         if (cnt++ > 0) write_stream(out, ',');
         write_stream(out, '{');
         json_write_string(out, "FileName");
         write_stream(out, ':');
-        json_write_string(out, curFile->path);
+        json_write_string(out, file->path);
 
-        if (curFile->statbuf != NULL) {
-            fill_attrs(&attrs, curFile->statbuf);
+        if (file->statbuf != NULL) {
+            fill_attrs(&attrs, file->statbuf);
 #if defined(_WIN32) || defined(__CYGWIN__)
-            attrs.win32_attrs = curFile->win32_attrs;
+            attrs.win32_attrs = file->win32_attrs;
 #endif
             write_stream(out, ',');
             json_write_string(out, "Attrs");
@@ -548,7 +566,7 @@ static void reply_readdir(char * token, OutputStream * out, int err, struct DirF
             write_file_attrs(out, &attrs);
         }
         write_stream(out, '}');
-        curFile++;
+        file++;
     }
     write_stream(out, ']');
     write_stream(out, 0);
@@ -559,18 +577,40 @@ static void reply_readdir(char * token, OutputStream * out, int err, struct DirF
     write_stream(out, MARKER_EOM);
 }
 
-static void free_readdir_files (struct DirFileNode * files, int maxFiles){
-    int cnt = 0;
-    struct DirFileNode * curFile = files;
-
-    if (curFile == NULL) return;
-    while (cnt < maxFiles && curFile->path != NULL) {
-        loc_free(curFile->path);
-        loc_free(curFile->statbuf);
-        cnt++;
-        curFile++;
+static void terminate_open_file_info(OpenFileInfo * handle) {
+    while (!list_is_empty(&handle->link_reqs)) {
+        LINK * link = handle->link_reqs.next;
+        IORequest * req = reqs2req(link);
+        switch (req->info.type) {
+        case AsyncReqRead:
+        case AsyncReqSeekRead:
+            reply_read(req->token, handle->out, EBADF, NULL, 0, 0);
+            break;
+        case AsyncReqWrite:
+        case AsyncReqSeekWrite:
+            reply_write(req->token, handle->out, EBADF);
+            break;
+        case AsyncReqFstat:
+            reply_stat(req->token, handle->out, EBADF, NULL);
+            break;
+        case AsyncReqFSetStat:
+            reply_setstat(req->token, handle->out, EBADF);
+            break;
+        case AsyncReqClose:
+        case AsyncReqCloseDir:
+            reply_close(req->token, handle->out, EBADF);
+            break;
+        case AsyncReqReadDir:
+            reply_readdir(req->token, handle->out, EBADF, NULL, 0, 0);
+            break;
+        default:
+            /* Other request types are NOT serialized per file handle */
+            assert(0);
+        }
+        list_remove(link);
+        free_io_req(req);
     }
-    loc_free(files);
+    delete_open_file_info(handle);
 }
 
 static void done_io_request(void * arg) {
@@ -580,22 +620,21 @@ static void done_io_request(void * arg) {
 
     if (handle == NULL) {
         /* Abandoned I/O request, channel is already closed */
-        switch (req->req) {
-        case REQ_READ:
-        case REQ_WRITE:
+        switch (req->info.type) {
+        case AsyncReqOpen:
+        case AsyncReqRead:
+        case AsyncReqWrite:
+        case AsyncReqSeekRead:
+        case AsyncReqSeekWrite:
+        case AsyncReqFstat:
             close(req->info.u.fio.fd);
             break;
-        case REQ_CLOSE:
+        case AsyncReqOpenDir:
+        case AsyncReqReadDir:
+            closedir((DIR *)req->info.u.dio.dir);
             break;
-        case REQ_READDIR:
-            closedir(req->info.u.dio.dir);
-            free_readdir_files((struct DirFileNode *)req->info.u.dio.files, req->info.u.dio.max_file_per_dir);
-            break;
-        default:
-            assert(0);
         }
-        loc_free(req->info.u.fio.bufp);
-        loc_free(req);
+        free_io_req(req);
         return;
     }
 
@@ -603,11 +642,13 @@ static void done_io_request(void * arg) {
     assert(&handle->posted_req->link_reqs == handle->link_reqs.next);
     handle->posted_req = NULL;
     list_remove(&req->link_reqs);
+    err = req->info.error;
 
-    switch (req->req) {
-    case REQ_READ:
-        if (req->info.error) {
-            reply_read(req->token, handle->out, req->info.error, NULL, 0, 0);
+    switch (req->info.type) {
+    case AsyncReqRead:
+    case AsyncReqSeekRead:
+        if (err) {
+            reply_read(req->token, handle->out, err, NULL, 0, 0);
         }
         else {
             reply_read(req->token, handle->out, 0,
@@ -615,66 +656,22 @@ static void done_io_request(void * arg) {
                 (size_t)req->info.u.fio.rval < req->info.u.fio.bufsz);
         }
         break;
-    case REQ_WRITE:
-        if (req->info.error) err = req->info.error;
-        else if ((size_t)req->info.u.fio.rval < req->info.u.fio.bufsz) err = ENOSPC;
+    case AsyncReqWrite:
+    case AsyncReqSeekWrite:
+        if (!err && (size_t)req->info.u.fio.rval < req->info.u.fio.bufsz) err = ENOSPC;
         reply_write(req->token, handle->out, err);
         break;
-    case REQ_CLOSE:
-        err = req->info.error;
+    case AsyncReqClose:
         reply_close(req->token, handle->out, err);
         if (err == 0) {
-            loc_free(req);
-            while (!list_is_empty(&handle->link_reqs)) {
-                LINK * link = handle->link_reqs.next;
-                req = reqs2req(link);
-                switch (req->req) {
-                case REQ_READ:
-                    reply_read(req->token, handle->out, EBADF, NULL, 0, 0);
-                    break;
-                case REQ_WRITE:
-                    reply_write(req->token, handle->out, EBADF);
-                    break;
-                case REQ_STAT:
-                case REQ_LSTAT:
-                case REQ_FSTAT:
-                    reply_stat(req->token, handle->out, EBADF, NULL, NULL);
-                    break;
-                case REQ_FSETSTAT:
-                    reply_setstat(req->token, handle->out, EBADF);
-                    break;
-                case REQ_CLOSE:
-                    reply_close(req->token, handle->out, EBADF);
-                    break;
-                case REQ_OPEN:
-                    reply_open(req->token, handle->out, EBADF, NULL);
-                    break;
-                case REQ_OPENDIR:
-                    reply_open(req->token, handle->out, EBADF, NULL);
-                    break;
-                case REQ_REMOVE:
-                    reply_remove(req->token, handle->out, EBADF);
-                    break;
-                case REQ_READDIR:
-                    reply_readdir(req->token, handle->out, EBADF, NULL, 0, 0);
-                    free_readdir_files((struct DirFileNode *)req->info.u.dio.files, req->info.u.dio.max_file_per_dir);
-                    break;
-                default:
-                    assert(0);
-                }
-                list_remove(link);
-                loc_free(req->info.u.fio.bufp);
-                loc_free(req);
-            }
-            delete_open_file_info(handle);
+            free_io_req(req);
+            terminate_open_file_info(handle);
             return;
         }
         break;
-    case REQ_OPEN:
-    case REQ_OPENDIR:
-        err = req->info.error;
+    case AsyncReqOpen:
 #if defined(_WIN32) || defined(__CYGWIN__)
-        if ((req->req == REQ_OPEN) && (err == 0)) {
+        if (err == 0) {
             if (req->info.u.fio.win32_attrs != INVALID_FILE_ATTRIBUTES) {
                 if (SetFileAttributes(req->info.u.fio.file_name, req->info.u.fio.win32_attrs) == 0)
                     err = set_win32_errno(GetLastError());
@@ -683,86 +680,62 @@ static void done_io_request(void * arg) {
 #endif
         if (err != 0) {
             reply_open(req->token, handle->out, err, NULL);
-            delete_open_file_info(handle);
+            terminate_open_file_info(handle);
+            free_io_req(req);
+            return;
         }
-        else {
-            if (req->req == REQ_OPEN) handle->file = req->info.u.fio.rval;
-            else  handle->dir =  req->info.u.dio.dir;
-            reply_open(req->token, handle->out, err, handle);
+        handle->file = req->info.u.fio.rval;
+        reply_open(req->token, handle->out, err, handle);
+        break;
+    case AsyncReqLstat:
+    case AsyncReqStat:
+        reply_stat(req->token, handle->out, err, &req->info);
+        delete_open_file_info(handle);
+        free_io_req(req);
+        return;
+    case AsyncReqFstat:
+        reply_stat(req->token, handle->out, err, &req->info);
+        break;
+    case AsyncReqRemove:
+        reply_remove(req->token, handle->out, err);
+        delete_open_file_info(handle);
+        free_io_req(req);
+        return;
+    case AsyncReqOpenDir:
+        if (err != 0) {
+            reply_open(req->token, handle->out, err, NULL);
+            terminate_open_file_info(handle);
+            free_io_req(req);
+            return;
         }
-        loc_free(req);
-        return;
-    case REQ_LSTAT:
-    case REQ_STAT:
-        reply_stat(req->token, handle->out, req->info.error, &req->info.u.fio.statbuf, req->info.u.fio.file_name);
-        delete_open_file_info(handle);
-        loc_free(req);
-        return;
-    case REQ_FSTAT:
-        reply_stat(req->token, handle->out, req->info.error, &req->info.u.fio.statbuf, handle->path);
-        loc_free(req);
-        return;
-    case REQ_REMOVE:
-        reply_remove(req->token, handle->out, req->info.error);
-        delete_open_file_info(handle);
-        loc_free(req);
-        return;
-    case REQ_READDIR:
-        reply_readdir(req->token, handle->out, req->info.error, (struct DirFileNode *)req->info.u.dio.files,req->info.u.dio.max_file_per_dir, req->info.u.dio.eof);
-        free_readdir_files((struct DirFileNode *)req->info.u.dio.files, req->info.u.dio.max_file_per_dir);
-        loc_free(req);
-        return;
+        handle->dir = (DIR *)req->info.u.dio.dir;
+        reply_open(req->token, handle->out, err, handle);
+        break;
+    case AsyncReqReadDir:
+        reply_readdir(
+            req->token, handle->out, err, req->info.u.dio.files,
+            req->info.u.dio.max_files, req->info.u.dio.eof);
+        break;
+    case AsyncReqCloseDir:
+        reply_close(req->token, handle->out, err);
+        if (err == 0) {
+            free_io_req(req);
+            terminate_open_file_info(handle);
+            return;
+        }
+        break;
     default:
         assert(0);
     }
 
-    loc_free(req->info.u.fio.bufp);
-    loc_free(req);
+    free_io_req(req);
     post_io_request(handle);
 }
 
 static void post_io_request(OpenFileInfo * handle) {
-    while (handle->posted_req == NULL && !list_is_empty(&handle->link_reqs)) {
+    if (handle->posted_req == NULL && !list_is_empty(&handle->link_reqs)) {
         LINK * link = handle->link_reqs.next;
         IORequest * req = reqs2req(link);
-        switch (req->req) {
-        case REQ_FSETSTAT:
-            {
-                int err = 0;
-                FileAttrs attrs = req->attrs;
-                if (attrs.flags & ATTR_SIZE) {
-                    if (ftruncate(handle->file, (off_t)attrs.size) < 0) err = errno;
-                }
-#if defined(_WIN32) || defined(__CYGWIN__) || defined(_WRS_KERNEL)
-                if (attrs.flags & ATTR_PERMISSIONS) {
-                    if (chmod(handle->path, attrs.permissions) < 0) err = errno;
-                }
-#if defined(_WIN32) || defined(__CYGWIN__)
-                if (attrs.win32_attrs != INVALID_FILE_ATTRIBUTES) {
-                    if (SetFileAttributes(handle->path, attrs.win32_attrs) == 0)
-                        err = set_win32_errno(GetLastError());
-                }
-#endif
-#else
-                if (attrs.flags & ATTR_UIDGID) {
-                    if (fchown(handle->file, attrs.uid, attrs.gid) < 0) err = errno;
-                }
-                if (attrs.flags & ATTR_PERMISSIONS) {
-                    if (fchmod(handle->file, attrs.permissions) < 0) err = errno;
-                }
-#endif
-                if (attrs.flags & ATTR_ACMODTIME) {
-                    struct utimbuf buf;
-                    buf.actime = (time_t)(attrs.atime / 1000);
-                    buf.modtime = (time_t)(attrs.mtime / 1000);
-                    if (utime(handle->path, &buf) < 0) err = errno;
-                }
-                reply_setstat(req->token, handle->out, err);
-                list_remove(link);
-                loc_free(req);
-            }
-            continue;
-        }
         handle->posted_req = req;
         async_req_post(&req->info);
     }
@@ -770,8 +743,8 @@ static void post_io_request(OpenFileInfo * handle) {
 
 static IORequest * create_io_request(char * token, OpenFileInfo * handle, int type) {
     IORequest * req = (IORequest *)loc_alloc_zero(sizeof(IORequest));
-    req->req = type;
     req->handle = handle;
+    req->info.type = type;
     req->info.done = done_io_request;
     req->info.client_data = req;
     strlcpy(req->token, token, sizeof(req->token));
@@ -792,17 +765,15 @@ static void command_close(char * token, Channel * c) {
         reply_close(token, &c->out, EBADF);
     }
     else {
-        IORequest * req = create_io_request(token, h, REQ_CLOSE);
-        req->info.type = AsyncReqClose;
         if (h->dir != NULL){
+            IORequest * req = create_io_request(token, h, AsyncReqCloseDir);
             req->info.u.dio.dir = h->dir;
-            req->info.type = AsyncReqCloseDir;
-        } else {
+        }
+        else {
+            IORequest * req = create_io_request(token, h, AsyncReqClose);
             req->info.u.fio.fd = h->file;
-            req->info.type = AsyncReqClose;
         }
         post_io_request(h);
-        return;
     }
 }
 
@@ -825,11 +796,8 @@ static void command_read(char * token, Channel * c) {
         reply_read(token, &c->out, EBADF, NULL, 0, 0);
     }
     else {
-        IORequest * req = create_io_request(token, h, REQ_READ);
-        if (offset < 0) {
-            req->info.type = AsyncReqRead;
-        }
-        else {
+        IORequest * req = create_io_request(token, h, AsyncReqRead);
+        if (offset >= 0) {
             req->info.type = AsyncReqSeekRead;
             req->info.u.fio.offset = offset;
         }
@@ -876,11 +844,8 @@ static void command_write(char * token, Channel * c) {
         reply_write(token, &c->out, EBADF);
     }
     else {
-        IORequest * req = create_io_request(token, h, REQ_WRITE);
-        if (offset < 0) {
-            req->info.type = AsyncReqWrite;
-        }
-        else {
+        IORequest * req = create_io_request(token, h, AsyncReqWrite);
+        if (offset >= 0) {
             req->info.type = AsyncReqSeekWrite;
             req->info.u.fio.offset = offset;
         }
@@ -902,8 +867,7 @@ static void command_stat(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOM);
 
     handle = create_open_file_info(c, path, -1, NULL);
-    req = create_io_request(token, handle, REQ_STAT);
-    req->info.type = AsyncReqStat;
+    req = create_io_request(token, handle, AsyncReqStat);
     req->info.u.fio.file_name = loc_strdup(path);
     post_io_request(handle);
 }
@@ -918,8 +882,7 @@ static void command_lstat(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOM);
 
     handle = create_open_file_info(c, path, -1, NULL);
-    req = create_io_request(token, handle, REQ_LSTAT);
-    req->info.type = AsyncReqLstat;
+    req = create_io_request(token, handle, AsyncReqLstat);
     req->info.u.fio.file_name = loc_strdup(path);
     post_io_request(handle);
 }
@@ -934,11 +897,11 @@ static void command_fstat(char * token, Channel * c) {
 
     h = find_open_file_info(id);
     if (h == NULL) {
-        reply_stat(token, &c->out, EBADF, NULL, NULL);
+        reply_stat(token, &c->out, EBADF, NULL);
     }
     else {
-        IORequest * req = create_io_request(token, h, REQ_FSTAT);
-        req->info.type = AsyncReqFstat;
+        IORequest * req = create_io_request(token, h, AsyncReqFstat);
+        req->info.u.fio.file_name = loc_strdup(h->path);
         req->info.u.fio.fd = h->file;
         post_io_request(h);
     }
@@ -947,7 +910,8 @@ static void command_fstat(char * token, Channel * c) {
 static void command_setstat(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
     FileAttrs attrs;
-    int err = 0;
+    OpenFileInfo * h = NULL;
+    IORequest * req = NULL;
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
@@ -959,31 +923,31 @@ static void command_setstat(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    h = create_open_file_info(c, path, -1, NULL);
+    req = create_io_request(token, h, AsyncReqSetStat);
     if (attrs.flags & ATTR_SIZE) {
-        if (truncate(path, attrs.size) < 0) err = errno;
+        req->info.u.fio.set_stat_flags |= AsyncReqSetSize;
+        req->info.u.fio.statbuf.st_size = attrs.size;
     }
-#if !defined(_WIN32) && !defined(_WRS_KERNEL)
     if (attrs.flags & ATTR_UIDGID) {
-        if (chown(path, attrs.uid, attrs.gid) < 0) err = errno;
+        req->info.u.fio.set_stat_flags |= AsyncReqSetUidGid;
+        req->info.u.fio.statbuf.st_uid = (uid_t)attrs.uid;
+        req->info.u.fio.statbuf.st_gid = (gid_t)attrs.gid;
     }
-#endif
     if (attrs.flags & ATTR_PERMISSIONS) {
-        if (chmod(path, attrs.permissions) < 0) err = errno;
+        req->info.u.fio.set_stat_flags |= AsyncReqSetPermissions;
+        req->info.u.fio.statbuf.st_mode = (mode_t)attrs.permissions;
     }
     if (attrs.flags & ATTR_ACMODTIME) {
-        struct utimbuf buf;
-        buf.actime = (time_t)(attrs.atime / 1000);
-        buf.modtime = (time_t)(attrs.mtime / 1000);
-        if (utime(path, &buf) < 0) err = errno;
+        req->info.u.fio.set_stat_flags |= AsyncReqSetAcModTime;
+        req->info.u.fio.statbuf.st_mtime = (time_t)(attrs.mtime / 1000);
+        req->info.u.fio.statbuf.st_atime = (time_t)(attrs.atime / 1000);
     }
 #if defined(_WIN32) || defined(__CYGWIN__)
-    if (attrs.win32_attrs != INVALID_FILE_ATTRIBUTES) {
-        if (SetFileAttributes(path, attrs.win32_attrs) == 0)
-            err = set_win32_errno(GetLastError());
-    }
+    req->info.u.fio.win32_attrs = attrs.win32_attrs;
 #endif
-
-    reply_setstat(token, &c->out, err);
+    req->info.u.fio.file_name = loc_strdup(h->path);
+    post_io_request(h);
 }
 
 static void command_fsetstat(char * token, Channel * c) {
@@ -1006,8 +970,30 @@ static void command_fsetstat(char * token, Channel * c) {
         reply_setstat(token, &c->out, EBADF);
     }
     else {
-        IORequest * req = create_io_request(token, h, REQ_FSETSTAT);
-        req->attrs = attrs;
+        IORequest * req = create_io_request(token, h, AsyncReqFSetStat);
+        if (attrs.flags & ATTR_SIZE) {
+            req->info.u.fio.set_stat_flags |= AsyncReqSetSize;
+            req->info.u.fio.statbuf.st_size = attrs.size;
+        }
+        if (attrs.flags & ATTR_UIDGID) {
+            req->info.u.fio.set_stat_flags |= AsyncReqSetUidGid;
+            req->info.u.fio.statbuf.st_uid = (uid_t)attrs.uid;
+            req->info.u.fio.statbuf.st_gid = (gid_t)attrs.gid;
+        }
+        if (attrs.flags & ATTR_PERMISSIONS) {
+            req->info.u.fio.set_stat_flags |= AsyncReqSetPermissions;
+            req->info.u.fio.statbuf.st_mode = (mode_t)attrs.permissions;
+        }
+        if (attrs.flags & ATTR_ACMODTIME) {
+            req->info.u.fio.set_stat_flags |= AsyncReqSetAcModTime;
+            req->info.u.fio.statbuf.st_mtime = (time_t)(attrs.mtime / 1000);
+            req->info.u.fio.statbuf.st_atime = (time_t)(attrs.atime / 1000);
+        }
+#if defined(_WIN32) || defined(__CYGWIN__)
+        req->info.u.fio.win32_attrs = attrs.win32_attrs;
+#endif
+        req->info.u.fio.file_name = loc_strdup(h->path);
+        req->info.u.fio.fd = h->file;
         post_io_request(h);
     }
 }
@@ -1023,8 +1009,7 @@ static void command_opendir(char * token, Channel * c) {
 
     handle = create_open_file_info(c, path, -1, NULL);
 
-    req = create_io_request(token, handle, REQ_OPENDIR);
-    req->info.type = AsyncReqOpendir;
+    req = create_io_request(token, handle, AsyncReqOpenDir);
     req->info.u.dio.path = loc_strdup(path);
     post_io_request(handle);
 }
@@ -1042,12 +1027,11 @@ static void command_readdir(char * token, Channel * c) {
         reply_readdir(token, &c->out, EBADF, (struct DirFileNode *)NULL, 0, 0);
     }
     else {
-        IORequest * req = create_io_request(token, h, REQ_READDIR);
+        IORequest * req = create_io_request(token, h, AsyncReqReadDir);
         req->info.u.dio.dir = h->dir;
         req->info.u.dio.path = loc_strdup(h->path);
-        req->info.u.dio.files = (struct DirFileNode *)loc_alloc_zero(sizeof(struct DirFileNode) * 64);
-        req->info.u.dio.max_file_per_dir = 64;
-        req->info.type = AsyncReqReaddir;
+        req->info.u.dio.files = (struct DirFileNode *)loc_alloc_zero(sizeof(struct DirFileNode) * DIR_BUF_SIZE);
+        req->info.u.dio.max_files = DIR_BUF_SIZE;
         post_io_request(h);
     }
 }
@@ -1062,9 +1046,7 @@ static void command_remove(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOM);
 
     handle = create_open_file_info(c, path, -1, NULL);
-    req = create_io_request(token, handle, REQ_REMOVE);
-
-    req->info.type = AsyncReqRemove;
+    req = create_io_request(token, handle, AsyncReqRemove);
     req->info.u.fio.file_name = loc_strdup(path);
     post_io_request(handle);
 }

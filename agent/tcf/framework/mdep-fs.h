@@ -24,14 +24,18 @@
 
 #include <direct.h>
 
+typedef unsigned short uid_t;
+typedef unsigned short gid_t;
+typedef unsigned short mode_t;
+
 /* UTF-8 support */
 struct utf8_stat {
     dev_t      st_dev;
     ino_t      st_ino;
-    unsigned short st_mode;
+    mode_t     st_mode;
     short      st_nlink;
-    short      st_uid;
-    short      st_gid;
+    uid_t      st_uid;
+    gid_t      st_gid;
     dev_t      st_rdev;
     int64_t    st_size;
     int64_t    st_atime;
@@ -98,6 +102,7 @@ extern struct utf8_dirent * readdir(DIR * dir);
 #else
 
 #include <dirent.h>
+#include <utime.h>
 
 #endif
 

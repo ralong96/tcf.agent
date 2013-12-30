@@ -219,7 +219,7 @@ static void * worker_thread_handler(void * x) {
             }
         break;
         case AsyncReqCloseDir:
-            req->u.dio.rval = closedir(req->u.dio.dir);
+            req->u.dio.rval = closedir((DIR *)req->u.dio.dir);
             if (req->u.dio.rval == -1) {
                 req->error = errno;
                 assert(req->error);
@@ -231,15 +231,13 @@ static void * worker_thread_handler(void * x) {
                 req->error = errno;
                 assert(req->error);
             }
-            loc_free(req->u.fio.file_name);
             break;
-        case AsyncReqOpendir:
+        case AsyncReqOpenDir:
             req->u.dio.dir = opendir(req->u.dio.path);
             if (req->u.dio.dir == NULL) {
                 req->error = errno;
                 assert(req->error);
             }
-            loc_free(req->u.dio.path);
             break;
         case AsyncReqFstat:
             memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
@@ -248,6 +246,10 @@ static void * worker_thread_handler(void * x) {
                 req->error = errno;
                 assert(req->error);
             }
+#if defined(_WIN32) || defined(__CYGWIN__)
+            req->u.fio.win32_attrs = req->error || !req->u.fio.file_name ?
+                INVALID_FILE_ATTRIBUTES : GetFileAttributes(req->u.fio.file_name);
+#endif
             break;
         case AsyncReqStat:
             memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
@@ -256,7 +258,10 @@ static void * worker_thread_handler(void * x) {
                 req->error = errno;
                 assert(req->error);
             }
-            loc_free(req->u.fio.file_name);
+#if defined(_WIN32) || defined(__CYGWIN__)
+            req->u.fio.win32_attrs = req->error ?
+                INVALID_FILE_ATTRIBUTES : GetFileAttributes(req->u.fio.file_name);
+#endif
             break;
         case AsyncReqLstat:
             memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
@@ -265,7 +270,73 @@ static void * worker_thread_handler(void * x) {
                 req->error = errno;
                 assert(req->error);
             }
-            loc_free(req->u.fio.file_name);
+#if defined(_WIN32) || defined(__CYGWIN__)
+            req->u.fio.win32_attrs = req->error ?
+                INVALID_FILE_ATTRIBUTES : GetFileAttributes(req->u.fio.file_name);
+#endif
+            break;
+        case AsyncReqSetStat:
+            {
+                int err = 0;
+                if (req->u.fio.set_stat_flags & AsyncReqSetSize) {
+                    if (truncate(req->u.fio.file_name, (off_t)req->u.fio.statbuf.st_size) < 0) err = errno;
+                }
+                if (req->u.fio.set_stat_flags & AsyncReqSetPermissions) {
+                    if (chmod(req->u.fio.file_name, req->u.fio.statbuf.st_mode) < 0) err = errno;
+                }
+#if defined(_WIN32) || defined(__CYGWIN__) || defined(_WRS_KERNEL)
+#  if defined(_WIN32) || defined(__CYGWIN__)
+                if (req->u.fio.win32_attrs != INVALID_FILE_ATTRIBUTES) {
+                    if (SetFileAttributes(req->u.fio.file_name, req->u.fio.win32_attrs) == 0)
+                        err = set_win32_errno(GetLastError());
+                }
+#  endif
+#else
+                if (req->u.fio.set_stat_flags & AsyncReqSetUidGid) {
+                    if (chown(req->u.fio.file_name, req->u.fio.statbuf.st_uid, req->u.fio.statbuf.st_gid) < 0) err = errno;
+                }
+#endif
+                if (req->u.fio.set_stat_flags & AsyncReqSetAcModTime) {
+                    struct utimbuf buf;
+                    buf.actime = req->u.fio.statbuf.st_atime;
+                    buf.modtime = req->u.fio.statbuf.st_mtime;
+                    if (utime(req->u.fio.file_name, &buf) < 0) err = errno;
+                }
+                req->error = err;
+            }
+            break;
+        case AsyncReqFSetStat:
+            {
+                int err = 0;
+                if (req->u.fio.set_stat_flags & AsyncReqSetSize) {
+                    if (ftruncate(req->u.fio.fd, (off_t)req->u.fio.statbuf.st_size) < 0) err = errno;
+                }
+#if defined(_WIN32) || defined(__CYGWIN__) || defined(_WRS_KERNEL)
+                if (req->u.fio.set_stat_flags & AsyncReqSetPermissions) {
+                    if (chmod(req->u.fio.file_name, req->u.fio.statbuf.st_mode) < 0) err = errno;
+                }
+#  if defined(_WIN32) || defined(__CYGWIN__)
+                if (req->u.fio.win32_attrs != INVALID_FILE_ATTRIBUTES) {
+                    if (SetFileAttributes(req->u.fio.file_name, req->u.fio.win32_attrs) == 0)
+                        err = set_win32_errno(GetLastError());
+                }
+#  endif
+#else
+                if (req->u.fio.set_stat_flags & AsyncReqSetUidGid) {
+                    if (fchown(req->u.fio.fd, req->u.fio.statbuf.st_uid, req->u.fio.statbuf.st_gid) < 0) err = errno;
+                }
+                if (req->u.fio.set_stat_flags & AsyncReqSetPermissions) {
+                    if (fchmod(req->u.fio.fd, req->u.fio.statbuf.st_mode) < 0) err = errno;
+                }
+#endif
+                if (req->u.fio.set_stat_flags & AsyncReqSetAcModTime) {
+                    struct utimbuf buf;
+                    buf.actime = req->u.fio.statbuf.st_atime;
+                    buf.modtime = req->u.fio.statbuf.st_mtime;
+                    if (utime(req->u.fio.file_name, &buf) < 0) err = errno;
+                }
+                req->error = err;
+            }
             break;
         case AsyncReqRemove:
             req->u.fio.rval = remove(req->u.fio.file_name);
@@ -273,18 +344,17 @@ static void * worker_thread_handler(void * x) {
                 req->error = errno;
                 assert(req->error);
             }
-            loc_free(req->u.fio.file_name);
             break;
-        case AsyncReqReaddir:
+        case AsyncReqReadDir:
         {
             int cnt = 0;
-            while (cnt < req->u.dio.max_file_per_dir) {
+            while (cnt < req->u.dio.max_files) {
                 char path[FILE_PATH_SIZE];
-                struct DirFileNode * node = req->u.dio.files + cnt;
+                struct DirFileNode * file = req->u.dio.files + cnt;
                 struct dirent * e;
                 struct stat st;
                 errno = 0;
-                e = readdir(req->u.dio.dir);
+                e = readdir((DIR *)req->u.dio.dir);
                 if (e == NULL) {
                     req->error = errno;
                     if (req->error == 0) req->u.dio.eof = 1;
@@ -292,19 +362,18 @@ static void * worker_thread_handler(void * x) {
                 }
                 if (strcmp(e->d_name, ".") == 0) continue;
                 if (strcmp(e->d_name, "..") == 0) continue;
-                node->path = loc_strdup(e->d_name);
+                file->path = loc_strdup(e->d_name);
                 memset(&st, 0, sizeof(st));
-                snprintf(path, sizeof(path), "%s/%s",req->u.dio.path, e->d_name);
+                snprintf(path, sizeof(path), "%s/%s", req->u.dio.path, e->d_name);
                 if (stat(path, &st) == 0) {
 #if defined(_WIN32) || defined(__CYGWIN__)
-                    node->win32_attrs =  GetFileAttributes(path);
+                    file->win32_attrs =  GetFileAttributes(path);
 #endif
-                    node->statbuf = (struct stat *)loc_alloc(sizeof(struct stat));
-                    memcpy(node->statbuf, &st, sizeof(struct stat));
+                    file->statbuf = (struct stat *)loc_alloc(sizeof(struct stat));
+                    memcpy(file->statbuf, &st, sizeof(struct stat));
                 }
                 cnt++;
             }
-            loc_free(req->u.dio.path);
             break;
         }
         default:

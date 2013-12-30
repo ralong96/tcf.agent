@@ -235,7 +235,6 @@ extern int getegid(void);
 #include <limits.h>
 #include <inttypes.h>
 #include <fcntl.h>
-#include <utime.h>
 #include <timespec.h>
 #include <e32def.h>
 #include <unistd.h>
