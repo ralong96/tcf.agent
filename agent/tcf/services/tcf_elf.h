@@ -76,6 +76,7 @@
 #define EM_MIPS_X      51 /* Stanford MIPS-X */
 #define EM_COLDFIRE    52 /* Motorola Coldfire */
 #define EM_X86_64      62 /* AMD x86-64 architecture */
+#define EM_V850	    	87 /* NEC/Renesas RH850 */
 
 #define ET_NONE         0
 #define ET_REL          1

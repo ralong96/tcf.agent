@@ -196,6 +196,22 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
                 regs->regs[n].offset = 14; /* LR */
             }
             break;
+        case EM_V850:
+        	min_reg_cnt = 32;
+            if (n == 0) { /* Always same - reads as zero */
+                regs->regs[n].rule = RULE_SAME_VALUE;
+            }       	
+            else if (n >= 6 && n <= 29) { /* Must be saved across function calls. Callee-save */
+                regs->regs[n].rule = RULE_SAME_VALUE;
+            }
+            else if (n == 3) { /* Stack pointer */
+                regs->regs[n].rule = RULE_VAL_OFFSET;
+            }
+            else if (n == rules.return_address_register) {
+                regs->regs[n].rule = RULE_REGISTER;
+                regs->regs[n].offset = 31; /* Link */
+            } 
+        	break;
         case EM_MICROBLAZE:
             min_reg_cnt = 32;
             if (n == 0) { /* Always same - reads as zero */
@@ -967,6 +983,8 @@ static void read_frame_cie(U8_T fde_pos, U8_T pos) {
     rules.code_alignment = dio_ReadULEB128();
     rules.data_alignment = dio_ReadSLEB128();
     rules.return_address_register = dio_ReadULEB128();
+    
+    
     rules.lsda_encoding = 0;
     rules.prh_encoding = 0;
     rules.addr_encoding = 0;
@@ -1189,7 +1207,6 @@ static void read_frame_info_section(Context * ctx, ELF_Section * text_section,
     rules.cie_pos = ~(U8_T)0;
 
     if (index->mFrameInfoRanges == NULL) create_search_index(cache, index);
-
     l = 0;
     h = index->mFrameInfoRangesCnt;
     if (index->mRelocatable && text_section != NULL) sec_idx = text_section->index;
