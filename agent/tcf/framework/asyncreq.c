@@ -40,7 +40,9 @@
 #include <tcf/framework/asyncreq.h>
 #include <tcf/framework/shutdown.h>
 
+#ifndef MAX_WORKER_THREADS
 #define MAX_WORKER_THREADS 32
+#endif
 
 static LINK wtlist = TCF_LIST_INIT(wtlist);
 static int wtlist_size = 0;
