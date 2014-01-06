@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -63,6 +63,9 @@ typedef struct ConnectInfo {
     Channel * c1;
 } ConnectInfo;
 
+static int auto_redirect = 1;
+static TCFBroadcastGroup * bcg;
+
 static void connect_done(void * args, int error, Channel * c2) {
     ConnectInfo * info = (ConnectInfo *)args;
     Channel * c1 = info->c1;
@@ -108,7 +111,13 @@ static void channel_server_connecting(Channel * c1) {
     trace(LOG_ALWAYS, "channel server connecting");
 
     assert(c1->state == ChannelStateStarted);
-    c1->state = ChannelStateHelloSent;  /* Fake that we sent hello message. */
+    if (auto_redirect) {
+        c1->state = ChannelStateHelloSent;  /* Fake that we sent hello message. */
+    } else {
+        /* Enable only the locator_service */
+        ini_locator_service(c1->protocol, bcg);
+        send_hello_message(c1);
+    }
 }
 
 static void channel_server_connected(Channel * c1) {
@@ -116,9 +125,11 @@ static void channel_server_connected(Channel * c1) {
 
     assert(c1->state == ChannelStateConnected);
 
-    /* Connect to destination on next dispatch since we are limited in
-     * what we can do in a callback, e.g. cannot close channel. */
-    post_event(connect_dest, c1);
+    if (auto_redirect) {
+        /* Connect to destination on next dispatch since we are limited in
+         * what we can do in a callback, e.g. cannot close channel. */
+        post_event(connect_dest, c1);
+    }
 }
 
 static void channel_server_disconnected(Channel * c1) {
@@ -131,6 +142,7 @@ static void channel_new_connection(ChannelServer * serv, Channel * c) {
     c->connecting = channel_server_connecting;
     c->connected = channel_server_connected;
     c->disconnected = channel_server_disconnected;
+    channel_set_broadcast_group(c, bcg);
     channel_start(c);
 }
 
@@ -295,6 +307,8 @@ static const char * help_text[] = {
     "                      -fo,E,Locator,peerRemoved",
     "                      -fo,E,Locator,peerChanged",
     "                      -fo,C,Locator,getPeers",
+    "  -S               print server properties in Json format to stdout",
+    "  -n               no automatic redirect: client use Locator/redirect command",
     HELP_TEXT_HOOK
     NULL
 };
@@ -333,6 +347,7 @@ int main(int argc, char ** argv) {
     const char * url = "TCP:";
     PeerServer * ps;
     ChannelServer * serv;
+    int print_server_properties = 0;
 
     ini_mdep();
     ini_trace();
@@ -352,16 +367,21 @@ int main(int argc, char ** argv) {
 
     /* Parse arguments */
     for (ind = 1; ind < argc; ind++) {
-        const char * s = argv[ind];
-        if (*s != '-') {
-            break;
-        }
-        s++;
-        while ((c = *s++) != '\0') {
+        char * s = argv[ind];
+        if (*s++ != '-') break;
+        while (s && (c = *s++) != '\0') {
             switch (c) {
             case 'h':
                 show_help();
-                exit (0);
+                exit(0);
+
+            case 'n':
+                auto_redirect = 0;
+                break;
+
+            case 'S':
+                print_server_properties = 1;
+                break;
 
 #if ENABLE_Trace
             case 'l':
@@ -406,7 +426,7 @@ int main(int argc, char ** argv) {
                     show_help();
                     exit(1);
                 }
-                s = "";
+                s = NULL;
                 break;
 
             default:
@@ -418,11 +438,17 @@ int main(int argc, char ** argv) {
         }
     }
     open_log_file(log_name);
+
     if (ind < argc) {
         dest_url = argv[ind++];
+        if (!auto_redirect) {
+            fprintf(stderr, "Automatic redirect disabled: argument '%s' ignored\n", dest_url);
+            dest_url = NULL;
+        }
     }
-
 #endif
+
+    bcg = broadcast_group_alloc();
 
     /* Default filters (use "-fi" to disable). */
     add_message_filter("o,E,Locator,peerHeartBeat");
@@ -449,6 +475,18 @@ int main(int argc, char ** argv) {
     serv->new_conn = channel_new_connection;
 
     discovery_start();
+
+    if (print_server_properties) {
+        ChannelServer * s;
+        char * server_properties;
+        assert(!list_is_empty(&channel_server_root));
+        s = servlink2channelserverp(channel_server_root.next);
+        server_properties = channel_peer_to_json(s->ps);
+        printf("Server-Properties: %s\n", server_properties);
+        fflush(stdout);
+        trace(LOG_ALWAYS, "Server-Properties: %s", server_properties);
+        loc_free(server_properties);
+    }
 
     /* Process events - must run on the initial thread since ptrace()
      * returns ECHILD otherwise, thinking we are not the owner. */
