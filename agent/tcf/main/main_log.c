@@ -16,7 +16,7 @@
 /*
  * TCF Logger main module.
  *
- * TCF Logger is a simple TCF agent that des not provide any services itself,
+ * TCF Logger is a simple TCF agent that does not provide any services itself,
  * instead it forward all TCF traffic to another agent.
  * Logger prints all messages it forwards.
  * It can be used as diagnostic and debugging tool.
@@ -37,9 +37,26 @@
 #include <tcf/framework/proxy.h>
 #include <tcf/framework/errors.h>
 #include <tcf/services/discovery.h>
+#include <tcf/main/main_hooks.h>
 
 static const char * progname;
 static const char * dest_url = "TCP::1534";
+
+/* Hook to add help text. */
+#ifndef HELP_TEXT_HOOK
+#define HELP_TEXT_HOOK
+#endif
+
+/* Hook for illegal option case.  This hook allows for handling off
+ * additional options. */
+#ifndef ILLEGAL_OPTION_HOOK
+#define ILLEGAL_OPTION_HOOK  do {} while(0)
+#endif
+
+/* Hook for adding properties */
+#ifndef SERVER_ADDPROP_HOOK
+#define SERVER_ADDPROP_HOOK do {} while(0)
+#endif
 
 typedef struct ConnectInfo {
     PeerServer * ps;
@@ -278,6 +295,7 @@ static const char * help_text[] = {
     "                      -fo,E,Locator,peerRemoved",
     "                      -fo,E,Locator,peerChanged",
     "                      -fo,C,Locator,getPeers",
+    HELP_TEXT_HOOK
     NULL
 };
 
@@ -392,6 +410,7 @@ int main(int argc, char ** argv) {
                 break;
 
             default:
+                ILLEGAL_OPTION_HOOK;
                 fprintf(stderr, "%s: error: illegal option '%c'\n", progname, c);
                 show_help();
                 exit(1);
@@ -421,6 +440,7 @@ int main(int argc, char ** argv) {
     }
     peer_server_addprop(ps, loc_strdup("Name"), loc_strdup("TCF Protocol Logger"));
     peer_server_addprop(ps, loc_strdup("Proxy"), loc_strdup(""));
+    SERVER_ADDPROP_HOOK;
     serv = channel_server(ps);
     if (serv == NULL) {
         fprintf(stderr, "%s: cannot create TCF server: %s\n", progname, errno_to_str(errno));

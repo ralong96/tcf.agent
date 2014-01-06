@@ -38,6 +38,15 @@
 #define TARGET_SERVICE_CHECK_HOOK do {} while(0)
 #endif
 
+/* Hook for adding properties */
+#ifndef SERVER_ADDPROP_HOOK
+#define SERVER_ADDPROP_HOOK do {} while(0)
+#endif
+
+#ifndef PROXY_NAME
+#define PROXY_NAME "TCF Proxy"
+#endif
+
 static Protocol * proto;
 static TCFBroadcastGroup * bcg;
 
@@ -66,7 +75,10 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if defined(SERVICE_Disassembly) && SERVICE_Disassembly
         int service_da = 0;
 #endif
+#if defined(ENABLE_DebugContext) && ENABLE_DebugContext \
+    && defined(ENABLE_ContextProxy) && ENABLE_ContextProxy
         int forward_pm = 0;
+#endif
         for (i = 0; i < target->peer_service_cnt; i++) {
             char * nm = target->peer_service_list[i];
             if (strcmp(nm, "LineNumbers") == 0) service_ln = 1;
@@ -79,8 +91,13 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
             TARGET_SERVICE_CHECK_HOOK;
         }
         if (!service_pm || !service_ln || !service_sm) {
+#if SERVICE_PathMap
             ini_path_map_service(host->protocol, bcg);
+#endif
+#if defined(ENABLE_DebugContext) && ENABLE_DebugContext \
+    && defined(ENABLE_ContextProxy) && ENABLE_ContextProxy
             if (service_pm) forward_pm = 1;
+#endif
         }
         if (service_mm) {
 #if defined(SERVICE_LineNumbers) && SERVICE_LineNumbers
@@ -117,8 +134,9 @@ int ini_server(const char * url, Protocol * p, TCFBroadcastGroup * b) {
     proto = p;
     ps = channel_peer_from_url(url);
     if (ps == NULL) str_exception(ERR_OTHER, "Invalid server URL");
-    peer_server_addprop(ps, loc_strdup("Name"), loc_strdup("TCF Proxy"));
+    peer_server_addprop(ps, loc_strdup("Name"), loc_strdup(PROXY_NAME));
     peer_server_addprop(ps, loc_strdup("Proxy"), loc_strdup(""));
+    SERVER_ADDPROP_HOOK;
     serv = channel_server(ps);
     if (serv == NULL) exception(errno);
     serv->new_conn = channel_new_connection;

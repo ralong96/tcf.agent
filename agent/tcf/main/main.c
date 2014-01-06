@@ -87,6 +87,13 @@
 #define POST_OPTION_HOOK do {} while(0)
 #endif
 
+/* Hook for USAGE string */
+#ifndef USAGE_STRING_HOOK
+#define USAGE_STRING_HOOK                               \
+    "Usage: agent [OPTION]...",                         \
+    "Start Target Communication Framework agent."
+#endif
+
 static const char * progname;
 static unsigned int idle_timeout;
 static unsigned int idle_count;
@@ -161,8 +168,7 @@ static BOOL CtrlHandler(DWORD ctrl) {
 
 #if !defined(_WRS_KERNEL)
 static const char * help_text[] = {
-    "Usage: agent [OPTION]...",
-    "Start Target Communication Framework agent.",
+    USAGE_STRING_HOOK,
     "  -d               run in daemon mode (output is sent to system logger)",
 #if ENABLE_Cmdline
     "  -i               run in interactive mode",
