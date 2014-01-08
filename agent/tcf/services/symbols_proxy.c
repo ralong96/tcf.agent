@@ -46,10 +46,10 @@
 #define ACC_OTHER   3
 
 #ifndef SYMBOLS_PROXY_CLEANUP_DELAY
-#define SYMBOLS_PROXY_CLEANUP_DELAY	1000000
+#define SYMBOLS_PROXY_CLEANUP_DELAY 1000000
 #endif
 
-#define SYMBOLS_CACHE_THRESHOLD	(MEM_USAGE_FACTOR * 32)
+#define SYMBOLS_CACHE_THRESHOLD (MEM_USAGE_FACTOR * 32)
 
 /* Symbols cache, one per channel */
 typedef struct SymbolsCache {
@@ -227,20 +227,20 @@ static void flush_symbol(LINK * l);
 static void clean_flush_list(LINK * list) {
     if (!list_is_empty(list)) {
         LINK * l;
-	unsigned list_count = 0; 
-	unsigned flush_count;
+        unsigned list_count = 0;
+        unsigned flush_count;
 
-	list_foreach(l, list) list_count++;
+        list_foreach(l, list) list_count++;
 
-	/* drain faster if we have reached the cache threshold */
-	if (list_count > SYMBOLS_CACHE_THRESHOLD) flush_count = (list_count - SYMBOLS_CACHE_THRESHOLD) / 2 + 1;
-	else flush_count = 1;
-	l = list->next;
-	while (flush_count-- > 0) {
-	    LINK * n = l;
-	    l = l->next;
-	    flush_symbol(n);
-	}
+        /* drain faster if we have reached the cache threshold */
+        if (list_count > SYMBOLS_CACHE_THRESHOLD) flush_count = (list_count - SYMBOLS_CACHE_THRESHOLD) / 2 + 1;
+        else flush_count = 1;
+        l = list->next;
+        while (flush_count-- > 0) {
+            LINK * n = l;
+            l = l->next;
+            flush_symbol(n);
+        }
     }
 }
 
@@ -294,7 +294,7 @@ static SymbolsCache * get_symbols_cache(void) {
     if (c == NULL) str_exception(ERR_OTHER, "Symbols cache: illegal cache access");
     if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
     if (!symbols_cleanup_posted) {
-	symbols_cleanup_posted = 1;
+        symbols_cleanup_posted = 1;
         post_event_with_delay(symbols_cleanup_event, NULL, SYMBOLS_PROXY_CLEANUP_DELAY);
     }
     for (l = root.next; l != &root; l = l->next) {
@@ -509,24 +509,24 @@ static void free_symbols_cache(SymbolsCache * syms) {
 static void flush_symbol(LINK * l) {
     unsigned magic = flush2sym(l)->magic;
     if (magic == MAGIC_INFO) {
-	SymInfoCache * c = flush2sym(l);
-	if (c->cache.wait_list_cnt == 0) free_sym_info_cache(c);
+        SymInfoCache * c = flush2sym(l);
+        if (c->cache.wait_list_cnt == 0) free_sym_info_cache(c);
     }
     else if (magic == MAGIC_FIND) {
-	FindSymCache * c = flush2find(l);
-	if (c->cache.wait_list_cnt == 0) free_find_sym_cache(c);
+        FindSymCache * c = flush2find(l);
+        if (c->cache.wait_list_cnt == 0) free_find_sym_cache(c);
     }
     else if (magic == MAGIC_FRAME) {
-	StackFrameCache * c = flush2frame(l);
-	if (c->cache.wait_list_cnt == 0) free_stack_frame_cache(c);
+        StackFrameCache * c = flush2frame(l);
+        if (c->cache.wait_list_cnt == 0) free_stack_frame_cache(c);
     }
     else if (magic == MAGIC_ADDR) {
-	AddressInfoCache * c = flush2address(l);
-	if (c->cache.wait_list_cnt == 0) free_address_info_cache(c);
+        AddressInfoCache * c = flush2address(l);
+        if (c->cache.wait_list_cnt == 0) free_address_info_cache(c);
     }
     else if (magic == MAGIC_LOC) {
-	LocationInfoCache * c = flush2location(l);
-	if (c->cache.wait_list_cnt == 0) free_location_info_cache(c);
+        LocationInfoCache * c = flush2location(l);
+        if (c->cache.wait_list_cnt == 0) free_location_info_cache(c);
     }
 }
 
@@ -1084,11 +1084,11 @@ int id2symbol(const char * id, Symbol ** sym) {
 #endif
     } else {
         if (!s->disposed) {
-	    /* Move used item at the end of the flush list */
-	    list_remove(&s->link_flush);
-	    if (s->update_policy == UPDATE_ON_EXE_STATE_CHANGES) list_add_last(&s->link_flush, &flush_rc)
-	    else list_add_last(&s->link_flush, &flush_mm);
-	}
+            /* Move used item at the end of the flush list */
+            list_remove(&s->link_flush);
+            if (s->update_policy == UPDATE_ON_EXE_STATE_CHANGES) list_add_last(&s->link_flush, &flush_rc)
+            else list_add_last(&s->link_flush, &flush_mm);
+        }
     }
     *sym = alloc_symbol();
     (*sym)->cache = s;
