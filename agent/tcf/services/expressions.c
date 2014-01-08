@@ -3844,9 +3844,11 @@ static void command_evaluate_cache_client(void * x) {
                 }
                 write_stream(&c->out, ',');
                 if (piece->reg) {
+                    Context * reg_ctx = value.loc->ctx;
+                    int reg_frame = get_info_frame(value.loc->ctx, value.loc->stack_frame);
                     json_write_string(&c->out, "Register");
                     write_stream(&c->out, ':');
-                    json_write_string(&c->out, register2id(ctx, frame, piece->reg));
+                    json_write_string(&c->out, register2id(reg_ctx, reg_frame, piece->reg));
                 }
                 else if (piece->value) {
                     json_write_string(&c->out, "Value");
