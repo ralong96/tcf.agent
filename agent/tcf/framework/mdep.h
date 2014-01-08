@@ -47,11 +47,14 @@
 #  pragma warning(disable:4100) /* unreferenced formal parameter */
 #  pragma warning(disable:4611) /* interaction between '_setjmp' and C++ object destruction is non-portable */
 #  pragma warning(disable:4996) /* 'strcpy': This function or variable may be unsafe */
+#  if _MSC_VER <= 1500
+#    pragma warning(disable:4702) /* unreachable code */
+#  endif
 #  ifdef _WIN64
-#    pragma warning(disable:4244)
-#    pragma warning(disable:4267)
-#    pragma warning(disable:4305)
-#    pragma warning(disable:4306)
+#    pragma warning(disable:4244) /* conversion from 'type1' to 'type2', possible loss of data */
+#    pragma warning(disable:4267) /* conversion from 'size_t' to 'type', possible loss of data */
+#    pragma warning(disable:4305) /* truncation from 'type1' to 'type2' */
+#    pragma warning(disable:4306) /* conversion from ' type1 ' to ' type2 ' of greater size */
 #  endif
 #  ifdef UNICODE
 /* TCF code uses UTF-8 multibyte character encoding */
