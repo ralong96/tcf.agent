@@ -112,10 +112,14 @@ static void channel_server_connecting(Channel * c1) {
 
     assert(c1->state == ChannelStateStarted);
     if (auto_redirect) {
-        c1->state = ChannelStateHelloSent;  /* Fake that we sent hello message. */
-    } else {
+        /* Fake that we sent hello message. */
+        c1->state = ChannelStateHelloSent;
+    }
+    else {
         /* Enable only the locator_service */
+#if SERVICE_Locator
         ini_locator_service(c1->protocol, bcg);
+#endif
         send_hello_message(c1);
     }
 }
