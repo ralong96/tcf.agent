@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013,2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -365,6 +365,9 @@ typedef struct {
 #endif
 #ifndef EM_PPC64
 #define EM_PPC64 21
+#endif
+#ifndef EM_V850
+#define EM_V850 87 /* NEC/Renesas RH850 */
 #endif
 #ifndef EM_MICROBLAZE
 #define EM_MICROBLAZE 189
