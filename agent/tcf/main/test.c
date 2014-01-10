@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -138,6 +138,10 @@ typedef struct test_bitfields {
     int f_ibit17: 17;
 } test_bitfields;
 
+typedef struct test_array_field {
+    unsigned char buf[3][5];
+} test_array_field;
+
 typedef int test_array[10001];
 
 extern int tcf_test_func_int(int x, int y);
@@ -154,6 +158,8 @@ short tcf_test_short = 0;
 long tcf_test_long = 0;
 
 unsigned tcf_test_func_call_cnt = 0;
+
+static test_array_field tcf_test_array_field;
 
 int tcf_test_func_int(int x, int y) {
     tcf_test_func_call_cnt++;
@@ -217,11 +223,16 @@ static void * test_sub(void * x) {
 }
 
 void test_proc(void) {
-    int i;
+    int i, j;
     pthread_t thread[4];
     int test_done = 0;
     for (i = 0; i < 4; i++) {
         thread[i] = 0;
+    }
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 5; j++) {
+            tcf_test_array_field.buf[i][j] = (unsigned char)(i * 5 + j);
+        }
     }
 #ifdef __cplusplus
     tcf_cpp_test_anonymous_union_var.f1 = 234;

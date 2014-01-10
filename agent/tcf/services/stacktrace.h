@@ -72,6 +72,7 @@ extern void ini_stack_trace_service(Protocol *, TCFBroadcastGroup *);
 #else /* SERVICE_StackTrace */
 
 #define get_frame_info(ctx, frame, info) (errno = ERR_UNSUPPORTED, -1)
+#define get_info_frame(ctx, info) STACK_NO_FRAME
 #define is_top_frame(ctx, frame) (frame == STACK_TOP_FRAME)
 
 #endif /* SERVICE_StackTrace */

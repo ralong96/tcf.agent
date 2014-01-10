@@ -1854,11 +1854,11 @@ static void op_field(int mode, Value * v) {
             if (get_symbol_type_class(sym, &v->type_class) < 0) {
                 error(errno, "Cannot retrieve symbol type class");
             }
+            if (get_symbol_size(sym, &v->size) < 0) {
+                error(errno, "Cannot retrieve field size");
+            }
             if (mode == MODE_NORMAL) {
                 if (loc->stk_pos == 1) {
-                    if (get_symbol_size(sym, &v->size) < 0) {
-                        error(errno, "Cannot retrieve field size");
-                    }
                     v->address = (ContextAddress)loc->stk[0];
                     set_value_endianness(v, sym, v->type);
                 }
@@ -1915,8 +1915,6 @@ static void op_field(int mode, Value * v) {
 static void op_index(int mode, Value * v) {
 #if ENABLE_Symbols
     Value i;
-    int64_t lower_bound = 0;
-    ContextAddress offs = 0;
     ContextAddress size = 0;
     Symbol * type = NULL;
 
@@ -1942,21 +1940,25 @@ static void op_index(int mode, Value * v) {
     if (get_symbol_size(type, &size) < 0) {
         error(errno, "Cannot get array element size");
     }
-    if (v->type_class == TYPE_CLASS_ARRAY && get_symbol_lower_bound(v->type, &lower_bound) < 0) {
-        error(errno, "Cannot get array lower bound");
-    }
-    offs = (ContextAddress)(to_int(mode, &i) - lower_bound) * size;
-    if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
-        error(errno, "Cannot retrieve symbol size");
-    }
-    if (v->type_class == TYPE_CLASS_ARRAY && offs + size > v->size) {
-        error(ERR_INV_EXPRESSION, "Invalid index");
-    }
-    if (v->remote) {
-        v->address += offs;
-    }
-    else {
-        v->value = (char *)v->value + offs;
+    if (mode == MODE_NORMAL) {
+        int64_t lower_bound = 0;
+        ContextAddress offs = 0;
+        if (v->type_class == TYPE_CLASS_ARRAY && get_symbol_lower_bound(v->type, &lower_bound) < 0) {
+            error(errno, "Cannot get array lower bound");
+        }
+        offs = (ContextAddress)(to_int(mode, &i) - lower_bound) * size;
+        if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
+            error(errno, "Cannot retrieve symbol size");
+        }
+        if (v->type_class == TYPE_CLASS_ARRAY && offs + size > v->size) {
+            error(ERR_INV_EXPRESSION, "Invalid index");
+        }
+        if (v->remote) {
+            v->address += offs;
+        }
+        else {
+            v->value = (char *)v->value + offs;
+        }
     }
     v->sym = NULL;
     v->reg = NULL;
