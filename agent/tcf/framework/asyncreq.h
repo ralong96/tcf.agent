@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -58,7 +58,8 @@ enum {
     AsyncReqRemove,                     /* File remove */
     AsyncReqOpenDir,                    /* Directory open */
     AsyncReqReadDir,                    /* Directory read */
-    AsyncReqCloseDir                    /* Directory close */
+    AsyncReqCloseDir,                   /* Directory close */
+    AsyncReqRoots                       /* Root device list */
 };
 
 #define AsyncReqSetSize         1
@@ -72,6 +73,15 @@ struct DirFileNode {
 #if defined(_WIN32) || defined(__CYGWIN__)
     DWORD win32_attrs;
 #endif
+};
+
+struct RootDevNode {
+    char * devname;
+    struct stat * statbuf;
+#if defined(_WIN32) || defined(__CYGWIN__)
+    DWORD win32_attrs;
+#endif
+    struct RootDevNode * next;
 };
 
 typedef struct AsyncReqInfo AsyncReqInfo;
@@ -129,6 +139,10 @@ struct AsyncReqInfo {
             /* Out */
             ssize_t rval;
         } sio;
+        struct {
+            /* Out */
+            struct RootDevNode * lst;
+        } root;
         struct {
             /* In */
             int sock;

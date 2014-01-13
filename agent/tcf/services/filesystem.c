@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -128,7 +128,7 @@ static OpenFileInfo * create_open_file_info(Channel * ch, char * path, int file,
         }
         if (p == NULL) break;
     }
-    strcpy(h->path, path);
+    if (path != NULL) strcpy(h->path, path);
     h->file = file;
     h->dir = dir;
     h->inp = &ch->inp;
@@ -577,6 +577,54 @@ static void reply_readdir(char * token, OutputStream * out, int err, struct DirF
     write_stream(out, MARKER_EOM);
 }
 
+static void reply_roots(char * token, OutputStream * out, int err, struct RootDevNode * rootlst) {
+    FileAttrs attrs;
+    int cnt = 0;
+    struct RootDevNode * root = rootlst;
+
+    write_stringz(out, "R");
+    write_stringz(out, token);
+    write_stream(out, '[');
+    while (root != NULL) {
+	assert(root->devname != NULL);
+        if (cnt++ > 0) write_stream(out, ',');
+        write_stream(out, '{');
+        json_write_string(out, "FileName");
+        write_stream(out, ':');
+        json_write_string(out, root->devname);
+
+        if (root->statbuf != NULL) {
+            fill_attrs(&attrs, root->statbuf);
+#if defined(_WIN32) || defined(__CYGWIN__)
+            attrs.win32_attrs = root->win32_attrs;
+#endif
+            write_stream(out, ',');
+            json_write_string(out, "Attrs");
+            write_stream(out, ':');
+            write_file_attrs(out, &attrs);
+        }
+        write_stream(out, '}');
+        root = root->next;
+    }
+    write_stream(out, ']');
+    write_stream(out, 0);
+    write_fs_errno(out, err);
+    write_stream(out, MARKER_EOM);
+}
+
+static void free_roots(struct RootDevNode * rootlst) {
+    struct RootDevNode * next_root;
+    struct RootDevNode * current_root = rootlst;
+
+    while (current_root != NULL) {
+        next_root = current_root->next;
+        loc_free(current_root->devname);
+        loc_free(current_root->statbuf);
+        loc_free(current_root);
+        current_root = next_root;
+    }
+}
+
 static void terminate_open_file_info(OpenFileInfo * handle) {
     while (!list_is_empty(&handle->link_reqs)) {
         LINK * link = handle->link_reqs.next;
@@ -724,6 +772,12 @@ static void done_io_request(void * arg) {
             return;
         }
         break;
+    case AsyncReqRoots:
+        reply_roots(req->token, handle->out, err, req->info.u.root.lst);
+        delete_open_file_info(handle);
+        free_roots(req->info.u.root.lst);
+        free_io_req(req);
+        return;
     default:
         assert(0);
     }
@@ -1287,118 +1341,12 @@ static void command_user(char * token, Channel * c) {
 }
 
 static void command_roots(char * token, Channel * c) {
-    struct stat st;
-    int err = 0;
+    OpenFileInfo * h;
 
     json_test_char(&c->inp, MARKER_EOM);
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
-    write_stream(&c->out, '[');
-
-#if defined(_WIN32) || defined(__CYGWIN__)
-    {
-        int cnt = 0;
-        int disk = 0;
-        DWORD disks = GetLogicalDrives();
-        for (disk = 0; disk <= 30; disk++) {
-            if (disks & (1 << disk)) {
-                char path[32];
-                snprintf(path, sizeof(path), "%c:\\", 'A' + disk);
-                if (cnt > 0) write_stream(&c->out, ',');
-                write_stream(&c->out, '{');
-                json_write_string(&c->out, "FileName");
-                write_stream(&c->out, ':');
-                json_write_string(&c->out, path);
-                if (disk >= 2) {
-                    ULARGE_INTEGER total_number_of_bytes;
-                    BOOL has_size = GetDiskFreeSpaceExA(path, NULL, &total_number_of_bytes, NULL);
-                    memset(&st, 0, sizeof(st));
-#if defined(__CYGWIN__)
-                    snprintf(path, sizeof(path), "/cygdrive/%c", 'a' + disk);
-#endif
-                    if (has_size && stat(path, &st) == 0) {
-                        FileAttrs attrs;
-                        fill_attrs(&attrs, &st);
-                        attrs.win32_attrs = GetFileAttributes(path);
-                        write_stream(&c->out, ',');
-                        json_write_string(&c->out, "Attrs");
-                        write_stream(&c->out, ':');
-                        write_file_attrs(&c->out, &attrs);
-                    }
-                }
-                write_stream(&c->out, '}');
-                cnt++;
-            }
-        }
-    }
-#elif defined(_WRS_KERNEL)
-    {
-        extern DL_LIST iosDvList;
-        DEV_HDR * dev;
-        int cnt = 0;
-        for (dev = (DEV_HDR *)DLL_FIRST(&iosDvList); dev != NULL; dev = (DEV_HDR *)DLL_NEXT(&dev->node)) {
-            FileAttrs attrs;
-            char path[FILE_PATH_SIZE];
-            if (strcmp(dev->name, "host:") == 0) {
-                /* Windows host is special case */
-                int d;
-                for (d = 'a'; d < 'z'; d++) {
-                    snprintf(path, sizeof(path), "%s%c:/", dev->name, d);
-                    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
-                        fill_attrs(&attrs, &st);
-                        if (cnt > 0) write_stream(&c->out, ',');
-                        write_stream(&c->out, '{');
-                        json_write_string(&c->out, "FileName");
-                        write_stream(&c->out, ':');
-                        json_write_string(&c->out, path);
-                        write_stream(&c->out, ',');
-                        json_write_string(&c->out, "Attrs");
-                        write_stream(&c->out, ':');
-                        write_file_attrs(&c->out, &attrs);
-                        write_stream(&c->out, '}');
-                        cnt++;
-                    }
-                }
-            }
-            snprintf(path, sizeof(path), "%s/", dev->name);
-            if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
-                fill_attrs(&attrs, &st);
-                if (cnt > 0) write_stream(&c->out, ',');
-                write_stream(&c->out, '{');
-                json_write_string(&c->out, "FileName");
-                write_stream(&c->out, ':');
-                json_write_string(&c->out, path);
-                write_stream(&c->out, ',');
-                json_write_string(&c->out, "Attrs");
-                write_stream(&c->out, ':');
-                write_file_attrs(&c->out, &attrs);
-                write_stream(&c->out, '}');
-                cnt++;
-            }
-        }
-    }
-#else
-    write_stream(&c->out, '{');
-    json_write_string(&c->out, "FileName");
-    write_stream(&c->out, ':');
-    json_write_string(&c->out, "/");
-    memset(&st, 0, sizeof(st));
-    if (stat("/", &st) == 0) {
-        FileAttrs attrs;
-        fill_attrs(&attrs, &st);
-        write_stream(&c->out, ',');
-        json_write_string(&c->out, "Attrs");
-        write_stream(&c->out, ':');
-        write_file_attrs(&c->out, &attrs);
-    }
-    write_stream(&c->out, '}');
-#endif
-
-    write_stream(&c->out, ']');
-    write_stream(&c->out, 0);
-    write_fs_errno(&c->out, err);
-
-    write_stream(&c->out, MARKER_EOM);
+    h = create_open_file_info(c, NULL, -1, NULL);
+    create_io_request(token, h, AsyncReqRoots);
+    post_io_request(h);
 }
 
 void ini_file_system_service(Protocol * proto) {

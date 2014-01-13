@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -378,6 +378,95 @@ static void * worker_thread_handler(void * x) {
             }
             break;
         }
+        case AsyncReqRoots:
+        {
+      struct stat st;
+      struct RootDevNode * newDevNode = NULL;
+
+#if defined(_WIN32) || defined(__CYGWIN__)
+            {
+            struct RootDevNode * curDevNode = NULL;
+            int cnt = 0;
+            int disk = 0;
+            DWORD disks = GetLogicalDrives();
+            for (disk = 0; disk <= 30; disk++) {
+                if (disks & (1 << disk)) {
+                    char path[32];
+                    newDevNode = loc_alloc_zero(sizeof(struct RootDevNode));
+                    if (cnt == 0) req->u.root.lst = newDevNode;
+                    else curDevNode->next = newDevNode;
+                    curDevNode = newDevNode;
+                    snprintf(path, sizeof(path), "%c:\\", 'A' + disk);
+                    newDevNode->devname = loc_strdup(path);
+                    if (disk >= 2) {
+                        ULARGE_INTEGER total_number_of_bytes;
+                        BOOL has_size = GetDiskFreeSpaceExA(path, NULL, &total_number_of_bytes, NULL);
+                        memset(&st, 0, sizeof(st));
+#if defined(__CYGWIN__)
+                        snprintf(path, sizeof(path), "/cygdrive/%c", 'a' + disk);
+#endif
+                        if (has_size && stat(path, &st) == 0) {
+                            newDevNode->win32_attrs =  GetFileAttributes(path);
+                            newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
+                            memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
+                        }
+                    }
+                    cnt++;
+                }
+            }
+        }
+#elif defined(_WRS_KERNEL)
+        {
+            struct RootDevNode * curDevNode = NULL;
+            extern DL_LIST iosDvList;
+            DEV_HDR * dev;
+            int cnt = 0;
+            for (dev = (DEV_HDR *)DLL_FIRST(&iosDvList); dev != NULL; dev = (DEV_HDR *)DLL_NEXT(&dev->node)) {
+                char path[FILE_PATH_SIZE];
+                if (strcmp(dev->name, "host:") == 0) {
+                    /* Windows host is special case */
+                    int d;
+                    for (d = 'a'; d < 'z'; d++) {
+ 
+                        snprintf(path, sizeof(path), "%s%c:/", dev->name, d);
+                        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                            newDevNode = loc_alloc_zero(sizeof(struct RootDevNode));
+                            if (cnt == 0) req->u.root.lst = newDevNode;
+                            else curDevNode->next = newDevNode;
+                            curDevNode = newDevNode;
+
+                            newDevNode->devname = loc_strdup(path);
+                            newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
+                            memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
+                            cnt++;
+                        }
+                    }
+                }
+                snprintf(path, sizeof(path), "%s/", dev->name);
+                if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                    newDevNode = loc_alloc_zero(sizeof(struct RootDevNode));
+                    if (cnt == 0) req->u.root.lst = newDevNode;
+                    else curDevNode->next = newDevNode;
+                    curDevNode = newDevNode;
+
+                    newDevNode->devname = loc_strdup(path);
+                    newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
+                    memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
+                    cnt++;
+                }
+            }
+        }
+#else
+        req->u.root.lst = loc_alloc_zero(sizeof(struct RootDevNode));
+        req->u.root.lst->devname = loc_strdup("/");
+        if (stat("/", &st) == 0) {
+            newDevNode = loc_alloc_zero(sizeof(struct RootDevNode));
+            newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
+            memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
+        }
+#endif
+        }
+            break; 
         default:
             req->error = ENOSYS;
             break;
