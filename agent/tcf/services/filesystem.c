@@ -192,6 +192,18 @@ static void free_io_req(IORequest * req) {
         }
         loc_free(req->info.u.dio.path);
         break;
+    case AsyncReqRoots:
+        {
+            struct RootDevNode * current_root = req->info.u.root.lst;
+            while (current_root != NULL) {
+                struct RootDevNode * next_root = current_root->next;
+                loc_free(current_root->devname);
+                loc_free(current_root->statbuf);
+                loc_free(current_root);
+                current_root = next_root;
+            }
+        }
+        break;
     }
     loc_free(req);
 }
@@ -586,7 +598,7 @@ static void reply_roots(char * token, OutputStream * out, int err, struct RootDe
     write_stringz(out, token);
     write_stream(out, '[');
     while (root != NULL) {
-	assert(root->devname != NULL);
+        assert(root->devname != NULL);
         if (cnt++ > 0) write_stream(out, ',');
         write_stream(out, '{');
         json_write_string(out, "FileName");
@@ -610,19 +622,6 @@ static void reply_roots(char * token, OutputStream * out, int err, struct RootDe
     write_stream(out, 0);
     write_fs_errno(out, err);
     write_stream(out, MARKER_EOM);
-}
-
-static void free_roots(struct RootDevNode * rootlst) {
-    struct RootDevNode * next_root;
-    struct RootDevNode * current_root = rootlst;
-
-    while (current_root != NULL) {
-        next_root = current_root->next;
-        loc_free(current_root->devname);
-        loc_free(current_root->statbuf);
-        loc_free(current_root);
-        current_root = next_root;
-    }
 }
 
 static void terminate_open_file_info(OpenFileInfo * handle) {
@@ -775,7 +774,6 @@ static void done_io_request(void * arg) {
     case AsyncReqRoots:
         reply_roots(req->token, handle->out, err, req->info.u.root.lst);
         delete_open_file_info(handle);
-        free_roots(req->info.u.root.lst);
         free_io_req(req);
         return;
     default:
