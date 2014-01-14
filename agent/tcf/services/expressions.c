@@ -2344,9 +2344,33 @@ static void op_call(int mode, Value * v) {
 
 #endif /* ENABLE_FuncCallInjection */
 
+static void resolve_ref_type(int mode, Value * v) {
+#if ENABLE_Symbols
+    Symbol * type = v->type;
+    if (type == NULL || v->type_class != TYPE_CLASS_POINTER) return;
+    for (;;) {
+        SYM_FLAGS flags = 0;
+        Symbol * next = NULL;
+        if (get_symbol_flags(type, &flags) < 0) {
+            error(errno, "Cannot retrieve symbol flags");
+        }
+        if (flags & SYM_FLAG_REFERENCE) {
+            op_deref(mode, v);
+            break;
+        }
+        if (get_symbol_type(type, &next) < 0) {
+            error(errno, "Cannot retrieve symbol type");
+        }
+        if (next == type) break;
+        type = next;
+    }
+#endif
+}
+
 static void postfix_expression(int mode, Value * v) {
     primary_expression(mode, v);
     for (;;) {
+        resolve_ref_type(mode, v);
         if (text_sy == '.') {
             next_sy();
             op_field(mode, v);
@@ -2362,6 +2386,7 @@ static void postfix_expression(int mode, Value * v) {
         else if (text_sy == SY_REF) {
             next_sy();
             op_deref(mode, v);
+            resolve_ref_type(mode, v);
             op_field(mode, v);
         }
         else if (text_sy == '(') {

@@ -89,9 +89,11 @@ public:
 };
 
 int tcf_cpp_test_class::s_int = 1;
+int & tcf_cpp_test_int_ref = tcf_cpp_test_class::s_int;
 int tcf_cpp_test_class::tcf_cpp_test_class_nested::s_int = 2;
 tcf_cpp_test_class_extension tcf_cpp_test_class_extension_var;
 tcf_cpp_test_class_extension * tcf_cpp_test_class_extension_ptr = &tcf_cpp_test_class_extension_var;
+tcf_cpp_test_class_extension & tcf_cpp_test_class_extension_ref = tcf_cpp_test_class_extension_var;
 tcf_cpp_test_class_extension_member_ptr_type tcf_cpp_test_class_extension_member_ptr = &tcf_cpp_test_class_extension::f_int;
 int tcf_cpp_test_class_extension_member_val = tcf_cpp_test_class_extension_var.*tcf_cpp_test_class_extension_member_ptr;
 tcf_cpp_test_anonymous_union_class tcf_cpp_test_anonymous_union_var;
