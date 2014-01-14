@@ -200,26 +200,29 @@ static void * worker_thread_handler(void * x) {
             }
             break;
 #endif
+
         case AsyncReqSelect:
-        {
-            struct timeval tv;
-            tv.tv_sec = (long)req->u.select.timeout.tv_sec;
-            tv.tv_usec = req->u.select.timeout.tv_nsec / 1000;
-            req->u.select.rval = select(req->u.select.nfds, &req->u.select.readfds,
-                        &req->u.select.writefds, &req->u.select.errorfds, &tv);
-            if (req->u.select.rval == -1) {
-                req->error = errno;
-                assert(req->error);
+            {
+                struct timeval tv;
+                tv.tv_sec = (long)req->u.select.timeout.tv_sec;
+                tv.tv_usec = req->u.select.timeout.tv_nsec / 1000;
+                req->u.select.rval = select(req->u.select.nfds, &req->u.select.readfds,
+                            &req->u.select.writefds, &req->u.select.errorfds, &tv);
+                if (req->u.select.rval == -1) {
+                    req->error = errno;
+                    assert(req->error);
+                }
             }
             break;
-        }
+
         case AsyncReqClose:
             req->u.fio.rval = close(req->u.fio.fd);
             if (req->u.fio.rval == -1) {
                 req->error = errno;
                 assert(req->error);
             }
-        break;
+            break;
+
         case AsyncReqCloseDir:
             req->u.dio.rval = closedir((DIR *)req->u.dio.dir);
             if (req->u.dio.rval == -1) {
@@ -227,6 +230,7 @@ static void * worker_thread_handler(void * x) {
                 assert(req->error);
             }
             break;
+
         case AsyncReqOpen:
             req->u.fio.rval = open(req->u.fio.file_name, req->u.fio.flags, req->u.fio.permission);
             if (req->u.fio.rval == -1) {
@@ -234,6 +238,7 @@ static void * worker_thread_handler(void * x) {
                 assert(req->error);
             }
             break;
+
         case AsyncReqOpenDir:
             req->u.dio.dir = opendir(req->u.dio.path);
             if (req->u.dio.dir == NULL) {
@@ -241,6 +246,7 @@ static void * worker_thread_handler(void * x) {
                 assert(req->error);
             }
             break;
+
         case AsyncReqFstat:
             memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
             req->u.fio.rval = fstat(req->u.fio.fd, &req->u.fio.statbuf);
@@ -253,6 +259,7 @@ static void * worker_thread_handler(void * x) {
                 INVALID_FILE_ATTRIBUTES : GetFileAttributes(req->u.fio.file_name);
 #endif
             break;
+
         case AsyncReqStat:
             memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
             req->u.fio.rval = stat(req->u.fio.file_name, &req->u.fio.statbuf);
@@ -265,6 +272,7 @@ static void * worker_thread_handler(void * x) {
                 INVALID_FILE_ATTRIBUTES : GetFileAttributes(req->u.fio.file_name);
 #endif
             break;
+
         case AsyncReqLstat:
             memset(&req->u.fio.statbuf, 0, sizeof(req->u.fio.statbuf));
             req->u.fio.rval = lstat(req->u.fio.file_name, &req->u.fio.statbuf);
@@ -277,6 +285,7 @@ static void * worker_thread_handler(void * x) {
                 INVALID_FILE_ATTRIBUTES : GetFileAttributes(req->u.fio.file_name);
 #endif
             break;
+
         case AsyncReqSetStat:
             {
                 int err = 0;
@@ -307,6 +316,7 @@ static void * worker_thread_handler(void * x) {
                 req->error = err;
             }
             break;
+
         case AsyncReqFSetStat:
             {
                 int err = 0;
@@ -340,6 +350,7 @@ static void * worker_thread_handler(void * x) {
                 req->error = err;
             }
             break;
+
         case AsyncReqRemove:
             req->u.fio.rval = remove(req->u.fio.file_name);
             if (req->u.fio.rval == -1) {
@@ -347,126 +358,122 @@ static void * worker_thread_handler(void * x) {
                 assert(req->error);
             }
             break;
-        case AsyncReqReadDir:
-        {
-            int cnt = 0;
-            while (cnt < req->u.dio.max_files) {
-                char path[FILE_PATH_SIZE];
-                struct DirFileNode * file = req->u.dio.files + cnt;
-                struct dirent * e;
-                struct stat st;
-                errno = 0;
-                e = readdir((DIR *)req->u.dio.dir);
-                if (e == NULL) {
-                    req->error = errno;
-                    if (req->error == 0) req->u.dio.eof = 1;
-                    break;
-                }
-                if (strcmp(e->d_name, ".") == 0) continue;
-                if (strcmp(e->d_name, "..") == 0) continue;
-                file->path = loc_strdup(e->d_name);
-                memset(&st, 0, sizeof(st));
-                snprintf(path, sizeof(path), "%s/%s", req->u.dio.path, e->d_name);
-                if (stat(path, &st) == 0) {
-#if defined(_WIN32) || defined(__CYGWIN__)
-                    file->win32_attrs =  GetFileAttributes(path);
-#endif
-                    file->statbuf = (struct stat *)loc_alloc(sizeof(struct stat));
-                    memcpy(file->statbuf, &st, sizeof(struct stat));
-                }
-                cnt++;
-            }
-            break;
-        }
-        case AsyncReqRoots:
-        {
-      struct stat st;
-      struct RootDevNode * newDevNode = NULL;
 
-#if defined(_WIN32) || defined(__CYGWIN__)
+        case AsyncReqReadDir:
             {
-            struct RootDevNode * curDevNode = NULL;
-            int cnt = 0;
-            int disk = 0;
-            DWORD disks = GetLogicalDrives();
-            for (disk = 0; disk <= 30; disk++) {
-                if (disks & (1 << disk)) {
-                    char path[32];
-                    newDevNode = loc_alloc_zero(sizeof(struct RootDevNode));
-                    if (cnt == 0) req->u.root.lst = newDevNode;
-                    else curDevNode->next = newDevNode;
-                    curDevNode = newDevNode;
-                    snprintf(path, sizeof(path), "%c:\\", 'A' + disk);
-                    newDevNode->devname = loc_strdup(path);
-                    if (disk >= 2) {
-                        ULARGE_INTEGER total_number_of_bytes;
-                        BOOL has_size = GetDiskFreeSpaceExA(path, NULL, &total_number_of_bytes, NULL);
-                        memset(&st, 0, sizeof(st));
-#if defined(__CYGWIN__)
-                        snprintf(path, sizeof(path), "/cygdrive/%c", 'a' + disk);
+                int cnt = 0;
+                while (cnt < req->u.dio.max_files) {
+                    char path[FILE_PATH_SIZE];
+                    struct DirFileNode * file = req->u.dio.files + cnt;
+                    struct dirent * e;
+                    struct stat st;
+                    errno = 0;
+                    e = readdir((DIR *)req->u.dio.dir);
+                    if (e == NULL) {
+                        req->error = errno;
+                        if (req->error == 0) req->u.dio.eof = 1;
+                        break;
+                    }
+                    if (strcmp(e->d_name, ".") == 0) continue;
+                    if (strcmp(e->d_name, "..") == 0) continue;
+                    file->path = loc_strdup(e->d_name);
+                    memset(&st, 0, sizeof(st));
+                    snprintf(path, sizeof(path), "%s/%s", req->u.dio.path, e->d_name);
+                    if (stat(path, &st) == 0) {
+#if defined(_WIN32) || defined(__CYGWIN__)
+                        file->win32_attrs =  GetFileAttributes(path);
 #endif
-                        if (has_size && stat(path, &st) == 0) {
-                            newDevNode->win32_attrs =  GetFileAttributes(path);
-                            newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
-                            memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
-                        }
+                        file->statbuf = (struct stat *)loc_alloc(sizeof(struct stat));
+                        memcpy(file->statbuf, &st, sizeof(struct stat));
                     }
                     cnt++;
                 }
             }
-        }
+            break;
+
+        case AsyncReqRoots:
+            {
+                struct stat st;
+                struct RootDevNode * newDevNode = NULL;
+
+#if defined(_WIN32) || defined(__CYGWIN__)
+                {
+                    struct RootDevNode * curDevNode = NULL;
+                    int disk = 0;
+                    DWORD disks = GetLogicalDrives();
+                    for (disk = 0; disk <= 30; disk++) {
+                        if (disks & (1 << disk)) {
+                            char path[32];
+                            newDevNode = (struct RootDevNode *)loc_alloc_zero(sizeof(struct RootDevNode));
+                            if (curDevNode == NULL) req->u.root.lst = newDevNode;
+                            else curDevNode->next = newDevNode;
+                            curDevNode = newDevNode;
+                            snprintf(path, sizeof(path), "%c:\\", 'A' + disk);
+                            newDevNode->devname = loc_strdup(path);
+                            if (disk >= 2) {
+                                ULARGE_INTEGER total_number_of_bytes;
+                                BOOL has_size = GetDiskFreeSpaceExA(path, NULL, &total_number_of_bytes, NULL);
+                                memset(&st, 0, sizeof(st));
+#if defined(__CYGWIN__)
+                                snprintf(path, sizeof(path), "/cygdrive/%c", 'a' + disk);
+#endif
+                                if (has_size && stat(path, &st) == 0) {
+                                    newDevNode->win32_attrs =  GetFileAttributes(path);
+                                    newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
+                                    memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
+                                }
+                            }
+                        }
+                    }
+                }
 #elif defined(_WRS_KERNEL)
-        {
-            struct RootDevNode * curDevNode = NULL;
-            extern DL_LIST iosDvList;
-            DEV_HDR * dev;
-            int cnt = 0;
-            for (dev = (DEV_HDR *)DLL_FIRST(&iosDvList); dev != NULL; dev = (DEV_HDR *)DLL_NEXT(&dev->node)) {
-                char path[FILE_PATH_SIZE];
-                if (strcmp(dev->name, "host:") == 0) {
-                    /* Windows host is special case */
-                    int d;
-                    for (d = 'a'; d < 'z'; d++) {
- 
-                        snprintf(path, sizeof(path), "%s%c:/", dev->name, d);
+                {
+                    struct RootDevNode * curDevNode = NULL;
+                    extern DL_LIST iosDvList;
+                    DEV_HDR * dev;
+                    for (dev = (DEV_HDR *)DLL_FIRST(&iosDvList); dev != NULL; dev = (DEV_HDR *)DLL_NEXT(&dev->node)) {
+                        char path[FILE_PATH_SIZE];
+                        if (strcmp(dev->name, "host:") == 0) {
+                            /* Windows host is special case */
+                            int d;
+                            for (d = 'a'; d < 'z'; d++) {
+                                snprintf(path, sizeof(path), "%s%c:/", dev->name, d);
+                                if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                                    newDevNode = (struct RootDevNode *)loc_alloc_zero(sizeof(struct RootDevNode));
+                                    if (curDevNode == NULL) req->u.root.lst = newDevNode;
+                                    else curDevNode->next = newDevNode;
+                                    curDevNode = newDevNode;
+
+                                    newDevNode->devname = loc_strdup(path);
+                                    newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
+                                    memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
+                                }
+                            }
+                        }
+                        snprintf(path, sizeof(path), "%s/", dev->name);
                         if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
-                            newDevNode = loc_alloc_zero(sizeof(struct RootDevNode));
-                            if (cnt == 0) req->u.root.lst = newDevNode;
+                            newDevNode = (struct RootDevNode *)loc_alloc_zero(sizeof(struct RootDevNode));
+                            if (curDevNode == NULL) req->u.root.lst = newDevNode;
                             else curDevNode->next = newDevNode;
                             curDevNode = newDevNode;
 
                             newDevNode->devname = loc_strdup(path);
                             newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
                             memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
-                            cnt++;
                         }
                     }
                 }
-                snprintf(path, sizeof(path), "%s/", dev->name);
-                if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
-                    newDevNode = loc_alloc_zero(sizeof(struct RootDevNode));
-                    if (cnt == 0) req->u.root.lst = newDevNode;
-                    else curDevNode->next = newDevNode;
-                    curDevNode = newDevNode;
-
-                    newDevNode->devname = loc_strdup(path);
+#else
+                req->u.root.lst = newDevNode = (struct RootDevNode *)loc_alloc_zero(sizeof(struct RootDevNode));
+                newDevNode->devname = loc_strdup("/");
+                if (stat("/", &st) == 0) {
                     newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
                     memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
-                    cnt++;
                 }
-            }
-        }
-#else
-        req->u.root.lst = loc_alloc_zero(sizeof(struct RootDevNode));
-        req->u.root.lst->devname = loc_strdup("/");
-        if (stat("/", &st) == 0) {
-            newDevNode = loc_alloc_zero(sizeof(struct RootDevNode));
-            newDevNode->statbuf = (struct stat *)loc_alloc_zero(sizeof(struct stat));
-            memcpy(newDevNode->statbuf, &st, sizeof(struct stat));
-        }
 #endif
-        }
-            break; 
+            }
+            break;
+
         default:
             req->error = ENOSYS;
             break;
