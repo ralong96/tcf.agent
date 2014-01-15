@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -431,7 +431,6 @@ static void pipe_read_done(void * x) {
         pipe_post_read(&c->ibuf, c->obuf, sizeof(c->obuf));
     }
     else {
-        check_channel_locks(&c->chan);
         pipe_unlock(&c->chan);
     }
 }

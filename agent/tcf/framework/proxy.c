@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -46,6 +46,8 @@ static int redirection_listeners_cnt = 0;
 
 static ProxyLogFilterListener proxy_log_filter_listener;
 
+static const char * channel_lock_msg = "Proxy lock";
+
 static void proxy_update(Channel * c1, Channel * c2);
 
 static void proxy_connecting(Channel * c) {
@@ -84,8 +86,8 @@ static void command_redirect_done (Channel * c, void * client_data, int error) {
         write_stream(&info->host->out, MARKER_EOM);
     }
 
-    channel_unlock(info->host);
-    loc_free (info);
+    channel_unlock_with_msg(info->host, channel_lock_msg);
+    loc_free(info);
 }
 
 static void read_peer_attr(InputStream * inp, const char * name, void * x) {
@@ -109,7 +111,7 @@ static void command_locator_redirect(char * token, Channel * c, void * args) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    channel_lock(c);
+    channel_lock_with_msg(c, channel_lock_msg);
     info->host = c;
     strlcpy(info->token, token, sizeof(info->token));
 
@@ -180,8 +182,8 @@ static void proxy_disconnected(Channel * c) {
         proxy[1].c->client_data = NULL;
         protocol_release(proxy[0].proto);
         protocol_release(proxy[1].proto);
-        channel_unlock(proxy[0].c);
-        channel_unlock(proxy[1].c);
+        channel_unlock_with_msg(proxy[0].c, channel_lock_msg);
+        channel_unlock_with_msg(proxy[1].c, channel_lock_msg);
         loc_free(proxy);
     }
     else {
@@ -383,14 +385,14 @@ void proxy_create(Channel * c1, Channel * c2) {
     assert(c2->state == ChannelStateStartWait);
 
     /* Host */
-    channel_lock(c1);
+    channel_lock_with_msg(c1, channel_lock_msg);
     proxy[0].c = c1;
     proxy[0].proto = protocol_alloc();
     proxy[0].other = 1;
     proxy[0].instance = instance;
 
     /* Target */
-    channel_lock(c2);
+    channel_lock_with_msg(c2, channel_lock_msg);
     proxy[1].c = c2;
     proxy[1].proto = protocol_alloc();
     proxy[1].other = -1;

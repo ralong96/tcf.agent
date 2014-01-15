@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -211,12 +211,6 @@ extern void channel_lock_with_msg(Channel *, const char *);
  * Unlock a channel. To be used together with channel_lock_with_msg().
  */
 extern void channel_unlock_with_msg(Channel *, const char *);
-
-/*
- * Check for leaked channel locks. The function is called by
- * channel implementation after the channel is disconnected.
- */
-extern void check_channel_locks(Channel *);
 
 /*
  * Return 1 if channel is closed, otherwise return 0.

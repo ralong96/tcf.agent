@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -168,7 +168,7 @@ static void run_test_done(int error, Context * ctx, void * arg) {
     else if (ctx != NULL) {
         terminate_debug_context(ctx);
     }
-    channel_unlock(c);
+    channel_unlock_with_msg(c, DIAGNOSTICS);
     loc_free(data);
 }
 #endif
@@ -186,10 +186,10 @@ static void command_run_test(char * token, Channel * c) {
         RunTestDoneArgs * data = (RunTestDoneArgs *)loc_alloc_zero(sizeof(RunTestDoneArgs));
         data->c = c;
         strcpy(data->token, token);
-        channel_lock(c);
+        channel_lock_with_msg(c, DIAGNOSTICS);
         if (run_test_process(run_test_done, data) == 0) return;
         err = errno;
-        channel_unlock(c);
+        channel_unlock_with_msg(c, DIAGNOSTICS);
         loc_free(data);
 #else
         err = EINVAL;

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -792,7 +792,6 @@ static void tcp_channel_read_done(void * x) {
         tcp_post_read(&c->ibuf, c->obuf, sizeof(c->obuf));
     }
     else {
-        check_channel_locks(&c->chan);
         tcp_unlock(&c->chan);
     }
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2008, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -286,7 +286,7 @@ static void terminal_exited(void * args) {
     }
 
     list_remove(&term->link);
-    channel_unlock(term->channel);
+    channel_unlock_with_msg(term->channel, TERMINALS);
     loc_free(term);
 }
 
@@ -462,7 +462,7 @@ static void command_launch(char * token, Channel * c) {
 
     if (!err) {
         term->bcg = c->bcg;
-        channel_lock(term->channel = c);
+        channel_lock_with_msg(term->channel = c, TERMINALS);
         strlcpy(term->pty_type, pty_type, sizeof(term->pty_type));
         strlcpy(term->encoding, encoding, sizeof(term->encoding));
         list_add_first(&term->link, &terms_list);

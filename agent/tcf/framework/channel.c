@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -51,6 +51,7 @@ typedef struct ChannelLock {
     LINK link;
     const char * msg;
     unsigned cnt;
+    unsigned timer;
 } ChannelLock;
 
 static void trigger_channel_shutdown(ShutdownInfo * obj);
@@ -251,6 +252,39 @@ void channel_unlock(Channel * c) {
     c->unlock(c);
 }
 
+#ifndef NDEBUG
+static int lock_timer_posted = 0;
+
+static void lock_timer_event(void * args) {
+    unsigned cnt = 0;
+    LINK * l = channel_root.next;
+    assert(lock_timer_posted);
+    while (l != &channel_root) {
+        Channel * c = chanlink2channelp(l);
+        if (is_channel_closed(c) && c->locks.next != NULL) {
+            LINK * p = c->locks.next;
+            while (p != &c->locks) {
+                ChannelLock * cl = chan2lock(p);
+                assert(cl->cnt > 0);
+                if (cl->timer >= 2) {
+                    trace(LOG_ALWAYS, "Invalid channel lock: %s, count %d", cl->msg, cl->cnt);
+                }
+                cl->timer++;
+                p = p->next;
+                cnt++;
+            }
+        }
+        l = l->next;
+    }
+    if (cnt > 0) {
+        post_event_with_delay(lock_timer_event, NULL, 2000000);
+    }
+    else {
+        lock_timer_posted = 0;
+    }
+}
+#endif
+
 void channel_lock_with_msg(Channel * c, const char * msg) {
     c->lock(c);
 #ifndef NDEBUG
@@ -276,6 +310,10 @@ void channel_lock_with_msg(Channel * c, const char * msg) {
             l->msg = msg;
             l->cnt = 1;
             list_add_first(&l->link, &c->locks);
+            if (!lock_timer_posted) {
+                post_event_with_delay(lock_timer_event, NULL, 2000000);
+                lock_timer_posted = 1;
+            }
         }
     }
 #endif
@@ -307,17 +345,6 @@ void channel_unlock_with_msg(Channel * c, const char * msg) {
     }
 #endif
     c->unlock(c);
-}
-
-void check_channel_locks(Channel * c) {
-#ifndef NDEBUG
-        if (c->locks.next != NULL) {
-            LINK * p;
-            for (p = c->locks.next; p != &c->locks; p = p->next) {
-                trace(LOG_ALWAYS, "Invalid channel lock: %s", chan2lock(p)->msg);
-            }
-        }
-#endif
 }
 
 int is_channel_closed(Channel * c) {

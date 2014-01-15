@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -319,7 +319,7 @@ static SymbolsCache * get_symbols_cache(void) {
             list_init(syms->link_address + i);
             list_init(syms->link_location + i);
         }
-        channel_lock(c);
+        channel_lock_with_msg(c, SYMBOLS);
         for (i = 0; i < c->peer_service_cnt; i++) {
             if (strcmp(c->peer_service_list[i], SYMBOLS) == 0) syms->service_available = 1;
         }
@@ -501,7 +501,7 @@ static void free_symbols_cache(SymbolsCache * syms) {
             free_location_info_cache(syms2location(syms->link_location[i].next));
         }
     }
-    channel_unlock(syms->channel);
+    channel_unlock_with_msg(syms->channel, SYMBOLS);
     list_remove(&syms->link_root);
     loc_free(syms);
 }

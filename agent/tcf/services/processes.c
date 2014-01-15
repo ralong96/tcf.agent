@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -463,7 +463,7 @@ static void attach_done(int error, Context * ctx, void * arg) {
         write_errno(&c->out, error);
         write_stream(&c->out, MARKER_EOM);
     }
-    channel_unlock(c);
+    channel_unlock_with_msg(c, PROCESSES[0]);
     loc_free(data);
 }
 
@@ -489,7 +489,7 @@ static void command_attach(char * token, Channel * c) {
         data->c = c;
         strcpy(data->token, token);
         if (context_attach(pid, attach_done, data, 0) == 0) {
-            channel_lock(c);
+            channel_lock_with_msg(c, PROCESSES[0]);
             return;
         }
         err = errno;
@@ -664,7 +664,7 @@ static void start_done(int error, Context * ctx, void * arg) {
         write_stream(&c->out, MARKER_EOM);
     }
 
-    channel_unlock(c);
+    channel_unlock_with_msg(c, PROCESSES[0]);
     loc_free(data);
 }
 
@@ -1641,7 +1641,7 @@ static void command_start(char * token, Channel * c, void * x) {
             if (selfattach) mode |= CONTEXT_ATTACH_SELF;
             pending = context_attach(prs->pid, start_done, data, mode) == 0;
             if (pending) {
-                channel_lock(c);
+                channel_lock_with_msg(c, PROCESSES[0]);
             }
             else {
                 err = errno;
