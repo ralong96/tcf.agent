@@ -153,7 +153,8 @@ void json_write_string(OutputStream * out, const char * str) {
             unsigned char ch = (unsigned char)*str++;
             while (ch >= ' ') {
                 if (ch == '"' || ch == '\\') write_stream(out, '\\');
-                write_stream(out, ch);
+                if (out->cur < out->end) *out->cur++ = ch;
+                else out->write(out, ch);
                 ch = (unsigned char)*str++;
             }
             if (ch == 0) break;
@@ -168,10 +169,17 @@ void json_write_string_len(OutputStream * out, const char * str, size_t len) {
         write_string(out, "null");
     }
     else {
+        const char * end = str + len;
         write_stream(out, '"');
-        while (len > 0) {
-            json_write_char(out, *str++);
-            len--;
+        while (str < end) {
+            unsigned char ch = (unsigned char)*str++;
+            while (ch >= ' ' && str < end) {
+                if (ch == '"' || ch == '\\') write_stream(out, '\\');
+                if (out->cur < out->end) *out->cur++ = ch;
+                else out->write(out, ch);
+                ch = (unsigned char)*str++;
+            }
+            json_write_char(out, ch);
         }
         write_stream(out, '"');
     }
