@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,22 +27,10 @@
 
 #if SERVICE_Expressions
 
-/* Value represents result of expression evaluation */
-struct Value {
-    Symbol * sym;               /* Value symbol, can be NULL */
-    Symbol * type;              /* Value type symbol, can be NULL */
-    int type_class;             /* See symbols.h for type class definitions */
-    void * value;               /* Pointer to value data buffer, or NULL if remote value */
-    RegisterDefinition * reg;   /* Not NULL if the value represents a register variable */
-    LocationExpressionState * loc; /* Value location at remote target, if available */
-    ContextAddress address;     /* Address of value data in remote target memory */
-    ContextAddress size;        /* Value size in bytes */
-    int remote;                 /* 1 if value data is in remote target memory, 0 if loaded into a local buffer */
-    int constant;               /* 1 if the value is not expected to change during execution of value context */
-    int big_endian;             /* 1 if the value is big endian */
-    int function;               /* 1 if the value represents a function */
-    Symbol ** sym_list;         /* Symbol list, if applicable, NULL terminated */
-};
+/* Expression evaluation modes: */
+#define EXPRESSION_MODE_NORMAL 0 /* All attributes of expression value are computed */
+#define EXPRESSION_MODE_TYPE   1 /* Expression type is computed, but not value or address */
+#define EXPRESSION_MODE_SKIP   2 /* Only expression syntax is checked */
 
 typedef struct Value Value;
 
@@ -52,6 +40,44 @@ typedef struct Value Value;
  * otherwise it should return 0.
  */
 typedef int ExpressionIdentifierCallBack(Context *, int /*frame*/, char * /*name*/, Value *);
+
+/*
+ * ExpressionFunctionCallBack is called to handle a function call in expression.
+ * The callback can use exceptions to report errors.
+ * The callback pointer is provided by ExpressionIdentifierCallBack -
+ * if the identifier represents a function.
+ */
+typedef void ExpressionFunctionCallBack(int /* mode */, Value * /* function */, Value * /* args */, unsigned /* args_cnt */);
+
+/*
+ * ExpressionFieldCallBack is called to handle an object field selection in expression.
+ * The callback can use exceptions to report errors.
+ * The callback pointer is provided by ExpressionIdentifierCallBack -
+ * if the identifier represents a struct.
+ */
+typedef void ExpressionFieldCallBack(int /* mode */, Value * /* object */, const char * /* field_name */);
+
+/* Value represents result of expression evaluation */
+struct Value {
+    Symbol * sym;               /* Value symbol, can be NULL */
+    Symbol * type;              /* Value type symbol, can be NULL */
+    int type_class;             /* See symbols.h for type class definitions */
+    void * value;               /* Pointer to value data buffer, or NULL if remote value */
+    RegisterDefinition * reg;   /* Not NULL if the value represents a register variable */
+    LocationExpressionState * loc; /* Value location at remote target, if available */
+    ContextAddress address;     /* Address of value data in remote target memory if Value.remote = 1 */
+    ContextAddress size;        /* Value size in bytes */
+    int remote;                 /* 1 if value data is in remote target memory, 0 if loaded into a local buffer */
+    int constant;               /* 1 if the value is not expected to change during execution of value context */
+    int big_endian;             /* 1 if the value is big endian */
+    int function;               /* 1 if the value represents a function */
+    Symbol ** sym_list;         /* Symbol list, if applicable, NULL terminated */
+    Context * ctx;              /* Debug context of the value */
+
+    /* Client call-back pointers */
+    ExpressionFunctionCallBack * func_cb;
+    ExpressionFieldCallBack * field_cb;
+};
 
 /*
  * Evaluate given expression in given context.

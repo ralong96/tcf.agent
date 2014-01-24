@@ -329,11 +329,34 @@ static void channel_close_listener(Channel * c) {
     if (client != NULL) free_client(client);
 }
 
+static void function_callback(int mode, Value * v, Value * args, unsigned args_cnt) {
+    if (args_cnt == 0) {
+        str_exception(ERR_INV_EXPRESSION, "$printf mush have at least one argument");
+    }
+    if (mode != EXPRESSION_MODE_SKIP && args[0].type_class != TYPE_CLASS_ARRAY) {
+        str_exception(ERR_INV_EXPRESSION, "$printf first argument must be a string");
+    }
+    if (mode == EXPRESSION_MODE_NORMAL) {
+        dprintf_expression_ctx(v->ctx, (char *)args[0].value, args + 1, args_cnt - 1);
+    }
+    set_value(v, NULL, 0, 0);
+}
+
+static int identifier_callback(Context * ctx, int frame, char * name, Value * v) {
+    if (strcmp(name, "$printf") == 0) {
+        v->func_cb = function_callback;
+        v->type_class = TYPE_CLASS_FUNCTION;
+        return 1;
+    }
+    return 0;
+}
+
 void ini_dprintf_service(Protocol * p) {
     list_init(&clients);
     add_command_handler(p, DPRINTF, "open", command_open);
     add_command_handler(p, DPRINTF, "close", command_close);
     add_channel_close_listener(channel_close_listener);
+    add_identifier_callback(identifier_callback);
 }
 
 #endif /* SERVICE_DPrintf */

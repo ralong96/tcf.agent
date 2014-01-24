@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -47,7 +47,6 @@
 #include <tcf/services/memoryservice.h>
 #include <tcf/services/breakpoints.h>
 #include <tcf/services/registers.h>
-#include <tcf/services/dprintf.h>
 #include <tcf/services/expressions.h>
 #include <tcf/main/test.h>
 
@@ -80,9 +79,9 @@
 #define SY_PM_D  282
 #define SY_PM_R  283
 
-#define MODE_NORMAL 0
-#define MODE_TYPE   1
-#define MODE_SKIP   2
+#define MODE_NORMAL EXPRESSION_MODE_NORMAL
+#define MODE_TYPE   EXPRESSION_MODE_TYPE
+#define MODE_SKIP   EXPRESSION_MODE_SKIP
 
 #define VAL_FLAG_X 0x01
 #define VAL_FLAG_U 0x02
@@ -161,9 +160,14 @@ static LINK func_call_state = TCF_LIST_INIT(func_call_state);
 
 #endif /* ENABLE_FuncCallInjection */
 
-#define MAX_ID_CALLBACKS 8
-static ExpressionIdentifierCallBack * id_callbacks[MAX_ID_CALLBACKS];
+static ExpressionIdentifierCallBack ** id_callbacks = NULL;
+static int id_callback_max = 0;
 static int id_callback_cnt = 0;
+
+static void ini_value(Value * v) {
+    memset(v, 0, sizeof(Value));
+    v->ctx = expression_context;
+}
 
 void set_value(Value * v, void * data, size_t size, int big_endian) {
     v->sym = NULL;
@@ -172,6 +176,8 @@ void set_value(Value * v, void * data, size_t size, int big_endian) {
     v->remote = 0;
     v->address = 0;
     v->function = 0;
+    v->func_cb = NULL;
+    v->field_cb = NULL;
     v->sym_list = NULL;
     v->size = (ContextAddress)size;
     v->big_endian = big_endian;
@@ -747,13 +753,8 @@ static void next_sy(void) {
     }
 }
 
-static void expression(int mode, Value * v);
-#if SERVICE_DPrintf
-static void printf_expression(int mode, Value * v);
-#endif
-
 static void reg2value(int mode, Context * ctx, int frame, RegisterDefinition * def, Value * v) {
-    memset(v, 0, sizeof(Value));
+    ini_value(v);
     set_value(v, NULL, def->size, def->big_endian);
     v->type_class = def->fp_value ? TYPE_CLASS_REAL : TYPE_CLASS_CARDINAL;
     v->reg = def;
@@ -905,7 +906,7 @@ static void sign_extend(Value * v, LocationExpressionState * loc) {
 /* Note: sym2value() does NOT set v->size if v->sym != NULL */
 static int sym2value(int mode, Symbol * sym, Value * v) {
     int sym_class = 0;
-    memset(v, 0, sizeof(Value));
+    ini_value(v);
     if (get_symbol_class(sym, &sym_class) < 0) {
         error(errno, "Cannot retrieve symbol class");
     }
@@ -1003,21 +1004,18 @@ static unsigned flag_count(SYM_FLAGS flags) {
 #endif /* ENABLE_Symbols */
 
 static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Value * v) {
-    memset(v, 0, sizeof(Value));
+    ini_value(v);
     if (scope == NULL) {
         int i;
+        if (strcmp(name, "$printf") == 0) {
+            expression_has_dprintf = 1;
+        }
         for (i = 0; i < id_callback_cnt; i++) {
             if (id_callbacks[i](expression_context, expression_frame, name, v)) return SYM_CLASS_VALUE;
         }
         if (expression_context == NULL) {
             exception(ERR_INV_CONTEXT);
         }
-#if SERVICE_DPrintf
-        if (strcmp(name, "$printf") == 0) {
-            printf_expression(mode, v);
-            return SYM_CLASS_VALUE;
-        }
-#endif
         if (name[0] == '$') {
             Context * ctx = expression_context;
             for (;;) {
@@ -1106,7 +1104,7 @@ static int qualified_name(int mode, Value * scope, SYM_FLAGS flags, Value * v) {
     Value x;
     int sym_class = 0;
     for (;;) {
-        memset(v, 0, sizeof(Value));
+        ini_value(v);
         if (text_sy == SY_NAME || (scope != NULL && text_sy == '~')) {
             int tilda = text_sy == '~';
             if (tilda) {
@@ -1404,6 +1402,7 @@ static void to_host_endianness(Value * v) {
         }
         v->value = buf;
         v->big_endian = big_endian;
+        v->sym_list = NULL;
         v->sym = NULL;
         v->reg = NULL;
         v->loc = NULL;
@@ -1584,6 +1583,8 @@ static int get_std_type(const char * name, int type_class, Symbol ** type, size_
     return 1;
 }
 #endif
+
+static void expression(int mode, Value * v);
 
 static void primary_expression(int mode, Value * v) {
     if (text_sy == '(') {
@@ -1818,7 +1819,10 @@ static void op_field(int mode, Value * v) {
     else error(ERR_INV_EXPRESSION, "Field name expected");
     next_sy();
     if (mode == MODE_SKIP) return;
-    if (v->type_class == TYPE_CLASS_COMPOSITE) {
+    if (v->field_cb && name != NULL) {
+        v->field_cb(mode, v, name);
+    }
+    else if (v->type_class == TYPE_CLASS_COMPOSITE) {
 #if ENABLE_Symbols
         Symbol * sym = NULL;
         int sym_class = 0;
@@ -1960,6 +1964,7 @@ static void op_index(int mode, Value * v) {
             v->value = (char *)v->value + offs;
         }
     }
+    v->sym_list = NULL;
     v->sym = NULL;
     v->reg = NULL;
     v->loc = NULL;
@@ -2160,7 +2165,7 @@ static void funccall_check_recursion(uint64_t ret_addr) {
     }
 }
 
-static void op_call(int mode, Value * v) {
+static void op_funccall(int mode, Value * v) {
     unsigned id = cache_transaction_id();
     FuncCallState * state = NULL;
     Symbol * func = NULL;
@@ -2204,7 +2209,6 @@ static void op_call(int mode, Value * v) {
         error(errno, "Cannot retrieve function address");
     }
     state->args_cnt = 0;
-    if (state->args_max) memset(state->args, 0, sizeof(Value) * state->args_max);
     if (text_sy != ')') {
         int args_mode = mode;
         if (state->started) args_mode = MODE_SKIP;
@@ -2213,6 +2217,7 @@ static void op_call(int mode, Value * v) {
                 state->args_max += 8;
                 state->args = (Value *)loc_realloc(state->args, sizeof(Value) * state->args_max);
             }
+            ini_value(state->args + state->args_cnt);
             expression(args_mode, state->args + state->args_cnt++);
             if (text_sy != ',') break;
             next_sy();
@@ -2338,11 +2343,40 @@ static void op_call(int mode, Value * v) {
 
 #else
 
-static void op_call(int mode, Value * v) {
+static void op_funccall(int mode, Value * v) {
     funccall_error("Symbols service not available");
 }
 
 #endif /* ENABLE_FuncCallInjection */
+
+static void op_call(int mode, Value * v) {
+    if (v->func_cb) {
+        Value * args = NULL;
+        unsigned args_cnt = 0;
+        unsigned args_max = 0;
+
+        if (text_sy != ')') {
+            for (;;) {
+                if (args_cnt == args_max) {
+                    args_max += 32;
+                    args = (Value *)tmp_realloc(args, sizeof(Value) * args_max);
+                }
+                ini_value(args + args_cnt);
+                expression(mode, args + args_cnt++);
+                if (text_sy != ',') break;
+                next_sy();
+            }
+        }
+        if (mode == MODE_NORMAL) {
+            unsigned i;
+            for (i = 0; i < args_cnt; i++) load_value(args + i);
+        }
+        v->func_cb(mode, v, args, args_cnt);
+    }
+    else {
+        op_funccall(mode, v);
+    }
+}
 
 static void resolve_ref_type(int mode, Value * v) {
 #if ENABLE_Symbols
@@ -2398,6 +2432,7 @@ static void postfix_expression(int mode, Value * v) {
             next_sy();
         }
         else {
+            if (v->func_cb) error(ERR_INV_EXPRESSION, "'(' expected");
             break;
         }
     }
@@ -2593,6 +2628,7 @@ static void lazy_unary_expression(int mode, Value * v) {
         case TYPE_CLASS_ARRAY:
             if (v->type_class == TYPE_CLASS_POINTER) {
                 v->address = (ContextAddress)to_uns(mode, v);
+                v->sym_list = NULL;
                 v->sym = NULL;
                 v->reg = NULL;
                 v->loc = NULL;
@@ -2661,6 +2697,7 @@ static void pm_expression(int mode, Value * v) {
             else {
                 v->address = 0;
             }
+            v->sym_list = NULL;
             v->sym = NULL;
             v->reg = NULL;
             v->loc = NULL;
@@ -3117,43 +3154,6 @@ static void expression(int mode, Value * v) {
     /* TODO: assignments in expressions */
     conditional_expression(mode, v);
 }
-
-#if SERVICE_DPrintf
-static void printf_expression(int mode, Value * v) {
-    Value * args = NULL;
-    unsigned args_cnt = 0;
-    unsigned args_max = 0;
-
-    expression_has_dprintf = 1;
-    if (text_sy != '(') error(ERR_INV_EXPRESSION, "'(' expected");
-    next_sy();
-    if (text_sy != ')') {
-        for (;;) {
-            if (args_cnt == args_max) {
-                args_max += 32;
-                args = (Value *)tmp_realloc(args, sizeof(Value) * args_max);
-            }
-            expression(mode, args + args_cnt++);
-            if (text_sy != ',') break;
-            next_sy();
-        }
-    }
-    if (text_sy != ')') error(ERR_INV_EXPRESSION, "')' expected");
-    next_sy();
-    if (args_cnt == 0) {
-        error(ERR_INV_EXPRESSION, "$printf mush have at least one argument");
-    }
-    if (args[0].type_class != TYPE_CLASS_ARRAY) {
-        error(ERR_INV_EXPRESSION, "$printf first argument must be a string");
-    }
-    if (mode == MODE_NORMAL) {
-        unsigned i;
-        for (i = 0; i < args_cnt; i++) load_value(args + i);
-        dprintf_expression_ctx(expression_context, (char *)args[0].value, args + 1, args_cnt - 1);
-    }
-    set_value(v, NULL, 0, big_endian);
-}
-#endif
 
 static int evaluate_script(int mode, char * s, int load, Value * v) {
     Trap trap;
@@ -4057,7 +4057,11 @@ static void on_channel_close(Channel * c) {
 }
 
 void add_identifier_callback(ExpressionIdentifierCallBack * callback) {
-    assert(id_callback_cnt < MAX_ID_CALLBACKS);
+    if (id_callback_cnt >= id_callback_max) {
+        id_callback_max += 8;
+        id_callbacks = (ExpressionIdentifierCallBack **)loc_realloc(
+            id_callbacks, id_callback_max * sizeof(ExpressionIdentifierCallBack *));
+    }
     id_callbacks[id_callback_cnt++] = callback;
 }
 
