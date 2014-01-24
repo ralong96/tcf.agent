@@ -991,6 +991,102 @@ static void disassemble_memory_hints(uint16_t suffix) {
     }
 }
 
+static void disassemble_data_processing_32_reg(uint16_t suffix) {
+    /* TODO: Data-processing (register) */
+}
+
+static void disassemble_multiply_32(uint16_t suffix) {
+    /* Multiply, multiply accumulate, and absolute difference */
+    uint32_t op1 = (instr >> 4) & 7;
+    uint32_t ra = (suffix >> 12) & 0xf;
+    uint32_t op2 = (suffix >> 4) & 3;
+    int no_ra = 0;
+    switch (op1) {
+    case 0:
+        if (op2 == 0) {
+            if (ra != 15) add_str("mla");
+            else add_str("mul");
+            no_ra = ra == 15;
+        }
+        else if (op2 == 1) {
+            add_str("mls");
+        }
+        break;
+    case 1:
+        if (ra != 15) add_str("smla");
+        else add_str("smul");
+        no_ra = ra == 15;
+        add_char(suffix & (1 << 5) ? 't' : 'b');
+        add_char(suffix & (1 << 4) ? 't' : 'b');
+        break;
+    case 2:
+        if (op2 < 2) {
+            if (ra != 15) add_str("smlad");
+            else add_str("smuad");
+            no_ra = ra == 15;
+            if (suffix & (1 << 4)) add_char('x');
+        }
+        break;
+    case 3:
+        if (op2 < 2) {
+            if (ra != 15) add_str("smlaw");
+            else add_str("smulw");
+            no_ra = ra == 15;
+            add_char(suffix & (1 << 4) ? 't' : 'b');
+        }
+        break;
+    case 4:
+        if (op2 < 2) {
+            if (ra != 15) add_str("smlsd");
+            else add_str("smusd");
+            no_ra = ra == 15;
+            if (suffix & (1 << 4)) add_char('x');
+        }
+        break;
+    case 5:
+        if (op2 < 2) {
+            if (ra != 15) add_str("smmla");
+            else add_str("smmul");
+            no_ra = ra == 15;
+            if (suffix & (1 << 4)) add_char('r');
+        }
+        break;
+    case 6:
+        if (op2 < 2) {
+            add_str("smmls");
+            if (suffix & (1 << 4)) add_char('r');
+        }
+        break;
+    case 7:
+        if (op2 == 0) {
+            if (ra != 15) add_str("usad8");
+            else add_str("usada8");
+            no_ra = ra == 15;
+        }
+        break;
+    }
+    if (buf_pos > 0) {
+        uint32_t rn = (instr >> 0) & 0xf;
+        uint32_t rd = (suffix >> 8) & 0xf;
+        uint32_t rm = (suffix >> 0) & 0xf;
+        add_char(' ');
+        add_reg_name(rd);
+        add_str(", ");
+        add_reg_name(rn);
+        add_str(", ");
+        add_reg_name(rm);
+        if (!no_ra) {
+            add_str(", ");
+            add_reg_name(ra);
+        }
+        return;
+    }
+}
+
+static void disassemble_long_multiply_32(uint16_t suffix) {
+    /* TODO: Long multiply, long multiply accumulate, and divide */
+}
+
 static void disassemble_thumb7(void) {
     unsigned i;
     uint16_t suffix = 0;
@@ -1100,16 +1196,20 @@ static void disassemble_thumb7(void) {
         return;
     }
 
-    if ((instr & 0xfe00) == 0xfc00) {
+    if ((instr & 0xfe00) == 0xfa00) {
         if ((instr & (1 << 8)) == 0) {
             /* Data-processing (register) */
+            disassemble_data_processing_32_reg(suffix);
         }
         else if ((instr & (1 << 7)) == 0) {
             /* Multiply, multiply accumulate, and absolute difference */
+            disassemble_multiply_32(suffix);
         }
         else {
             /* Long multiply, long multiply accumulate, and divide */
+            disassemble_long_multiply_32(suffix);
         }
+        return;
     }
 }
 
@@ -1200,8 +1300,17 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
     dr.size = instr_size;
     dr.incomplete = it_cnt > 0;
     if (buf_pos == 0) {
-        if (dr.size == 2) snprintf(buf, sizeof(buf), ".half 0x%04x", instr);
-        else return NULL;
+        if (dr.size == 2) {
+            snprintf(buf, sizeof(buf), ".half 0x%04x", instr);
+        }
+        else if (dr.size == 4) {
+            uint16_t suffix = 0;
+            for (i = 0; i < 2; i++) suffix |= (uint16_t)code[i + 2] << (i * 8);
+            snprintf(buf, sizeof(buf), ".word 0x%04x%04x", instr, suffix);
+        }
+        else {
+            return NULL;
+        }
     }
     else {
         buf[buf_pos] = 0;
