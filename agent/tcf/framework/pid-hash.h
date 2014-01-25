@@ -52,7 +52,7 @@ Context * context_find_from_pid(pid_t pid, int thread) {
     if (l == NULL) return NULL;
     while (l != h) {
         Context * ctx = pidlink2ctx(l);
-        if (EXT(ctx)->pid == pid &&
+        if (!ctx->exited && EXT(ctx)->pid == pid &&
             (ctx->parent != NULL) == (thread != 0)) return ctx;
         l = l->next;
     }

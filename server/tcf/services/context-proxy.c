@@ -298,7 +298,7 @@ static ContextCache * find_context_cache(PeerCache * p, const char * id) {
     LINK * l = h->next;
     while (l != h) {
         ContextCache * c = idhashl2ctx(l);
-        if (strcmp(c->id, id) == 0) return c;
+        if (!c->ctx->exited && strcmp(c->id, id) == 0) return c;
         l = l->next;
     }
     return NULL;
