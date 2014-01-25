@@ -1080,7 +1080,7 @@ static void post_location_evaluation_request(Context * ctx, BreakpointInfo * bp)
     ContextExtensionBP * ext = EXT(ctx);
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT);
 
-    assert(id2ctx(ctx->id) == ctx);
+    assert(ctx->exited || id2ctx(ctx->id) == ctx);
     if (ext->bp_grp != NULL && ext->bp_grp != grp && !ext->bp_grp->exited) {
         /* The context has migrated into another breakpoint group.
          * If the old group became empty, we need to remove breakpoints in it.
