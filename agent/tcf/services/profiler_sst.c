@@ -278,14 +278,14 @@ static void profiler_read(void * args, OutputStream * out) {
 
     assert(!prf->disposed);
     write_stream(out, '{');
+    json_write_string(out, "Format");
+    write_stream(out, ':');
+    json_write_string(out, "StackTraces");
     if (prf->psample_cnt > 0 && pc_def != NULL) {
         unsigned i, j;
         uint8_t * buf = (uint8_t *)tmp_alloc(pc_def->size * (prf->frame_cnt + 2));
         JsonWriteBinaryState state;
         assert(pc_def->size <= sizeof(ContextAddress));
-        json_write_string(out, "Format");
-        write_stream(out, ':');
-        json_write_string(out, "StackTraces");
         write_stream(out, ',');
         json_write_string(out, "AddrSize");
         write_stream(out, ':');
