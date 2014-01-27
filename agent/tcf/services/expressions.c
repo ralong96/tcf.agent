@@ -108,7 +108,6 @@ static Context * expression_context = NULL;
 static int expression_frame = STACK_NO_FRAME;
 static ContextAddress expression_addr = 0;
 static int expression_has_func_call = 0;
-static int expression_has_dprintf = 0;
 
 #ifndef ENABLE_FuncCallInjection
 #  define ENABLE_FuncCallInjection (ENABLE_Symbols && SERVICE_RunControl && SERVICE_Breakpoints && ENABLE_DebugContext)
@@ -1007,9 +1006,6 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
     ini_value(v);
     if (scope == NULL) {
         int i;
-        if (strcmp(name, "$printf") == 0) {
-            expression_has_dprintf = 1;
-        }
         for (i = 0; i < id_callback_cnt; i++) {
             if (id_callbacks[i](expression_context, expression_frame, name, v)) return SYM_CLASS_VALUE;
         }
@@ -3159,7 +3155,6 @@ static int evaluate_script(int mode, char * s, int load, Value * v) {
     Trap trap;
 
     expression_has_func_call = 0;
-    expression_has_dprintf = 0;
     if (set_trap(&trap)) {
         if (s == NULL || *s == 0) str_exception(ERR_INV_EXPRESSION, "Empty expression");
         text = s;
@@ -3279,7 +3274,6 @@ typedef struct Expression {
     char * script;
     int can_assign;
     int has_func_call;
-    int has_dprintf;
     ContextAddress size;
     int type_class;
     char type[256];
@@ -3681,7 +3675,6 @@ static void command_create_cache_client(void * x) {
         if (!err) {
             e->can_assign = value.remote || (value.loc != NULL && value.loc->pieces_cnt > 0);
             e->has_func_call = expression_has_func_call;
-            e->has_dprintf = expression_has_dprintf;
             e->type_class = value.type_class;
             e->size = value.size;
 #if ENABLE_Symbols
