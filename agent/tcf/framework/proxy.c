@@ -317,7 +317,6 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
 
 static void proxy_update(Channel * c1, Channel * c2) {
     Proxy * proxy;
-    int ix;
 
     /* c1 is host */
     assert (c1->state == ChannelStateConnected);
@@ -325,7 +324,6 @@ static void proxy_update(Channel * c1, Channel * c2) {
     assert (c2->state == ChannelStateHelloSent);
 
     /* Check that both channels form a proxy */
-
     assert(proxy_get_host_channel(c1) == c1);
     assert(proxy_get_target_channel(c1) == c2);
     assert(proxy_get_host_channel(c2) == c1);
@@ -334,44 +332,25 @@ static void proxy_update(Channel * c1, Channel * c2) {
     proxy = (Proxy *)c1->client_data;
     if (proxy->other == -1) proxy--;
 
-    /* Create new protocols for the channels */
-
-    /* Host */
+    /* Create new protocol object for the host channel.  Do this
+     * before call to notify_channel_closed() below to be consistent
+     * with proxy_create(). */
     proxy[0].proto = protocol_alloc();
 
-    /* Target */
-    proxy[1].proto = protocol_alloc();
-
-    trace(LOG_PROXY, "Proxy updated, host services:");
-    for (ix = 0; ix < c1->peer_service_cnt; ix++) {
-        char * nm = c1->peer_service_list[ix];
-        trace(LOG_PROXY, "    %s", nm);
-        if (strcmp(nm, "ZeroCopy") == 0) continue;
-        protocol_get_service(proxy[1].proto, nm);
-    }
-    /*
-     * Update the state of the host channel to react correctly on the new Hello
-     * message from the target, sending a new Hello event to the host
-     * with all the services of the target plus the ones of this
-     * TCF entity.
-     */
-
+    /* Update the state of the host channel to react correctly on the
+     * hello message from the redirected target and notify listeners
+     * of the new state to give them a chance to cleanup and be ready
+     * for the upcoming channel redirection listener callback in
+     * proxy_connected() when target hello message arrives. */
     c1->state = ChannelStateHelloReceived;
-
-    /*
-     * Notify close of the host channel; a notification about a new opening is
-     * sent when the Hello event is received from the target.
-     */
-
     notify_channel_closed(c1);
 
+    /* Replace protocol object for the host channel to make sure it
+     * does not contain any services or command handlers from before
+     * the redirect. */
     protocol_release(c1->protocol);
-    protocol_release(c2->protocol);
-
     c1->protocol = proxy[0].proto;
     set_default_message_handler(proxy[0].proto, proxy_default_message_handler);
-    c2->protocol = proxy[1].proto;
-    set_default_message_handler(proxy[1].proto, proxy_default_message_handler);
 }
 
 void proxy_create(Channel * c1, Channel * c2) {
