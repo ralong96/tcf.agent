@@ -216,27 +216,24 @@ static void channel_close_listener(Channel * c) {
     for (list_next = file_info_ring.next; list_next != &file_info_ring; list_next = list_next->next) {
         OpenFileInfo * h = ring2file(list_next);
         if (h->inp == &c->inp) {
+            int posted = 0;
             trace(LOG_ALWAYS, "file handle left open by client: FS%d", h->handle);
             list_remove(&h->link_hash);
-            if (h->dir != NULL) {
-                closedir(h->dir);
-                h->dir = NULL;
-            }
-            if (h->file >= 0) {
-                int posted = 0;
-                while (!list_is_empty(&h->link_reqs)) {
-                    LINK * link = h->link_reqs.next;
-                    IORequest * req = reqs2req(link);
-                    list_remove(link);
-                    if (h->posted_req == req) {
-                        req->handle = NULL;
-                        posted = 1;
-                    }
-                    else {
-                        free_io_req(req);
-                    }
+            while (!list_is_empty(&h->link_reqs)) {
+                LINK * link = h->link_reqs.next;
+                IORequest * req = reqs2req(link);
+                list_remove(link);
+                if (h->posted_req == req) {
+                    req->handle = NULL;
+                    posted = 1;
                 }
-                if (!posted) close(h->file);
+                else {
+                    free_io_req(req);
+                }
+            }
+            if (!posted) {
+                if (h->file >= 0) close(h->file);
+                if (h->dir != NULL) closedir(h->dir);
             }
             list_add_last(&h->link_hash, &list);
         }
@@ -625,6 +622,7 @@ static void reply_roots(char * token, OutputStream * out, int err, struct RootDe
 }
 
 static void terminate_open_file_info(OpenFileInfo * handle) {
+    assert(handle->posted_req == NULL);
     while (!list_is_empty(&handle->link_reqs)) {
         LINK * link = handle->link_reqs.next;
         IORequest * req = reqs2req(link);
@@ -669,6 +667,8 @@ static void done_io_request(void * arg) {
         /* Abandoned I/O request, channel is already closed */
         switch (req->info.type) {
         case AsyncReqOpen:
+            if (req->info.u.fio.rval >= 0) close(req->info.u.fio.rval);
+            break;
         case AsyncReqRead:
         case AsyncReqWrite:
         case AsyncReqSeekRead:
@@ -679,7 +679,7 @@ static void done_io_request(void * arg) {
             break;
         case AsyncReqOpenDir:
         case AsyncReqReadDir:
-            closedir((DIR *)req->info.u.dio.dir);
+            if (req->info.u.dio.dir != NULL) closedir((DIR *)req->info.u.dio.dir);
             break;
         }
         free_io_req(req);
