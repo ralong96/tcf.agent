@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,6 +27,11 @@
 typedef unsigned short uid_t;
 typedef unsigned short gid_t;
 typedef unsigned short mode_t;
+
+#if defined(_MSC_VER)
+#define utimbuf _utimbuf
+#define futime  _futime
+#endif
 
 /* UTF-8 support */
 struct utf8_stat {
@@ -60,6 +65,7 @@ struct utf8_stat {
 #define rmdir  utf8_rmdir
 #define mkdir  utf8_mkdir
 #define rename utf8_rename
+#define utime  utf8_utime
 extern int utf8_stat(const char * name, struct utf8_stat * buf);
 extern int utf8_fstat(int fd, struct utf8_stat * buf);
 extern int utf8_open(const char * name, int flags, int perms);
@@ -68,6 +74,7 @@ extern int utf8_remove(const char * path);
 extern int utf8_rmdir(const char * path);
 extern int utf8_mkdir(const char * path, int mode);
 extern int utf8_rename(const char * path1, const char * path2);
+extern int utf8_utime(const char * path, struct utimbuf * buf);
 
 /*
  * readdir() emulation with UTF-8 support

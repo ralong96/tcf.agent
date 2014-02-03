@@ -674,6 +674,7 @@ static void done_io_request(void * arg) {
         case AsyncReqSeekRead:
         case AsyncReqSeekWrite:
         case AsyncReqFstat:
+        case AsyncReqFSetStat:
             close(req->info.u.fio.fd);
             break;
         case AsyncReqOpenDir:
@@ -740,8 +741,16 @@ static void done_io_request(void * arg) {
         delete_open_file_info(handle);
         free_io_req(req);
         return;
+    case AsyncReqSetStat:
+        reply_setstat(req->token, handle->out, err);
+        delete_open_file_info(handle);
+        free_io_req(req);
+        return;
     case AsyncReqFstat:
         reply_stat(req->token, handle->out, err, &req->info);
+        break;
+    case AsyncReqFSetStat:
+        reply_setstat(req->token, handle->out, err);
         break;
     case AsyncReqRemove:
         reply_remove(req->token, handle->out, err);

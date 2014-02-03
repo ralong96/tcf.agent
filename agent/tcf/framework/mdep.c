@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -268,12 +268,13 @@ int truncate(const char * path, int64_t size) {
     int f = open(path, _O_RDWR | _O_BINARY, 0);
     if (f < 0) return -1;
     res = ftruncate(f, size);
-    _close(f);
+    if (_close(f) < 0) return -1;
     return res;
 }
 
 int ftruncate(int fd, int64_t size) {
-    int64_t cur, pos;
+    int64_t cur = 0;
+    int64_t pos = 0;
     BOOL ret = FALSE;
     HANDLE handle = (HANDLE)_get_osfhandle(fd);
 
@@ -287,12 +288,12 @@ int ftruncate(int fd, int64_t size) {
         pos = _lseeki64(fd, size, SEEK_SET);
         if (pos >= 0) {
             ret = SetEndOfFile(handle);
-            if (!ret) errno = EBADF;
+            if (!ret) set_win32_errno(GetLastError());
         }
         /* restore the file pointer */
-        _lseeki64(fd, cur, SEEK_SET);
+        cur = _lseeki64(fd, cur, SEEK_SET);
     }
-    return ret ? 0 : -1;
+    return cur >= 0 && pos >= 0 && ret ? 0 : -1;
 }
 
 int getuid(void) {
@@ -460,6 +461,19 @@ int utf8_rename(const char * name1, const char * name2) {
     if (!error && _wrename(path1, path2) < 0) error = errno;
     free(path1);
     free(path2);
+    if (error) {
+        errno = error;
+        return -1;
+    }
+    return 0;
+}
+
+int utf8_utime(const char * name, struct utimbuf * buf) {
+    int error = 0;
+    wchar_t * path = str_to_wide_char(name);
+    if (path == NULL) return -1;
+    if (_wutime(path, buf) < 0) error = errno;
+    free(path);
     if (error) {
         errno = error;
         return -1;

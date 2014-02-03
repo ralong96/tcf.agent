@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -153,9 +153,6 @@ extern int truncate(const char * path, off_t size);
 extern int ftruncate(int f, off_t size);
 
 #if defined(_MSC_VER)
-#define utimbuf _utimbuf
-#define utime   _utime
-#define futime  _futime
 #define snprintf _snprintf
 #endif
 

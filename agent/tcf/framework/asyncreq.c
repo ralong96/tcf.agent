@@ -345,7 +345,11 @@ static void * worker_thread_handler(void * x) {
                     struct utimbuf buf;
                     buf.actime = req->u.fio.statbuf.st_atime;
                     buf.modtime = req->u.fio.statbuf.st_mtime;
+#if defined(_WIN32)
+                    if (futime(req->u.fio.fd, &buf) < 0) err = errno;
+#else
                     if (utime(req->u.fio.file_name, &buf) < 0) err = errno;
+#endif
                 }
                 req->error = err;
             }
