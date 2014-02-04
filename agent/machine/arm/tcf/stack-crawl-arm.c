@@ -1274,6 +1274,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     uint32_t rn = (instr & 0x000f0000) >> 16;
     uint32_t rd = (instr & 0x0000f000) >> 12;
     uint32_t operand2 = (instr & 0x00000fff);
+    uint32_t op1val = 0;
     uint32_t op2val = 0;
     uint32_t op2origin = 0;
 
@@ -1320,34 +1321,38 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
         }
         else if (shift_type == 0 && shift_dist == 0 && opcode == 13) {
             /* MOV rd,rm */
+            if (rd == 15) chk_loaded(rm);
             op2origin = reg_data[rm].o;
             op2val = reg_data[rm].v;
+            if (rm == 15) op2val += 8;
         }
         else {
             /* Apply the shift type to the source register */
             chk_loaded(rm);
+            op2val = reg_data[rm].v;
+            if (rm == 15) op2val += 8;
             switch (shift_type) {
             case 0: /* logical left */
-                op2val = reg_data[rm].v << shift_dist;
+                op2val = op2val << shift_dist;
                 break;
             case 1: /* logical right */
                 if (!reg_shift && shift_dist == 0) shift_dist = 32;
-                op2val = reg_data[rm].v >> shift_dist;
+                op2val = op2val >> shift_dist;
                 break;
             case 2: /* arithmetic right */
                 if (!reg_shift && shift_dist == 0) shift_dist = 32;
-                if (reg_data[rm].v & 0x80000000) {
+                if (op2val & 0x80000000) {
                     /* Register shifts maybe greater than 32 */
                     if (shift_dist >= 32) {
                         op2val = 0xffffffff;
                     }
                     else {
-                        op2val = reg_data[rm].v >> shift_dist;
+                        op2val = op2val >> shift_dist;
                         op2val |= 0xffffffff << (32 - shift_dist);
                     }
                 }
                 else {
-                    op2val = reg_data[rm].v >> shift_dist;
+                    op2val = op2val >> shift_dist;
                 }
                 break;
             case 3: /* rotate right */
@@ -1358,17 +1363,17 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
                         op2val = 0;
                     }
                     else {
-                        op2val = reg_data[rm].v >> 1;
+                        op2val = op2val >> 1;
                         assert(cpsr_data.o != REG_VAL_ADDR);
                         assert(cpsr_data.o != REG_VAL_STACK);
                         if (cpsr_data.v & (1 << 29)) op2val |= 0x80000000;
                     }
                 }
                 else {
-                    /* Limit shift distance to 0-31 incase of register shift */
+                    /* Limit shift distance to 0-31 in case of register shift */
                     shift_dist &= 0x1f;
-                    op2val = (reg_data[rm].v >> shift_dist) |
-                             (reg_data[rm].v << (32 - shift_dist));
+                    op2val = (op2val >> shift_dist) |
+                             (op2val << (32 - shift_dist));
                 }
                 break;
             }
@@ -1381,21 +1386,25 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     if (rd == 15 && cond != 14) {
         /* Conditional branch, trace both directions */
         if (op2origin) {
+            assert(op2origin != REG_VAL_ADDR);
             if (opcode == 13) {
                 add_branch(op2val);
             }
             else if (opcode == 15) {
                 add_branch(~op2val);
             }
-            else if (reg_data[rn].o) {
-                switch (opcode) {
-                case  0: add_branch(reg_data[rn].v & op2val); break;
-                case  1: add_branch(reg_data[rn].v ^ op2val); break;
-                case  2: add_branch(reg_data[rn].v - op2val); break;
-                case  3: add_branch(op2val - reg_data[rn].v); break;
-                case  4: add_branch(reg_data[rn].v + op2val); break;
-                case 12: add_branch(reg_data[rn].v | op2val); break;
-                case 14: add_branch(reg_data[rn].v & ~op2val); break;
+            else {
+                chk_loaded(rn);
+                if (reg_data[rn].o) {
+                    switch (opcode) {
+                    case  0: add_branch(reg_data[rn].v & op2val); break;
+                    case  1: add_branch(reg_data[rn].v ^ op2val); break;
+                    case  2: add_branch(reg_data[rn].v - op2val); break;
+                    case  3: add_branch(op2val - reg_data[rn].v); break;
+                    case  4: add_branch(reg_data[rn].v + op2val); break;
+                    case 12: add_branch(reg_data[rn].v | op2val); break;
+                    case 14: add_branch(reg_data[rn].v & ~op2val); break;
+                    }
                 }
             }
         }
@@ -1422,6 +1431,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     case  5: /* ADC: Rd:= Op1 + Op2 + C */
     case  6: /* SBC: Rd:= Op1 - Op2 + C */
     case  7: /* RSC: Rd:= Op2 - Op1 + C */
+        chk_loaded(rn);
         if (cpsr_data.o && reg_data[rn].o && op2origin && cond == 14) {
             reg_data[rd].o = REG_VAL_OTHER;
         }
@@ -1445,7 +1455,8 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
         break;
     }
 
-    /* Account for pre-fetch by temporarily adjusting PC */
+    op1val = reg_data[rn].v;
+    /* Account for pre-fetch by adjusting PC */
     if (rn == 15) {
         /* If the shift amount is specified in the instruction,
          *  the PC will be 8 bytes ahead. If a register is used
@@ -1453,38 +1464,38 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
          *  ahead.
          */
         if (!I && (operand2 & 0x0010))
-            reg_data[rn].v += 12;
+            op1val += 12;
         else
-            reg_data[rn].v += 8;
+            op1val += 8;
     }
 
     /* Compute values */
     switch (opcode) {
     case  0: /* AND: Rd:= Op1 AND Op2 */
-        reg_data[rd].v = reg_data[rn].v & op2val;
+        reg_data[rd].v = op1val & op2val;
         break;
     case  1: /* EOR: Rd:= Op1 EOR Op2 */
-        reg_data[rd].v = reg_data[rn].v ^ op2val;
+        reg_data[rd].v = op1val ^ op2val;
         break;
     case  2: /* SUB: Rd:= Op1 - Op2 */
-        reg_data[rd].v = reg_data[rn].v - op2val;
+        reg_data[rd].v = op1val - op2val;
         break;
     case  3: /* RSB: Rd:= Op2 - Op1 */
-        reg_data[rd].v = op2val - reg_data[rn].v;
+        reg_data[rd].v = op2val - op1val;
         break;
     case  4: /* ADD: Rd:= Op1 + Op2 */
-        reg_data[rd].v = reg_data[rn].v + op2val;
+        reg_data[rd].v = op1val + op2val;
         break;
     case  5: /* ADC: Rd:= Op1 + Op2 + C */
-        reg_data[rd].v = reg_data[rn].v + op2val;
+        reg_data[rd].v = op1val + op2val;
         if (cpsr_data.v & (1 << 29)) reg_data[rd].v++;
         break;
     case  6: /* SBC: Rd:= Op1 - Op2 + C */
-        reg_data[rd].v = reg_data[rn].v - op2val;
+        reg_data[rd].v = op1val - op2val;
         if (cpsr_data.v & (1 << 29)) reg_data[rd].v++;
         break;
     case  7: /* RSC: Rd:= Op2 - Op1 + C */
-        reg_data[rd].v = op2val - reg_data[rn].v;
+        reg_data[rd].v = op2val - op1val;
         if (cpsr_data.v & (1 << 29)) reg_data[rd].v++;
         break;
     case  8: /* TST: set condition codes on Op1 AND Op2 */
@@ -1493,13 +1504,13 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     case 11: /* CMN: set condition codes on Op1 + Op2 */
         break;
     case 12: /* ORR: Rd:= Op1 OR Op2 */
-        reg_data[rd].v = reg_data[rn].v | op2val;
+        reg_data[rd].v = op1val | op2val;
         break;
     case 13: /* MOV: Rd:= Op2 */
         reg_data[rd].v = op2val;
         break;
     case 14: /* BIC: Rd:= Op1 AND NOT Op2 */
-        reg_data[rd].v = reg_data[rn].v & (~op2val);
+        reg_data[rd].v = op1val & (~op2val);
         break;
     case 15: /* MVN: Rd:= NOT Op2 */
         reg_data[rd].v = ~op2val;
@@ -1509,14 +1520,6 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     if (rd == 15 && !I && !(operand2 & 0x0f90) && (operand2 & 0x000f) == 14 && op2origin) {
         /* move pc, lr - return */
         trace_return = 1;
-    }
-
-    /* Remove the prefetch offset from the PC */
-    if (rd != 15 && rn == 15) {
-        if (!I && (operand2 & 0x0010))
-            reg_data[rn].v -= 12;
-        else
-            reg_data[rn].v -= 8;
     }
 
     if (rd == 15 && (instr & (1 << 20)) != 0) {
