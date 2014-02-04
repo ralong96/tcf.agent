@@ -28,10 +28,8 @@ typedef unsigned short uid_t;
 typedef unsigned short gid_t;
 typedef unsigned short mode_t;
 
-#if defined(_MSC_VER)
 #define utimbuf _utimbuf
 #define futime  _futime
-#endif
 
 /* UTF-8 support */
 struct utf8_stat {
