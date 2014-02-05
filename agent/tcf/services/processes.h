@@ -39,6 +39,8 @@ typedef struct ProcessStartParams {
     int use_terminal;
     SigSet sig_dont_stop;
     SigSet sig_dont_pass;
+    int set_dont_stop;
+    int set_dont_pass;
     const char * service;
     EventCallBack * exit_cb;
     void * exit_args;

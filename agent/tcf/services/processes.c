@@ -95,6 +95,8 @@ typedef struct AttachDoneArgs {
     char token[256];
     SigSet sig_dont_stop;
     SigSet sig_dont_pass;
+    int set_dont_stop;
+    int set_dont_pass;
 } AttachDoneArgs;
 
 struct ChildProcess {
@@ -582,10 +584,18 @@ static void read_sigset_bit(InputStream * inp, void * args) {
     sigset_set(set, bit, 1);
 }
 
-static void read_sigset(InputStream * inp, SigSet * set) {
+static void read_sigset(InputStream * inp, SigSet * set, int * not_null) {
     memset(set, 0, sizeof(SigSet));
-    if (json_peek(inp) == '[') {
+    if (json_peek(inp) == 'n') {
+        read_stream(inp);
+        json_test_char(inp, 'u');
+        json_test_char(inp, 'l');
+        json_test_char(inp, 'l');
+        *not_null = 0;
+    }
+    else if (json_peek(inp) == '[') {
         json_read_array(inp, read_sigset_bit, set);
+        *not_null = 1;
     }
     else {
         unsigned bit;
@@ -593,7 +603,25 @@ static void read_sigset(InputStream * inp, SigSet * set) {
         for (bit = 0; bit < sizeof(bits) * 8; bit++) {
             sigset_set(set, bit, (bits & ((uint64_t)1 << bit)) != 0);
         }
+        *not_null = 1;
     }
+}
+
+static void get_deafult_sig_dont_stop(SigSet * set) {
+    int i;
+    int n = signal_cnt();
+    for (i = 0; i < n; i++) {
+        const char * nm = signal_name(i);
+        if (strcmp(nm, "SIGCHLD") == 0 ||
+            strcmp(nm, "SIGPIPE") == 0 ||
+            strcmp(nm, "SIGWINCH") == 0) {
+            sigset_set(set, i, 1);
+        }
+    }
+}
+
+static void get_deafult_sig_dont_pass(SigSet * set) {
+    /* Empty */
 }
 
 static void command_set_signal_mask(char * token, Channel * c) {
@@ -602,12 +630,14 @@ static void command_set_signal_mask(char * token, Channel * c) {
     Context * ctx = NULL;
     SigSet dont_stop;
     SigSet dont_pass;
+    int set_dont_stop = 0;
+    int set_dont_pass = 0;
 
     json_read_string(&c->inp, id, sizeof(id));
     json_test_char(&c->inp, MARKER_EOA);
-    read_sigset(&c->inp, &dont_stop);
+    read_sigset(&c->inp, &dont_stop, &set_dont_stop);
     json_test_char(&c->inp, MARKER_EOA);
-    read_sigset(&c->inp, &dont_pass);
+    read_sigset(&c->inp, &dont_pass, &set_dont_pass);
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
@@ -620,8 +650,10 @@ static void command_set_signal_mask(char * token, Channel * c) {
     else {
         sigset_clear(&ctx->sig_dont_stop);
         sigset_clear(&ctx->sig_dont_pass);
-        ctx->sig_dont_stop = dont_stop;
-        ctx->sig_dont_pass = dont_pass;
+        if (set_dont_stop) ctx->sig_dont_stop = dont_stop;
+        else get_deafult_sig_dont_stop(&ctx->sig_dont_stop);
+        if (set_dont_pass) ctx->sig_dont_pass = dont_pass;
+        else get_deafult_sig_dont_pass(&ctx->sig_dont_pass);
     }
 
     write_stringz(&c->out, "R");
@@ -644,14 +676,18 @@ static void start_done(int error, Context * ctx, void * arg) {
             Context * x = cldl2ctxp(l);
             sigset_clear(&x->sig_dont_stop);
             sigset_clear(&x->sig_dont_pass);
-            sigset_copy(&x->sig_dont_stop, &data->sig_dont_stop);
-            sigset_copy(&x->sig_dont_pass, &data->sig_dont_pass);
+            if (data->set_dont_stop) sigset_copy(&x->sig_dont_stop, &data->sig_dont_stop);
+            else get_deafult_sig_dont_stop(&x->sig_dont_stop);
+            if (data->set_dont_pass) sigset_copy(&x->sig_dont_pass, &data->sig_dont_pass);
+            else get_deafult_sig_dont_pass(&x->sig_dont_pass);
             l = l->next;
         }
         sigset_clear(&ctx->sig_dont_stop);
         sigset_clear(&ctx->sig_dont_pass);
-        ctx->sig_dont_stop = data->sig_dont_stop;
-        ctx->sig_dont_pass = data->sig_dont_pass;
+        if (data->set_dont_stop) ctx->sig_dont_stop = data->sig_dont_stop;
+        else get_deafult_sig_dont_stop(&ctx->sig_dont_stop);
+        if (data->set_dont_pass) ctx->sig_dont_pass = data->sig_dont_pass;
+        else get_deafult_sig_dont_pass(&ctx->sig_dont_pass);
     }
 
     if (!is_channel_closed(c)) {
@@ -1587,8 +1623,8 @@ static void read_start_params(InputStream * inp, const char * nm, void * arg) {
     else if (strcmp(nm, "StopAtMain") == 0) params->attach_mode |= json_read_boolean(inp) ? 0 : CONTEXT_ATTACH_NO_MAIN;
     else if (strcmp(nm, "UseTerminal") == 0) params->use_terminal = json_read_boolean(inp);
 #if ENABLE_DebugContext
-    else if (strcmp(nm, "SigDontStop") == 0) read_sigset(inp, &params->sig_dont_stop);
-    else if (strcmp(nm, "SigDontPass") == 0) read_sigset(inp, &params->sig_dont_pass);
+    else if (strcmp(nm, "SigDontStop") == 0) read_sigset(inp, &params->sig_dont_stop, &params->set_dont_stop);
+    else if (strcmp(nm, "SigDontPass") == 0) read_sigset(inp, &params->sig_dont_pass, &params->set_dont_pass);
 #endif
     else json_skip_object(inp);
 }
