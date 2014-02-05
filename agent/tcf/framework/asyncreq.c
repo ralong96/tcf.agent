@@ -82,8 +82,7 @@ static void worker_thread_exit(void * x) {
     check_error(pthread_cond_destroy(&wt->cond));
     pthread_join(wt->thread, NULL);
     check_error(pthread_mutex_lock(&wtlock));
-    if (--wtrunning_count == 0)
-        shutdown_set_stopped(&async_shutdown);
+    if (--wtrunning_count == 0) shutdown_set_stopped(&async_shutdown);
     trace(LOG_ASYNCREQ, "worker_thread_exit %p running threads %d", wt, wtrunning_count);
     check_error(pthread_mutex_unlock(&wtlock));
     loc_free(wt);
@@ -514,8 +513,7 @@ static void worker_thread_add(AsyncReqInfo * req) {
     wt->req = req;
     check_error(pthread_cond_init(&wt->cond, NULL));
     check_error(pthread_create(&wt->thread, &pthread_create_attr, worker_thread_handler, wt));
-    if (wtrunning_count++ == 0)
-        shutdown_set_normal(&async_shutdown);
+    if (wtrunning_count++ == 0) shutdown_set_normal(&async_shutdown);
     trace(LOG_ASYNCREQ, "worker_thread_add %p running threads %d", wt, wtrunning_count);
 }
 
@@ -590,6 +588,5 @@ void async_req_post(AsyncReqInfo * req) {
 }
 
 void ini_asyncreq(void) {
-    wtlist_size = 0;
     check_error(pthread_mutex_init(&wtlock, NULL));
 }
