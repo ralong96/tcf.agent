@@ -666,9 +666,11 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
             word = ptrace(PTRACE_PEEKDATA, ext->pid, (void *)word_addr, 0);
             if (errno != 0) {
                 error = errno;
-                trace(LOG_CONTEXT,
-                    "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
-                    ctx, ctx->id, word_addr, error, errno_to_str(error));
+                if (error != ESRCH || ctx != ctx->mem) {
+                    trace(LOG_CONTEXT,
+                        "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
+                        ctx, ctx->id, word_addr, error, errno_to_str(error));
+                }
                 break;
             }
             for (i = 0; i < word_size; i++) {
@@ -682,9 +684,11 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
         }
         if (ptrace(PTRACE_POKEDATA, ext->pid, (void *)word_addr, word) < 0) {
             error = errno;
-            trace(LOG_ALWAYS,
-                "error: ptrace(PTRACE_POKEDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
-                ctx, ctx->id, word_addr, error, errno_to_str(error));
+            if (error != ESRCH || ctx != ctx->mem) {
+                trace(LOG_ALWAYS,
+                    "error: ptrace(PTRACE_POKEDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
+                    ctx, ctx->id, word_addr, error, errno_to_str(error));
+            }
             break;
         }
     }
@@ -695,7 +699,7 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
             Context * c = cldl2ctxp(l);
             pid_t pid = EXT(c)->pid;
             assert(c->parent == ctx);
-            if (pid != ext->pid && get_process_state(EXT(c)->pid) == 't') {
+            if (!c->exited && pid != ext->pid && get_process_state(EXT(c)->pid) == 't') {
                 if (check_breakpoints_on_memory_read(ctx, address, buf, size) < 0) return -1;
                 return context_write_mem(c, address, buf, size);
             }
@@ -746,9 +750,11 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
         word = ptrace(PTRACE_PEEKDATA, ext->pid, (void *)word_addr, 0);
         if (errno != 0) {
             error = errno;
-            trace(LOG_CONTEXT,
-                "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
-                ctx, ctx->id, word_addr, error, errno_to_str(error));
+            if (error != ESRCH || ctx != ctx->mem) {
+                trace(LOG_CONTEXT,
+                    "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#lx, id %s, addr %#lx, error %d %s",
+                    ctx, ctx->id, word_addr, error, errno_to_str(error));
+            }
             break;
         }
         if (word_addr < address || word_addr + word_size > address + size) {
@@ -770,7 +776,7 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
             Context * c = cldl2ctxp(l);
             pid_t pid = EXT(c)->pid;
             assert(c->parent == ctx);
-            if (pid != ext->pid && get_process_state(EXT(c)->pid) == 't') {
+            if (!c->exited && pid != ext->pid && get_process_state(EXT(c)->pid) == 't') {
                 return context_read_mem(c, address, buf, size);
             }
             l = l->next;
