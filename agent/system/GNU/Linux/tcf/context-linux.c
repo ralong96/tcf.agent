@@ -1029,6 +1029,7 @@ int context_get_memory_map(Context * ctx, MemoryMap * map) {
 
 #if ENABLE_ContextISA
 int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
+    const char * s = NULL;
     memset(isa, 0, sizeof(ContextISA));
 #if defined(__i386__)
     isa->def = "386";
@@ -1042,6 +1043,23 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
 #if SERVICE_Symbols
     if (get_context_isa(ctx, addr, &isa->isa, &isa->addr, &isa->size) < 0) return -1;
 #endif
+    s = isa->isa ? isa->isa : isa->def;
+    if (s) {
+        if (strcmp(s, "386") == 0) {
+            isa->max_instruction_size = 15;
+        }
+        else if (strcmp(s, "X86_64") == 0) {
+            isa->max_instruction_size = 15;
+        }
+        else if (strcmp(s, "ARM") == 0) {
+            isa->max_instruction_size = 4;
+            isa->alignment = 4;
+        }
+        else if (strcmp(s, "Thumb") == 0) {
+            isa->max_instruction_size = 4;
+            isa->alignment = 2;
+        }
+    }
     return 0;
 }
 #endif

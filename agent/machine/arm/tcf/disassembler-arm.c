@@ -2671,10 +2671,13 @@ DisassemblyResult * disassemble_arm(uint8_t * code,
         disassemble_data_instr(instr, cond_name);
     }
 
-    if (buf_pos == 0) return NULL;
-
-    buf[buf_pos] = 0;
     dr.text = buf;
+    if (buf_pos == 0) {
+        snprintf(buf, sizeof(buf), ".word 0x%08x", instr);
+    }
+    else {
+        buf[buf_pos] = 0;
+    }
     return &dr;
 }
 

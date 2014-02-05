@@ -160,15 +160,15 @@ static int get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
         Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
         if (memory_map_get(mem, &client_map, &target_map) == 0) {
             isa->addr = addr;
-            isa->size = ~(ContextAddress)0;
+            isa->size = ~addr + 1;
             for (j = 0; j < 2; j++) {
                 MemoryMap * map = j ? target_map : client_map;
                 for (i = 0; i < map->region_cnt; i++) {
                     MemoryRegion * r = map->regions + i;
                     ContextAddress x = r->addr;
                     ContextAddress y = r->addr + r->size;
-                    if (x > addr && x < addr + isa->size) isa->size = x - addr;
-                    if (y > addr && y < addr + isa->size) isa->size = y - addr;
+                    if (x > addr && (addr + isa->size == 0 || x < addr + isa->size)) isa->size = x - addr;
+                    if (y > addr && (addr + isa->size == 0 || y < addr + isa->size)) isa->size = y - addr;
                 }
             }
         }
@@ -222,6 +222,13 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
                 for (i = 0; i < 4; i++) v |= (uint32_t)mem_buf[offs + i] << (i * 8);
                 snprintf(buf, sizeof(buf), ".word 0x%08x", v);
                 dd.size = 4;
+            }
+            else if (isa->alignment >= 2 && (addr & 0x1) == 0 && offs <= mem_size + 2) {
+                unsigned i;
+                uint16_t v = 0;
+                for (i = 0; i < 2; i++) v |= (uint16_t)mem_buf[offs + i] << (i * 8);
+                snprintf(buf, sizeof(buf), ".half 0x%04x", v);
+                dd.size = 2;
             }
             else {
                 snprintf(buf, sizeof(buf), ".byte 0x%02x", mem_buf[offs]);
