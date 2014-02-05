@@ -612,6 +612,7 @@ static void get_deafult_sig_dont_stop(SigSet * set) {
     int n = signal_cnt();
     for (i = 0; i < n; i++) {
         const char * nm = signal_name(i);
+        if (nm == NULL) continue;
         if (strcmp(nm, "SIGCHLD") == 0 ||
             strcmp(nm, "SIGPIPE") == 0 ||
             strcmp(nm, "SIGWINCH") == 0) {
