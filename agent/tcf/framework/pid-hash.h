@@ -39,7 +39,7 @@ static void link_context(Context * ctx) {
     assert(ctx->mem != NULL);
     assert(EXT(ctx)->pid != 0);
     assert(context_find_from_pid(EXT(ctx)->pid, ctx->parent != NULL) == NULL);
-    list_add_first(&ctx->ctxl, &context_root);
+    list_add_last(&ctx->ctxl, &context_root);
     list_add_first(ctx2pidlink(ctx), h);
     ctx->ref_count++;
 }
