@@ -775,7 +775,7 @@ static int enable_sw_stepping_mode(Context * ctx) {
     assert(!grp->exited);
     assert(!ext->sw_stepping);
     if (arm_get_next_address(ctx, &ext->addr) < 0) return -1;
-    trace(LOG_CONTEXT, "cpu_enable_stepping_mode 0x%x", (int)ext->addr);
+    trace(LOG_CONTEXT, "enable_sw_stepping_mode %s 0x%x", ctx->id, (unsigned)ext->addr);
     if (context_read_mem(grp, ext->addr, ext->opcode, sizeof(BREAK_INST)) < 0) return -1;
     if (context_write_mem(grp, ext->addr, BREAK_INST, sizeof(BREAK_INST)) < 0) return -1;
     ext->sw_stepping = 1;
@@ -786,8 +786,8 @@ static int enable_sw_stepping_mode(Context * ctx) {
 static int disable_sw_stepping_mode(Context * ctx) {
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
     ContextExtensionARM * ext = EXT(grp);
-    trace(LOG_CONTEXT, "cpu_disable_stepping_mode");
     if (ext->sw_stepping) {
+        trace(LOG_CONTEXT, "disable_sw_stepping_mode %s", ctx->id);
         run_ctrl_unlock();
         ext->sw_stepping = 0;
         if (grp->exited) return 0;
