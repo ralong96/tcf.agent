@@ -593,7 +593,7 @@ static void flush_instructions(void) {
         list_init(&bi->link_lst);
         if (bi->ref_cnt > 0) continue;
         if (bi->stepping_over_bp) continue;
-        if (bi->planted) remove_instruction(bi);
+        if (bi->planted && is_all_stopped(bi->cb.ctx)) remove_instruction(bi);
         if (!bi->planted) free_instruction(bi);
     }
 }
@@ -970,13 +970,13 @@ static BreakInstruction * link_breakpoint_instruction(
         bi->ref_size = bi->ref_size == 0 ? 8 : bi->ref_size * 2;
         bi->refs = (InstructionRef *)loc_realloc(bi->refs, sizeof(InstructionRef) * bi->ref_size);
     }
+    bi->valid = 0;
     ref = bi->refs + bi->ref_cnt++;
     memset(ref, 0, sizeof(InstructionRef));
     ref->bp = bp;
     ref->ctx = ctx;
     ref->addr = ctx_addr;
     ref->cnt = 1;
-    bi->valid = 0;
     context_lock(ctx);
     EXT(ctx)->instruction_cnt++;
     bp->instruction_cnt++;
