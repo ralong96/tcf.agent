@@ -1383,6 +1383,21 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
         }
     }
 
+    if (opcode == 2 && rd == 15 && (instr & (1 << 20)) == 0 && rn != 14 && I) {
+        chk_loaded(14);
+        if (reg_data[14].o && reg_data[14].v == reg_data[15].v + 4) {
+            /* SUB PC,R0,#31 - special form of a function call */
+            /* Subroutines are expected to preserve the contents of r4 to r11 and r13 */
+            unsigned i;
+            for (i = 0; i <= 14; i++) {
+                if (i >= 4 && i <= 11) continue;
+                if (i == 13) continue;
+                reg_data[i].o = 0;
+            }
+            return;
+        }
+    }
+
     if (rd == 15 && cond != 14) {
         /* Conditional branch, trace both directions */
         if (op2origin) {
