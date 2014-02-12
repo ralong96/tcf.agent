@@ -253,9 +253,17 @@ int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * ad
             set_errno(ERR_OTHER, "Cannot get address of ELF symbol: the symbol is a common block");
             return -1;
         }
-        if (file->type == ET_REL && info->section != NULL) {
-            sec = info->section;
-            value += sec->addr;
+        if (info->section != NULL) {
+            if (file->type == ET_REL) {
+                sec = info->section;
+                value += sec->addr;
+            }
+            if (info->section->size > 0 && info->value == info->section->addr + info->section->size) {
+                *address = elf_map_to_run_time_address(ctx, file, sec, (ContextAddress)value - 1);
+                if (errno) return -1;
+                *address += 1;
+                return 0;
+            }
         }
         *address = elf_map_to_run_time_address(ctx, file, sec, (ContextAddress)value);
         return errno ? -1 : 0;
