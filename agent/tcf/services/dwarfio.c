@@ -328,7 +328,7 @@ static U1_T * dio_LoadStringTable(ELF_File * File, U4_T * StringTableSize) {
 
 static U1_T * dio_LoadAltStringTable(ELF_File * File, U4_T * StringTableSize) {
     if (File->dwz_file == NULL) {
-        str_exception(errno, "Cannot open DZW file");
+        str_exception(errno, "Cannot open DWZ file");
     }
     return dio_LoadStringTable(File->dwz_file, StringTableSize);
 }

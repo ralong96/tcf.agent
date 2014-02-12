@@ -498,6 +498,7 @@ static char * get_dwz_file_name(ELF_File * file, int * error) {
                 lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
 #endif
                 if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
+                trace(LOG_ALWAYS, "Cannot open DWZ file: %s", lnm);
             }
         }
     }
@@ -901,7 +902,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
     }
     if (error == 0) {
         file->dwz_file_name = get_dwz_file_name(file, &error);
-        if (file->dwz_file_name) trace(LOG_ELF, "DZW file found %s", file->dwz_file_name);
+        if (file->dwz_file_name) trace(LOG_ELF, "DWZ file found %s", file->dwz_file_name);
     }
     if (error != 0) {
         trace(LOG_ELF, "Error opening ELF file: %d %s", error, errno_to_str(error));

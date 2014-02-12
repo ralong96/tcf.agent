@@ -191,9 +191,9 @@ static ObjectInfo * find_loaded_object(DWARFCache * Cache, ContextAddress ID) {
 static ObjectInfo * find_alt_object_info(ContextAddress ID) {
     ObjectInfo * Info = NULL;
     ELF_File * File = sCache->mFile;
-    if (File->dwz_file == NULL) str_exception(errno, "Cannot open DZW file");
+    if (File->dwz_file == NULL) str_exception(errno, "Cannot open DWZ file");
     Info = find_loaded_object(get_dwarf_cache(File->dwz_file), ID);
-    if (Info == NULL) str_exception(errno, "Invalid DZW file reference");
+    if (Info == NULL) str_exception(errno, "Invalid DWZ file reference");
     return Info;
 }
 
@@ -1728,7 +1728,7 @@ DWARFCache * get_dwarf_cache(ELF_File * file) {
         if (file->dwz_file_name != NULL) {
             file->dwz_file = elf_open(file->dwz_file_name);
             if (file->dwz_file == NULL) {
-                str_exception(errno, "Cannot open DZW file");
+                str_exception(errno, "Cannot open DWZ file");
             }
             file->dwz_file->lock_cnt++;
             get_dwarf_cache(file->dwz_file);
