@@ -450,6 +450,8 @@ static void read_subscr_data(U2_T Form, ObjectInfo * Array) {
     dio_SetPos(OrgPos);
 }
 
+static void add_object_addr_ranges(ObjectInfo * info);
+
 static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     static ObjectInfo * Info;
     static U8_T Sibling;
@@ -506,10 +508,15 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                 sCompUnit->mDesc = sUnitDesc;
                 sCache->mCompUnitsCnt++;
                 break;
+            case TAG_subprogram:
+                if (Info->mFlags & DOIF_specification &&
+                    Info->mFlags & DOIF_low_pc &&
+                    Info->u.mCode.mLowPC != 0) {
+                    add_object_addr_ranges(Info);
+                } /* Fall through */
             case TAG_global_subroutine:
             case TAG_inlined_subroutine:
             case TAG_subroutine:
-            case TAG_subprogram:
             case TAG_entry_point:
             case TAG_pointer_type:
             case TAG_mod_pointer:
