@@ -571,6 +571,7 @@ static void loc_var_func(void * args, Symbol * sym) {
     Symbol * type = NULL;
     Symbol * index_type = NULL;
     Symbol * base_type = NULL;
+    int cpp_ref = 0; /* '1' if the symbol is C++ reference */
     ContextAddress length = 0;
     int64_t lower_bound = 0;
     void * value = NULL;
@@ -712,6 +713,28 @@ static void loc_var_func(void * args, Symbol * sym) {
             error_sym("get_symbol_name", type);
         }
         if (type_name != NULL) type_name = tmp_strdup(type_name);
+        if (get_symbol_type_class(sym, &type_class) < 0) {
+            error_sym("get_symbol_type_class", sym);
+        }
+        if (type_class == TYPE_CLASS_POINTER) {
+            Symbol * ptr = type;
+            for (;;) {
+                SYM_FLAGS ptr_flags = 0;
+                Symbol * next = NULL;
+                if (get_symbol_flags(ptr, &ptr_flags) < 0) {
+                    error_sym("get_symbol_flags", ptr);
+                }
+                if (ptr_flags & SYM_FLAG_REFERENCE) {
+                    cpp_ref = 1;
+                    break;
+                }
+                if (get_symbol_type(ptr, &next) < 0) {
+                    error_sym("get_symbol_type", ptr);
+                }
+                if (next == ptr) break;
+                ptr = next;
+            }
+        }
     }
     size_ok = 1;
     if (get_symbol_size(sym, &size) < 0) {
@@ -748,7 +771,8 @@ static void loc_var_func(void * args, Symbol * sym) {
         Symbol * find_sym = NULL;
         if (find_symbol_by_name(elf_ctx, frame, pc, name, &find_sym) == 0 &&
                 symcmp(sym, find_sym) == 0 &&
-                symbol_class != SYM_CLASS_COMP_UNIT) {
+                symbol_class != SYM_CLASS_COMP_UNIT &&
+                !cpp_ref) {
             Value v;
             char * expr = (char *)tmp_alloc(strlen(name) + 16);
             if (size_ok) {
@@ -792,9 +816,6 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (type_sym_class != SYM_CLASS_TYPE) {
             errno = ERR_OTHER;
             error_sym("Invalid symbol class of a type", type);
-        }
-        if (get_symbol_type_class(sym, &type_class) < 0) {
-            error_sym("get_symbol_type_class", sym);
         }
         if (get_symbol_type_class(type, &type_type_class) < 0) {
             error_sym("get_symbol_type_class", type);
