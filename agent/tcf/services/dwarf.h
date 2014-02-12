@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 1996, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 1996, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -240,6 +240,7 @@
 #define AT_lo_user_v2               0x2000
 #define AT_wrs_options              0x2001
 #define AT_MIPS_linkage_name        0x2007
+#define AT_GNU_call_site_value      0x2111
 #define AT_hi_user_v2               0x3fff
 
 

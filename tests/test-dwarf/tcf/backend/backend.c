@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,6 +27,7 @@
 #include <tcf/framework/events.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
+#include <tcf/framework/trace.h>
 
 #include <tcf/services/tcf_elf.h>
 #include <tcf/services/elf-symbols.h>
@@ -126,21 +127,18 @@ RegisterDefinition * get_reg_by_id(Context * ctx, unsigned id, RegisterIdScope *
 
 int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs, unsigned size, uint8_t * buf) {
     if (reg_def != NULL && frame != NULL) {
-        if (frame->is_top_frame) {
+        if (frame->is_top_frame || frame->regs == NULL) {
             return context_read_reg(frame->ctx, reg_def, offs, size, buf);
         }
         if (frame->regs != NULL) {
             uint8_t * r_addr = (uint8_t *)&frame->regs->data + reg_def->offset;
-#if 0
             uint8_t * m_addr = (uint8_t *)&frame->regs->mask + reg_def->offset;
             size_t i;
             for (i = 0; i < size; i++) {
                 if (m_addr[offs + i] != 0xff) {
-                    errno = ERR_INV_CONTEXT;
-                    return -1;
+                    return context_read_reg(frame->ctx, reg_def, offs, size, buf);
                 }
             }
-#endif
             if (offs + size > reg_def->size) {
                 errno = ERR_INV_DATA_SIZE;
                 return -1;
@@ -262,9 +260,8 @@ int context_get_memory_map(Context * ctx, MemoryMap * map) {
 }
 
 int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
-    if (frame->is_top_frame) {
-        frame->fp = frame_addr;
-    }
+    frame->fp = frame_addr;
+    down->has_reg_data = 1;
     return 0;
 }
 
@@ -1031,7 +1028,7 @@ static void loc_var_func(void * args, Symbol * sym) {
 }
 
 static void test_public_names(void) {
-    DWARFCache * cache = get_dwarf_cache(elf_file);
+    DWARFCache * cache = get_dwarf_cache(get_dwarf_file(elf_file));
     unsigned n = 0;
     unsigned m = 0;
     while (n < cache->mPubNames.mCnt) {
@@ -1067,6 +1064,24 @@ static void test_public_names(void) {
             }
         }
         tmp_gc();
+    }
+}
+
+static void check_addr_ranges(void) {
+    unsigned i;
+    DWARFCache * cache = get_dwarf_cache(get_dwarf_file(elf_file));
+    if (cache->mAddrRangesCnt > 1) {
+        for (i = 0; i < cache->mAddrRangesCnt - 1; i++) {
+            UnitAddressRange * x = cache->mAddrRanges + i;
+            UnitAddressRange * y = cache->mAddrRanges + i + 1;
+            if (x->mSection == y->mSection &&
+                    x->mAddr < y->mAddr + y->mSize &&
+                    y->mAddr < x->mAddr + x->mSize) {
+                        printf("Overlapping address ranges: %08x %08x, %08x %08x\n",
+                            (unsigned)x->mAddr, (unsigned)x->mSize,
+                            (unsigned)y->mAddr, (unsigned)y->mSize);
+            }
+        }
     }
 }
 
@@ -1341,6 +1356,7 @@ static void next_pc(void) {
             }
             printf("pub names time: %ld.%06ld\n", (long)time_diff.tv_sec, time_diff.tv_nsec / 1000);
             fflush(stdout);
+            check_addr_ranges();
             time_start = time_now;
         }
         else if (test_cnt >= 10000) {

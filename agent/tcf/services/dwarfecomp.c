@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -55,6 +55,9 @@ static int expr_frame = 0;
 static ContextAddress expr_code_addr = 0;
 static ContextAddress expr_code_size = 0;
 static int expr_big_endian = 0;
+static ObjectInfo ** call_site_buf = NULL;
+static unsigned call_site_cnt = 0;
+static unsigned call_site_max = 0;
 
 static void add(unsigned n) {
     if (buf_pos >= buf_max) {
@@ -533,6 +536,44 @@ static void op_call(void) {
     add_expression_list(info, 0, 0);
 }
 
+static void add_call_sites(ObjectInfo * obj, U8_T addr, U8_T size) {
+    while (obj != NULL) {
+        switch (obj->mTag) {
+        case TAG_subprogram:
+        case TAG_subroutine:
+        case TAG_inlined_subroutine:
+        case TAG_lexical_block:
+            add_call_sites(get_dwarf_children(obj), addr, size);
+            break;
+        case TAG_GNU_call_site:
+            if ((obj->mFlags & DOIF_low_pc) != 0 && (size == 0 ||
+                    (obj->u.mCode.mLowPC >= addr && obj->u.mCode.mLowPC < addr + size))) {
+                if (call_site_cnt >= call_site_max) {
+                    call_site_max *= 2;
+                    call_site_buf = (ObjectInfo **)tmp_realloc(call_site_buf,
+                        sizeof(ObjectInfo *) * call_site_max);
+                }
+                call_site_buf[call_site_cnt++] = obj;
+            }
+            break;
+        }
+        obj = obj->mSibling;
+    }
+}
+
+static void find_call_sites(CompUnit * unit, U8_T addr, U8_T size) {
+    ObjectInfo * obj = unit->mObject->mChildren;
+    call_site_cnt = 0;
+    call_site_max = 16;
+    call_site_buf = (ObjectInfo **)tmp_alloc(sizeof(ObjectInfo *) * call_site_max);
+    while (obj != NULL) {
+        if (obj->mTag == TAG_subprogram) {
+            add_call_sites(get_dwarf_children(obj), addr, size);
+        }
+        obj = obj->mSibling;
+    }
+}
+
 static void op_entry_value(void) {
     size_t size = 0;
     size_t size_pos = 0;
@@ -551,6 +592,71 @@ static void op_entry_value(void) {
     info.expr_size = size;
     add_expression(&info);
     expr_pos += size;
+    size = buf_pos - size_pos - 3;
+    buf[size_pos++] = (U1_T)((size & 0x7f) | 0x80);
+    buf[size_pos++] = (U1_T)(((size >> 7) & 0x7f) | 0x80);
+    buf[size_pos++] = (U1_T)((size >> 14) & 0x7f);
+}
+
+static void op_parameter_ref(void) {
+    U8_T ref_id = 0;
+    size_t size = 0;
+    size_t size_pos = 0;
+    U8_T dio_pos = 0;
+    DIO_UnitDescriptor * desc = &expr->object->mCompUnit->mDesc;
+    unsigned n;
+
+    DWARFExpressionInfo * info = NULL;
+    DWARFExpressionInfo ** info_last = &info;
+    PropertyValue pv;
+
+    expr_pos++;
+    add(OP_GNU_entry_value);
+    size_pos = buf_pos;
+    add(0);
+    add(0);
+    add(0);
+
+    dio_pos = expr->expr_addr + expr_pos - (U1_T *)expr->section->data;
+    dio_EnterSection(desc, expr->section, dio_pos);
+    ref_id = desc->mSection->addr + desc->mUnitOffs + dio_ReadU4();
+    expr_pos += (size_t)(dio_GetPos() - dio_pos);
+    dio_ExitSection();
+
+    find_call_sites(expr->object->mCompUnit, expr->code_addr, expr_code_size);
+    for (n = 0; n < call_site_cnt; n++) {
+        ObjectInfo * site = call_site_buf[n];
+        ObjectInfo * args = get_dwarf_children(site);
+        while (args != NULL) {
+            if (args->mTag == TAG_GNU_call_site_parameter && args->mFlags & DOIF_abstract_origin) {
+                read_and_evaluate_dwarf_object_property(expr_ctx, STACK_NO_FRAME, args, AT_abstract_origin, &pv);
+                if (get_numeric_property_value(&pv) == ref_id) {
+                    read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, args, AT_GNU_call_site_value, &pv);
+                    dwarf_get_expression_list(&pv, info_last);
+                    while (*info_last != NULL) {
+                        DWARFExpressionInfo * e = *info_last;
+                        if (e->code_size == 0 ||
+                                (e->code_addr <= site->u.mCode.mLowPC &&
+                                 e->code_addr + e->code_size > site->u.mCode.mLowPC)) {
+                            e->code_addr = site->u.mCode.mLowPC;
+                            e->code_size = 1;
+                            info_last = &e->next;
+                        }
+                        else {
+                            *info_last = e->next;
+                        }
+                    }
+                }
+            }
+            args = args->mSibling;
+        }
+    }
+
+    if (info == NULL) {
+        str_exception(ERR_OTHER, "Object is not available at this location in the code");
+    }
+    add_expression_list(info, 0, 0);
+
     size = buf_pos - size_pos - 3;
     buf[size_pos++] = (U1_T)((size & 0x7f) | 0x80);
     buf[size_pos++] = (U1_T)(((size >> 7) & 0x7f) | 0x80);
@@ -746,6 +852,10 @@ static void add_expression(DWARFExpressionInfo * info) {
         case OP_GNU_entry_value:
             check_frame();
             op_entry_value();
+            break;
+        case OP_GNU_parameter_ref:
+            check_frame();
+            op_parameter_ref();
             break;
         case OP_GNU_regval_type:
             expr_pos++;
