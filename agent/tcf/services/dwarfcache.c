@@ -969,7 +969,20 @@ static void load_addr_ranges(void) {
         }
     }
     if (sCache->mAddrRangesCnt > 1) {
+        unsigned i, j = 0;
         qsort(sCache->mAddrRanges, sCache->mAddrRangesCnt, sizeof(UnitAddressRange), addr_ranges_comparator);
+        for (i = 0; i < sCache->mAddrRangesCnt - 1; i++) {
+            UnitAddressRange * x = sCache->mAddrRanges + i;
+            UnitAddressRange * y = x + 1;
+            if (x->mSection == y->mSection && x->mUnit == y->mUnit &&
+                    x->mAddr == y->mAddr && x->mSize == y->mSize) {
+                /* Skip duplicate entry */
+                continue;
+            }
+            if (j < i) memcpy(sCache->mAddrRanges + j, x, sizeof(UnitAddressRange));
+            j++;
+        }
+        sCache->mAddrRangesCnt = j;
     }
 }
 
