@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -640,12 +640,14 @@ static void evaluate_expression(void) {
                     size = read_u8leb128();
                     if (size == 0 || (n >= addr && n - addr < size)) {
                         Trap trap;
+                        LocationExpressionState * s = state;
                         size_t code_len_org = code_len;
                         if (set_trap(&trap)) {
                             code_len = state->code_len = nxt_pos;
                             evaluate_expression();
                             clear_trap(&trap);
                         }
+                        state = s;
                         code_len = state->code_len = code_len_org;
                         if (trap.error) exception(trap.error);
                         break;
