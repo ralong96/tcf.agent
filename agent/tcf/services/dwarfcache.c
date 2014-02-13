@@ -989,6 +989,11 @@ static void load_addr_ranges(void) {
             if (j < i) memcpy(sCache->mAddrRanges + j, x, sizeof(UnitAddressRange));
             j++;
         }
+        if (j < sCache->mAddrRangesCnt - 1) {
+            UnitAddressRange * x = sCache->mAddrRanges + sCache->mAddrRangesCnt - 1;
+            memcpy(sCache->mAddrRanges + j, x, sizeof(UnitAddressRange));
+            j++;
+        }
         sCache->mAddrRangesCnt = j;
     }
 }
