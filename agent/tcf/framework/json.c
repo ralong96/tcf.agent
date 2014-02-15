@@ -640,9 +640,22 @@ void json_read_binary_start(JsonReadBinaryState * state, InputStream * inp) {
 size_t json_read_binary_data(JsonReadBinaryState * state, void * buf, size_t len) {
     size_t res = 0;
     uint8_t * ptr = (uint8_t *)buf;
+    InputStream * inp = state->inp;
+
     if (state->encoding == ENCODING_BINARY) {
         if (len > (size_t)(state->size_start - state->size_done)) len = state->size_start - state->size_done;
-        while (res < len) ptr[res++] = (uint8_t)read_stream(state->inp);
+        while (res < len) {
+            if (inp->cur < inp->end) {
+                size_t n = inp->end - inp->cur;
+                if (n > len - res) n = len - res;
+                memcpy(ptr + res, inp->cur, n);
+                inp->cur += n;
+                res += n;
+            }
+            else {
+                ptr[res++] = (uint8_t)inp->read(inp);
+            }
+        }
     }
     else {
         while (len > 0) {
@@ -662,14 +675,14 @@ size_t json_read_binary_data(JsonReadBinaryState * state, void * buf, size_t len
                 state->rem = 0;
             }
             if (len >= 3) {
-                size_t i = read_base64(state->inp, (char *)ptr, len);
+                size_t i = read_base64(inp, (char *)ptr, len);
                 if (i == 0) break;
                 ptr += i;
                 len -= i;
                 res += i;
             }
             else {
-                state->rem = read_base64(state->inp, state->buf, 3);
+                state->rem = read_base64(inp, state->buf, 3);
                 if (state->rem == 0) break;
             }
         }
