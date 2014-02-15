@@ -851,6 +851,10 @@ static int addr_ranges_comparator(const void * x, const void * y) {
 
 static void add_addr_range(ELF_Section * sec, CompUnit * unit, ContextAddress addr, ContextAddress size) {
     UnitAddressRange * range = NULL;
+    if (addr + size <= addr) {
+        if (size == 0) return;
+        size = 0 - addr;
+    }
     if (sCache->mAddrRangesCnt >= sCache->mAddrRangesMax) {
         sCache->mAddrRangesMax = sCache->mAddrRangesMax == 0 ? 64 : sCache->mAddrRangesMax * 2;
         sCache->mAddrRanges = (UnitAddressRange *)loc_realloc(sCache->mAddrRanges, sizeof(UnitAddressRange) * sCache->mAddrRangesMax);
@@ -981,9 +985,18 @@ static void load_addr_ranges(void) {
         for (i = 0; i < sCache->mAddrRangesCnt - 1; i++) {
             UnitAddressRange * x = sCache->mAddrRanges + i;
             UnitAddressRange * y = x + 1;
+            ContextAddress x_end = x->mAddr + x->mSize;
             if (x->mSection == y->mSection && x->mUnit == y->mUnit &&
-                    x->mAddr == y->mAddr && x->mSize == y->mSize) {
+                    (x_end == 0 || x_end >= y->mAddr)) {
                 /* Skip duplicate entry */
+                ContextAddress y_end = y->mAddr + y->mSize;
+                y->mAddr = x->mAddr;
+                if (x_end == 0 || (y_end != 0 && x_end > y_end)) {
+                    y->mSize = x->mSize;
+                }
+                else {
+                    y->mSize = y_end - x->mAddr;
+                }
                 continue;
             }
             if (j < i) memcpy(sCache->mAddrRanges + j, x, sizeof(UnitAddressRange));
