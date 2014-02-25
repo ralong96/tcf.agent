@@ -66,6 +66,24 @@ static char * buf = NULL;
 static size_t buf_pos = 0;
 static size_t buf_size = 0;
 
+static uint8_t char_escaping[256] = {
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
 static void realloc_buf(void) {
     if (buf == NULL) {
         buf_size = 0x1000;
@@ -127,19 +145,51 @@ static int hex_digit(unsigned n) {
     return 'A' + (n - 10);
 }
 
-void json_write_char(OutputStream * out, char ch) {
+static void write_escape_seq(OutputStream * out, char ch) {
     unsigned n = ch & 0xff;
-    if (n < ' ') {
+    switch (n) {
+    case '"':
+    case '\\':
+        write_stream(out, '\\');
+        write_stream(out, n);
+        break;
+    case '\b':
+        write_stream(out, '\\');
+        write_stream(out, 'b');
+        break;
+    case '\f':
+        write_stream(out, '\\');
+        write_stream(out, 'f');
+        break;
+    case '\n':
+        write_stream(out, '\\');
+        write_stream(out, 'n');
+        break;
+    case '\r':
+        write_stream(out, '\\');
+        write_stream(out, 'r');
+        break;
+    case '\t':
+        write_stream(out, '\\');
+        write_stream(out, 't');
+        break;
+    default:
         write_stream(out, '\\');
         write_stream(out, 'u');
         write_stream(out, '0');
         write_stream(out, '0');
         write_stream(out, hex_digit(n >> 4));
         write_stream(out, hex_digit(n));
+        break;
+    }
+}
+
+void json_write_char(OutputStream * out, char ch) {
+    if (char_escaping[(unsigned char)ch]) {
+        write_escape_seq(out, ch);
     }
     else {
-        if (n == '"' || n == '\\') write_stream(out, '\\');
-        write_stream(out, n);
+        write_stream(out, ch);
     }
 }
 
@@ -150,15 +200,20 @@ void json_write_string(OutputStream * out, const char * str) {
     else {
         write_stream(out, '"');
         for (;;) {
-            unsigned char ch = (unsigned char)*str++;
-            while (ch >= ' ') {
-                if (ch == '"' || ch == '\\') write_stream(out, '\\');
-                if (out->cur < out->end) *out->cur++ = ch;
-                else out->write(out, ch);
-                ch = (unsigned char)*str++;
+            const char * ptr = str;
+            while (!char_escaping[(unsigned char)*str]) str++;
+            if (ptr < str) {
+                unsigned len = str - ptr;
+                if (out->cur + len <= out->end) {
+                    memcpy(out->cur, ptr, len);
+                    out->cur += len;
+                }
+                else {
+                    out->write_block(out, ptr, len);
+                }
             }
-            if (ch == 0) break;
-            json_write_char(out, ch);
+            if (*str == 0) break;
+            write_escape_seq(out, *str++);
         }
         write_stream(out, '"');
     }
@@ -172,14 +227,20 @@ void json_write_string_len(OutputStream * out, const char * str, size_t len) {
         const char * end = str + len;
         write_stream(out, '"');
         while (str < end) {
-            unsigned char ch = (unsigned char)*str++;
-            while (ch >= ' ' && str < end) {
-                if (ch == '"' || ch == '\\') write_stream(out, '\\');
-                if (out->cur < out->end) *out->cur++ = ch;
-                else out->write(out, ch);
-                ch = (unsigned char)*str++;
+            const char * ptr = str;
+            while (str < end && !char_escaping[(unsigned char)*str]) str++;
+            if (ptr < str) {
+                unsigned len = str - ptr;
+                if (out->cur + len <= out->end) {
+                    memcpy(out->cur, ptr, len);
+                    out->cur += len;
+                }
+                else {
+                    out->write_block(out, ptr, len);
+                }
             }
-            json_write_char(out, ch);
+            if (str == end) break;
+            write_escape_seq(out, *str++);
         }
         write_stream(out, '"');
     }
