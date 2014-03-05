@@ -52,10 +52,9 @@ static TCFBroadcastGroup * broadcast_group = NULL;
 typedef struct MemoryCommandArgs {
     char token[256];
     char ctx_id[256];
+    MemoryAccessMode mode;
     ContextAddress addr;
     unsigned long size;
-    int word_size;
-    int mode;
     JsonReadBinaryState state;
     char * buf;
     size_t pos;
@@ -301,6 +300,7 @@ static void read_memory_fill_array_cb(InputStream * inp, void * args) {
 }
 
 static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd) {
+    int mode = 0;
     static MemoryCommandArgs buf;
     memset(&buf, 0, sizeof(buf));
 
@@ -308,12 +308,15 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
     json_test_char(&c->inp, MARKER_EOA);
     buf.addr = (ContextAddress)json_read_uint64(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
-    buf.word_size = (int)json_read_long(&c->inp);
+    buf.mode.word_size = (int)json_read_long(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
     buf.size = (int)json_read_long(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
-    buf.mode = (int)json_read_long(&c->inp);
+    mode = (int)json_read_long(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
+    if (mode & 0x01) buf.mode.continue_on_error = 1;
+    if (mode & 0x02) buf.mode.verify = 1;
+    if (mode & 0x04) buf.mode.bypass_addr_check = 1;
     switch (cmd) {
     case CMD_SET:
         json_read_binary_start(&buf.state, &c->inp);
@@ -387,8 +390,11 @@ static void memory_set_cache_client(void * parm) {
     /* First write needs to be done before cache_exit() */
     if (err == 0) {
         check_all_stopped(ctx);
-        /* TODO: word size, mode */
+#if ENABLE_MemoryAccessModes
+        if (context_write_mem_ext(ctx, &args->mode, addr, args->buf, args->pos) < 0) {
+#else
         if (context_write_mem(ctx, addr, args->buf, args->pos) < 0) {
+#endif
             err = errno;
 #if ENABLE_ExtendedMemoryErrorReports
             context_get_mem_error_info(&err_info);
@@ -411,8 +417,11 @@ static void memory_set_cache_client(void * parm) {
             size_t rd = json_read_binary_data(&args->state, args->buf, args->max);
             if (rd == 0) break;
             if (err == 0) {
-                /* TODO: word size, mode */
+#if ENABLE_MemoryAccessModes
+                if (context_write_mem_ext(ctx, &args->mode, addr, args->buf, rd) < 0) {
+#else
                 if (context_write_mem(ctx, addr, args->buf, rd) < 0) {
+#endif
                     err = errno;
 #if ENABLE_ExtendedMemoryErrorReports
                     context_get_mem_error_info(&err_info);
@@ -474,8 +483,11 @@ static void memory_get_cache_client(void * parm) {
         memset(args->buf, 0, rd);
         if (err == 0) {
             check_all_stopped(ctx);
-            /* TODO: word size, mode */
+#if ENABLE_MemoryAccessModes
+            if (context_read_mem_ext(ctx, &args->mode, addr, args->buf, rd) < 0) {
+#else
             if (context_read_mem(ctx, addr, args->buf, rd) < 0) {
+#endif
                 err = errno;
 #if ENABLE_ExtendedMemoryErrorReports
                 context_get_mem_error_info(&err_info);
@@ -504,7 +516,11 @@ static void memory_get_cache_client(void * parm) {
             /* TODO: word size, mode */
             memset(args->buf, 0, rd);
             if (err == 0) {
+#if ENABLE_MemoryAccessModes
+                if (context_read_mem_ext(ctx, &args->mode, addr, args->buf, rd) < 0) {
+#else
                 if (context_read_mem(ctx, addr, args->buf, rd) < 0) {
+#endif
                     err = errno;
 #if ENABLE_ExtendedMemoryErrorReports
                     context_get_mem_error_info(&err_info);
@@ -561,8 +577,11 @@ static void memory_fill_cache_client(void * parm) {
         unsigned wr = (unsigned)(addr0 + size - addr);
         if (wr > args->pos) wr = args->pos;
         memcpy(tmp, args->buf, wr);
-        /* TODO: word size, mode */
+#if ENABLE_MemoryAccessModes
+        if (context_write_mem_ext(ctx, &args->mode, addr, tmp, wr) < 0) {
+#else
         if (context_write_mem(ctx, addr, tmp, wr) < 0) {
+#endif
             err = errno;
 #if ENABLE_ExtendedMemoryErrorReports
             context_get_mem_error_info(&err_info);

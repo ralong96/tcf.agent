@@ -376,6 +376,34 @@ extern int context_read_mem(Context * ctx, ContextAddress address, void * buf, s
 extern int context_get_mem_error_info(MemoryErrorInfo * info);
 #endif
 
+typedef struct MemoryAccessMode {
+    unsigned word_size; /* 0 means any */
+    int continue_on_error;
+    int bypass_addr_check;
+    int verify;
+} MemoryAccessMode;
+
+/* Optional memory access function that take additional argument: access mode. */
+#if ENABLE_MemoryAccessModes
+/*
+ * Write context memory.
+ * Implementation calls check_breakpoints_on_memory_write() before writing to context memory,
+ * which can change contents of the buffer.
+ * Return -1 and set errno if the context memory cannot be written.
+ * Return 0 on success.
+ */
+extern int context_write_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size);
+
+/*
+ * Read context memory.
+ * Implementation calls check_breakpoints_on_memory_read() after reading context memory.
+ * Return -1 and set errno if the context memory cannot be read.
+ * Return 0 on success.
+ */
+extern int context_read_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size);
+
+#endif
+
 /*
  * Write 'size' bytes into context register starting at offset 'offs'.
  * Return -1 and set errno if the register cannot be written.

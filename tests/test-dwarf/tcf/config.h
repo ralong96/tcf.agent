@@ -87,6 +87,7 @@
 #define ENABLE_ContextBreakpointCapabilities    0
 #define ENABLE_ExtendedMemoryErrorReports       0
 #define ENABLE_ExtendedBreakpointStatus         0
+#define ENABLE_MemoryAccessModes                0
 #define ENABLE_ExternalStackcrawl               0
 #define ENABLE_SymbolsMux                       0
 #define ENABLE_LineNumbersMux                   0

@@ -292,6 +292,10 @@
 #  define ENABLE_ExtendedMemoryErrorReports 1
 #endif
 
+#if !defined(ENABLE_MemoryAccessModes)
+#  define ENABLE_MemoryAccessModes 0
+#endif
+
 #if !defined(ENABLE_ExternalStackcrawl)
 #  define ENABLE_ExternalStackcrawl 0
 #endif
