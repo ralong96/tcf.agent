@@ -806,10 +806,16 @@ static void reg2value(int mode, Context * ctx, int frame, RegisterDefinition * d
             assert(strcmp(def->memory_context, ctx->id) == 0);
             if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
         }
-        else if (context_has_state(ctx) && !ctx->stopped) {
+        else if (!context_has_state(ctx)) {
+            if (frame != STACK_NO_FRAME) {
+                str_exception(ERR_INV_CONTEXT, "Invalid stack frame ID");
+            }
+            if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
+        }
+        else if (!ctx->stopped) {
             str_exception(ERR_IS_RUNNING, "Cannot read CPU register");
         }
-        else if (frame == STACK_TOP_FRAME) {
+        else if (frame == STACK_TOP_FRAME || frame == STACK_NO_FRAME) {
             if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
         }
         else {
