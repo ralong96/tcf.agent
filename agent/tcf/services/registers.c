@@ -63,7 +63,6 @@ static void write_boolean_member(OutputStream * out, const char * name, int val)
 
 static void write_context(OutputStream * out, char * id,
         Context * ctx, int frame, RegisterDefinition * reg_def) {
-    RegisterDefinition * parent_reg_def = NULL;
 
     assert(!ctx->exited);
 
@@ -96,10 +95,12 @@ static void write_context(OutputStream * out, char * id,
     write_stream(out, ':');
     json_write_string(out, reg_def->name);
 
-    write_stream(out, ',');
-    json_write_string(out, "Size");
-    write_stream(out, ':');
-    json_write_long(out, reg_def->size);
+    if (reg_def->size > 0) {
+        write_stream(out, ',');
+        json_write_string(out, "Size");
+        write_stream(out, ':');
+        json_write_long(out, reg_def->size);
+    }
 
     if (reg_def->dwarf_id >= 0) {
         write_stream(out, ',');
@@ -209,15 +210,18 @@ static void write_context(OutputStream * out, char * id,
         json_write_string(out, reg_def->description);
     }
 
-    parent_reg_def = reg_def->parent;
-    while (parent_reg_def != NULL && parent_reg_def->size == 0) parent_reg_def = parent_reg_def->parent;
-    if (parent_reg_def != NULL) {
-        if (reg_def->offset >= parent_reg_def->offset &&
-            reg_def->offset + reg_def->size <= parent_reg_def->offset + parent_reg_def->size) {
-            write_stream(out, ',');
-            json_write_string(out, "Offset");
-            write_stream(out, ':');
-            json_write_uint64(out, reg_def->offset - parent_reg_def->offset);
+    if (reg_def->size > 0) {
+        RegisterDefinition * parent_reg_def = NULL;
+        parent_reg_def = reg_def->parent;
+        while (parent_reg_def != NULL && parent_reg_def->size == 0) parent_reg_def = parent_reg_def->parent;
+        if (parent_reg_def != NULL) {
+            if (reg_def->offset >= parent_reg_def->offset &&
+                reg_def->offset + reg_def->size <= parent_reg_def->offset + parent_reg_def->size) {
+                write_stream(out, ',');
+                json_write_string(out, "Offset");
+                write_stream(out, ':');
+                json_write_uint64(out, reg_def->offset - parent_reg_def->offset);
+            }
         }
     }
 
