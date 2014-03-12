@@ -45,6 +45,7 @@ static ChannelRedirectionListener redirection_listeners[16];
 static int redirection_listeners_cnt = 0;
 
 static ProxyLogFilterListener proxy_log_filter_listener;
+static ProxyLogFilterListener2 proxy_log_filter_listener2;
 
 static const char * channel_lock_msg = "Proxy lock";
 
@@ -233,20 +234,32 @@ static void log_byte_func(int i) {
 
 #define log_byte(b) { if (log_mode & LOG_TCFLOG) log_byte_func(b); }
 
-static int log_start(Proxy * proxy, char ** argv, int argc) {
+static int log_start(Proxy * proxy, char ** argv, int argc, int *limit) {
     int i;
+    int res = PROXY_FILTER_NOT_FILTERED;
     log_pos = 0;
+    *limit = 0;
+
     if (log_mode & LOG_TCFLOG) {
-        if (proxy_log_filter_listener &&
-            proxy_log_filter_listener(proxy->c, proxy[proxy->other].c, argc, argv))
-            return 1;
+        if (proxy_log_filter_listener) {
+            res = proxy_log_filter_listener(proxy->c, proxy[proxy->other].c,
+                                                            argc, argv);
+            if (res)
+                return PROXY_FILTER_FILTERED;
+        } else if (proxy_log_filter_listener2) {
+            res = proxy_log_filter_listener2(proxy->c, proxy[proxy->other].c,
+                                                argc, argv,limit);
+            /* If we have PROXY_FILTER_LIMIT, we want to see --> or <-- */
+            if (res == PROXY_FILTER_FILTERED)
+                return res;
+            }
         log_str(proxy->other > 0 ? "---> " : "<--- ");
         for (i = 0; i < argc; i++) {
             log_str(argv[i]);
             log_chr(' ');
         }
     }
-    return 0;
+    return res;
 }
 
 static void log_flush(Proxy * proxy) {
@@ -258,7 +271,7 @@ static void log_flush(Proxy * proxy) {
 
 #else
 
-#define log_start(a, b, c) 0
+#define log_start(a, b, c, d) 0
 #define log_byte(a) do {} while(0)
 #define log_flush(a) do {} while(0)
 
@@ -272,6 +285,8 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
     OutputStream * out = &otherc->out;
     int i = 0;
     int filtered = 0;
+    int filter_cnt = 0;
+    int limit = 0;
 
     assert(c == proxy->c);
     assert(argc > 0 && strlen(argv[0]) == 1);
@@ -293,8 +308,7 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
 
     while (i < argc) write_stringz(out, argv[i++]);
 
-    filtered = log_start(proxy, argv, argc);
-
+    filtered = log_start(proxy, argv, argc, &limit);
     /* Copy body of message */
     do {
         if (out->supports_zero_copy &&
@@ -307,12 +321,23 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
         }
         else {
             i = read_stream(inp);
-            if (!filtered) log_byte(i);
+            if ((filtered == PROXY_FILTER_NOT_FILTERED) ||
+                (filtered == PROXY_FILTER_LIMIT && filter_cnt < limit)) {
+                log_byte(i);
+                filter_cnt++;
+                if ((filtered == PROXY_FILTER_LIMIT) &&
+                     (filter_cnt == limit)) {
+                    log_str("...");
+                    /* Don't quit the loop, we need to write the
+                     *  entire message */
+                }
+            }
             write_stream(out, i);
         }
     }
     while (i != MARKER_EOM && i != MARKER_EOS);
-    if (!filtered) log_flush(proxy);
+    if ((filtered==PROXY_FILTER_NOT_FILTERED) ||
+        (filtered==PROXY_FILTER_LIMIT)) log_flush(proxy);
 }
 
 static void proxy_update(Channel * c1, Channel * c2) {
@@ -433,5 +458,11 @@ void add_channel_redirection_listener(ChannelRedirectionListener listener) {
 ProxyLogFilterListener set_proxy_log_filter_listener(ProxyLogFilterListener listener) {
     ProxyLogFilterListener old = proxy_log_filter_listener;
     proxy_log_filter_listener = listener;
+    return old;
+}
+
+ProxyLogFilterListener2 set_proxy_log_filter_listener2(ProxyLogFilterListener2 listener) {
+    ProxyLogFilterListener2 old = proxy_log_filter_listener2;
+    proxy_log_filter_listener2 = listener;
     return old;
 }
