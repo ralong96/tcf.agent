@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Stanislav Yakovlev.
+ * Copyright (c) 2014 Stanislav Yakovlev.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -13,21 +13,31 @@
  *     Stanislav Yakovlev - initial API and implementation
  *******************************************************************************/
 
-/*
- * This module provides CPU specific definitions for PowerPC.
- */
+#include <stdio.h>
+#include <tcf/config.h>
+#include <machine/powerpc/tcf/disassembler-powerpc.h>
 
-#if defined(__powerpc__)
+static char buf[128];
 
-#include <tcf/regset.h>
+DisassemblyResult * disassemble_powerpc(uint8_t * code,
+        ContextAddress addr, ContextAddress size, DisassemblerParams * params) {
+    static DisassemblyResult dr;
+    uint32_t instr;
 
-extern RegisterDefinition * regs_index;
-extern unsigned char BREAK_INST[4];
+    if (size < 4) return NULL;
+    memset(&dr, 0, sizeof(dr));
+    dr.size = 4;
 
-#define ENABLE_ini_cpudefs_mdep 1
-extern void ini_cpudefs_mdep(void);
+    instr = code[0];
+    instr <<= 8;
+    instr |= code[1];
+    instr <<= 8;
+    instr |= code[2];
+    instr <<= 8;
+    instr |= code[3];
 
-#define ENABLE_add_cpudefs_disassembler 1
-extern void add_cpudefs_disassembler(Context * cpu_ctx);
+    snprintf(buf, sizeof(buf), ".word 0x%08x", instr);
 
-#endif
+    dr.text = buf;
+    return &dr;
+}

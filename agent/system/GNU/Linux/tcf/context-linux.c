@@ -1037,6 +1037,8 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     isa->def = "X86_64";
 #elif defined(__arm__)
     isa->def = "ARM";
+#elif defined(__powerpc__)
+    isa->def = "PowerPC";
 #else
     isa->def = NULL;
 #endif

@@ -28,6 +28,7 @@
 #include <tcf/framework/trace.h>
 #include <tcf/services/symbols.h>
 #include <tcf/cpudefs-mdep.h>
+#include <machine/powerpc/tcf/disassembler-powerpc.h>
 
 #define REG_OFFSET(name) offsetof(REG_SET, name)
 
@@ -129,6 +130,10 @@ RegisterDefinition * get_PC_definition(Context * ctx) {
 
 int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
     return -1;
+}
+
+void add_cpudefs_disassembler(Context * cpu_ctx) {
+    add_disassembler(cpu_ctx, "PowerPC", disassemble_powerpc);
 }
 
 void ini_cpudefs_mdep(void) {
