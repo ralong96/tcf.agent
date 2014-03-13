@@ -110,6 +110,18 @@ static void add_logical_immediate(const char * mnemonic, uint8_t rX, uint8_t rA,
     add_hex_uint16(immediate);
 }
 
+static void add_store_access_immediate(const char * mnemonic, uint8_t rX, uint8_t rA, uint16_t immediate) {
+    /* mnemonic rX, D(rA) */
+    add_str(mnemonic);
+    add_str(" r");
+    add_dec_uint8(rX);
+    add_str(", ");
+    add_dec_int16(immediate);
+    add_str("(r");
+    add_dec_uint8(rA);
+    add_str(")");
+}
+
 static void disassemble_opcode(uint32_t instr) {
     uint8_t opcode = (instr & 0xfc000000) >> 26; /* bits 0-5 */
     /* D-Form */
@@ -181,7 +193,141 @@ static void disassemble_opcode(uint32_t instr) {
         case 29:
             add_logical_immediate("andis.", rX, rA, immediate);
             break;
-        /* 30 - 63 */ 
+        /* 30 - 31 */ 
+        case 32:
+            add_store_access_immediate("lwz", rX, rA, immediate);
+            break;
+        case 33:
+            if (rA != 0 && rA != rX) {
+                add_store_access_immediate("lwzu", rX, rA, immediate);
+            }
+            break;
+        case 34:
+            add_store_access_immediate("lbz", rX, rA, immediate);
+            break;
+        case 35:
+            if (rA != 0 && rA != rX) {
+                add_store_access_immediate("lbzu", rX, rA, immediate);
+            }
+            break;
+        case 36:
+            add_store_access_immediate("stw", rX, rA, immediate);
+            break;
+        case 37:
+            if (rA != 0) {
+                add_store_access_immediate("stwu", rX, rA, immediate);
+            }
+            break;
+        case 38:
+            add_store_access_immediate("stb", rX, rA, immediate);
+            break;
+        case 39:
+            if (rA != 0) {
+                add_store_access_immediate("stbu", rX, rA, immediate);
+            }
+            break;
+        case 40:
+            add_store_access_immediate("lhz", rX, rA, immediate);
+            break;
+        case 41:
+            if (rA != 0 && rA != rX) {
+                add_store_access_immediate("lhzu", rX, rA, immediate);
+            }
+            break;
+        case 42:
+            add_store_access_immediate("lha", rX, rA, immediate);
+            break;
+        case 43:
+            if (rA != 0 && rA != rX) {
+                add_store_access_immediate("lhau", rX, rA, immediate);
+            }
+            break;
+        case 44:
+            add_store_access_immediate("sth", rX, rA, immediate);
+            break;
+        case 45:
+            if (rA != 0) {
+                add_store_access_immediate("sthu", rX, rA, immediate);
+            }
+            break;
+        case 46:
+            if (rA < rX) {
+                add_store_access_immediate("lmw", rX, rA, immediate);
+            }
+            break;
+        case 47:
+            add_store_access_immediate("stmw", rX, rA, immediate);
+            break;
+        case 48:
+            add_store_access_immediate("lfs", rX, rA, immediate);
+            break;
+        case 49:
+            if (rA != 0) {
+                add_store_access_immediate("lfsu", rX, rA, immediate);
+            }
+            break;
+        case 50:
+            add_store_access_immediate("lfd", rX, rA, immediate);
+            break;
+        case 51:
+            if (rA != 0) {
+                add_store_access_immediate("lfdu", rX, rA, immediate);
+            }
+            break;
+        case 52:
+            add_store_access_immediate("stfs", rX, rA, immediate);
+            break;
+        case 53:
+            if (rA != 0) {
+                add_store_access_immediate("stfsu", rX, rA, immediate);
+            }
+            break;
+        case 54:
+            add_store_access_immediate("stfd", rX, rA, immediate);
+            break;
+        case 55:
+            if (rA != 0) {
+                add_store_access_immediate("stfdu", rX, rA, immediate);
+            }
+            break;
+        /* 56 */ 
+        /* 57 */ 
+        case 58:
+            {
+                const char * mnemonic[] = {
+                    "ld", "ldu", "lwa"
+                };
+                uint8_t ds_type = immediate & 0x3;
+                uint16_t ds_imm = immediate & ~0x3;
+
+                if (ds_type == 1 && (rA == 0 || rA == rX)) {
+                    break;
+                }
+                if (ds_type < 3) {
+                    add_store_access_immediate(mnemonic[ds_type], rX, rA, ds_imm);
+                }
+                break;
+            }
+        /* 59 - 59 */ 
+        /* 60 */ 
+        /* 61 */ 
+        case 62:
+            {
+                const char * mnemonic[] = {
+                    "std", "stdu"
+                };
+                uint8_t ds_type = immediate & 0x3;
+                uint16_t ds_imm = immediate & ~0x3;
+
+                if (ds_type == 1 && rA == 0) {
+                    break;
+                }
+                if (ds_type < 2) {
+                    add_store_access_immediate(mnemonic[ds_type], rX, rA, ds_imm);
+                }
+                break;
+            }
+        /* 63 - 63 */ 
     }
 }
 
