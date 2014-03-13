@@ -62,6 +62,17 @@ static void add_trap_immediate(const char * mnemonic, uint8_t rX, uint8_t rA, ui
     add_dec_int16((int16_t)immediate);
 }
 
+static void add_arithmetic_immediate(const char * mnemonic, uint8_t rX, uint8_t rA, uint16_t immediate) {
+    /* mnemonic rX, rA, SI */
+    add_str(mnemonic);
+    add_str(" r");
+    add_dec_uint8(rX);
+    add_str(", r");
+    add_dec_uint8(rA);
+    add_str(", ");
+    add_dec_int16((int16_t)immediate);
+}
+
 static void disassemble_opcode(uint32_t instr) {
     uint8_t opcode = (instr & 0xfc000000) >> 26; /* bits 0-5 */
     /* D-Form */
@@ -78,7 +89,30 @@ static void disassemble_opcode(uint32_t instr) {
         case 3:
             add_trap_immediate("twi", rX, rA, immediate);
             break;
-        /* 4 - 63 */ 
+        /* 4 */ 
+        /* 5 */ 
+        /* 6 */ 
+        case 7:
+            add_arithmetic_immediate("mulli", rX, rA, immediate);
+            break;
+        case 8:
+            add_arithmetic_immediate("subfic", rX, rA, immediate);
+            break;
+        /* 9 */ 
+        /* 10 - 11 */ 
+        case 12:
+            add_arithmetic_immediate("addic", rX, rA, immediate);
+            break;
+        case 13:
+            add_arithmetic_immediate("addic.", rX, rA, immediate);
+            break;
+        case 14:
+            add_arithmetic_immediate("addi", rX, rA, immediate);
+            break;
+        case 15:
+            add_arithmetic_immediate("addis", rX, rA, immediate);
+            break;
+        /* 16 - 63 */ 
     }
 }
 
