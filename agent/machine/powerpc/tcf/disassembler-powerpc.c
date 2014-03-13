@@ -51,6 +51,37 @@ static void add_hex_uint16(uint16_t n) {
     add_str(buf);
 }
 
+static void add_trap_immediate(const char * mnemonic, uint8_t rX, uint8_t rA, uint16_t immediate) {
+    /* mnemonic TO, rA, SI */
+    add_str(mnemonic);
+    add_str(" ");
+    add_dec_uint8(rX);
+    add_str(", r");
+    add_dec_uint8(rA);
+    add_str(", ");
+    add_dec_int16((int16_t)immediate);
+}
+
+static void disassemble_opcode(uint32_t instr) {
+    uint8_t opcode = (instr & 0xfc000000) >> 26; /* bits 0-5 */
+    /* D-Form */
+    uint8_t rX =     (instr & 0x03e00000) >> 21; /* bits 6-10  */
+    uint8_t rA =     (instr & 0x001f0000) >> 16; /* bits 11-15 */
+    uint16_t immediate =  instr & 0xffff;        /* bits 16-31 */
+
+    switch (opcode) {
+        /* 0 */ 
+        /* 1 */ 
+        case 2:
+            add_trap_immediate("tdi", rX, rA, immediate);
+            break;
+        case 3:
+            add_trap_immediate("twi", rX, rA, immediate);
+            break;
+        /* 4 - 63 */ 
+    }
+}
+
 DisassemblyResult * disassemble_powerpc(uint8_t * code,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params) {
     static DisassemblyResult dr;
@@ -69,7 +100,14 @@ DisassemblyResult * disassemble_powerpc(uint8_t * code,
     instr <<= 8;
     instr |= code[3];
 
-    snprintf(buf, sizeof(buf), ".word 0x%08x", instr);
+    disassemble_opcode(instr);
+
+    if (buf_pos == 0) {
+        snprintf(buf, sizeof(buf), ".word 0x%08x", instr);
+    }
+    else {
+        buf[buf_pos] = 0;
+    }
 
     dr.text = buf;
     return &dr;
