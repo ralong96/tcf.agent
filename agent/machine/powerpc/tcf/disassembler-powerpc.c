@@ -73,12 +73,42 @@ static void add_arithmetic_immediate(const char * mnemonic, uint8_t rX, uint8_t 
     add_dec_int16((int16_t)immediate);
 }
 
+static void add_compare_logical_immediate(const char * mnemonic, uint8_t bf, uint8_t l, uint8_t rA, uint16_t immediate) {
+    /* mnemonic BF, L, rA, UI */
+    add_str(mnemonic);
+    add_str(" cr");
+    add_dec_uint8(bf);
+    add_str(", ");
+    add_dec_uint8(l);
+    add_str(", r");
+    add_dec_uint8(rA);
+    add_str(", ");
+    add_hex_uint16(immediate);
+}
+
+static void add_compare_immediate(const char * mnemonic, uint8_t bf, uint8_t l, uint8_t rA, uint16_t immediate) {
+    /* mnemonic BF, L, rA, SI */
+    add_str(mnemonic);
+    add_str(" cr");
+    add_dec_uint8(bf);
+    add_str(", ");
+    add_dec_uint8(l);
+    add_str(", r");
+    add_dec_uint8(rA);
+    add_str(", ");
+    add_dec_int16((int16_t)immediate);
+}
+
 static void disassemble_opcode(uint32_t instr) {
     uint8_t opcode = (instr & 0xfc000000) >> 26; /* bits 0-5 */
     /* D-Form */
     uint8_t rX =     (instr & 0x03e00000) >> 21; /* bits 6-10  */
     uint8_t rA =     (instr & 0x001f0000) >> 16; /* bits 11-15 */
     uint16_t immediate =  instr & 0xffff;        /* bits 16-31 */
+    /* Compare and compare logical D-Form */
+    uint8_t bf = rX >> 2;
+    uint8_t zero = rX & 0x2;
+    uint8_t l = rX & 0x1;
 
     switch (opcode) {
         /* 0 */ 
@@ -99,7 +129,16 @@ static void disassemble_opcode(uint32_t instr) {
             add_arithmetic_immediate("subfic", rX, rA, immediate);
             break;
         /* 9 */ 
-        /* 10 - 11 */ 
+        case 10:
+            if (zero == 0) {
+                add_compare_logical_immediate("cmpli", bf, l, rA, immediate);
+            }
+            break;
+        case 11:
+            if (zero == 0) {
+                add_compare_immediate("cmpi", bf, l, rA, immediate);
+            }
+            break;
         case 12:
             add_arithmetic_immediate("addic", rX, rA, immediate);
             break;
