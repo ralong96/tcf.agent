@@ -99,6 +99,17 @@ static void add_compare_immediate(const char * mnemonic, uint8_t bf, uint8_t l, 
     add_dec_int16((int16_t)immediate);
 }
 
+static void add_logical_immediate(const char * mnemonic, uint8_t rX, uint8_t rA, uint16_t immediate) {
+    /* mnemonic rA, rX, UI */
+    add_str(mnemonic);
+    add_str(" r");
+    add_dec_uint8(rA);
+    add_str(", r");
+    add_dec_uint8(rX);
+    add_str(", ");
+    add_hex_uint16(immediate);
+}
+
 static void disassemble_opcode(uint32_t instr) {
     uint8_t opcode = (instr & 0xfc000000) >> 26; /* bits 0-5 */
     /* D-Form */
@@ -151,7 +162,26 @@ static void disassemble_opcode(uint32_t instr) {
         case 15:
             add_arithmetic_immediate("addis", rX, rA, immediate);
             break;
-        /* 16 - 63 */ 
+        /* 16 - 23 */ 
+        case 24:
+            add_logical_immediate("ori", rX, rA, immediate);
+            break;
+        case 25:
+            add_logical_immediate("oris", rX, rA, immediate);
+            break;
+        case 26:
+            add_logical_immediate("xori", rX, rA, immediate);
+            break;
+        case 27:
+            add_logical_immediate("xoris", rX, rA, immediate);
+            break;
+        case 28:
+            add_logical_immediate("andi.", rX, rA, immediate);
+            break;
+        case 29:
+            add_logical_immediate("andis.", rX, rA, immediate);
+            break;
+        /* 30 - 63 */ 
     }
 }
 
