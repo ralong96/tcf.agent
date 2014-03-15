@@ -489,7 +489,7 @@ struct ELF_Section {
     void * mmap_addr;
     size_t mmap_size;
 
-    int relocate;
+    ELF_Section * relocate;
 
     unsigned sym_count;
 

@@ -929,7 +929,7 @@ int elf_load(ELF_Section * s) {
     if (s->data != NULL) return 0;
     if (s->size == 0) return 0;
 
-    s->relocate = 0;
+    s->relocate = NULL;
     if (s->type != SHT_REL && s->type != SHT_RELA) {
         unsigned i;
         for (i = 1; i < s->file->section_cnt; i++) {
@@ -937,7 +937,7 @@ int elf_load(ELF_Section * s) {
             if (r->entsize == 0 || r->size == 0) continue;
             if (r->type != SHT_REL && r->type != SHT_RELA) continue;
             if (r->info == s->index) {
-                s->relocate = 1;
+                s->relocate = r;
                 break;
             }
         }

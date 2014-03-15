@@ -151,121 +151,114 @@ static void relocate(void * r) {
 
 void drl_relocate_in_context(Context * c, ELF_Section * s, U8_T offset,
                              void * buf, size_t size, ELF_Section ** dst, int * rt_addr) {
-    unsigned i;
+    ELF_Section * r = s->relocate;
     ELF_Section * d = NULL;
+    uint8_t * p;
+    uint8_t * q;
+    unsigned ix;
 
     if (rt_addr) *rt_addr = 0;
     if (dst == NULL) dst = &d;
     else *dst = NULL;
-    if (!s->relocate) return;
+    if (r == NULL) return;
 
     ctx = c;
     section = s;
+    relocs = r;
     destination_section = dst;
     reloc_offset = offset;
     data_buf = buf;
     data_size = size;
     run_time_addr = rt_addr;
-    for (i = 1; i < s->file->section_cnt; i++) {
-        ELF_Section * r = s->file->sections + i;
-        if (r->size == 0) continue;
-        if (r->type != SHT_REL && r->type != SHT_RELA) continue;
-        if (r->info == s->index) {
-            uint8_t * p;
-            uint8_t * q;
-            unsigned ix;
-            relocs = r;
-            symbols = s->file->sections + r->link;
-            if (elf_load(relocs) < 0) exception(errno);
-            if (elf_load(symbols) < 0) exception(errno);
-            if (r->entsize == 0 || r->size % r->entsize != 0) str_exception(ERR_INV_FORMAT, "Invalid sh_entsize");
+    symbols = s->file->sections + r->link;
+    if (elf_load(relocs) < 0) exception(errno);
+    if (elf_load(symbols) < 0) exception(errno);
+    if (r->entsize == 0 || r->size % r->entsize != 0) str_exception(ERR_INV_FORMAT, "Invalid sh_entsize");
 
-            if (r->reloc_num_zones == 0) {
-                U8_T prev_offs = 0;
-                unsigned max_bondaries = 2; /* default is two bondaries ... */
-                r->reloc_num_zones = 1; /* ... for one zone */
-                r->reloc_zones_bondaries = (unsigned *)loc_alloc_zero(sizeof (unsigned) * max_bondaries);
-                r->reloc_zones_bondaries[0] = 0;  /* first zone starting index */
-                for (ix = 0; ix < r->size / r->entsize; ix++) {
-                    U8_T offs;
-                    uint8_t * x = (uint8_t *)r->data + ix * r->entsize;
-                    if (r->file->elf64) {
-                        offs = *(U8_T *)x;
-                        if (r->file->byte_swap) SWAP(offs);
-                    }
-                    else {
-                        U4_T offs4 = *(U4_T *)x;
-                        if (r->file->byte_swap) SWAP(offs4);
-                        offs = offs4;
-                    }
-                    if (offs < prev_offs) {
-                        /*
-                         * Relocation offsets are not ordered. Store the start
-                         * index of the new zone.
-                         */
-                        if ((r->reloc_num_zones + 1) == max_bondaries) {
-                            max_bondaries += 5;
-                            r->reloc_zones_bondaries =
-                                (unsigned *)loc_realloc(r->reloc_zones_bondaries,
-                                sizeof (unsigned) * max_bondaries);
-                        }
-                        r->reloc_zones_bondaries[r->reloc_num_zones++] = ix;
-                    }
-                    prev_offs = offs;
-                }
-                /* Store the last zone boundary index */
-                r->reloc_zones_bondaries[r->reloc_num_zones] = ix;
-                if (r->reloc_num_zones > 1) {
-                    trace(LOG_ELF, "ELF relocations are not ordered; the performances "\
-                                   "may be degraded.");
-                }
+    if (r->reloc_num_zones == 0) {
+        U8_T prev_offs = 0;
+        unsigned max_bondaries = 2; /* default is two bondaries ... */
+        r->reloc_num_zones = 1; /* ... for one zone */
+        r->reloc_zones_bondaries = (unsigned *)loc_alloc_zero(sizeof (unsigned) * max_bondaries);
+        r->reloc_zones_bondaries[0] = 0;  /* first zone starting index */
+        for (ix = 0; ix < r->size / r->entsize; ix++) {
+            U8_T offs;
+            uint8_t * x = (uint8_t *)r->data + ix * r->entsize;
+            if (r->file->elf64) {
+                offs = *(U8_T *)x;
+                if (r->file->byte_swap) SWAP(offs);
+            }
+            else {
+                U4_T offs4 = *(U4_T *)x;
+                if (r->file->byte_swap) SWAP(offs4);
+                offs = offs4;
+            }
+            if (offs < prev_offs) {
                 /*
-                 * As we parsed the relocation section, it would be possible to
-                 * localize the searched offset at the same time, to optimize the
-                 * first lookup. But I don't know if it worth it, compare to some
-                 * code duplication with the rest of the routine below.
+                 * Relocation offsets are not ordered. Store the start
+                 * index of the new zone.
                  */
+                if ((r->reloc_num_zones + 1) == max_bondaries) {
+                    max_bondaries += 5;
+                    r->reloc_zones_bondaries =
+                        (unsigned *)loc_realloc(r->reloc_zones_bondaries,
+                        sizeof (unsigned) * max_bondaries);
+                }
+                r->reloc_zones_bondaries[r->reloc_num_zones++] = ix;
             }
+            prev_offs = offs;
+        }
+        /* Store the last zone boundary index */
+        r->reloc_zones_bondaries[r->reloc_num_zones] = ix;
+        if (r->reloc_num_zones > 1) {
+            trace(LOG_ELF, "ELF relocations are not ordered; the performances "\
+                           "may be degraded.");
+        }
+        /*
+         * As we parsed the relocation section, it would be possible to
+         * localize the searched offset at the same time, to optimize the
+         * first lookup. But I don't know if it worth it, compare to some
+         * code duplication with the rest of the routine below.
+         */
+    }
 
-            /* Perform a dichotomic look up for each ordered area */
+    /* Perform a dichotomic look up for each ordered area */
 
-            for (ix = 0; ix < r->reloc_num_zones; ix++) {
-                p = (uint8_t *)r->data + r->reloc_zones_bondaries[ix] * r->entsize;
-                q = (uint8_t *)r->data + r->reloc_zones_bondaries[ix + 1] * r->entsize;
-                while (p < q) {
-                    unsigned n = (q - p) / r->entsize / 2;
-                    uint8_t * x = p + n * r->entsize;
-                    assert(x < q);
-                    if (r->file->elf64) {
-                        U8_T offs = *(U8_T *)x;
-                        if (r->file->byte_swap) SWAP(offs);
-                        if (s->file->type != ET_REL) offs -= s->addr;
-                        if (offset > offs) {
-                            p = x + r->entsize;
-                            continue;
-                        }
-                        if (offset < offs) {
-                            q = x;
-                            continue;
-                        }
-                    }
-                    else {
-                        U4_T offs = *(U4_T *)x;
-                        if (r->file->byte_swap) SWAP(offs);
-                        if (s->file->type != ET_REL) offs -= (U4_T)s->addr;
-                        if (offset > offs) {
-                            p = x + r->entsize;
-                            continue;
-                        }
-                        if (offset < offs) {
-                            q = x;
-                            continue;
-                        }
-                    }
-                    relocate(x);
-                    return;
+    for (ix = 0; ix < r->reloc_num_zones; ix++) {
+        p = (uint8_t *)r->data + r->reloc_zones_bondaries[ix] * r->entsize;
+        q = (uint8_t *)r->data + r->reloc_zones_bondaries[ix + 1] * r->entsize;
+        while (p < q) {
+            unsigned n = (q - p) / r->entsize / 2;
+            uint8_t * x = p + n * r->entsize;
+            assert(x < q);
+            if (r->file->elf64) {
+                U8_T offs = *(U8_T *)x;
+                if (r->file->byte_swap) SWAP(offs);
+                if (s->file->type != ET_REL) offs -= s->addr;
+                if (offset > offs) {
+                    p = x + r->entsize;
+                    continue;
+                }
+                if (offset < offs) {
+                    q = x;
+                    continue;
                 }
             }
+            else {
+                U4_T offs = *(U4_T *)x;
+                if (r->file->byte_swap) SWAP(offs);
+                if (s->file->type != ET_REL) offs -= (U4_T)s->addr;
+                if (offset > offs) {
+                    p = x + r->entsize;
+                    continue;
+                }
+                if (offset < offs) {
+                    q = x;
+                    continue;
+                }
+            }
+            relocate(x);
+            return;
         }
     }
 }
