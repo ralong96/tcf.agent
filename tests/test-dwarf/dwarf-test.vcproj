@@ -738,6 +738,42 @@
 				>
 			</File>
 		</Filter>
+		<Filter
+			Name="machine"
+			>
+			<Filter
+				Name="arm"
+				>
+				<File
+					RelativePath="..\..\agent\machine\arm\tcf\dwarfreloc-mdep.h"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="i386"
+				>
+				<File
+					RelativePath="..\..\agent\machine\i386\tcf\dwarfreloc-mdep.h"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="x86_64"
+				>
+				<File
+					RelativePath="..\..\agent\machine\x86_64\tcf\dwarfreloc-mdep.h"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="powerpc"
+				>
+				<File
+					RelativePath="..\..\agent\machine\powerpc\tcf\dwarfreloc-mdep.h"
+					>
+				</File>
+			</Filter>
+		</Filter>
 		<File
 			RelativePath=".\tcf\config.h"
 			>
