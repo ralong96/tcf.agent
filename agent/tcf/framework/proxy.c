@@ -325,12 +325,14 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
                 (filtered == PROXY_FILTER_LIMIT && filter_cnt < limit)) {
                 log_byte(i);
                 filter_cnt++;
+#if ENABLE_Trace
                 if ((filtered == PROXY_FILTER_LIMIT) &&
                      (filter_cnt == limit)) {
                     log_str("...");
                     /* Don't quit the loop, we need to write the
                      *  entire message */
                 }
+#endif
             }
             write_stream(out, i);
         }
