@@ -1034,11 +1034,21 @@ static void test_public_names(void) {
     while (n < cache->mPubNames.mCnt) {
         ObjectInfo * obj = cache->mPubNames.mNext[n++].mObject;
         if (obj != NULL) {
-            Symbol * sym = NULL;
-            if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, obj->mName, &sym) < 0) {
+            Symbol * sym1 = NULL;
+            Symbol * sym2 = NULL;
+            if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, obj->mName, &sym1) < 0) {
                 error("find_symbol_by_name");
             }
-            loc_var_func(NULL, sym);
+            if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, obj->mName, &sym2) < 0) {
+                error("find_symbol_by_name");
+            }
+            if (symcmp(sym1, sym2) != 0) {
+                /* Something else with same name found in the top frame.
+                 * Cannot call loc_var_func() - it will fail. */
+            }
+            else {
+                loc_var_func(NULL, sym1);
+            }
         }
         if ((n % 1000) == 0) tmp_gc();
     }
