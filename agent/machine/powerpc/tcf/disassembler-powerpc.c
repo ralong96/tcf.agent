@@ -134,24 +134,24 @@ static void disassemble_opcode(uint32_t instr) {
     uint8_t l = rX & 0x1;
 
     switch (opcode) {
-        /* 0 */ 
-        /* 1 */ 
+        /* 0 */
+        /* 1 */
         case 2:
             add_trap_immediate("tdi", rX, rA, immediate);
             break;
         case 3:
             add_trap_immediate("twi", rX, rA, immediate);
             break;
-        /* 4 */ 
-        /* 5 */ 
-        /* 6 */ 
+        /* 4 */
+        /* 5 */
+        /* 6 */
         case 7:
             add_arithmetic_immediate("mulli", rX, rA, immediate);
             break;
         case 8:
             add_arithmetic_immediate("subfic", rX, rA, immediate);
             break;
-        /* 9 */ 
+        /* 9 */
         case 10:
             if (zero == 0) {
                 add_compare_logical_immediate("cmpli", bf, l, rA, immediate);
@@ -174,7 +174,7 @@ static void disassemble_opcode(uint32_t instr) {
         case 15:
             add_arithmetic_immediate("addis", rX, rA, immediate);
             break;
-        /* 16 - 23 */ 
+        /* 16 - 23 */
         case 24:
             add_logical_immediate("ori", rX, rA, immediate);
             break;
@@ -193,7 +193,7 @@ static void disassemble_opcode(uint32_t instr) {
         case 29:
             add_logical_immediate("andis.", rX, rA, immediate);
             break;
-        /* 30 - 31 */ 
+        /* 30 - 31 */
         case 32:
             add_store_access_immediate("lwz", rX, rA, immediate);
             break;
@@ -290,8 +290,8 @@ static void disassemble_opcode(uint32_t instr) {
                 add_store_access_immediate("stfdu", rX, rA, immediate);
             }
             break;
-        /* 56 */ 
-        /* 57 */ 
+        /* 56 */
+        /* 57 */
         case 58:
             {
                 const char * mnemonic[] = {
@@ -308,9 +308,9 @@ static void disassemble_opcode(uint32_t instr) {
                 }
                 break;
             }
-        /* 59 - 59 */ 
-        /* 60 */ 
-        /* 61 */ 
+        /* 59 - 59 */
+        /* 60 */
+        /* 61 */
         case 62:
             {
                 const char * mnemonic[] = {
@@ -327,7 +327,7 @@ static void disassemble_opcode(uint32_t instr) {
                 }
                 break;
             }
-        /* 63 - 63 */ 
+        /* 63 - 63 */
     }
 }
 
