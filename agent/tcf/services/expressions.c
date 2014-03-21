@@ -3652,14 +3652,19 @@ static void command_create_cache_client(void * x) {
     int err = 0;
 
     memset(e = &buf, 0, sizeof(buf));
-    do snprintf(e->id, sizeof(e->id), "EXPR%d", expr_id_cnt++);
-    while (find_expression(e->id) != NULL);
-    strlcpy(e->parent, args->id, sizeof(e->parent));
-    strlcpy(e->language, args->language, sizeof(e->language));
-    e->channel = c;
-    e->script = args->script;
-    e->use_state = args->use_state;
-    e->addr = args->addr;
+
+    if (is_channel_closed(c)) err = ERR_CHANNEL_CLOSED;
+
+    if (!err) {
+        do snprintf(e->id, sizeof(e->id), "EXPR%d", expr_id_cnt++);
+        while (find_expression(e->id) != NULL);
+        strlcpy(e->parent, args->id, sizeof(e->parent));
+        strlcpy(e->language, args->language, sizeof(e->language));
+        e->channel = c;
+        e->script = args->script;
+        e->use_state = args->use_state;
+        e->addr = args->addr;
+    }
 
     if (!err) {
         Value value;
