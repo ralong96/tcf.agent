@@ -2045,22 +2045,31 @@ static void run_safe_events(void * arg) {
         if (stop_all_timer_cnt >= STOP_ALL_MAX_CNT) {
             trace(LOG_ALWAYS, "can't stop %s: timeout", ctx->id);
             ext->cannot_stop = 1;
+            continue;
         }
-        else {
 #if ENABLE_Trace
-            if (stop_all_timer_cnt == STOP_ALL_MAX_CNT / 2) {
-                const char * msg = ext->safe_single_step ? "finish single step" : "stop";
-                trace(LOG_ALWAYS, "warning: waiting too long for context %s to %s", ctx->id, msg);
-            }
+        if (stop_all_timer_cnt == STOP_ALL_MAX_CNT / 2) {
+            const char * msg = ext->safe_single_step ? "finish single step" : "stop";
+            trace(LOG_ALWAYS, "warning: waiting too long for context %s to %s", ctx->id, msg);
+        }
 #endif
-            if (!ext->safe_single_step || stop_all_timer_cnt >= STOP_ALL_MAX_CNT / 2) {
-                if (context_stop(ctx) < 0) {
-                    trace(LOG_ALWAYS, "can't stop %s: %s", ctx->id, errno_to_str(errno));
-                }
-                assert(!ctx->stopped);
+        if (!ext->safe_single_step || stop_all_timer_cnt >= STOP_ALL_MAX_CNT / 2) {
+            if (context_stop(ctx) < 0) {
+                trace(LOG_ALWAYS, "can't stop %s: %s", ctx->id, errno_to_str(errno));
+                ext->cannot_stop = 1;
+                continue;
             }
-            ext->pending_safe_event = 1;
-            safe_event_pid_count++;
+            assert(!ctx->stopped);
+        }
+        ext->pending_safe_event = 1;
+        safe_event_pid_count++;
+    }
+
+    if (safe_event_pid_count == 0) {
+        stop_all_timer_cnt = 0;
+        if (stop_all_timer_posted) {
+            cancel_event(stop_all_timer, NULL, 0);
+            stop_all_timer_posted = 0;
         }
     }
 
