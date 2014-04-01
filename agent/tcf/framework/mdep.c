@@ -1637,16 +1637,91 @@ double str_to_double(const char * buf, char ** end) {
 }
 
 const char * double_to_str(double n) {
-    /* TODO: better implementation of double_to_str() */
-    static char buf[256];
-#ifdef LC_NUMERIC
-    char * saved_locale = setlocale(LC_NUMERIC, "C");
-#endif
-    snprintf(buf, sizeof(buf), "%.18g", n);
-#ifdef LC_NUMERIC
-    setlocale(LC_NUMERIC, saved_locale);
-#endif
-    return buf;
+    char buf[128];
+    uint64_t fraction = 0;
+    int exponent2 = 0;
+    int exponent10 = 0;
+    int neg = 0;
+    int i;
+
+    assert(sizeof(n) == sizeof(fraction));
+    memcpy(&fraction, &n, sizeof(fraction));
+
+    neg = (fraction & ((uint64_t)1 << 63)) != 0;
+    fraction &= ((uint64_t)1 << 63) - 1;
+
+    exponent2 = (int)(fraction >> 52);
+    fraction &= ((uint64_t)1 << 52) - 1;
+
+    if (exponent2 == 0x7ff) {
+        if (fraction != 0) return neg ? "-NaN" : "+NaN";
+        return neg ? "-Infinity" : "+Infinity";
+    }
+
+    if (exponent2 == 0) exponent2 = 1;
+    else fraction |= ((uint64_t)1 << 52);
+
+    if (fraction == 0) return neg ? "-0." : "0";
+
+    exponent2 -= 1023 + 52;
+    while (exponent2 != 0) {
+        /* fraction * 2**exponent2 * 10**exponent10 == abs(n) */
+        if (exponent2 < 0) {
+            if ((fraction & 1) == 0) {
+                fraction = fraction >> 1;
+            }
+            else if (fraction > ((uint64_t)1 << 60)) {
+                fraction = (fraction + 1) >> 1;
+            }
+            else {
+                fraction = fraction * 5;
+                exponent10--;
+            }
+            exponent2++;
+        }
+        else {
+            if (fraction < ((uint64_t)1 << 63)) {
+                fraction = fraction << 1;
+                exponent2--;
+            }
+            else {
+                fraction = (fraction + 5) / 10;
+                exponent10++;
+            }
+        }
+    }
+
+    while (fraction > ((uint64_t)1 << 53)) {
+        fraction = (fraction + 5) / 10;
+        exponent10++;
+    }
+
+    while (fraction % 10 == 0) {
+        fraction /= 10;
+        exponent10++;
+    }
+
+    i = sizeof(buf);
+    buf[--i] = 0;
+    if (exponent10 != 0) {
+        int eneg = exponent10 < 0;
+        if (eneg) exponent10 = -exponent10;
+        do {
+            buf[--i] = '0' + (exponent10 % 10);
+            exponent10 /= 10;
+        }
+        while (exponent10 != 0);
+        if (eneg) buf[--i] = '-';
+        buf[--i] = 'E';
+    }
+    do {
+        buf[--i] = '0' + (int)(fraction % 10);
+        fraction /= 10;
+    }
+    while (fraction != 0);
+
+    if (neg) buf[--i] = '-';
+    return tmp_strdup(buf + i);
 }
 
 #if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__) && !defined(__VXWORKS__)
