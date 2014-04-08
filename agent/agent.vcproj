@@ -75,7 +75,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="WS2_32.lib Iphlpapi.lib version.lib"
+				AdditionalDependencies="WS2_32.lib Iphlpapi.lib version.lib Psapi.lib"
 				OutputFile="$(OutDir)\agent.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
@@ -165,7 +165,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="WS2_32.lib Iphlpapi.lib version.lib"
+				AdditionalDependencies="WS2_32.lib Iphlpapi.lib version.lib Psapi.lib"
 				OutputFile="$(OutDir)\agent.exe"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"

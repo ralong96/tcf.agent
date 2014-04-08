@@ -31,24 +31,24 @@ ifeq ($(OPSYS),Windows)
   EXTOBJ = .obj
   EXTLIB = .lib
   EXTEXE = .exe
-  LIBS = shell32.lib advapi32.lib Iphlpapi.lib WS2_32.lib version.lib
+  LIBS = shell32.lib advapi32.lib Iphlpapi.lib WS2_32.lib version.lib psapi.lib
   EXPORT_DYNAMIC =
 endif
 
 ifeq ($(OPSYS),Cygwin)
-  LIBS = -lws2_32 -liphlpapi
+  LIBS = -lws2_32 -liphlpapi -lpsapi
 endif
 
 ifeq ($(OPSYS),Msys)
   OPTS += -mwin32
-  LIBS = -lws2_32 -liphlpapi
+  LIBS = -lws2_32 -liphlpapi -lpsapi
 endif
 
 ifeq ($(OPSYS),MinGW)
   OPTS += -mwin32
   EXTOBJ = .obj
   EXTEXE = .exe
-  LIBS = -lws2_32 -liphlpapi
+  LIBS = -lws2_32 -liphlpapi -lpsapi
   MKDIR = if not exist $(subst /,\,$(1)) mkdir $(subst /,\,$(1))
   RMDIR = if exist $(subst /,\,$(1)) rmdir /s /q $(subst /,\,$(1))
 endif

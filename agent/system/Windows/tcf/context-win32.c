@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,6 +27,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
+#include <psapi.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/errors.h>
@@ -1328,8 +1329,6 @@ int context_unplant_breakpoint(ContextBreakpoint * bp) {
     return cpu_bp_remove(bp);
 }
 
-#if defined(_MSC_VER)
-
 static void add_map_region(MemoryMap * map, DWORD64 addr, ULONG size, char * file) {
     MemoryRegion * r = NULL;
     if (map->region_cnt >= map->region_max) {
@@ -1343,8 +1342,7 @@ static void add_map_region(MemoryMap * map, DWORD64 addr, ULONG size, char * fil
     r->file_name = loc_strdup(file);
 }
 
-static BOOL CALLBACK modules_callback(PCWSTR ModuleName, DWORD64 ModuleBase, ULONG ModuleSize, PVOID UserContext) {
-    MemoryMap * map = (MemoryMap *)UserContext;
+static void add_module_info(MemoryMap * map, PCWSTR ModuleName, DWORD64 ModuleBase, ULONG ModuleSize) {
     static char * fnm_buf = NULL;
     static int fnm_max = 0;
     int fnm_len = 0;
@@ -1361,7 +1359,7 @@ static BOOL CALLBACK modules_callback(PCWSTR ModuleName, DWORD64 ModuleBase, ULO
         if (fnm_err != ERROR_INSUFFICIENT_BUFFER) {
             set_win32_errno(fnm_err);
             trace(LOG_ALWAYS, "Can't get module name: %s", errno_to_str(errno));
-            return TRUE;
+            return;
         }
         fnm_max *= 2;
         fnm_buf = (char *)loc_realloc(fnm_buf, fnm_max);
@@ -1369,24 +1367,41 @@ static BOOL CALLBACK modules_callback(PCWSTR ModuleName, DWORD64 ModuleBase, ULO
     fnm_buf[fnm_len] = 0;
 
     add_map_region(map, ModuleBase, ModuleSize, fnm_buf);
-
-    return TRUE;
 }
 
-#endif
-
 int context_get_memory_map(Context * ctx, MemoryMap * map) {
+    DWORD mods_len = 0;
+    DWORD mods_max = 0x1000;
+    HMODULE * mods = (HMODULE *)tmp_alloc(mods_max);
+    ContextExtensionWin32 * ext = NULL;
+    unsigned i;
+
     ctx = ctx->mem;
     assert(!ctx->exited);
-#if defined(_MSC_VER)
-    {
-        ContextExtensionWin32 * ext = EXT(ctx);
-        if (!EnumerateLoadedModulesW64(ext->handle, modules_callback, map)) {
+    ext = EXT(ctx);
+    for (;;) {
+        if (!EnumProcessModules(ext->handle, mods, mods_max, &mods_len)) {
             set_win32_errno(GetLastError());
             return -1;
         }
+        if (mods_len <= mods_max) break;
+        mods_max *= 2;
+        mods = (HMODULE *)tmp_realloc(mods, mods_max);
     }
-#endif
+    for (i = 0; i < mods_len / sizeof(HMODULE); i++) {
+        MODULEINFO info;
+        WCHAR name[MAX_PATH];
+        if (!GetModuleFileNameExW(ext->handle, mods[i], name, sizeof(name) / sizeof(WCHAR))) {
+            set_win32_errno(GetLastError());
+            return -1;
+        }
+        memset(&info, 0, sizeof(info));
+        if (!GetModuleInformation(ext->handle, mods[i], &info, sizeof(info))) {
+            set_win32_errno(GetLastError());
+            return -1;
+        }
+        add_module_info(map, name, (uintptr_t)info.lpBaseOfDll, info.SizeOfImage);
+    }
     return 0;
 }
 
