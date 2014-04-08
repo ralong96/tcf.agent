@@ -17,8 +17,6 @@
  * Symbols service - proxy implementation, gets symbols information from host.
  */
 
-/* TODO: need to cleanup symbols cache from data that not used for long time */
-
 #include <tcf/config.h>
 
 #if ENABLE_SymbolsProxy
