@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "agent", "agent.vcxproj", "{A1341B90-F807-4D1F-A48E-C42BE62D9C57}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "agent", "agent-vc2010.vcxproj", "{A1341B90-F807-4D1F-A48E-C42BE62D9C57}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
