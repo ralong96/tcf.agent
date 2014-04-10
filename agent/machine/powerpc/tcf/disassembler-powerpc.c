@@ -125,8 +125,8 @@ static void add_store_access_immediate(const char * mnemonic, uint8_t rX, uint8_
 static void disassemble_opcode(uint32_t instr) {
     uint8_t opcode = (instr & 0xfc000000) >> 26; /* bits 0-5 */
     /* D-Form */
-    uint8_t rX =     (instr & 0x03e00000) >> 21; /* bits 6-10  */
-    uint8_t rA =     (instr & 0x001f0000) >> 16; /* bits 11-15 */
+    uint8_t rX = (uint8_t)((instr & 0x03e00000) >> 21); /* bits 6-10  */
+    uint8_t rA = (uint8_t)((instr & 0x001f0000) >> 16); /* bits 11-15 */
     uint16_t immediate =  instr & 0xffff;        /* bits 16-31 */
     /* Compare and compare logical D-Form */
     uint8_t bf = rX >> 2;

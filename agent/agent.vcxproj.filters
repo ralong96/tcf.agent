@@ -52,6 +52,9 @@
     <Filter Include="machine\arm">
       <UniqueIdentifier>{2b8b41e2-5b0a-4b1c-947e-ca1fdc7ceb03}</UniqueIdentifier>
     </Filter>
+    <Filter Include="machine\ppc">
+      <UniqueIdentifier>{ff538629-61f5-41bb-907c-975bcb6161f1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="tcf\framework\asyncreq.c">
@@ -335,6 +338,15 @@
     </ClCompile>
     <ClCompile Include="machine\arm\tcf\stack-crawl-arm.c">
       <Filter>machine\arm</Filter>
+    </ClCompile>
+    <ClCompile Include="tcf\framework\context-dispatcher.c">
+      <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\powerpc\tcf\cpudefs-mdep.c">
+      <Filter>machine\ppc</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\powerpc\tcf\disassembler-powerpc.c">
+      <Filter>machine\ppc</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -632,6 +644,24 @@
     </ClInclude>
     <ClInclude Include="machine\x86_64\tcf\dwarfreloc-mdep.h">
       <Filter>machine\x86_64</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\framework\context-dispatcher.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\framework\context-dispatcher-ext.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\powerpc\tcf\cpudefs-mdep.h">
+      <Filter>machine\ppc</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\powerpc\tcf\disassembler-powerpc.h">
+      <Filter>machine\ppc</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\powerpc\tcf\dwarfreloc-mdep.h">
+      <Filter>machine\ppc</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\powerpc\tcf\regset-mdep.h">
+      <Filter>machine\ppc</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
