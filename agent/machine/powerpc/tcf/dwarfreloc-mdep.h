@@ -19,6 +19,7 @@
 
 #define R_PPC_NONE      0
 #define R_PPC_ADDR32    1
+#define R_PPC_UADDR32  24
 #define R_PPC_REL32    26
 
 static void elf_relocate(void) {
@@ -34,6 +35,7 @@ static void elf_relocate(void) {
         *destination_section = NULL;
         break;
     case R_PPC_ADDR32:
+    case R_PPC_UADDR32:
         if (data_size < 4) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
         *(U4_T *)data_buf = (U4_T)(sym_value + reloc_addend);
         break;
