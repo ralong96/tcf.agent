@@ -90,7 +90,8 @@ int print_trace(int mode, const char * fmt, ...) {
             exit(1);
         }
 
-        fprintf(log_file, "TCF %02d:%02d.%03d: ",
+        fprintf(log_file, "TCF %02d:%02d:%02d.%03d: ",
+            (int)(timenow.tv_sec / 3600 % 24),
             (int)(timenow.tv_sec / 60 % 60),
             (int)(timenow.tv_sec % 60),
             (int)(timenow.tv_nsec / 1000000));
@@ -116,7 +117,7 @@ int parse_trace_mode(const char * mode, int * result) {
 
     *result = 0;
     if (*mode == '\0') return 0;
-    for(;;) {
+    for (;;) {
         if (*mode >= '0' && *mode <= '9') {
             char * endptr;
             *result |= (int) strtoul(mode, &endptr, 0);

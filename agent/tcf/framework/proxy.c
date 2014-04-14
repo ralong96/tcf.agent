@@ -77,9 +77,7 @@ static void command_redirect_done (Channel * c, void * client_data, int error) {
     if (!is_channel_closed(info->host)) {
         int err = error;
 
-        if (err == 0) {
-            proxy_update (info->host, c);
-        }
+        if (err == 0) proxy_update (info->host, c);
 
         write_stringz(&info->host->out, "R");
         write_stringz(&info->host->out, info->token);
@@ -234,7 +232,7 @@ static void log_byte_func(int i) {
 
 #define log_byte(b) { if (log_mode & LOG_TCFLOG) log_byte_func(b); }
 
-static int log_start(Proxy * proxy, char ** argv, int argc, int *limit) {
+static int log_start(Proxy * proxy, char ** argv, int argc, int * limit) {
     int i;
     int res = PROXY_FILTER_NOT_FILTERED;
     log_pos = 0;
@@ -242,17 +240,14 @@ static int log_start(Proxy * proxy, char ** argv, int argc, int *limit) {
 
     if (log_mode & LOG_TCFLOG) {
         if (proxy_log_filter_listener) {
-            res = proxy_log_filter_listener(proxy->c, proxy[proxy->other].c,
-                                                            argc, argv);
-            if (res)
-                return PROXY_FILTER_FILTERED;
-        } else if (proxy_log_filter_listener2) {
-            res = proxy_log_filter_listener2(proxy->c, proxy[proxy->other].c,
-                                                argc, argv,limit);
+            res = proxy_log_filter_listener(proxy->c, proxy[proxy->other].c, argc, argv);
+            if (res) return PROXY_FILTER_FILTERED;
+        }
+        else if (proxy_log_filter_listener2) {
+            res = proxy_log_filter_listener2(proxy->c, proxy[proxy->other].c, argc, argv, limit);
             /* If we have PROXY_FILTER_LIMIT, we want to see --> or <-- */
-            if (res == PROXY_FILTER_FILTERED)
-                return res;
-            }
+            if (res == PROXY_FILTER_FILTERED) return res;
+        }
         log_str(proxy->other > 0 ? "---> " : "<--- ");
         for (i = 0; i < argc; i++) {
             log_str(argv[i]);
@@ -326,11 +321,9 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
                 log_byte(i);
                 filter_cnt++;
 #if ENABLE_Trace
-                if ((filtered == PROXY_FILTER_LIMIT) &&
-                     (filter_cnt == limit)) {
+                if (filtered == PROXY_FILTER_LIMIT && filter_cnt == limit) {
                     log_str("...");
-                    /* Don't quit the loop, we need to write the
-                     *  entire message */
+                    /* Don't quit the loop, we need to write the entire message */
                 }
 #endif
             }
@@ -338,8 +331,8 @@ static void proxy_default_message_handler(Channel * c, char ** argv, int argc) {
         }
     }
     while (i != MARKER_EOM && i != MARKER_EOS);
-    if ((filtered==PROXY_FILTER_NOT_FILTERED) ||
-        (filtered==PROXY_FILTER_LIMIT)) log_flush(proxy);
+    if (filtered == PROXY_FILTER_NOT_FILTERED ||
+        filtered == PROXY_FILTER_LIMIT) log_flush(proxy);
 }
 
 static void proxy_update(Channel * c1, Channel * c2) {
