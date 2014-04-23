@@ -149,6 +149,13 @@ extern int continue_debug_context(Context * ctx, Channel * c,
  */
 extern int suspend_debug_context(Context * ctx);
 
+/**
+ * Set context state name if it is other than Running,
+ * for example: "Sleeping", "Reset", "No Clock"
+ * The name is only applicable if the context is not intercepted.
+ */
+extern void set_context_state_name(Context * ctx, const char * name);
+
 /* RunControl event listener */
 typedef struct RunControlEventListener {
     void (*context_intercepted)(Context * ctx, void * args);

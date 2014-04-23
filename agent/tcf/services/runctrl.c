@@ -90,6 +90,7 @@ typedef struct ContextExtensionRC {
     int cannot_stop;
     ContextAddress pc;
     int pc_error;
+    char * state_name;
     LINK link;
 } ContextExtensionRC;
 
@@ -456,6 +457,14 @@ static void write_context_state(OutputStream * out, Context * ctx) {
             json_write_string(out, "FuncCall");
             write_stream(out, ':');
             json_write_boolean(out, 1);
+            fst = 0;
+        }
+    }
+    else {
+        if (ext->state_name != NULL) {
+            json_write_string(out, "StateName");
+            write_stream(out, ':');
+            json_write_string(out, ext->state_name);
             fst = 0;
         }
     }
@@ -2192,6 +2201,35 @@ void run_ctrl_unlock(void) {
     }
 }
 
+void set_context_state_name(Context * ctx, const char * name) {
+    ContextExtensionRC * ext = EXT(ctx);
+    OutputStream * out = &broadcast_group->out;
+
+    if (name != NULL) {
+        if (ext->state_name != NULL) {
+            if (strcmp(ext->state_name, name) == 0) return;
+            loc_free(ext->state_name);
+        }
+        ext->state_name = loc_strdup(name);
+    }
+    else {
+        if (ext->state_name == NULL) return;
+        loc_free(ext->state_name);
+        ext->state_name = NULL;
+    }
+
+    if (!ext->intercepted) {
+        write_stringz(out, "E");
+        write_stringz(out, RUN_CONTROL);
+        write_stringz(out, "contextStateChanged");
+
+        json_write_string(out, ctx->id);
+        write_stream(out, 0);
+
+        write_stream(out, MARKER_EOM);
+    }
+}
+
 void add_run_control_event_listener(RunControlEventListener * listener, void * args) {
     if (listener_cnt >= listener_max) {
         listener_max += 8;
@@ -2304,6 +2342,7 @@ static void event_context_disposed(Context * ctx, void * args) {
         release_error_report(ext->step_error);
         ext->step_error = NULL;
     }
+    loc_free(ext->state_name);
 }
 
 static int cmp_has_state(Context * ctx, const char * v) {
