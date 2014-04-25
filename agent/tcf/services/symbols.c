@@ -871,8 +871,7 @@ static void command_find_frame_info_cache_client(void * x) {
             if (i > 0) write_stream(&c->out, ',');
             json_write_string(&c->out, register2id(ctx, STACK_NO_FRAME, info->regs[i]->reg));
             write_stream(&c->out, ':');
-            if (info->regs[i] == NULL) write_string(&c->out, "null");
-            else write_commands(&c->out, ctx, info->regs[i]->cmds, info->regs[i]->cmds_cnt);
+            write_commands(&c->out, ctx, info->regs[i]->cmds, info->regs[i]->cmds_cnt);
         }
         write_stream(&c->out, '}');
     }
