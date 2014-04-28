@@ -1052,17 +1052,15 @@ static void read_errno_param(InputStream * inp, void * x) {
     err->params[err->param_cnt++] = json_read_object(inp);
 }
 
-int read_errno(InputStream * inp) {
+int read_error_object(InputStream * inp) {
     int no = 0;
     ErrorReport * err = NULL;
     int ch = read_stream(inp);
     ignore_whitespace(ch, inp);
-    if (ch == 0) return 0;
     if (ch == 'n') {
         json_test_char(inp, 'u');
         json_test_char(inp, 'l');
         json_test_char(inp, 'l');
-        json_test_char(inp, MARKER_EOA);
         return 0;
     }
     check_char(ch, '{');
@@ -1102,10 +1100,17 @@ int read_errno(InputStream * inp) {
             break;
         }
     }
-    json_test_char(inp, MARKER_EOA);
     if (err == NULL) return 0;
     if (err->code != 0) no = set_error_report_errno(err);
     release_error_report(err);
+    return no;
+}
+
+int read_errno(InputStream * inp) {
+    int no = 0;
+    if (json_peek(inp) != MARKER_EOA)
+        no = read_error_object(inp);
+    json_test_char(inp, MARKER_EOA);
     return no;
 }
 
