@@ -132,10 +132,13 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
     return -1;
 }
 
+#if ENABLE_add_cpudefs_disassembler
 void add_cpudefs_disassembler(Context * cpu_ctx) {
     add_disassembler(cpu_ctx, "PowerPC", disassemble_powerpc);
 }
+#endif
 
+#if ENABLE_ini_cpudefs_mdep
 void ini_cpudefs_mdep(void) {
     RegisterDefinition * r;
     for (r = regs_def; r->name != NULL; r++) {
@@ -146,4 +149,5 @@ void ini_cpudefs_mdep(void) {
     }
     regs_index = regs_def;
 }
+#endif
 #endif
