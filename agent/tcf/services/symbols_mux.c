@@ -93,11 +93,12 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
 
     for (i = 0; i < reader_cnt; i++) {
         Symbol * sym = NULL;
-        if (readers[i]->find_symbol_by_name(ctx, frame, ip, name, &sym) == 0) {
+        SymbolReader * reader = readers[i];
+        if (reader->find_symbol_by_name(ctx, frame, ip, name, &sym) == 0) {
             assert(sym != NULL);
             find_symbol_list[i] = sym;
             if (find_symbol_ctx == NULL) {
-                if (readers[i]->find_next_symbol(&find_symbol_list[i]) < 0) {
+                if (reader->find_next_symbol(&find_symbol_list[i]) < 0) {
                     find_symbol_list[i] = NULL;
                 }
                 find_symbol_ctx = ctx;
@@ -122,11 +123,13 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
 
     for (i = 0; i < reader_cnt; i++) {
         Symbol * sym = NULL;
-        if (readers[i]->find_symbol_in_scope(ctx, frame, ip, scope, name, &sym) == 0) {
+        SymbolReader * reader = readers[i];
+        if (scope != NULL && *(SymbolReader **)scope != reader) continue;
+        if (reader->find_symbol_in_scope(ctx, frame, ip, scope, name, &sym) == 0) {
             assert(sym != NULL);
             find_symbol_list[i] = sym;
             if (find_symbol_ctx == NULL) {
-                if (readers[i]->find_next_symbol(&find_symbol_list[i]) < 0) {
+                if (reader->find_next_symbol(&find_symbol_list[i]) < 0) {
                     find_symbol_list[i] = NULL;
                 }
                 find_symbol_ctx = ctx;
@@ -153,7 +156,7 @@ int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol **
     if (reader != NULL) {
         i = reader->reader_index;
         if (reader->find_symbol_by_addr(ctx, frame, addr, res) < 0) return -1;
-        if (readers[i]->find_next_symbol(&find_symbol_list[i]) < 0) {
+        if (reader->find_next_symbol(&find_symbol_list[i]) < 0) {
             find_symbol_list[i] = NULL;
         }
         find_symbol_ctx = ctx;
