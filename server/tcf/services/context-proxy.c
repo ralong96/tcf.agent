@@ -1342,7 +1342,7 @@ int context_write_reg(Context * ctx, RegisterDefinition * def, unsigned offs, un
 int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, unsigned size, void * buf) {
     StackFrame * info = NULL;
     if (get_frame_info(ctx, 0, &info) < 0) return -1;
-    if (read_reg_bytes(info, def, offs, size, buf) < 0) return -1;
+    if (read_reg_bytes(info, def, offs, size, (uint8_t *)buf) < 0) return -1;
     return 0;
 }
 
