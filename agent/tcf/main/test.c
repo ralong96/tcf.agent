@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -271,10 +271,10 @@ int find_test_symbol(Context * ctx, const char * name, void ** addr, int * sym_c
         }
         else {
             *sym_class = SYM_CLASS_FUNCTION;
-            if (strcmp(name, "tcf_test_func0") == 0) *addr = (void *)&tcf_test_func0;
-            else if (strcmp(name, "tcf_test_func1") == 0) *addr = (void *)&tcf_test_func1;
-            else if (strcmp(name, "tcf_test_func2") == 0) *addr = (void *)&tcf_test_func2;
-            else if (strcmp(name, "tcf_test_func3") == 0) *addr = (void *)&tcf_test_func3;
+            if (strcmp(name, "tcf_test_func0") == 0) *addr = (void *)tcf_test_func0;
+            else if (strcmp(name, "tcf_test_func1") == 0) *addr = (void *)tcf_test_func1;
+            else if (strcmp(name, "tcf_test_func2") == 0) *addr = (void *)tcf_test_func2;
+            else if (strcmp(name, "tcf_test_func3") == 0) *addr = (void *)tcf_test_func3;
         }
         if (*addr != NULL) return 0;
     }

@@ -244,7 +244,7 @@ static void write_symbol(Channel * c, ContextAddress address) {
     }
 }
 
-#if ENABLE_Symbols
+#if ENABLE_DebugContext
 
 typedef struct GetSymbolArgs {
     char token[256];
@@ -258,17 +258,28 @@ static void get_symbol_cache_client(void * x) {
     Context * ctx = args->ctx;
     Symbol * sym = NULL;
     ContextAddress addr = 0;
-    int error = 0;
+    int error = ERR_SYM_NOT_FOUND;
 
-    if (ctx->exited) {
-        error = ERR_ALREADY_EXITED;
+    if (ctx->exited) error = ERR_ALREADY_EXITED;
+
+#if ENABLE_Symbols
+    if (get_error_code(error) == ERR_SYM_NOT_FOUND) {
+        error = 0;
+        if (find_symbol_by_name(ctx, STACK_NO_FRAME, 0, args->name, &sym) < 0) error = errno;
+        if (!error && get_symbol_address(sym, &addr) < 0) error = errno;
     }
-    else if (find_symbol_by_name(ctx, STACK_NO_FRAME, 0, args->name, &sym) < 0) {
-        error = errno;
+#endif
+
+#if ENABLE_RCBP_TEST
+    if (get_error_code(error) == ERR_SYM_NOT_FOUND) {
+        void * ptr = NULL;
+        int cls = 0;
+        error = 0;
+        if (find_test_symbol(ctx, args->name, &ptr, &cls) < 0) error = errno;
+        addr = (ContextAddress)ptr;
     }
-    else if (get_symbol_address(sym, &addr) < 0) {
-        error = errno;
-    }
+#endif
+
     cache_exit();
 
     write_stringz(&c->out, "R");
@@ -281,7 +292,7 @@ static void get_symbol_cache_client(void * x) {
     loc_free(args->name);
 }
 
-#endif /* ENABLE_Symbols */
+#endif /* ENABLE_DebugContext */
 
 static void command_get_symbol(char * token, Channel * c) {
     char id[256];
@@ -305,7 +316,6 @@ static void command_get_symbol(char * token, Channel * c) {
             error = ERR_ALREADY_EXITED;
         }
         else {
-#if ENABLE_Symbols
             GetSymbolArgs args;
             strlcpy(args.token, token, sizeof(args.token));
             context_lock(ctx);
@@ -313,14 +323,6 @@ static void command_get_symbol(char * token, Channel * c) {
             args.name = name;
             cache_enter(get_symbol_cache_client, c, &args, sizeof(args));
             return;
-#elif ENABLE_RCBP_TEST
-            void * ptr = NULL;
-            int cls = 0;
-            error = (find_test_symbol(ctx, name, &ptr, &cls) < 0) ? errno : 0;
-            addr = (ContextAddress)ptr;
-#else
-            error = ERR_UNSUPPORTED;
-#endif
         }
     }
 #else

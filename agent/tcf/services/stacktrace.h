@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -24,6 +24,17 @@
 #include <tcf/framework/context.h>
 #include <tcf/services/stacktrace-ext.h>
 
+
+/*
+ * Return 1 if 'frame' is the top frame of the context call stack.
+ */
+#define is_top_frame(ctx, frame) ((frame) == 0 || (frame) == STACK_TOP_FRAME)
+
+/*
+ * Get frame number for 'info'.
+ */
+#define get_info_frame(ctx, info) (info ? info->frame : STACK_NO_FRAME)
+
 #if SERVICE_StackTrace || ENABLE_ContextProxy
 
 /*
@@ -41,19 +52,9 @@ extern int get_prev_frame(Context * ctx, int frame);
 extern int get_next_frame(Context * ctx, int frame);
 
 /*
- * Return 1 if 'frame' is the top frame of the context.
- */
-extern int is_top_frame(Context * ctx, int frame);
-
-/*
  * Get information about given stack frame.
  */
 extern int get_frame_info(Context * ctx, int frame, StackFrame ** info);
-
-/*
- * Get frame number for 'info'.
- */
-#define get_info_frame(ctx, info) (info ? info->frame : STACK_NO_FRAME)
 
 /*
  * For given context and its registers in a stack frame,
@@ -71,9 +72,8 @@ extern void ini_stack_trace_service(Protocol *, TCFBroadcastGroup *);
 
 #else /* SERVICE_StackTrace */
 
+#define get_top_frame(ctx) 0
 #define get_frame_info(ctx, frame, info) (errno = ERR_UNSUPPORTED, -1)
-#define get_info_frame(ctx, info) STACK_NO_FRAME
-#define is_top_frame(ctx, frame) (frame == STACK_TOP_FRAME)
 
 #endif /* SERVICE_StackTrace */
 #endif /* D_stacktrace */

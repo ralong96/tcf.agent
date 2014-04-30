@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -19,7 +19,7 @@
 
 #include <tcf/config.h>
 
-#if SERVICE_Symbols && !ENABLE_SymbolsProxy && ENABLE_PE
+#if SERVICE_Symbols && (!ENABLE_SymbolsProxy || ENABLE_LineNumbersMux) && ENABLE_PE
 
 #include <errno.h>
 #include <assert.h>
@@ -36,9 +36,6 @@
 #include <tcf/services/funccall.h>
 #include <system/Windows/tcf/windbgcache.h>
 #include <system/Windows/tcf/context-win32.h>
-#if ENABLE_RCBP_TEST
-#  include <tcf/main/test.h>
-#endif
 #if ENABLE_SymbolsMux
 #define SYM_READER_PREFIX win32_reader_
 #include <tcf/services/symbols_mux.h>
@@ -971,19 +968,6 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
     if (frame == STACK_TOP_FRAME && (frame = get_top_frame(ctx)) < 0) return -1;
     if (find_pe_symbol_by_name(ctx, frame, ip, name, *sym) >= 0) found = 1;
     else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) return -1;
-#if ENABLE_RCBP_TEST
-    if (!found) {
-        int sym_class = 0;
-        void * address = NULL;
-        if (find_test_symbol(ctx, name, &address, &sym_class) >= 0) found = 1;
-        else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) return -1;
-        if (found) {
-            (*sym)->ctx = ctx->mem;
-            (*sym)->sym_class = sym_class;
-            (*sym)->address = (ContextAddress)address;
-        }
-    }
-#endif
     if (!found) {
         if (find_basic_type_symbol(ctx, name, *sym) >= 0) found = 1;
         else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) return -1;
@@ -1264,6 +1248,10 @@ int get_funccall_info(const Symbol * func,
 const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
     IMAGEHLP_MODULE64 info;
     HANDLE process = get_context_handle(context_get_group(ctx, CONTEXT_GROUP_PROCESS));
+    if (module == NULL) {
+        errno = 0;
+        return NULL;
+    }
     memset(&info, 0, sizeof(info));
     info.SizeOfStruct = sizeof(info);
     if (!SymGetModuleInfo64(process, module->addr, &info)) {
@@ -1335,12 +1323,8 @@ static int reader_is_valid(Context * ctx, ContextAddress addr) {
     HANDLE process = get_context_handle(context_get_group(ctx, CONTEXT_GROUP_PROCESS));
     memset(&info, 0, sizeof(info));
     info.SizeOfStruct = sizeof(info);
-    if (!SymGetModuleInfo64(process, addr, &info)) {
-        return 0;
-    }
-    errno = 0;
-    if (info.LoadedImageName[0] == 0) return 0;
-    return 1;
+    if (!SymGetModuleInfo64(process, addr, &info)) return 0;
+    return info.LoadedImageName[0] != 0;
 }
 #endif
 
@@ -1364,4 +1348,4 @@ void ini_symbols_lib(void) {
 }
 
 
-#endif /* SERVICE_Symbols && defined(_MSC_VER) */
+#endif /* SERVICE_Symbols && (!ENABLE_SymbolsProxy || ENABLE_LineNumbersMux) && ENABLE_PE */

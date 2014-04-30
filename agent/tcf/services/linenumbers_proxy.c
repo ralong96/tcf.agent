@@ -34,6 +34,10 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/linenumbers.h>
+#if ENABLE_LineNumbersMux
+#define LINENUMBERS_READER_PREFIX proxy_reader_
+#include <tcf/services/linenumbers_mux.h>
+#endif
 
 #define HASH_SIZE (16 * MEM_USAGE_FACTOR - 1)
 
@@ -408,6 +412,9 @@ void ini_line_numbers_lib(void) {
     }
 #endif
     add_channel_close_listener(channel_close_listener);
+#if ENABLE_LineNumbersMux
+    add_line_numbers_reader(&line_numbers_reader);
+#endif
 }
 
 #endif /* ENABLE_LineNumbersProxy */

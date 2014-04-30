@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -63,6 +63,7 @@ typedef struct SymbolReader {
 }SymbolReader;
 
 #ifdef SYM_READER_PREFIX
+
 #define JOIN(a,b) JOIN1(a,b)
 #define JOIN1(a,b) a##b
 #define READER_NAME(name)  JOIN(SYM_READER_PREFIX,name)
@@ -140,9 +141,7 @@ static SymbolReader symbol_reader = { find_symbol_by_name, find_symbol_in_scope,
         get_symbol_flags, get_symbol_frame, get_array_symbol, is_plt_section, get_location_info,
         get_funccall_info, get_stack_tracing_info, get_symbol_file_name,
         get_context_isa, reader_is_valid};
-#else
-extern void win32_reader_ini_symbols_lib(void);
-extern void elf_reader_ini_symbols_lib(void);
+
 #endif  /* SYM_READER_PREFIX */
 
 extern int add_symbols_reader(SymbolReader * reader);

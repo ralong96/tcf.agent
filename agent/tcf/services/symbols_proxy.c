@@ -33,8 +33,9 @@
 #include <tcf/services/memorymap.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/vm.h>
-#if ENABLE_RCBP_TEST
-#  include <tcf/main/test.h>
+#if ENABLE_SymbolsMux
+#define SYM_READER_PREFIX proxy_reader_
+#include <tcf/services/symbols_mux.h>
 #endif
 
 #define HASH_SIZE (4 * MEM_USAGE_FACTOR - 1)
@@ -58,6 +59,7 @@ typedef struct SymbolsCache {
     LINK link_find_by_addr[HASH_SIZE];
     LINK link_find_in_scope[HASH_SIZE];
     LINK link_list[HASH_SIZE];
+    LINK link_file[HASH_SIZE];
     LINK link_frame[HASH_SIZE];
     LINK link_address[HASH_SIZE];
     LINK link_location[HASH_SIZE];
@@ -164,6 +166,24 @@ typedef struct AddressInfoCache {
     int disposed;
 } AddressInfoCache;
 
+typedef struct FileInfoCache {
+    unsigned magic;
+    LINK link_syms;
+    LINK link_flush;
+    AbstractCache cache;
+    ReplyHandlerInfo * pending;
+    ErrorReport * error;
+    Context * ctx;
+    ContextAddress addr;
+
+    char * file_name;
+    ContextAddress range_addr;
+    ContextAddress range_size;
+    ErrorReport * file_error;
+
+    int disposed;
+} FileInfoCache;
+
 typedef struct LocationInfoCache {
     unsigned magic;
     LINK link_syms;
@@ -185,6 +205,7 @@ typedef struct LocationInfoCache {
 #define syms2find(A) ((FindSymCache *)((char *)(A) - offsetof(FindSymCache, link_syms)))
 #define syms2frame(A)((StackFrameCache *)((char *)(A) - offsetof(StackFrameCache, link_syms)))
 #define syms2address(A)((AddressInfoCache *)((char *)(A) - offsetof(AddressInfoCache, link_syms)))
+#define syms2file(A) ((FileInfoCache *)((char *)(A) - offsetof(FileInfoCache, link_syms)))
 #define syms2location(A)((LocationInfoCache *)((char *)(A) - offsetof(LocationInfoCache, link_syms)))
 
 #define sym2arr(A)   ((ArraySymCache *)((char *)(A) - offsetof(ArraySymCache, link_sym)))
@@ -193,9 +214,13 @@ typedef struct LocationInfoCache {
 #define flush2find(A) ((FindSymCache *)((char *)(A) - offsetof(FindSymCache, link_flush)))
 #define flush2frame(A)((StackFrameCache *)((char *)(A) - offsetof(StackFrameCache, link_flush)))
 #define flush2address(A)((AddressInfoCache *)((char *)(A) - offsetof(AddressInfoCache, link_flush)))
+#define flush2file(A) ((FileInfoCache *)((char *)(A) - offsetof(FileInfoCache, link_flush)))
 #define flush2location(A)((LocationInfoCache *)((char *)(A) - offsetof(LocationInfoCache, link_flush)))
 
 struct Symbol {
+#if ENABLE_SymbolsMux
+    SymbolReader * reader;
+#endif
     unsigned magic;
     SymInfoCache * cache;
 };
@@ -218,6 +243,7 @@ static const char * SYMBOLS = "Symbols";
 #define MAGIC_FIND      0x89058765
 #define MAGIC_FRAME     0x10837608
 #define MAGIC_ADDR      0x28658765
+#define MAGIC_FILE      0x87653487
 #define MAGIC_LOC       0x09878751
 
 static void flush_symbol(LINK * l);
@@ -255,6 +281,9 @@ static void symbols_cleanup_event(void * arg) {
 
 static Symbol * alloc_symbol(void) {
     Symbol * s = (Symbol *)tmp_alloc_zero(sizeof(Symbol));
+#if ENABLE_SymbolsMux
+    s->reader = &symbol_reader;
+#endif
     s->magic = MAGIC_SYMBOL;
     return s;
 }
@@ -282,6 +311,10 @@ static unsigned hash_frame(Context * ctx) {
 }
 
 static unsigned hash_address(Context * ctx) {
+    return ((uintptr_t)ctx >> 4) % HASH_SIZE;
+}
+
+static unsigned hash_file(Context * ctx) {
     return ((uintptr_t)ctx >> 4) % HASH_SIZE;
 }
 
@@ -313,6 +346,7 @@ static SymbolsCache * get_symbols_cache(void) {
             list_init(syms->link_find_by_addr + i);
             list_init(syms->link_find_in_scope + i);
             list_init(syms->link_list + i);
+            list_init(syms->link_file + i);
             list_init(syms->link_frame + i);
             list_init(syms->link_address + i);
             list_init(syms->link_location + i);
@@ -452,6 +486,25 @@ static void free_address_info_cache(AddressInfoCache * c) {
     }
 }
 
+static void free_file_info_cache(FileInfoCache * c) {
+    assert(c->magic == MAGIC_FILE);
+    assert(!c->disposed || c->pending == NULL);
+    if (!c->disposed) {
+        list_remove(&c->link_syms);
+        list_remove(&c->link_flush);
+        c->disposed = 1;
+    }
+    if (c->pending == NULL) {
+        c->magic = 0;
+        cache_dispose(&c->cache);
+        release_error_report(c->error);
+        release_error_report(c->file_error);
+        context_unlock(c->ctx);
+        loc_free(c->file_name);
+        loc_free(c);
+    }
+}
+
 static void free_location_info_cache(LocationInfoCache * c) {
     assert(c->magic == MAGIC_LOC);
     assert(!c->disposed || c->pending == NULL);
@@ -522,6 +575,10 @@ static void flush_symbol(LINK * l) {
         AddressInfoCache * c = flush2address(l);
         if (c->cache.wait_list_cnt == 0) free_address_info_cache(c);
     }
+    else if (magic == MAGIC_FILE) {
+        FileInfoCache * c = flush2file(l);
+        if (c->cache.wait_list_cnt == 0) free_file_info_cache(c);
+    }
     else if (magic == MAGIC_LOC) {
         LocationInfoCache * c = flush2location(l);
         if (c->cache.wait_list_cnt == 0) free_location_info_cache(c);
@@ -532,6 +589,30 @@ static Channel * get_channel(SymbolsCache * syms) {
     if (is_channel_closed(syms->channel)) exception(ERR_CHANNEL_CLOSED);
     if (!syms->service_available) str_exception(ERR_SYM_NOT_FOUND, "Symbols service not available");
     return syms->channel;
+}
+
+static uint64_t get_symbol_ip(Context * ctx, int * frame, ContextAddress addr) {
+    uint64_t ip = 0;
+    if (*frame == STACK_NO_FRAME) {
+        ip = addr;
+    }
+    else if (is_top_frame(ctx, *frame)) {
+        if (!ctx->stopped) {
+            exception(ERR_IS_RUNNING);
+        }
+        if (ctx->exited) {
+            exception(ERR_ALREADY_EXITED);
+        }
+        *frame = get_top_frame(ctx);
+        ip = get_regs_PC(ctx);
+    }
+    else {
+        StackFrame * info = NULL;
+        if (get_frame_info(ctx, *frame, &info) < 0) exception(errno);
+        if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) exception(errno);
+        *frame = info->frame;
+    }
+    return ip;
 }
 
 static void read_context_data(InputStream * inp, const char * name, void * args) {
@@ -703,16 +784,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress addr, const cha
 
     if (!set_trap(&trap)) return -1;
 
-    if (frame == STACK_NO_FRAME) {
-        ip = addr;
-    }
-    else {
-        StackFrame * info = NULL;
-        if (frame == STACK_TOP_FRAME && (frame = get_top_frame(ctx)) < 0) exception(errno);;
-        if (get_frame_info(ctx, frame, &info) < 0) exception(errno);
-        if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) exception(errno);
-    }
-
+    ip = get_symbol_ip(ctx, &frame, addr);
     h = hash_find(ctx, name, ip);
     syms = get_symbols_cache();
     for (l = syms->link_find_by_name[h].next; l != syms->link_find_by_name + h; l = l->next) {
@@ -722,35 +794,6 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress addr, const cha
             break;
         }
     }
-
-#if ENABLE_RCBP_TEST
-    if (f == NULL && !syms->service_available) {
-        void * address = NULL;
-        int sym_class = 0;
-        if (find_test_symbol(ctx, name, &address, &sym_class) >= 0) {
-            char bf[256];
-            if (f == NULL) {
-                f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
-                list_add_first(&f->link_syms, syms->link_find_by_name + h);
-                list_add_last(&f->link_flush, &flush_mm);
-                context_lock(f->ctx = ctx);
-                f->magic = MAGIC_FIND;
-                f->name = loc_strdup(name);
-                f->ip = ip;
-            }
-            else {
-                release_error_report(f->error);
-                f->error = NULL;
-                loc_free(f->id_buf);
-                f->id_cnt = 0;
-            }
-            f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
-            snprintf(bf, sizeof(bf), "@T.%X.%"PRIX64".%s", sym_class,
-                    (uint64_t)(uintptr_t)address, context_get_group(ctx, CONTEXT_GROUP_SYMBOLS)->id);
-            f->id_buf = string_to_symbol_list(bf, &f->id_cnt);
-        }
-    }
-#endif
 
     if (f == NULL) {
         Channel * c = get_channel(syms);
@@ -808,16 +851,7 @@ int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol **
 
     if (!set_trap(&trap)) return -1;
 
-    if (frame == STACK_NO_FRAME) {
-        ip = addr;
-    }
-    else {
-        StackFrame * info = NULL;
-        if (frame == STACK_TOP_FRAME && (frame = get_top_frame(ctx)) < 0) exception(errno);;
-        if (get_frame_info(ctx, frame, &info) < 0) exception(errno);
-        if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) exception(errno);
-    }
-
+    ip = get_symbol_ip(ctx, &frame, addr);
     h = hash_find(ctx, NULL, ip);
     syms = get_symbols_cache();
     for (l = syms->link_find_by_addr[h].next; l != syms->link_find_by_addr + h; l = l->next) {
@@ -886,16 +920,7 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress addr, Symbol *
 
     if (!set_trap(&trap)) return -1;
 
-    if (frame == STACK_NO_FRAME) {
-        ip = addr;
-    }
-    else {
-        StackFrame * info = NULL;
-        if (frame == STACK_TOP_FRAME && (frame = get_top_frame(ctx)) < 0) exception(errno);;
-        if (get_frame_info(ctx, frame, &info) < 0) exception(errno);
-        if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) exception(errno);
-    }
-
+    ip = get_symbol_ip(ctx, &frame, addr);
     h = hash_find(ctx, name, ip);
     syms = get_symbols_cache();
     for (l = syms->link_find_in_scope[h].next; l != syms->link_find_in_scope + h; l = l->next) {
@@ -982,13 +1007,7 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * func,
 
     if (!set_trap(&trap)) return -1;
 
-    if (frame != STACK_NO_FRAME) {
-        StackFrame * info = NULL;
-        if (frame == STACK_TOP_FRAME && (frame = get_top_frame(ctx)) < 0) exception(errno);;
-        if (get_frame_info(ctx, frame, &info) < 0) exception(errno);
-        if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) exception(errno);
-    }
-
+    ip = get_symbol_ip(ctx, &frame, 0);
     h = hash_list(ctx, ip);
     syms = get_symbols_cache();
     for (l = syms->link_list[h].next; l != syms->link_list + h; l = l->next) {
@@ -1049,8 +1068,11 @@ int id2symbol(const char * id, Symbol ** sym) {
     LINK * l;
     SymInfoCache * s = NULL;
     unsigned h = hash_sym_id(id);
-    SymbolsCache * syms = get_symbols_cache();
+    SymbolsCache * syms = NULL;
+    Trap trap;
 
+    if (!set_trap(&trap)) return -1;
+    syms = get_symbols_cache();
     for (l = syms->link_sym[h].next; l != syms->link_sym + h; l = l->next) {
         SymInfoCache * x = syms2sym(l);
         if (strcmp(x->id, id) == 0) {
@@ -1067,29 +1089,16 @@ int id2symbol(const char * id, Symbol ** sym) {
         list_add_first(&s->link_syms, syms->link_sym + h);
         list_add_last(&s->link_flush, &flush_mm);
         list_init(&s->array_syms);
-#if ENABLE_RCBP_TEST
-        if (strncmp(id, "@T.", 3) == 0) {
-            int sym_class = 0;
-            uint64_t address = 0;
-            char ctx_id[256];
-            if (sscanf(id, "@T.%X.%"SCNx64".%255s", &sym_class, &address, ctx_id) == 3) {
-                s->done_context = 1;
-                s->sym_class = sym_class;
-                s->update_owner = id2ctx(ctx_id);
-                if (s->update_owner != NULL) context_lock(s->update_owner);
-            }
-        }
-#endif
-    } else {
-        if (!s->disposed) {
-            /* Move used item at the end of the flush list */
-            list_remove(&s->link_flush);
-            if (s->update_policy == UPDATE_ON_EXE_STATE_CHANGES) list_add_last(&s->link_flush, &flush_rc)
-            else list_add_last(&s->link_flush, &flush_mm);
-        }
+    }
+    else if (!s->disposed) {
+        /* Move used item at the end of the flush list */
+        list_remove(&s->link_flush);
+        if (s->update_policy == UPDATE_ON_EXE_STATE_CHANGES) list_add_last(&s->link_flush, &flush_rc)
+        else list_add_last(&s->link_flush, &flush_mm);
     }
     *sym = alloc_symbol();
     (*sym)->cache = s;
+    clear_trap(&trap);
     return 0;
 }
 
@@ -1641,22 +1650,6 @@ int get_location_info(const Symbol * sym, LocationInfo ** loc) {
         context_lock(f->ctx = ctx);
         f->magic = MAGIC_LOC;
         f->ip = ip;
-#if ENABLE_RCBP_TEST
-        if (strncmp(sym_cache->id, "@T.", 3) == 0) {
-            int sym_class = 0;
-            uint64_t address = 0;
-            char ctx_id[256];
-            if (sscanf(sym_cache->id, "@T.%X.%"SCNx64".%255s", &sym_class, &address, ctx_id) == 3) {
-                location_cmds.cnt = 0;
-                add_location_command(SFT_CMD_NUMBER)->args.num = address;
-                f->info.value_cmds.cmds = (LocationExpressionCommand *)loc_alloc(location_cmds.cnt * sizeof(LocationExpressionCommand));
-                memcpy(f->info.value_cmds.cmds, location_cmds.cmds, location_cmds.cnt * sizeof(LocationExpressionCommand));
-                f->info.value_cmds.cnt = f->info.value_cmds.max = location_cmds.cnt;
-                f->info.big_endian = big_endian_host();
-                f->sym_id = loc_strdup(sym_cache->id);
-            }
-        }
-#endif
     }
     if (f->sym_id == NULL) {
         Channel * c = get_channel(syms);
@@ -1824,10 +1817,110 @@ int get_funccall_info(const Symbol * func,
     return -1;
 }
 
-const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
-    /* TODO: get_symbol_file_name() in symbols proxy */
+static void read_file_info_props(InputStream * inp, const char * name, void * args) {
+    FileInfoCache * f = (FileInfoCache *)args;
+    if (strcmp(name, "Addr") == 0) {
+        f->range_addr = (ContextAddress)json_read_uint64(inp);
+    }
+    else if (strcmp(name, "Size") == 0) {
+        f->range_size = (ContextAddress)json_read_uint64(inp);
+    }
+    else if (strcmp(name, "FileName") == 0) {
+        loc_free(f->file_name);
+        f->file_name = json_read_alloc_string(inp);
+    }
+    else if (strcmp(name, "FileError") == 0 && f->file_error == NULL) {
+        release_error_report(f->file_error);
+        f->file_error = get_error_report(read_error_object(inp));
+    }
+    else {
+        json_skip_object(inp);
+    }
+}
+
+static void validate_file(Channel * c, void * args, int error) {
+    Trap trap;
+    FileInfoCache * f = (FileInfoCache *)args;
+    assert(f->magic == MAGIC_FILE);
+    assert(f->pending != NULL);
+    assert(f->error == NULL);
+    if (set_trap(&trap)) {
+        f->pending = NULL;
+        if (!error) {
+            error = read_errno(&c->inp);
+            json_read_struct(&c->inp, read_file_info_props, f);
+            json_test_char(&c->inp, MARKER_EOA);
+            json_test_char(&c->inp, MARKER_EOM);
+        }
+        clear_trap(&trap);
+    }
+    else {
+        error = trap.error;
+    }
+    if (get_error_code(error) != ERR_INV_COMMAND) f->error = get_error_report(error);
+    cache_notify_later(&f->cache);
+    if (f->disposed) free_file_info_cache(f);
+}
+
+static FileInfoCache * get_file_info_cache(Context * ctx, ContextAddress addr) {
+    Trap trap;
+    unsigned h;
+    LINK * l;
+    SymbolsCache * syms = NULL;
+    FileInfoCache * f = NULL;
+
+    if (!set_trap(&trap)) return NULL;
+
+    h = hash_file(ctx);
+    syms = get_symbols_cache();
+    for (l = syms->link_file[h].next; l != syms->link_file + h; l = l->next) {
+        FileInfoCache * c = syms2file(l);
+        if (c->ctx == ctx) {
+            if (c->pending != NULL) {
+                cache_wait(&c->cache);
+            }
+            else if (c->range_addr <= addr && c->range_addr + c->range_size > addr) {
+                f = c;
+                break;
+            }
+        }
+    }
+
+    assert(f == NULL || f->pending == NULL);
+
+    if (f == NULL && !syms->service_available) {
+        /* nothing */
+    }
+    else if (f == NULL) {
+        Channel * c = get_channel(syms);
+        f = (FileInfoCache *)loc_alloc_zero(sizeof(FileInfoCache));
+        list_add_first(&f->link_syms, syms->link_frame + h);
+        list_add_last(&f->link_flush, &flush_mm);
+        context_lock(f->ctx = ctx);
+        f->magic = MAGIC_FILE;
+        f->addr = addr;
+        f->pending = protocol_send_command(c, SYMBOLS, "getSymFileInfo", validate_file, f);
+        json_write_string(&c->out, f->ctx->id);
+        write_stream(&c->out, 0);
+        json_write_uint64(&c->out, addr);
+        write_stream(&c->out, 0);
+        write_stream(&c->out, MARKER_EOM);
+        cache_wait(&f->cache);
+    }
+    else if (f->error != NULL) {
+        exception(set_error_report_errno(f->error));
+    }
+
+    clear_trap(&trap);
     errno = 0;
-    return NULL;
+    return f;
+}
+
+const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
+    FileInfoCache * f = get_file_info_cache(ctx, module->addr);
+    if (f == NULL) return NULL;
+    set_error_report_errno(f->file_error);
+    return f->file_name;
 }
 
 /*************************************************************************************************/
@@ -1878,6 +1971,13 @@ static void flush_one(Context * ctx, int mode, Context * sym_grp, LINK * l) {
         AddressInfoCache * c = flush2address(l);
         if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
             free_address_info_cache(c);
+        }
+        return;
+    }
+    if (magic == MAGIC_FILE) {
+        FileInfoCache * c = flush2file(l);
+        if (check_policy(ctx, mode, sym_grp, c->ctx, UPDATE_ON_MEMORY_MAP_CHANGES)) {
+            free_file_info_cache(c);
         }
         return;
     }
@@ -1936,6 +2036,13 @@ static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddre
 }
 #endif
 
+#if ENABLE_SymbolsMux
+static int reader_is_valid(Context * ctx, ContextAddress addr) {
+    FileInfoCache * f = get_file_info_cache(ctx, addr);
+    return f != NULL && f->file_name != NULL;
+}
+#endif
+
 static void channel_close_listener(Channel * c) {
     LINK * l = root.next;
     while (l != &root) {
@@ -1970,6 +2077,9 @@ void ini_symbols_lib(void) {
     add_channel_close_listener(channel_close_listener);
     list_init(&flush_rc);
     list_init(&flush_mm);
+#if ENABLE_SymbolsMux
+    add_symbols_reader(&symbol_reader);
+#endif
 }
 
 #endif

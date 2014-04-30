@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -23,7 +23,7 @@
 
 #include <tcf/config.h>
 
-#if SERVICE_Symbols && !ENABLE_SymbolsProxy && ENABLE_ELF
+#if SERVICE_Symbols && (!ENABLE_SymbolsProxy || ENABLE_SymbolsMux) && ENABLE_ELF
 
 #if defined(_WRS_KERNEL)
 #  include <symLib.h>
@@ -49,9 +49,6 @@
 #include <tcf/services/symbols.h>
 #include <tcf/services/elf-symbols.h>
 #include <tcf/services/vm.h>
-#if ENABLE_RCBP_TEST
-#  include <tcf/main/test.h>
-#endif
 #if ENABLE_SymbolsMux
 #define SYM_READER_PREFIX elf_reader_
 #include <tcf/services/symbols_mux.h>
@@ -201,7 +198,7 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
     if (frame == STACK_NO_FRAME) {
         sym_ip = addr;
     }
-    else if (frame == STACK_TOP_FRAME) {
+    else if (is_top_frame(ctx, frame)) {
         if (!ctx->stopped) {
             errno = ERR_IS_RUNNING;
             return -1;
@@ -1188,22 +1185,6 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
         }
     }
 
-#if ENABLE_RCBP_TEST
-    if (find_symbol_list == NULL) {
-        int sym_class = 0;
-        void * address = NULL;
-        if (find_test_symbol(ctx, name, &address, &sym_class) >= 0) {
-            Symbol * sym = alloc_symbol();
-            sym->ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
-            sym->frame = STACK_NO_FRAME;
-            sym->address = (ContextAddress)address;
-            sym->has_address = 1;
-            sym->sym_class = sym_class;
-            add_to_find_symbol_buf(sym);
-        }
-    }
-#endif
-
     if (error == 0 && find_symbol_list == NULL) {
         /* Search in pub names of all other files */
         ELF_File * file = elf_list_first(sym_ctx, 0, ~(ContextAddress)0);
@@ -1467,7 +1448,6 @@ int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol **
 
     find_symbol_list = NULL;
     if (!set_trap(&trap)) return -1;
-    if (frame == STACK_TOP_FRAME && (frame = get_top_frame(ctx)) < 0) exception(errno);
     if (get_sym_context(ctx, frame, addr) < 0) exception(errno);
     find_unit(sym_ctx, addr, &loc);
     if (addr == sym_ip) ip = loc;
@@ -2029,12 +2009,15 @@ int get_stack_tracing_info(Context * ctx, ContextAddress rt_addr, StackTracingIn
 
 const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
     int error = 0;
-    ELF_File * file = module ? elf_open_memory_region_file(module, &error) : NULL;
-    file = get_dwarf_file(file);
+    ELF_File * file = NULL;
+    if (module == NULL) {
+        errno = 0;
+        return NULL;
+    }
+    file = get_dwarf_file(elf_open_memory_region_file(module, &error));
     errno = error;
-    if (file == NULL && module == NULL) return NULL;
-    if (file == NULL) return module->file_name;
-    return file->name;
+    if (file != NULL) return file->name;
+    return NULL;
 }
 
 #if ENABLE_MemoryMap
@@ -2065,8 +2048,7 @@ static int reader_is_valid(Context * ctx, ContextAddress addr) {
     ELF_File * file = NULL;
     ELF_Section * sec = NULL;
     elf_map_to_link_time_address(ctx, addr, &file, &sec);
-    if (file != NULL) return 1;
-    return 0;
+    return file != NULL;
 }
 #endif
 

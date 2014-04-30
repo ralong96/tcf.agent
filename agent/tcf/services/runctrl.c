@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1304,6 +1304,7 @@ int is_intercepted(Context * ctx) {
 }
 
 #if EN_STEP_LINE
+
 static int is_same_line(CodeArea * x, CodeArea * y) {
     if (x == NULL || y == NULL) return 0;
     if (x->start_line != y->start_line) return 0;
@@ -1363,6 +1364,8 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
     return 0;
 }
 
+#if EN_STEP_OVER
+
 #if ENABLE_Symbols
 static void get_machine_code_area(CodeArea * area, void * args) {
     *(CodeArea **)args = (CodeArea *)tmp_alloc(sizeof(CodeArea));
@@ -1388,6 +1391,8 @@ static int is_within_function_epilogue(Context * ctx, ContextAddress ip) {
 #endif
     return 0;
 }
+
+#endif
 #endif
 
 #if EN_STEP_OVER

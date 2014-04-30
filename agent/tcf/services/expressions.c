@@ -1088,7 +1088,8 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
             return sym_class;
         }
     }
-#elif ENABLE_RCBP_TEST
+#endif
+#if ENABLE_RCBP_TEST
     {
         void * ptr = NULL;
         int sym_class = 0;
@@ -2132,7 +2133,9 @@ static void funcccall_breakpoint(Context * ctx, void * args) {
             for (i = 0; i < state->regs_cnt; i++) {
                 RegisterDefinition * r = state->regs[i];
                 if (context_write_reg(ctx, r, 0, r->size, state->regs_data + offs) < 0) exception(errno);
+#if SERVICE_Registers
                 send_event_register_changed(register2id(ctx, STACK_TOP_FRAME, r));
+#endif
                 offs += r->size;
             }
             state->regs_cnt = 0;
@@ -3551,7 +3554,7 @@ static void command_get_context(char * token, Channel * c) {
     cache_enter(get_context_cache_client, c, &args, sizeof(args));
 }
 
-#if ENABLE_Symbols
+#if ENABLE_Symbols && SERVICE_StackTrace
 
 static int sym_cnt = 0;
 static int sym_max = 0;
@@ -3573,7 +3576,7 @@ static void get_children_cache_client(void * x) {
     int err = 0;
 
     /* TODO: Expressions.getChildren - structures */
-#if ENABLE_Symbols
+#if ENABLE_Symbols && SERVICE_StackTrace
     char parent_id[256];
     {
         Context * ctx;
@@ -3607,7 +3610,7 @@ static void get_children_cache_client(void * x) {
     write_errno(&c->out, err);
 
     write_stream(&c->out, '[');
-#if ENABLE_Symbols
+#if ENABLE_Symbols && SERVICE_StackTrace
     {
         int i;
         for (i = 0; i < sym_cnt; i++) {

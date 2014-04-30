@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -173,23 +173,23 @@
 #endif
 
 #if !defined(ENABLE_SymbolsProxy)
-#  define ENABLE_SymbolsProxy   (ENABLE_DebugContext && TARGET_VXWORKS)
+#  define ENABLE_SymbolsProxy   (ENABLE_DebugContext && (TARGET_VXWORKS || TARGET_UNIX || TARGET_WINDOWS))
 #endif
 
 #if !defined(ENABLE_LineNumbersProxy)
-#  define ENABLE_LineNumbersProxy (ENABLE_DebugContext && TARGET_VXWORKS)
+#  define ENABLE_LineNumbersProxy (ENABLE_DebugContext && (TARGET_VXWORKS || TARGET_UNIX || TARGET_WINDOWS))
 #endif
 
 #if !defined(ENABLE_MemoryMap)
 #  define ENABLE_MemoryMap      ((ENABLE_DebugContext && ENABLE_ContextProxy) || SERVICE_MemoryMap)
 #endif
 
-#if ENABLE_SymbolsProxy || !ENABLE_DebugContext
+#if !ENABLE_DebugContext
 #  undef SERVICE_Symbols
 #  define SERVICE_Symbols       0
 #endif
 
-#if ENABLE_LineNumbersProxy || !ENABLE_DebugContext
+#if !ENABLE_DebugContext
 #  undef SERVICE_LineNumbers
 #  define SERVICE_LineNumbers    0
 #endif
@@ -211,11 +211,11 @@
 #endif
 
 #if !defined(ENABLE_SymbolsMux)
-#define ENABLE_SymbolsMux   0
+#define ENABLE_SymbolsMux       (SERVICE_Symbols && (ENABLE_ELF || ENABLE_PE))
 #endif
 
 #if !defined(ENABLE_LineNumbersMux)
-#define ENABLE_LineNumbersMux   0
+#define ENABLE_LineNumbersMux   (SERVICE_LineNumbers && (ENABLE_ELF || ENABLE_PE))
 #endif
 
 #if !defined(ENABLE_SSL)

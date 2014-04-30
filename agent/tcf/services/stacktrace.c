@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -575,11 +575,6 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
 
     *info = stack->frames + frame;
     return 0;
-}
-
-int is_top_frame(Context * ctx, int frame) {
-    if (ctx == NULL || !context_has_state(ctx)) return 0;
-    return frame == 0 || frame == STACK_TOP_FRAME;
 }
 
 static void flush_stack_trace(Context * ctx, void * args) {

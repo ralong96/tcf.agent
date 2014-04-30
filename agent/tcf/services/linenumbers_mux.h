@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -36,6 +36,7 @@ typedef struct LineNumbersReader {
 } LineNumbersReader;
 
 #ifdef LINENUMBERS_READER_PREFIX
+
 #define JOIN(a,b) JOIN1(a,b)
 #define JOIN1(a,b) a##b
 #define READER_NAME(name)  JOIN(LINENUMBERS_READER_PREFIX,name)
@@ -49,10 +50,8 @@ extern int line_to_address(Context * ctx, char * file, int line, int column, Lin
 extern int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, LineNumbersCallBack * client, void * args);
 extern void ini_line_numbers_lib(void);
 
-static LineNumbersReader line_numbers_reader = { line_to_address, address_to_line};
-#else  /* SYM_READER_PREFIX */
-extern void elf_reader_ini_line_numbers_lib();
-extern void win32_reader_ini_line_numbers_lib();
+static LineNumbersReader line_numbers_reader = { line_to_address, address_to_line };
+
 #endif  /* SYM_READER_PREFIX */
 
 extern int add_line_numbers_reader(LineNumbersReader * reader);

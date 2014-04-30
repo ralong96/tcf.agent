@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -110,7 +110,7 @@ static void relocate(void * r) {
             sym_value = info.value;
             break;
         case SHN_COMMON:
-#if SERVICE_Symbols && !ENABLE_SymbolsProxy
+#if SERVICE_Symbols && (!ENABLE_SymbolsProxy || ENABLE_SymbolsMux)
             if (ctx != NULL) {
                 ContextAddress addr = 0;
                 if (elf_symbol_address(ctx, &info, &addr) < 0) exception(errno);
