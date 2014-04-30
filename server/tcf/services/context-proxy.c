@@ -99,6 +99,7 @@ struct ContextCache {
     unsigned word_size;
 
     /* Run Control State */
+    int intercepted;
     int pc_valid;
     uint64_t suspend_pc;
     char * suspend_reason;
@@ -349,6 +350,7 @@ static void add_context_cache(PeerCache * p, ContextCache * c) {
     c->peer = p;
     c->ctx = create_context(c->id);
     c->ctx->ref_count = 1;
+    c->ctx->stopped = 1;
     *EXT(c->ctx) = c;
     list_init(&c->mem_cache_list);
     list_init(&c->stk_cache_list);
@@ -451,6 +453,8 @@ static void free_context_cache(ContextCache * c) {
 static void on_context_suspended(ContextCache * c) {
     LINK * l;
 
+    /* TODO: context proxy needs to flush caches when a context is suspended temporarlily.
+     * No such event is available. Only intercept is notified. */
     if (c->peer->rc_done) {
         LINK * x = context_root.next;
         while (x != &context_root) {
@@ -597,10 +601,9 @@ static void read_container_suspended_item(InputStream * inp, void * args) {
     c = find_context_cache(p, id);
     if (c != NULL) {
         assert(*EXT(c->ctx) == c);
-        if (!c->ctx->stopped) {
-            c->ctx->stopped = 1;
+        if (!c->intercepted) {
+            c->intercepted = 1;
             on_context_suspended(c);
-            send_context_stopped_event(c->ctx);
         }
     }
     else if (p->rc_done) {
@@ -616,10 +619,9 @@ static void read_container_resumed_item(InputStream * inp, void * args) {
     c = find_context_cache(p, id);
     if (c != NULL) {
         assert(*EXT(c->ctx) == c);
-        if (c->ctx->stopped) {
-            c->ctx->stopped = 0;
+        if (c->intercepted) {
+            c->intercepted = 0;
             clear_context_suspended_data(c);
-            send_context_started_event(c->ctx);
         }
     }
     else if (p->rc_done) {
@@ -683,10 +685,9 @@ static void event_context_suspended(Channel * ch, void * args) {
     if (c != &buf) {
         assert(*EXT(c->ctx) == c);
         c->pc_valid = 1;
-        if (!c->ctx->stopped) {
-            c->ctx->stopped = 1;
+        if (!c->intercepted) {
+            c->intercepted = 1;
             on_context_suspended(c);
-            send_context_stopped_event(c->ctx);
         }
     }
     else {
@@ -711,10 +712,9 @@ static void event_context_resumed(Channel * ch, void * args) {
     c = find_context_cache(p, id);
     if (c != NULL) {
         assert(*EXT(c->ctx) == c);
-        if (c->ctx->stopped) {
-            c->ctx->stopped = 0;
+        if (c->intercepted) {
+            c->intercepted = 0;
             clear_context_suspended_data(c);
-            send_context_started_event(c->ctx);
         }
     }
     else if (p->rc_done) {
@@ -746,10 +746,9 @@ static void event_container_suspended(Channel * ch, void * args) {
     if (c != &buf) {
         assert(*EXT(c->ctx) == c);
         c->pc_valid = 1;
-        if (!c->ctx->stopped) {
-            c->ctx->stopped = 1;
+        if (!c->intercepted) {
+            c->intercepted = 1;
             on_context_suspended(c);
-            send_context_stopped_event(c->ctx);
         }
     }
     else {
@@ -984,10 +983,9 @@ static void validate_peer_cache_state(Channel * c, void * args, int error) {
             }
             else {
                 add_context_cache(p, x);
-                x->ctx->stopped = x->pc_valid;
-                if (x->pc_valid) {
+                x->intercepted = x->pc_valid;
+                if (x->intercepted) {
                     on_context_suspended(x);
-                    send_context_stopped_event(x->ctx);
                 }
                 protocol_send_command(p->target, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
                 json_write_string(&p->target->out, x->id);
@@ -1342,9 +1340,10 @@ int context_write_reg(Context * ctx, RegisterDefinition * def, unsigned offs, un
 }
 
 int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, unsigned size, void * buf) {
-    assert(0);
-    errno = EINVAL;
-    return -1;
+    StackFrame * info = NULL;
+    if (get_frame_info(ctx, 0, &info) < 0) return -1;
+    if (read_reg_bytes(info, def, offs, size, buf) < 0) return -1;
+    return 0;
 }
 
 static void read_memory_region_property(InputStream * inp, const char * name, void * args) {
@@ -1801,6 +1800,7 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
 
     if (!set_trap(&trap)) return -1;
     if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
+    if (frame == STACK_TOP_FRAME) frame = 0;
 
     assert(frame >= 0);
     check_registers_cache(cache);
@@ -1938,24 +1938,24 @@ static void validate_cache_isa(Channel * c, void * args, int error) {
     context_unlock(ctx);
 }
 
-static int get_context_defisa_from_rc (Context * ctx, ContextISA * isa) {
-   ContextCache * cache = *EXT(ctx);
-   Channel * c = cache->peer->target;
-   DefIsaCache * i = NULL;
-   Trap trap;
+static int get_context_defisa_from_rc(Context * ctx, ContextISA * isa) {
+    ContextCache * cache = *EXT(ctx);
+    Channel * c = cache->peer->target;
+    DefIsaCache * i = NULL;
+    Trap trap;
 
-   if (cache->def_isa_cache == NULL) {
-       cache->def_isa_cache = (DefIsaCache *)loc_alloc_zero(sizeof(DefIsaCache));
-   }
-   i = cache->def_isa_cache;
+    if (cache->def_isa_cache == NULL) {
+        cache->def_isa_cache = (DefIsaCache *)loc_alloc_zero(sizeof(DefIsaCache));
+    }
+    i = cache->def_isa_cache;
 
-   if (!set_trap(&trap)) return -1;
-   if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
-   if (!cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
+    if (!set_trap(&trap)) return -1;
+    if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
+    if (!cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
 
-   if (i->pending != NULL) cache_wait(&i->cache);
+    if (i->pending != NULL) cache_wait(&i->cache);
 
-   if (i->isa_valid) {
+    if (i->isa_valid) {
         if (i->def_isa != NULL) isa->def = loc_strdup(i->def_isa);
         isa->alignment = i->alignment;
         isa->max_instruction_size = i->max_instruction_size;
