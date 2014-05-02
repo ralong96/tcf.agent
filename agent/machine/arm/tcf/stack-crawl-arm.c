@@ -1886,6 +1886,8 @@ static int trace_instructions(void) {
     RegData org_sp = reg_data[13];
     RegData org_lr = reg_data[14];
     RegData org_pc = reg_data[15];
+    RegData org_cpsr = cpsr_data;
+    RegData org_spsr = spsr_data;
     for (;;) {
         unsigned t = 0;
         BranchData * b = NULL;
@@ -1950,11 +1952,19 @@ static int trace_instructions(void) {
     }
     trace(LOG_STACK, "Stack crawl: Function epilogue not found");
     for (i = 0; i < 16; i++) reg_data[i].o = 0;
+    cpsr_data.o = 0;
+    spsr_data.o = 0;
+    if (org_cpsr.o && org_spsr.o && org_lr.o) {
+        cpsr_data = org_cpsr;
+        spsr_data = org_spsr;
+        reg_data[15] = org_lr;
+        return_from_exception();
+        return 0;
+    }
     if (org_sp.v != 0 && org_lr.v != 0 && org_pc.v != org_lr.v) {
         reg_data[13] = org_sp;
         reg_data[15] = org_lr;
     }
-    cpsr_data.o = 0;
     return 0;
 }
 
