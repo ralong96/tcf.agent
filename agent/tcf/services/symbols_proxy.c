@@ -586,7 +586,7 @@ static void flush_symbol(LINK * l) {
 }
 
 static Channel * get_channel(SymbolsCache * syms) {
-    if (is_channel_closed(syms->channel)) exception(ERR_CHANNEL_CLOSED);
+    if (is_channel_closed(syms->channel)) str_exception(ERR_SYM_NOT_FOUND, "Channel is closed");
     if (!syms->service_available) str_exception(ERR_SYM_NOT_FOUND, "Symbols service not available");
     return syms->channel;
 }
