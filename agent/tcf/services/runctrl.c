@@ -78,7 +78,6 @@ typedef struct ContextExtensionRC {
     ContextAddress step_range_start;
     ContextAddress step_range_end;
     ContextAddress step_frame_fp;
-    ContextAddress step_frame_ip;
     ContextAddress step_bp_addr;
     BreakpointInfo * step_bp_info;
     CodeArea * step_code_area;
@@ -780,7 +779,6 @@ static void cancel_step_mode(Context * ctx) {
     ext->step_range_start = 0;
     ext->step_range_end = 0;
     ext->step_frame_fp = 0;
-    ext->step_frame_ip = 0;
     ext->step_bp_addr = 0;
     ext->step_continue_mode = RM_RESUME;
     ext->step_mode = RM_RESUME;
@@ -1477,6 +1475,11 @@ static int update_step_machine_state(Context * ctx) {
 #if EN_STEP_OVER
     {
         ContextAddress step_bp_addr = 0;
+        int do_reverse =
+                ext->step_mode == RM_REVERSE_STEP_OVER ||
+                ext->step_mode == RM_REVERSE_STEP_OVER_RANGE ||
+                ext->step_mode == RM_REVERSE_STEP_OVER_LINE ||
+                ext->step_mode == RM_REVERSE_STEP_OUT;
 
         switch (ext->step_mode) {
         case RM_STEP_OVER:
@@ -1494,14 +1497,19 @@ static int update_step_machine_state(Context * ctx) {
             else if (addr < ext->step_range_start || addr >= ext->step_range_end) {
                 StackFrame * info = NULL;
                 int n = get_top_frame(ctx);
-                int do_reverse =
-                        ext->step_mode == RM_REVERSE_STEP_OVER ||
-                        ext->step_mode == RM_REVERSE_STEP_OVER_RANGE ||
-                        ext->step_mode == RM_REVERSE_STEP_OVER_LINE;
                 if (n < 0) return -1;
                 if (get_frame_info(ctx, n, &info) < 0) return -1;
                 if (ext->step_frame_fp != info->fp) {
                     unsigned frame_cnt;
+                    if (ext->step_bp_info != NULL) {
+                        if (!do_reverse || ext->step_line_cnt > 1) {
+                            ext->step_continue_mode = RM_RESUME;
+                        }
+                        else {
+                            ext->step_continue_mode = RM_REVERSE_RESUME;
+                        }
+                        return 0;
+                    }
                     if (do_reverse && is_within_function_epilogue(ctx, addr)) {
                         /* With some compilers, the stack walking code based on debug information does not work
                          * correctly if we are in the middle of the function epilogue. In this case, an invalid
@@ -1565,22 +1573,19 @@ static int update_step_machine_state(Context * ctx) {
                     if (get_frame_info(ctx, p, &info) < 0) return -1;
                     if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) return -1;
                     ext->step_frame_fp = info->fp;
-                    ext->step_frame_ip = (ContextAddress)ip;
                     step_bp_addr = (ContextAddress)ip;
                     break;
                 }
-                for (;;) {
-                    uint64_t ip = 0;
-                    n = get_prev_frame(ctx, n);
-                    if (n < 0) {
-                        if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
-                        break;
-                    }
-                    if (get_frame_info(ctx, n, &info) < 0) return -1;
-                    if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) break;
-                    if (ext->step_frame_fp == info->fp && ext->step_frame_ip == ip) {
-                        step_bp_addr = (ContextAddress)ip;
-                        break;
+                if (get_frame_info(ctx, n, &info) < 0) return -1;
+                if (ext->step_frame_fp != info->fp) {
+                    if (ext->step_bp_info != NULL) {
+                        if (!do_reverse || ext->step_line_cnt > 1) {
+                            ext->step_continue_mode = RM_RESUME;
+                        }
+                        else {
+                            ext->step_continue_mode = RM_REVERSE_RESUME;
+                        }
+                        return 0;
                     }
                 }
             }
@@ -1588,28 +1593,12 @@ static int update_step_machine_state(Context * ctx) {
         }
 
         if (step_bp_addr) {
-            switch (ext->step_mode) {
-            case RM_STEP_OVER:
-            case RM_STEP_OVER_RANGE:
-            case RM_STEP_OVER_LINE:
-            case RM_STEP_OUT:
+            if (!do_reverse || ext->step_line_cnt > 1) {
                 ext->step_continue_mode = RM_RESUME;
-                break;
-            case RM_REVERSE_STEP_OVER:
-            case RM_REVERSE_STEP_OVER_RANGE:
-            case RM_REVERSE_STEP_OVER_LINE:
-            case RM_REVERSE_STEP_OUT:
-                if (ext->step_line_cnt > 1) {
-                    ext->step_continue_mode = RM_RESUME;
-                }
-                else {
-                    step_bp_addr--;
-                    ext->step_continue_mode = RM_REVERSE_RESUME;
-                }
-                break;
-            default:
-                errno = ERR_UNSUPPORTED;
-                return -1;
+            }
+            else {
+                step_bp_addr--;
+                ext->step_continue_mode = RM_REVERSE_RESUME;
             }
             if (ext->step_bp_info == NULL || ext->step_bp_addr != step_bp_addr) {
                 if (ext->step_bp_info != NULL) destroy_eventpoint(ext->step_bp_info);
