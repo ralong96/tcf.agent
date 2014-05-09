@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -36,14 +36,61 @@ void output_queue_ini(OutputQueue * q) {
     list_init(&q->queue);
 }
 
+OutputBuffer * output_queue_alloc_obuf(void) {
+    OutputBuffer * bf;
+    if (list_is_empty(&pool)) {
+        bf = (OutputBuffer *)loc_alloc_zero(sizeof(OutputBuffer));
+    }
+    else {
+        bf = link2buf(pool.next);
+        list_remove(&bf->link);
+        pool_size--;
+        bf->queue = NULL;
+        bf->buf_pos = 0;
+        bf->buf_len = 0;
+    }
+    return bf;
+}
+
+void output_queue_free_obuf(OutputBuffer * bf) {
+    if (pool_size < MAX_POOL_SIZE) {
+        bf->queue = NULL;
+        list_add_last(&bf->link, &pool);
+        pool_size++;
+    }
+    else {
+        loc_free(bf);
+    }
+}
+
+void output_queue_add_obuf(OutputQueue * q, OutputBuffer * bf) {
+    if (q->queue.next != q->queue.prev) {
+        /* Append data to the last pending buffer */
+        OutputBuffer * bp = link2buf(q->queue.prev);
+        size_t gap = sizeof(bp->buf) - bp->buf_len;
+        assert(bp->buf_pos == 0);
+        if (gap >= bf->buf_len) {
+            memcpy(bp->buf + bp->buf_len, bf->buf, bf->buf_len);
+            bp->buf_len += bf->buf_len;
+            output_queue_free_obuf(bf);
+            return;
+        }
+    }
+    bf->queue = q;
+    bf->buf_pos = 0;
+    list_add_last(&bf->link, &q->queue);
+    if (q->queue.next == &bf->link) {
+        q->post_io_request(bf);
+    }
+}
+
 void output_queue_add(OutputQueue * q, const void * buf, size_t size) {
     if (q->error) return;
     if (q->queue.next != q->queue.prev) {
         /* Append data to the last pending buffer */
-        size_t gap;
         OutputBuffer * bf = link2buf(q->queue.prev);
+        size_t gap = sizeof(bf->buf) - bf->buf_len;
         assert(bf->buf_pos == 0);
-        gap = sizeof(bf->buf) - bf->buf_len;
         if (gap > 0) {
             size_t len = size;
             if (len > gap) len = gap;
@@ -55,17 +102,9 @@ void output_queue_add(OutputQueue * q, const void * buf, size_t size) {
     }
     while (size > 0) {
         size_t len = size;
-        OutputBuffer * bf;
-        if (list_is_empty(&pool)) {
-            bf = (OutputBuffer *)loc_alloc_zero(sizeof(OutputBuffer));
-        }
-        else {
-            bf = link2buf(pool.next);
-            list_remove(&bf->link);
-            pool_size--;
-        }
-        bf->queue = q;
+        OutputBuffer * bf = output_queue_alloc_obuf();
         if (len > sizeof(bf->buf)) len = sizeof(bf->buf);
+        bf->queue = q;
         bf->buf_pos = 0;
         bf->buf_len = len;
         memcpy(bf->buf, buf, len);
@@ -92,15 +131,9 @@ void output_queue_done(OutputQueue * q, int error, int size) {
         if (bf->buf_pos < bf->buf_len) {
             /* Nothing */
         }
-        else if (pool_size < MAX_POOL_SIZE) {
-            bf->queue = NULL;
-            list_remove(&bf->link);
-            list_add_last(&bf->link, &pool);
-            pool_size++;
-        }
         else {
             list_remove(&bf->link);
-            loc_free(bf);
+            output_queue_free_obuf(bf);
         }
     }
     if (!list_is_empty(&q->queue)) {
@@ -113,13 +146,6 @@ void output_queue_clear(OutputQueue * q) {
     while (!list_is_empty(&q->queue)) {
         OutputBuffer * bf = link2buf(q->queue.next);
         list_remove(&bf->link);
-        if (pool_size < MAX_POOL_SIZE) {
-            bf->queue = NULL;
-            list_add_last(&bf->link, &pool);
-            pool_size++;
-        }
-        else {
-            loc_free(bf);
-        }
+        output_queue_free_obuf(bf);
     }
 }

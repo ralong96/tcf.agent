@@ -71,7 +71,7 @@ static void proxy_connecting(Channel * c) {
     trace(LOG_PROXY, "Proxy waiting Hello from target");
 }
 
-static void command_redirect_done (Channel * c, void * client_data, int error) {
+static void command_redirect_done(Channel * c, void * client_data, int error) {
     RedirectInfo * info = (RedirectInfo *)client_data;
 
     if (!is_channel_closed(info->host)) {
