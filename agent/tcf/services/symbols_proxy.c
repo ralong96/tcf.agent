@@ -542,6 +542,9 @@ static void free_symbols_cache(SymbolsCache * syms) {
         while (!list_is_empty(syms->link_list + i)) {
             free_find_sym_cache(syms2find(syms->link_list[i].next));
         }
+        while (!list_is_empty(syms->link_file + i)) {
+            free_file_info_cache(syms2file(syms->link_file[i].next));
+        }
         while (!list_is_empty(syms->link_frame + i)) {
             free_stack_frame_cache(syms2frame(syms->link_frame[i].next));
         }
@@ -1894,7 +1897,7 @@ static FileInfoCache * get_file_info_cache(Context * ctx, ContextAddress addr) {
     else if (f == NULL) {
         Channel * c = get_channel(syms);
         f = (FileInfoCache *)loc_alloc_zero(sizeof(FileInfoCache));
-        list_add_first(&f->link_syms, syms->link_frame + h);
+        list_add_first(&f->link_syms, syms->link_file + h);
         list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
         f->magic = MAGIC_FILE;
