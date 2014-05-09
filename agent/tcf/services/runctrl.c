@@ -2097,6 +2097,7 @@ static void run_safe_events(void * arg) {
         assert(context_get_group(i->ctx, CONTEXT_GROUP_STOP) == grp);
         assert(is_all_stopped(i->ctx));
         safe_event_list = i->next;
+        if (safe_event_list == NULL) safe_event_last = NULL;
         if (i->done != NULL) {
             safe_event_active = 1;
             if (set_trap(&trap)) {
@@ -2307,6 +2308,7 @@ static void event_context_stopped(Context * ctx, void * args) {
 static void event_context_started(Context * ctx, void * args) {
     ContextExtensionRC * ext = EXT(ctx);
     assert(!ctx->stopped);
+    assert(!ctx->exited);
     if (ext->intercepted) resume_context_tree(ctx);
     ext->intercepted_by_bp = 0;
     stop_if_safe_events(ctx);
