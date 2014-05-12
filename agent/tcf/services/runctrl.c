@@ -2050,6 +2050,11 @@ static void run_safe_events(void * arg) {
             ext->cannot_stop = 1;
             continue;
         }
+        if (stop_all_timer_cnt >= 2 && ext->state_name != NULL) {
+            trace(LOG_ALWAYS, "can't stop %s: %s", ctx->id, ext->state_name);
+            ext->cannot_stop = 1;
+            continue;
+        }
 #if ENABLE_Trace
         if (stop_all_timer_cnt == STOP_ALL_MAX_CNT / 2) {
             const char * msg = ext->safe_single_step ? "finish single step" : "stop";
