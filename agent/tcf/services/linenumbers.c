@@ -277,7 +277,11 @@ static void command_map_to_memory(char * token, Channel * c) {
 }
 
 void ini_line_numbers_service(Protocol * proto) {
-    ini_line_numbers_lib();
+    static int ini_done = 0;
+    if (!ini_done) {
+        ini_line_numbers_lib();
+        ini_done = 1;
+    }
     add_command_handler(proto, LINENUMBERS, "mapToSource", command_map_to_source);
     add_command_handler(proto, LINENUMBERS, "mapToMemory", command_map_to_memory);
 }
