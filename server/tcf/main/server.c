@@ -59,61 +59,52 @@ static void channel_new_connection(ChannelServer * serv, Channel * c) {
 
 static void channel_redirection_listener(Channel * host, Channel * target) {
     if (target->state == ChannelStateStarted) {
-#if defined(SERVICE_LineNumbers) && SERVICE_LineNumbers
+#if SERVICE_LineNumbers
         ini_line_numbers_service(target->protocol);
 #endif
-#if defined(SERVICE_Symbols) && SERVICE_Symbols
+#if SERVICE_Symbols
         ini_symbols_service(target->protocol);
 #endif
     }
     if (target->state == ChannelStateConnected) {
         int i;
         int service_ln = 0;
-        int service_mm = 0;
         int service_pm = 0;
         int service_sm = 0;
-#if defined(SERVICE_Disassembly) && SERVICE_Disassembly
+#if SERVICE_Disassembly
         int service_da = 0;
 #endif
-#if defined(ENABLE_DebugContext) && ENABLE_DebugContext \
-    && defined(ENABLE_ContextProxy) && ENABLE_ContextProxy
+#if ENABLE_DebugContext && ENABLE_ContextProxy
         int forward_pm = 0;
 #endif
         for (i = 0; i < target->peer_service_cnt; i++) {
             char * nm = target->peer_service_list[i];
             if (strcmp(nm, "LineNumbers") == 0) service_ln = 1;
             if (strcmp(nm, "Symbols") == 0) service_sm = 1;
-            if (strcmp(nm, "MemoryMap") == 0) service_mm = 1;
             if (strcmp(nm, "PathMap") == 0) service_pm = 1;
-#if defined(SERVICE_Disassembly) && SERVICE_Disassembly
+#if SERVICE_Disassembly
             if (strcmp(nm, "Disassembly") == 0) service_da = 1;
 #endif
             TARGET_SERVICE_CHECK_HOOK;
         }
-        if (!service_pm || !service_ln || !service_sm) {
 #if SERVICE_PathMap
-            ini_path_map_service(host->protocol, bcg);
+        ini_path_map_service(host->protocol, bcg);
+#  if ENABLE_DebugContext && ENABLE_ContextProxy
+        if (service_pm) forward_pm = 1;
+#  endif
 #endif
-#if defined(ENABLE_DebugContext) && ENABLE_DebugContext \
-    && defined(ENABLE_ContextProxy) && ENABLE_ContextProxy
-            if (service_pm) forward_pm = 1;
+#if SERVICE_LineNumbers
+        if (!service_ln) ini_line_numbers_service(host->protocol);
 #endif
-        }
-        if (service_mm) {
-#if defined(SERVICE_LineNumbers) && SERVICE_LineNumbers
-            if (!service_ln) ini_line_numbers_service(host->protocol);
+#if SERVICE_Symbols
+        if (!service_sm) ini_symbols_service(host->protocol);
 #endif
-#if defined(SERVICE_Symbols) && SERVICE_Symbols
-            if (!service_sm) ini_symbols_service(host->protocol);
+#if SERVICE_Disassembly
+        if (!service_da) ini_disassembly_service(host->protocol);
 #endif
-#if defined(SERVICE_Disassembly) && SERVICE_Disassembly
-            if (!service_da) ini_disassembly_service(host->protocol);
+#if ENABLE_DebugContext && ENABLE_ContextProxy
+        create_context_proxy(host, target, forward_pm);
 #endif
-#if defined(ENABLE_DebugContext) && ENABLE_DebugContext \
-    && defined(ENABLE_ContextProxy) && ENABLE_ContextProxy
-            create_context_proxy(host, target, forward_pm);
-#endif
-        }
     }
 }
 
