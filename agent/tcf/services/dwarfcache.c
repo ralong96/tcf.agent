@@ -1841,6 +1841,9 @@ static int state_address_comparator(const void * x1, const void * x2) {
     if (s1->mSection > s2->mSection) return +1;
     if (s1->mAddress < s2->mAddress) return -1;
     if (s1->mAddress > s2->mAddress) return +1;
+    if ((s1->mFlags ^ s2->mFlags) & LINE_EndSequence) {
+        return s1->mFlags & LINE_EndSequence ? -1 : +1;
+    }
     if (s1->mFile < s2->mFile) return -1;
     if (s1->mFile > s2->mFile) return +1;
     if (s1->mLine < s2->mLine) return -1;
@@ -2010,7 +2013,6 @@ static void load_line_numbers_v2(CompUnit * Unit, U8_T unit_size, int dwarf64) {
                 state.mFile = 1;
                 state.mLine = 1;
                 if (is_stmt_default) state.mFlags |= LINE_IsStmt;
-                else state.mFlags &= ~LINE_IsStmt;
                 break;
             case DW_LNE_set_address:
                 state.mAddress = (ContextAddress)dio_ReadAddress(&sec);
