@@ -183,7 +183,7 @@ static const char * help_text[] = {
 #endif
     "  -s<url>          set agent listening port and protocol, default is " DEFAULT_SERVER_URL,
     "  -S               print server properties in Json format to stdout",
-    "  -I<idle-seconds> exit if are no connections for the specified time",
+    "  -I<idle-seconds> exit if there are no connections for the specified time",
 #if ENABLE_Plugins
     "  -P<dir>          set agent plugins directory name",
 #endif
