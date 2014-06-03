@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -187,6 +187,44 @@ static void dispose_configuration(ProfilerConfiguration * cfg) {
     loc_free(cfg);
 }
 
+static void command_get_capabilities(char * token, Channel * c) {
+    char id[256];
+    Context * ctx = NULL;
+    int error = 0;
+
+    json_read_string(&c->inp, id, sizeof(id));
+    if (read_stream(&c->inp) != 0) exception(ERR_JSON_SYNTAX);
+    if (read_stream(&c->inp) != MARKER_EOM) exception(ERR_JSON_SYNTAX);
+
+    ctx = id2ctx(id);
+    if (ctx == NULL) error = ERR_INV_CONTEXT;
+    else if (ctx->exited) error = ERR_ALREADY_EXITED;
+
+    write_stringz(&c->out, "R");
+    write_stringz(&c->out, token);
+    write_errno(&c->out, error);
+    write_stream(&c->out, '{');
+    if (!error) {
+        unsigned cnt = 0;
+        ContextExtensionPF * ext = EXT(ctx);
+        LINK * l = ext->list.next;
+        while (l != &ext->list) {
+            ProfilerRegistration * prf = link_ctx2prf(l);
+            if (prf->cls->capabilities != NULL) {
+                char * buf = prf->cls->capabilities(ctx);
+                if (cnt > 0) write_stream(&c->out, ',');
+                write_string(&c->out, buf);
+                loc_free(buf);
+                cnt++;
+            }
+            l = l->next;
+        }
+    }
+    write_stream(&c->out, '}');
+    write_stream(&c->out, 0);
+    write_stream(&c->out, MARKER_EOM);
+}
+
 static void command_configure(char * token, Channel * c) {
     char id[256];
     ProfilerConfiguration * cfg = NULL;
@@ -298,6 +336,7 @@ void ini_profiler_service(Protocol * proto) {
     add_context_event_listener(&listener, NULL);
     add_channel_close_listener(channel_close_listener);
     context_extension_offset = context_extension(sizeof(ContextExtensionPF));
+    add_command_handler(proto, PROFILER, "getCapabilities", command_get_capabilities);
     add_command_handler(proto, PROFILER, "configure", command_configure);
     add_command_handler(proto, PROFILER, "read", command_read);
     list_init(&cfgs);

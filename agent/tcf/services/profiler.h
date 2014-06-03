@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -43,6 +43,7 @@ typedef struct ProfilerParams {
  * Profiler class.
  */
 typedef struct ProfilerClass {
+    char * (*capabilities)(Context * /* ctx */);
     void * (*configure)(void * /* profiler */, Context * /* ctx */, ProfilerParams * /* params */);
     void (*read)(void * /* profiler */, OutputStream * /* out */);
     void (*dispose)(void * /* profiler */);

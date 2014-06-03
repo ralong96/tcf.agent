@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -237,6 +237,21 @@ static void profiler_dispose(void * args) {
     if (prf->lock == 0) loc_free(prf);
 }
 
+static char * profiler_capabilities(Context * ctx) {
+    char * res = NULL;
+    ByteArrayOutputStream buf;
+    OutputStream * out = create_byte_array_output_stream(&buf);
+
+    json_write_string(out, "StackTraces");
+    write_stream(out, ':');
+    write_stream(out, '{');
+    write_stream(out, '}');
+    write_stream(out, 0);
+
+    get_byte_array_output_stream_data(&buf, &res, NULL);
+    return res;
+}
+
 static void * profiler_configure(void * args, Context * ctx, ProfilerParams * params) {
     ProfilerSST * prf = (ProfilerSST *)args;
     ContextExtensionPrfSST * ext = EXT(ctx);
@@ -349,6 +364,7 @@ void ini_profiler_sst(void) {
     };
     add_context_event_listener(&listener, NULL);
     context_extension_offset = context_extension(sizeof(ContextExtensionPrfSST));
+    profiler_class.capabilities = profiler_capabilities;
     profiler_class.configure = profiler_configure;
     profiler_class.dispose = profiler_dispose;
     profiler_class.read = profiler_read;
