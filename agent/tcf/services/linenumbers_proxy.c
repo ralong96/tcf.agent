@@ -216,7 +216,7 @@ static void validate_cache_entry(Channel * c, void * args, int error) {
     if (entry->disposed) free_cache_entry(entry);
 }
 
-int line_to_address(Context * ctx, char * file, int line, int column,
+int line_to_address(Context * ctx, const char * file, int line, int column,
                     LineNumbersCallBack * client, void * args) {
     LINK * l = NULL;
     LineNumbersCache * cache = NULL;

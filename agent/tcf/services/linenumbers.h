@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -29,7 +29,7 @@
 
 typedef void LineNumbersCallBack(CodeArea *, void *);
 
-extern int line_to_address(Context * ctx, char * file, int line, int column, LineNumbersCallBack * client, void * args);
+extern int line_to_address(Context * ctx, const char * file, int line, int column, LineNumbersCallBack * client, void * args);
 
 extern int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, LineNumbersCallBack * client, void * args);
 

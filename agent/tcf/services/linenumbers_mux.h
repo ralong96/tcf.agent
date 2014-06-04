@@ -28,7 +28,7 @@
 #include <tcf/services/linenumbers.h>
 
 typedef struct LineNumbersReader {
-    int (*line_to_address)(Context * ctx, char * file, int line, int column,
+    int (*line_to_address)(Context * ctx, const char * file, int line, int column,
             LineNumbersCallBack * client, void * args);
     int (*address_to_line)(Context * ctx, ContextAddress addr0, ContextAddress addr1,
             LineNumbersCallBack * client, void * args);
@@ -46,7 +46,7 @@ typedef struct LineNumbersReader {
 #define address_to_line READER_NAME(address_to_line)
 #define ini_line_numbers_lib READER_NAME(ini_line_numbers_lib)
 
-extern int line_to_address(Context * ctx, char * file, int line, int column, LineNumbersCallBack * client, void * args);
+extern int line_to_address(Context * ctx, const char * file, int line, int column, LineNumbersCallBack * client, void * args);
 extern int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, LineNumbersCallBack * client, void * args);
 extern void ini_line_numbers_lib(void);
 

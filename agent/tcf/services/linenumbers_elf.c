@@ -238,7 +238,7 @@ static void unit_line_to_address(Context * ctx, MemoryRegion * mem, CompUnit * u
     }
 }
 
-int line_to_address(Context * ctx, char * file_name, int line, int column,
+int line_to_address(Context * ctx, const char * file_name, int line, int column,
                     LineNumbersCallBack * client, void * args) {
     int err = 0;
     Channel * chnl = cache_channel();

@@ -36,7 +36,7 @@ static LineNumbersReader ** readers = NULL;
 static unsigned reader_count = 0;
 static unsigned max_reader_count = 0;
 
-int line_to_address(Context * ctx, char * file_name, int line, int column,
+int line_to_address(Context * ctx, const char * file_name, int line, int column,
                     LineNumbersCallBack * client, void * args) {
     unsigned i;
     for (i = 0; i < reader_count; i++) {

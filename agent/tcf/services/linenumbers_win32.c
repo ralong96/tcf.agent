@@ -70,7 +70,7 @@ static int compare_path(Channel * chnl, Context * ctx, const char * file, const 
     return 0;
 }
 
-int line_to_address(Context * ctx, char * file, int line, int column,
+int line_to_address(Context * ctx, const char * file, int line, int column,
                     LineNumbersCallBack * callback, void * user_args) {
     int err = 0;
 
