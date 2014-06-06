@@ -2864,7 +2864,7 @@ int get_symbol_lower_bound(const Symbol * sym, int64_t * value) {
                 i--;
             }
             if (idx != NULL) {
-                if (get_num_prop(obj, AT_lower_bound, (U8_T *)value)) return 0;
+                if (get_num_prop(idx, AT_lower_bound, (U8_T *)value)) return 0;
                 if (get_error_code(errno) != ERR_SYM_NOT_FOUND) return -1;
                 *value = get_default_lower_bound(obj);
                 return 0;
