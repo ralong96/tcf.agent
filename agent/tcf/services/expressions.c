@@ -803,7 +803,6 @@ static void reg2value(int mode, Context * ctx, int frame, RegisterDefinition * d
             exception(ERR_ALREADY_EXITED);
         }
         else if (def->memory_context != NULL) {
-            assert(strcmp(def->memory_context, ctx->id) == 0);
             if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
         }
         else if (!context_has_state(ctx)) {
