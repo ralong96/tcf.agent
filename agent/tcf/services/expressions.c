@@ -1947,12 +1947,17 @@ static void op_index(int mode, Value * v) {
         error(errno, "Cannot get array element size");
     }
     if (mode == MODE_NORMAL) {
+        int64_t index = 0;
         int64_t lower_bound = 0;
         ContextAddress offs = 0;
         if (v->type_class == TYPE_CLASS_ARRAY && get_symbol_lower_bound(v->type, &lower_bound) < 0) {
             error(errno, "Cannot get array lower bound");
         }
-        offs = (ContextAddress)(to_int(mode, &i) - lower_bound) * size;
+        index = to_int(mode, &i);
+        if (v->type_class == TYPE_CLASS_ARRAY && index < lower_bound) {
+            error(ERR_INV_EXPRESSION, "Invalid index");
+        }
+        offs = (ContextAddress)(index - lower_bound) * size;
         if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
             error(errno, "Cannot retrieve symbol size");
         }
