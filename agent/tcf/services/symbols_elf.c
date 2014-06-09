@@ -2066,9 +2066,16 @@ static int unpack(const Symbol * sym) {
 
 static U8_T get_default_lower_bound(ObjectInfo * obj) {
     switch (obj->mCompUnit->mLanguage) {
+    case LANG_ADA83:
+    case LANG_ADA95:
+    case LANG_COBOL74:
+    case LANG_COBOL85:
     case LANG_FORTRAN77:
     case LANG_FORTRAN90:
     case LANG_FORTRAN95:
+    case LANG_MODULA2:
+    case LANG_PASCAL83:
+    case LANG_PLI:
         return 1;
     }
     return 0;
