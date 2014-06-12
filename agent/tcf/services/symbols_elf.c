@@ -707,6 +707,41 @@ static int symbol_priority(ObjectInfo * obj) {
     return p;
 }
 
+/* return 0 if symbol is either undef or common */
+static int has_symbol_address (Symbol *sym) {
+    if (sym->tbl != NULL) {
+        if ((sym->tbl->index == SHN_UNDEF) || (sym->tbl->index == SHN_COMMON))
+            return 0;
+    } else if (sym->obj) {
+        Trap trap;
+        PropertyValue v;
+        if (set_trap(&trap)) {
+            /* AT_location defined, so we have an address */
+            read_dwarf_object_property(sym->ctx, STACK_NO_FRAME, sym->obj, AT_location, &v);
+            clear_trap(&trap);
+            return 1;
+        } else {
+            /* No AT_Location : return 0 then ! */
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* Return 1 if list has no location info : either common or undef */
+static int has_symbol_list_no_location_info (void) {
+    Symbol * s = find_symbol_list;
+    /* Record the sym_ctx because it CAN be changed ! */
+    while (s != NULL) {
+        if (has_symbol_address(s)) {
+            return 0;
+        }
+        s = s->next;
+    }
+    /* If we are here, no symbols has location info */
+    return 1;
+}
+
 static int symbol_equ_comparator(const void * x, const void * y) {
     Symbol * sx = *(Symbol **)x;
     Symbol * sy = *(Symbol **)y;
@@ -725,6 +760,18 @@ static int symbol_equ_comparator(const void * x, const void * y) {
 static int symbol_prt_comparator(const void * x, const void * y) {
     Symbol * sx = *(Symbol **)x;
     Symbol * sy = *(Symbol **)y;
+    int sx_addr = 0;
+    int sy_addr = 0;
+
+    /* symbols with no address have lower priority */
+
+    if (has_symbol_address(sx))
+        sx_addr = 1;
+    if (has_symbol_address(sy))
+        sy_addr = 1;
+
+    if ((sx_addr) && (!sy_addr)) return +1;
+    if ((sy_addr) && (!sx_addr)) return -1;
 
     /* Symbols order by priority, from low to high,
      * most likely match must be last */
@@ -749,6 +796,7 @@ static int symbol_prt_comparator(const void * x, const void * y) {
     /* First added to the results list has higher priority */
     if (sx->pos < sy->pos) return +1;
     if (sx->pos > sy->pos) return -1;
+
     return 0;
 }
 
@@ -776,7 +824,8 @@ static void sort_find_symbol_buf(void) {
      * 2. DWARF symbols before ELF symbols
      * 3. 'extern' before 'static'
      * 3. definitions before declarations
-     * 4. etc.
+     * 4. undef after symbols with addresses.
+     * 5. etc.
      */
     unsigned cnt = 0;
     unsigned pos = 0;
@@ -1089,6 +1138,7 @@ static void find_by_name_in_sym_table(ELF_File * file, const char * name, int gl
 }
 
 int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char * name, Symbol ** res) {
+#define CONTINUE_SEARCH (error == 0 && find_symbol_list == NULL) || (has_symbol_list_no_location_info())
     int error = 0;
     ELF_File * curr_file = NULL;
 
@@ -1112,7 +1162,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
             }
         }
 
-        if (error == 0 && find_symbol_list == NULL) {
+        if (CONTINUE_SEARCH) {
             /* Search in pub names of the current file */
             ELF_File * file = elf_list_first(sym_ctx, sym_ip, sym_ip);
             if (file == NULL) error = errno;
@@ -1135,7 +1185,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
             elf_list_done(sym_ctx);
         }
 
-        if (error == 0 && find_symbol_list == NULL) {
+        if (CONTINUE_SEARCH) {
             /* Check if the name is one of well known C/C++ names */
             Trap trap;
             if (set_trap(&trap)) {
@@ -1147,7 +1197,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                     }
                     i++;
                 }
-                if (find_symbol_list == NULL) {
+                if ((find_symbol_list == NULL) || (has_symbol_list_no_location_info())) {
                     i = 0;
                     while (constant_pseudo_symbols[i].name) {
                         if (strcmp(name, constant_pseudo_symbols[i].name) == 0) {
@@ -1185,12 +1235,14 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
         }
     }
 
-    if (error == 0 && find_symbol_list == NULL) {
+    if (CONTINUE_SEARCH)   {
         /* Search in pub names of all other files */
         ELF_File * file = elf_list_first(sym_ctx, 0, ~(ContextAddress)0);
         if (file == NULL) error = errno;
 
         while (error == 0 && file != NULL) {
+            int no_loc_infos_in_list = 0;
+
             if (file != curr_file) {
                 Trap trap;
                 if (set_trap(&trap)) {
@@ -1203,7 +1255,12 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                     error = trap.error;
                     break;
                 }
-                if (sym_ip != 0 && find_symbol_list != NULL) break;
+
+                no_loc_infos_in_list = has_symbol_list_no_location_info();
+
+                /* If we have no address, continue */
+                if (sym_ip != 0 && find_symbol_list != NULL && no_loc_infos_in_list == 0)
+                    break;
             }
             file = elf_list_next(sym_ctx);
             if (file == NULL) error = errno;
@@ -1211,7 +1268,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
         elf_list_done(sym_ctx);
     }
 
-    if (error == 0 && find_symbol_list == NULL) {
+    if (CONTINUE_SEARCH) {
         unsigned i = 0;
         while (type_pseudo_symbols[i].name) {
             if (strcmp(name, type_pseudo_symbols[i].name) == 0) {
