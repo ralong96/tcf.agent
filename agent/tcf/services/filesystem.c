@@ -253,6 +253,224 @@ static void write_fs_errno(OutputStream * out, int err) {
     case EACCES:
         write_service_error(out, err, FILE_SYSTEM, FSERR_PERMISSION_DENIED);
         break;
+    case EPERM:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EPERM);
+        break;
+    case ESRCH:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ESRCH);
+        break;
+    case EINTR:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EINTR);
+        break;
+    case EIO:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EIO);
+        break;
+    case ENXIO:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENXIO);
+        break;
+    case E2BIG:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_E2BIG);
+        break;
+    case ENOEXEC:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOEXEC);
+        break;
+    case EBADF:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EBADF);
+        break;
+    case ECHILD:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ECHILD);
+        break;
+    case EAGAIN:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EAGAIN);
+        break;
+    case ENOMEM:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOMEM);
+        break;
+    case EFAULT:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EFAULT);
+        break;
+    case EBUSY:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EBUSY);
+        break;
+    case EEXIST:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EEXIST);
+        break;
+    case EXDEV:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EXDEV);
+        break;
+    case ENODEV:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENODEV);
+        break;
+    case ENOTDIR:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOTDIR);
+        break;
+    case EISDIR:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EISDIR);
+        break;
+    case EINVAL:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EINVAL);
+        break;
+    case ENFILE:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENFILE);
+        break;
+    case EMFILE:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EMFILE);
+        break;
+    case ENOTTY:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOTTY);
+        break;
+    case EFBIG:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EFBIG);
+        break;
+    case ENOSPC:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOSPC);
+        break;
+    case ESPIPE:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ESPIPE);
+        break;
+    case EROFS:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EROFS);
+        break;
+    case EMLINK:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EMLINK);
+        break;
+    case EPIPE:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EPIPE);
+        break;
+    case EDEADLK:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EDEADLK);
+        break;
+    case ENOLCK:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOLCK);
+        break;
+    case EDOM:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EDOM);
+        break;
+    case ERANGE:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ERANGE);
+        break;
+    case ENOSYS:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOSYS);
+        break;
+    case ENOTEMPTY:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOTEMPTY);
+        break;
+    case ENAMETOOLONG:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENAMETOOLONG);
+        break;
+#if !defined(_WIN32) && !defined(__CYGWIN__)
+    case ENOBUFS:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOBUFS);
+        break;
+    case EISCONN:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EISCONN);
+        break;
+    case ENOSTR:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOSTR);
+        break;
+    case EPROTO:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EPROTO);
+        break;
+    case EBADMSG:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EBADMSG);
+        break;
+    case ENODATA:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENODATA);
+        break;
+    case ETIME:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ETIME);
+        break;
+    case ENOMSG:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOMSG);
+        break;
+    case ETXTBSY:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ETXTBSY);
+        break;
+    case ELOOP:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ELOOP);
+        break;
+    case ENOTBLK:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOTBLK);
+        break;
+    case EMSGSIZE:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EMSGSIZE);
+        break;
+    case EDESTADDRREQ:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EDESTADDRREQ);
+        break;
+    case EPROTOTYPE:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EDESTADDRREQ);
+        break;
+    case ENOTCONN:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOTCONN);
+        break;
+    case ESHUTDOWN:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ESHUTDOWN);
+        break;
+    case ECONNRESET:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ESHUTDOWN);
+        break;
+    case EOPNOTSUPP:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EOPNOTSUPP);
+        break;
+    case EAFNOSUPPORT:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EAFNOSUPPORT);
+        break;
+    case EPFNOSUPPORT:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EPFNOSUPPORT);
+        break;
+    case EADDRINUSE:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EADDRINUSE);
+        break;
+    case ENOTSOCK:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENOTSOCK);
+        break;
+    case ENETUNREACH:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENETUNREACH);
+        break;
+    case ENETRESET:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENETRESET);
+        break;
+    case ECONNABORTED:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ECONNABORTED);
+        break;
+    case ETOOMANYREFS:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ETOOMANYREFS);
+        break;
+    case ETIMEDOUT:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ETIMEDOUT);
+        break;
+    case ECONNREFUSED:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ECONNREFUSED);
+        break;
+    case ENETDOWN:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ENETDOWN);
+        break;
+    case EHOSTUNREACH:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EHOSTUNREACH);
+        break;
+    case EHOSTDOWN:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EHOSTDOWN);
+        break;
+    case EINPROGRESS:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EINPROGRESS);
+        break;
+    case EALREADY:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EALREADY);
+        break;
+    case ECANCELED:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ECANCELED);
+        break;
+    case EPROTONOSUPPORT:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EPROTONOSUPPORT);
+        break;
+    case ESOCKTNOSUPPORT:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_ESOCKTNOSUPPORT);
+        break;
+    case EADDRNOTAVAIL:
+        write_service_error(out, err, FILE_SYSTEM, FSERR_EADDRNOTAVAIL);
+        break;
+#endif
     default:
         write_errno(out, err);
         break;
