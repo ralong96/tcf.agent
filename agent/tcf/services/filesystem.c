@@ -389,9 +389,11 @@ static void write_fs_errno(OutputStream * out, int err) {
     case ELOOP:
         write_service_error(out, err, FILE_SYSTEM, FSERR_ELOOP);
         break;
+#ifdef ENOTBLK
     case ENOTBLK:
         write_service_error(out, err, FILE_SYSTEM, FSERR_ENOTBLK);
         break;
+#endif
     case EMSGSIZE:
         write_service_error(out, err, FILE_SYSTEM, FSERR_EMSGSIZE);
         break;
@@ -404,9 +406,11 @@ static void write_fs_errno(OutputStream * out, int err) {
     case ENOTCONN:
         write_service_error(out, err, FILE_SYSTEM, FSERR_ENOTCONN);
         break;
+#ifdef ESHUTDOWN
     case ESHUTDOWN:
         write_service_error(out, err, FILE_SYSTEM, FSERR_ESHUTDOWN);
         break;
+#endif
     case ECONNRESET:
         write_service_error(out, err, FILE_SYSTEM, FSERR_ESHUTDOWN);
         break;
@@ -464,9 +468,11 @@ static void write_fs_errno(OutputStream * out, int err) {
     case EPROTONOSUPPORT:
         write_service_error(out, err, FILE_SYSTEM, FSERR_EPROTONOSUPPORT);
         break;
+#ifdef ESOCKTNOSUPPORT
     case ESOCKTNOSUPPORT:
         write_service_error(out, err, FILE_SYSTEM, FSERR_ESOCKTNOSUPPORT);
         break;
+#endif
     case EADDRNOTAVAIL:
         write_service_error(out, err, FILE_SYSTEM, FSERR_EADDRNOTAVAIL);
         break;
