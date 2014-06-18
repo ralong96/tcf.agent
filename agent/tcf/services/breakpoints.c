@@ -1172,6 +1172,7 @@ static void run_bp_evaluation(CacheClient * client, BreakpointInfo * bp, Context
         }
     }
     cache_set_def_channel(NULL);
+    if (cnt == 0) client(&args);
 }
 
 static void free_bp(BreakpointInfo * bp) {
