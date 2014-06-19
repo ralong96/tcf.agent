@@ -66,26 +66,27 @@ struct FileInfo {
 #define TAG_mod_pointer         0x2002
 #define TAG_mod_reference       0x2003
 
-#define DOIF_declaration        0x00001
-#define DOIF_external           0x00002
-#define DOIF_artificial         0x00004
-#define DOIF_specification      0x00008
-#define DOIF_abstract_origin    0x00010
-#define DOIF_extension          0x00020
-#define DOIF_private            0x00040
-#define DOIF_protected          0x00080
-#define DOIF_public             0x00100
-#define DOIF_children_loaded    0x00200
-#define DOIF_ranges             0x00400
-#define DOIF_aranges            0x00800
-#define DOIF_find_mark          0x01000
-#define DOIF_load_mark          0x02000
-#define DOIF_pub_mark           0x04000
-#define DOIF_low_pc             0x08000
-#define DOIF_need_frame         0x10000
-#define DOIF_linkage_name       0x20000
-#define DOIF_mangled_name       0x40000
-#define DOIF_optional           0x80000
+#define DOIF_declaration        0x000001
+#define DOIF_external           0x000002
+#define DOIF_artificial         0x000004
+#define DOIF_specification      0x000008
+#define DOIF_abstract_origin    0x000010
+#define DOIF_extension          0x000020
+#define DOIF_private            0x000040
+#define DOIF_protected          0x000080
+#define DOIF_public             0x000100
+#define DOIF_children_loaded    0x000200
+#define DOIF_ranges             0x000400
+#define DOIF_aranges            0x000800
+#define DOIF_find_mark          0x001000
+#define DOIF_load_mark          0x002000
+#define DOIF_pub_mark           0x004000
+#define DOIF_low_pc             0x008000
+#define DOIF_need_frame         0x010000
+#define DOIF_linkage_name       0x020000
+#define DOIF_mangled_name       0x040000
+#define DOIF_optional           0x080000
+#define DOIF_location           0x100000
 
 struct ObjectInfo {
 

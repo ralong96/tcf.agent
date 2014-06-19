@@ -722,6 +722,11 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         if (dio_gFormData) Info->mFlags |= DOIF_public;
         break;
     case AT_location:
+        Info->mFlags |= DOIF_location;
+        if (Form == FORM_DATA4 || Form == FORM_DATA8 || Form == FORM_SEC_OFFSET || Tag == TAG_formal_parameter) {
+            Info->mFlags |= DOIF_need_frame;
+        }
+        break;
     case AT_string_length:
         if (Form == FORM_DATA4 || Form == FORM_DATA8 || Form == FORM_SEC_OFFSET || Tag == TAG_formal_parameter) {
             Info->mFlags |= DOIF_need_frame;

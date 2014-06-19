@@ -707,35 +707,32 @@ static int symbol_priority(ObjectInfo * obj) {
     return p;
 }
 
-/* return 0 if symbol is either undef or common */
-static int has_symbol_address (Symbol *sym) {
+/* return 0 if symbol has no address, e.g. undef or common */
+static int has_symbol_address(Symbol * sym) {
+    if (sym->has_address) return 1;
     if (sym->tbl != NULL) {
-        if ((sym->tbl->index == SHN_UNDEF) || (sym->tbl->index == SHN_COMMON))
-            return 0;
-    } else if (sym->obj) {
-        Trap trap;
-        PropertyValue v;
-        if (set_trap(&trap)) {
+        if (sym->tbl->index == SHN_UNDEF) return 0;
+        if (sym->tbl->index == SHN_COMMON) return 0;
+        return 1;
+    }
+    if (sym->obj != NULL) {
+        if (sym->obj->mFlags & DOIF_location) {
             /* AT_location defined, so we have an address */
-            read_dwarf_object_property(sym->ctx, STACK_NO_FRAME, sym->obj, AT_location, &v);
-            clear_trap(&trap);
             return 1;
-        } else {
-            /* No AT_Location : return 0 then ! */
-            return 0;
+        }
+        if (sym->obj->mFlags & DOIF_low_pc) {
+            /* AT_low_pc defined, so we have an address */
+            return 1;
         }
     }
-    return 1;
+    return 0;
 }
 
-/* Return 1 if list has no location info : either common or undef */
-static int has_symbol_list_no_location_info (void) {
+/* Return 1 if find list has no location info: either common or undef */
+static int has_symbol_list_no_location_info(void) {
     Symbol * s = find_symbol_list;
-    /* Record the sym_ctx because it CAN be changed ! */
     while (s != NULL) {
-        if (has_symbol_address(s)) {
-            return 0;
-        }
+        if (has_symbol_address(s)) return 0;
         s = s->next;
     }
     /* If we are here, no symbols has location info */
