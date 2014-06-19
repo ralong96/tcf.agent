@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -48,7 +48,7 @@ static const int
     FSERR_E2BIG             = 0x10009,
     FSERR_ENOEXEC           = 0x1000a,
     FSERR_EBADF             = 0x1000b,
-    FSERR_ECHILD	    = 0x1000c,
+    FSERR_ECHILD            = 0x1000c,
     FSERR_EAGAIN            = 0x1000d,
     FSERR_ENOMEM            = 0x1000e,
     FSERR_EFAULT            = 0x1000f,

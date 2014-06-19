@@ -1382,7 +1382,8 @@ void become_daemon(char **args) {
             if (ReadFile((HANDLE)_get_osfhandle(fdpairs[i*2]), tmpbuf, sizeof tmpbuf, &size, NULL)) {
                 if (write(fdpairs[i*2 + 1], tmpbuf, size) < 0)
                     perror("write");
-            } else if (GetLastError() != ERROR_NO_DATA) {
+            }
+            else if (GetLastError() != ERROR_NO_DATA) {
                 if (GetLastError() != ERROR_BROKEN_PIPE) {
                     fprintf(stderr, "SetNamedPipeHandleState failed 0x%lx\n", GetLastError());
                 }
@@ -1495,7 +1496,8 @@ void become_daemon(void) {
                     if (rval > 0) {
                         if (write(fdpairs[i*2 + 1], tmpbuf, rval) < 0)
                             perror("write");
-                    } else {
+                    }
+                    else {
                         if (rval < 0)
                             perror("read");
                         fdpairs[i*2] = fdpairs[(npairs - 1)*2];
