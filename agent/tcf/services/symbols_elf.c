@@ -3220,8 +3220,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
     }
 
     if (is_array_type_pseudo_symbol(sym) ||
-        is_int_type_pseudo_symbol(sym) ||
-        is_constant_pseudo_symbol(sym)) {
+            is_int_type_pseudo_symbol(sym)) {
         return err_wrong_obj();
     }
 

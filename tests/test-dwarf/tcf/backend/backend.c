@@ -579,6 +579,9 @@ static void loc_var_func(void * args, Symbol * sym) {
     StackFrame * frame_info = NULL;
     LocationInfo * loc_info = NULL;
 
+    if (get_symbol_class(sym, &symbol_class) < 0) {
+        error_sym("get_symbol_class", sym);
+    }
     if (get_symbol_flags(sym, &flags) < 0) {
         error_sym("get_symbol_flags", sym);
     }
@@ -671,6 +674,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (errcmp(err, "Division by zero in location") == 0) return;
         if (errcmp(err, "Cannot find loader debug") == 0) return;
         if (errcmp(err, "Cannot get TLS module ID") == 0) return;
+        if (symbol_class == SYM_CLASS_TYPE && errcmp(err, "Wrong object kind") == 0) return;
         errno = err;
         error_sym("get_symbol_value", sym);
     }
@@ -698,9 +702,6 @@ static void loc_var_func(void * args, Symbol * sym) {
         else {
             error("evaluate_location_expression");
         }
-    }
-    if (get_symbol_class(sym, &symbol_class) < 0) {
-        error_sym("get_symbol_class", sym);
     }
     if (get_symbol_type(sym, &type) < 0) {
         error_sym("get_symbol_type", sym);
