@@ -2590,6 +2590,7 @@ static void lazy_unary_expression(int mode, Value * v) {
                 case TYPE_CLASS_POINTER:
                 case TYPE_CLASS_INTEGER:
                 case TYPE_CLASS_ENUMERATION:
+                case TYPE_CLASS_UNKNOWN:
                     ok = 1;
                     break;
                 }
