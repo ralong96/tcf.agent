@@ -292,7 +292,13 @@ void handle_protocol_message(Channel * c) {
                     skip_until_EOM(c);
                     n = ERR_INV_COMMAND;
                 }
-                rh->handler(c, rh->client_data, n);
+                if (rh->handler) {
+                    rh->handler(c, rh->client_data, n);
+                }
+                else {
+                    skip_until_EOM(c);
+                    trace(LOG_ALWAYS, "Ignoring reply with token: %s", token);
+                }
                 loc_free(rh);
             }
             clear_trap(&trap);
@@ -426,7 +432,9 @@ void add_event_handler2(Channel * c, const char * service, const char * name, Pr
 
 static void send_command_failed(void * args) {
     ReplyHandlerInfo * rh = (ReplyHandlerInfo *)args;
-    rh->handler(rh->c, rh->client_data, ERR_CHANNEL_CLOSED);
+    if (rh->handler) {
+        rh->handler(rh->c, rh->client_data, ERR_CHANNEL_CLOSED);
+    }
     loc_free(rh);
 }
 
@@ -477,6 +485,16 @@ static void redirect_done(Channel * c, void * client_data, int error) {
         json_test_char(&c->inp, MARKER_EOM);
         if (!error) {
             c->state = ChannelStateHelloSent;
+
+            /* Notify listeners that the state of the target channel has
+             * changed, to give them a chance to cleanup and be ready
+             * for the upcoming channel redirection listener callback in
+             * proxy_connected() when target hello message arrives.
+             * This is required for the context proxy to be cleanup when the
+             * ValueAdd is redirected twice to get access to the target agent.
+             * Otherwise, it keeps the list of contexts of the first
+             * redirection. */
+            notify_channel_closed(c);
         }
         else {
             c->state = ChannelStateConnected;
@@ -672,16 +690,28 @@ static void channel_closed(Channel * c) {
         while ((rh = *rhp) != NULL) {
             if (rh->c == c) {
                 Trap trap;
-                *rhp = rh->next;
                 if (set_trap(&trap)) {
-                    rh->handler(c, rh->client_data, ERR_CHANNEL_CLOSED);
+                    if (rh->handler) {
+                        rh->handler(c, rh->client_data, ERR_CHANNEL_CLOSED);
+                    }
                     clear_trap(&trap);
                 }
                 else {
                     trace(LOG_ALWAYS, "Exception handling reply %ul: %d %s",
                           rh->tokenid, trap.error, errno_to_str(trap.error));
                 }
-                loc_free(rh);
+                if (c->state != ChannelStateDisconnected) {
+                    /* Keep the reply handler structure to intercept correctly
+                     * the reply, but do not call the handler. */
+                    rhp = &rh->next;
+                    rh->handler = NULL;
+                    rh->client_data = NULL;
+                    rh->progress = NULL;
+                }
+                else {
+                    *rhp = rh->next;
+                    loc_free(rh);
+                }
             }
             else {
                 rhp = &rh->next;
