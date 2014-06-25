@@ -1135,7 +1135,7 @@ static void find_by_name_in_sym_table(ELF_File * file, const char * name, int gl
 }
 
 int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char * name, Symbol ** res) {
-#define CONTINUE_SEARCH (error == 0 && find_symbol_list == NULL) || (has_symbol_list_no_location_info())
+#define CONTINUE_SEARCH (error == 0 && (find_symbol_list == NULL || has_symbol_list_no_location_info()))
     int error = 0;
     ELF_File * curr_file = NULL;
 
@@ -1145,7 +1145,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
 
     if (get_sym_context(ctx, frame, ip) < 0) error = errno;
 
-    if (sym_ip != 0) {
+    if (error == 0 && sym_ip != 0) {
 
         if (error == 0) {
             /* Search the name in the current compilation unit */
