@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1430,12 +1430,11 @@ static ContextCache * get_memory_map_cache(Context * ctx) {
     Channel * c = cache->peer->target;
     Trap trap;
 
+    assert(cache->ctx == ctx);
     if (!set_trap(&trap)) return NULL;
     if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
     if (cache->peer != NULL && !cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
 
-    cache = *EXT(ctx);
-    assert(cache->ctx == ctx);
     if (cache->pending_get_mmap != NULL) cache_wait(&cache->mmap_cache);
     if (cache->mmap_is_valid == 0 && cache->peer != NULL) {
         cache->pending_get_mmap = protocol_send_command(c, MEMORY_MAP, "get", validate_memory_map_cache, cache);
