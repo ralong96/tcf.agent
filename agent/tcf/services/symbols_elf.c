@@ -711,8 +711,10 @@ static int symbol_priority(ObjectInfo * obj) {
 static int has_symbol_address(Symbol * sym) {
     if (sym->has_address) return 1;
     if (sym->tbl != NULL) {
-        if (sym->tbl->index == SHN_UNDEF) return 0;
-        if (sym->tbl->index == SHN_COMMON) return 0;
+        ELF_SymbolInfo info;
+        unpack_elf_symbol_info(sym->tbl, sym->index, &info);
+        if (info.section_index == SHN_UNDEF) return 0;
+        if (info.section_index == SHN_COMMON) return 0;
         return 1;
     }
     if (sym->obj != NULL) {
