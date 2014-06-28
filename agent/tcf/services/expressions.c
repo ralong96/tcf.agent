@@ -1057,33 +1057,39 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
         }
         else {
             unsigned cnt = 0;
-            unsigned max = 0;
-            Symbol * nxt = NULL;
-            Symbol ** list = NULL;
-            int sym_class = 0;
-            const SYM_FLAGS flag_mask = SYM_FLAG_TYPE | SYM_FLAG_CONST_TYPE | SYM_FLAG_VOLATILE_TYPE |
-                SYM_FLAG_STRUCT_TYPE | SYM_FLAG_CLASS_TYPE | SYM_FLAG_UNION_TYPE | SYM_FLAG_ENUM_TYPE;
-            SYM_FLAGS sym_flags = (get_all_symbol_flags(sym) ^ flags) & flag_mask;
-            while (find_next_symbol(&nxt) == 0) {
-                SYM_FLAGS nxt_flags = (get_all_symbol_flags(nxt) ^ flags) & flag_mask;
-                if (max == 0) {
-                    list = (Symbol **)tmp_alloc(sizeof(Symbol *) * (max = 8));
-                    list[cnt++] = sym;
-                }
-                else if (cnt + 1 >= max) {
-                    list = (Symbol **)tmp_realloc(list, sizeof(Symbol *) * (max *= 2));
-                }
-                list[cnt++] = nxt;
+            unsigned max = 8;
+            Symbol ** list = (Symbol **)tmp_alloc(sizeof(Symbol *) * max);
+            unsigned val_cnt = 0;
+            const SYM_FLAGS cmx_type = SYM_FLAG_STRUCT_TYPE | SYM_FLAG_CLASS_TYPE | SYM_FLAG_UNION_TYPE | SYM_FLAG_ENUM_TYPE;
+            const SYM_FLAGS flag_mask = SYM_FLAG_TYPE | SYM_FLAG_CONST_TYPE | SYM_FLAG_VOLATILE_TYPE | cmx_type;
+            SYM_FLAGS sym_flags;
+            int sym_class;
+            unsigned i;
+
+            list[cnt++] = sym;
+            while (find_next_symbol(&sym) == 0) {
+                if (cnt + 1 >= max) list = (Symbol **)tmp_realloc(list, sizeof(Symbol *) * (max *= 2));
+                list[cnt++] = sym;
+            }
+            assert(cnt < max);
+            list[cnt] = NULL;
+            /* Count variables. In C, variables eclipse composite types */
+            for (i = 0; i < cnt; i++) {
+                if (get_symbol_class(list[i], &sym_class) < 0) error(errno, "Cannot read symbol data");
+                if (sym_class == SYM_CLASS_VALUE || sym_class == SYM_CLASS_REFERENCE) val_cnt++;
+            }
+            /* Search for best match */
+            sym = list[0];
+            sym_flags = (get_all_symbol_flags(sym) ^ flags) & flag_mask;
+            for (i = 1; i < cnt; i++) {
+                SYM_FLAGS nxt_flags = (get_all_symbol_flags(list[i]) ^ flags) & flag_mask;
+                if (val_cnt > 0 && (nxt_flags & cmx_type) != 0) continue;
                 if (flag_count(nxt_flags) >= flag_count(sym_flags)) continue;
                 sym_flags = nxt_flags;
-                sym = nxt;
+                sym = list[i];
             }
             sym_class = sym2value(mode, sym, v);
-            if (list != NULL) {
-                list[cnt++] = NULL;
-                v->sym_list = list;
-                assert(cnt <= max);
-            }
+            if (cnt > 1) v->sym_list = list;
             return sym_class;
         }
     }
