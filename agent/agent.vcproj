@@ -1615,6 +1615,34 @@
 					>
 				</File>
 			</Filter>
+			<Filter
+				Name="powerpc"
+				>
+				<File
+					RelativePath=".\machine\powerpc\tcf\cpudefs-mdep.c"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\powerpc\tcf\cpudefs-mdep.h"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\powerpc\tcf\disassembler-powerpc.c"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\powerpc\tcf\disassembler-powerpc.h"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\powerpc\tcf\dwarfreloc-mdep.h"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\powerpc\tcf\regset-mdep.h"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<File
 			RelativePath=".\tcf\config.h"

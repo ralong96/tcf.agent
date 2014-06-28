@@ -207,6 +207,7 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
         stack->complete = 1;
         return 0;
     }
+    assert(cache_miss_count() > 0);
     errno = error;
     return -1;
 }

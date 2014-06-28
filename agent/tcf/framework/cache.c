@@ -229,6 +229,10 @@ unsigned cache_transaction_id(void) {
     return current_client.id;
 }
 
+unsigned cache_miss_count(void) {
+    return cache_miss_cnt;
+}
+
 void cache_dispose(AbstractCache * cache) {
     assert(is_dispatch_thread());
     assert(cache->wait_list_cnt == 0);

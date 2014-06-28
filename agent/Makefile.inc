@@ -8,6 +8,9 @@ ifndef MACHINE
   ifeq ($(MACHINE),armv6l)
     MACHINE := arm
   endif
+  ifeq ($(MACHINE),ppc64)
+    MACHINE := powerpc
+  endif
 endif
 
 INCDIRS = . system/$(OPSYS) machine/$(MACHINE)

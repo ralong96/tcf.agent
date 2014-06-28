@@ -166,6 +166,11 @@ extern void cache_set_def_channel(Channel * channel);
 extern unsigned cache_transaction_id(void);
 
 /*
+ * Return number of cache misses in the current transaction.
+ */
+extern unsigned cache_miss_count(void);
+
+/*
  * Dispose a cache.
  */
 extern void cache_dispose(AbstractCache * cache);
