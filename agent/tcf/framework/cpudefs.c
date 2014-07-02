@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -398,6 +398,12 @@ LocationExpressionState * evaluate_location_expression(Context * ctx, StackFrame
             state->addr_size = cmd->args.loc.addr_size;
             state->client_op = NULL;
             if (cmd->args.loc.func(state) < 0) exception(errno);
+            memset(&state->reg_id_scope, 0, sizeof(state->reg_id_scope));
+            state->code = NULL;
+            state->code_len = 0;
+            state->code_pos = 0;
+            state->addr_size = 0;
+            state->client_op = NULL;
             stk_max = state->stk_max;
             stk_pos = state->stk_pos;
             stk = state->stk;

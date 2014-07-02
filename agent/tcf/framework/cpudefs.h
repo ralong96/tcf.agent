@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -130,17 +130,20 @@ typedef struct LocationExpressionState {
     /* Evaluation context */
     Context * ctx;
     struct StackFrame * stack_frame;
-    RegisterIdScope reg_id_scope;
-    size_t addr_size;
     uint64_t * args;
     unsigned args_cnt;
 
-    /* Code to execute */
+    /* Note: DWARF expression fields hold temporary data,
+       they are valid only during evaluate_vm_expression() call */
+
+    /* DWARF expression code to execute */
     uint8_t * code;
     size_t code_pos;
     size_t code_len;
+    RegisterIdScope reg_id_scope;
+    size_t addr_size;
 
-    /* Client callback */
+    /* DWARF expression client callback */
     void (*client_op)(uint8_t op);
 
     /* Result */

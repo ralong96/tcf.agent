@@ -1755,9 +1755,8 @@ static void op_deref(int mode, Value * v) {
 }
 
 #if ENABLE_Symbols
-static void evaluate_symbol_location(
-        Symbol * sym, ContextAddress obj_addr,
-        ContextAddress index, LocationExpressionState ** loc) {
+static void evaluate_symbol_location(Symbol * sym, ContextAddress obj_addr,
+        ContextAddress index, LocationExpressionState ** loc, int * big_endian) {
     LocationInfo * loc_info = NULL;
     StackFrame * frame_info = NULL;
     uint64_t args[2];
@@ -1771,11 +1770,12 @@ static void evaluate_symbol_location(
     }
     *loc = evaluate_location_expression(expression_context, frame_info,
         loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, args, 2);
+    if (big_endian != NULL) *big_endian = loc_info->big_endian;
 }
 
 static void find_field(int mode,
         Symbol * class_sym, ContextAddress obj_addr, const char * name, const char * id,
-        Symbol ** field_sym, LocationExpressionState ** field_loc) {
+        Symbol ** field_sym, LocationExpressionState ** field_loc, int * big_endian) {
     Symbol ** children = NULL;
     Symbol ** inheritance = NULL;
     int count = 0;
@@ -1800,7 +1800,7 @@ static void find_field(int mode,
         }
         if ((name != NULL && s != NULL && strcmp(s, name) == 0) ||
                 (id != NULL && strcmp(symbol2id(children[i]), id) == 0)) {
-            if (mode == MODE_NORMAL) evaluate_symbol_location(children[i], obj_addr, 0, field_loc);
+            if (mode == MODE_NORMAL) evaluate_symbol_location(children[i], obj_addr, 0, field_loc, big_endian);
             *field_sym = children[i];
             return;
         }
@@ -1809,11 +1809,11 @@ static void find_field(int mode,
         ContextAddress addr = 0;
         if (mode == MODE_NORMAL) {
             LocationExpressionState * x = NULL;
-            evaluate_symbol_location(inheritance[i], obj_addr, 0, &x);
+            evaluate_symbol_location(inheritance[i], obj_addr, 0, &x, NULL);
             if (x->stk_pos != 1) error(ERR_INV_EXPRESSION, "Cannot evaluate symbol address");
             addr = (ContextAddress)x->stk[0];
         }
-        find_field(mode, inheritance[i], addr, name, id, field_sym, field_loc);
+        find_field(mode, inheritance[i], addr, name, id, field_sym, field_loc, big_endian);
         if (*field_sym != NULL) return;
     }
 }
@@ -1835,9 +1835,10 @@ static void op_field(int mode, Value * v) {
         Symbol * sym = NULL;
         int sym_class = 0;
         LocationExpressionState * loc = NULL;
+        int big_endian = 0;
 
         if (!v->remote) error(ERR_INV_EXPRESSION, "L-value expected");
-        find_field(mode, v->type, v->address, name, id, &sym, &loc);
+        find_field(mode, v->type, v->address, name, id, &sym, &loc, &big_endian);
         if (sym == NULL) {
             error(ERR_SYM_NOT_FOUND, "Invalid field name or ID");
         }
@@ -1877,7 +1878,6 @@ static void op_field(int mode, Value * v) {
                 else {
                     size_t size = 0;
                     void * value = NULL;
-                    int big_endian = loc->reg_id_scope.big_endian;
                     StackFrame * frame_info = NULL;
                     if (expression_frame != STACK_NO_FRAME && get_frame_info(expression_context, expression_frame, &frame_info) < 0) {
                         error(errno, "Cannot get stack frame info");
@@ -2706,7 +2706,7 @@ static void pm_expression(int mode, Value * v) {
                     obj = (ContextAddress)to_uns(mode, v);
                 }
                 ptr = (ContextAddress)to_uns(mode, &x);
-                evaluate_symbol_location(x.type, obj, ptr, &loc);
+                evaluate_symbol_location(x.type, obj, ptr, &loc, NULL);
                 if (loc->stk_pos != 1) error(ERR_INV_EXPRESSION, "Cannot evaluate symbol address");
                 v->address = (ContextAddress)loc->stk[0];
             }
@@ -3861,7 +3861,7 @@ static void command_evaluate_cache_client(void * x) {
             cnt++;
         }
 
-        if (value.loc != NULL && value.loc->pieces_cnt > 0) {
+        if (value.loc != NULL && value.loc->pieces_cnt > 0 && value.reg == NULL) {
             unsigned i;
             if (cnt > 0) write_stream(&c->out, ',');
             json_write_string(&c->out, "Pieces");
@@ -3967,7 +3967,7 @@ static void command_assign_cache_client(void * x) {
             if (set_trap(&trap)) {
                 write_location_pieces(value.loc->ctx, value.loc->stack_frame,
                     value.loc->pieces, value.loc->pieces_cnt,
-                    value.loc->reg_id_scope.big_endian, args->value_buf, args->value_size);
+                    value.big_endian, args->value_buf, args->value_size);
 #if SERVICE_Registers || SERVICE_Memory
                 {
                     unsigned i;
