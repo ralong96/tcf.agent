@@ -3457,16 +3457,16 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         info->big_endian = big_endian_host();
         cmd = add_location_command(info, SFT_CMD_PIECE);
         if (elf_sym_info.sym_section->file->elf64) {
-            static U8_T buf = 0;
-            buf = elf_sym_info.value;
+            U8_T * buf = (U8_T *)tmp_alloc(8);
+            *buf = elf_sym_info.value;
             cmd->args.piece.bit_size = 64;
-            cmd->args.piece.value = &buf;
+            cmd->args.piece.value = buf;
         }
         else {
-            static U4_T buf = 0;
-            buf = (U4_T)elf_sym_info.value;
+            U4_T * buf = (U4_T *)tmp_alloc(4);
+            *buf = (U4_T)elf_sym_info.value;
             cmd->args.piece.bit_size = 32;
-            cmd->args.piece.value = &buf;
+            cmd->args.piece.value = buf;
         }
         return 0;
     }
@@ -3568,8 +3568,14 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
             break;
         }
     }
-    if (obj != NULL && sym->sym_class == SYM_CLASS_TYPE && !(*flags & (SYM_FLAG_BIG_ENDIAN|SYM_FLAG_LITTLE_ENDIAN))) {
-        *flags |= obj->mCompUnit->mFile->big_endian ? SYM_FLAG_BIG_ENDIAN : SYM_FLAG_LITTLE_ENDIAN;
+    if (obj != NULL && !(*flags & (SYM_FLAG_BIG_ENDIAN|SYM_FLAG_LITTLE_ENDIAN))) {
+        switch (sym->sym_class) {
+        case SYM_CLASS_TYPE:
+        case SYM_CLASS_VALUE:
+        case SYM_CLASS_REFERENCE:
+            *flags |= obj->mCompUnit->mFile->big_endian ? SYM_FLAG_BIG_ENDIAN : SYM_FLAG_LITTLE_ENDIAN;
+            break;
+        }
     }
     return 0;
 }
