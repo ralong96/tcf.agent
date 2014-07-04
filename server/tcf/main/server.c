@@ -68,9 +68,17 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
     }
     if (target->state == ChannelStateConnected) {
         int i;
+#if SERVICE_LineNumbers
         int service_ln = 0;
+#endif
+#if SERVICE_PathMap
+#  if ENABLE_DebugContext && ENABLE_ContextProxy
         int service_pm = 0;
+#  endif
+#endif
+#if SERVICE_Symbols
         int service_sm = 0;
+#endif
 #if SERVICE_Disassembly
         int service_da = 0;
 #endif
@@ -79,9 +87,21 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #endif
         for (i = 0; i < target->peer_service_cnt; i++) {
             char * nm = target->peer_service_list[i];
+            /* Added this line to avoid build warnings if none of the 
+             * services below are defined (note that nm may be used
+             * in TARGET_SERVICE_CHECK_HOOK() macro). */
+            if (nm);
+#if SERVICE_LineNumbers
             if (strcmp(nm, "LineNumbers") == 0) service_ln = 1;
+#endif
+#if SERVICE_Symbols
             if (strcmp(nm, "Symbols") == 0) service_sm = 1;
+#endif
+#if SERVICE_PathMap
+#  if ENABLE_DebugContext && ENABLE_ContextProxy
             if (strcmp(nm, "PathMap") == 0) service_pm = 1;
+#  endif
+#endif
 #if SERVICE_Disassembly
             if (strcmp(nm, "Disassembly") == 0) service_da = 1;
 #endif
