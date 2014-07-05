@@ -162,6 +162,7 @@ extern void cache_set_def_channel(Channel * channel);
 
 /*
  * Return unique ID of current cache client transaction.
+ * Return 0 if there is no current transaction.
  */
 extern unsigned cache_transaction_id(void);
 

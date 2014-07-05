@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -108,8 +108,10 @@ static void run_cache_client(void) {
 void cache_enter(CacheClient * client, Channel * channel, void * args, size_t args_size) {
     assert(is_dispatch_thread());
     assert(client != NULL);
+    assert(current_client.id == 0);
     assert(current_client.client == NULL);
     current_client.id = id_cnt++;
+    if (current_client.id == 0) current_client.id = id_cnt++;
     current_client.client = client;
     current_client.channel = channel;
     current_client.args = args;
@@ -218,7 +220,8 @@ void cache_notify_later(AbstractCache * cache) {
 
 Channel * cache_channel(void) {
     if (current_client.channel != NULL) return current_client.channel;
-    return def_channel;
+    if (current_client.client != NULL) return def_channel;
+    return NULL;
 }
 
 void cache_set_def_channel(Channel * channel) {
