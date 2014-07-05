@@ -87,7 +87,7 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #endif
         for (i = 0; i < target->peer_service_cnt; i++) {
             char * nm = target->peer_service_list[i];
-            /* Added this line to avoid build warnings if none of the 
+            /* Added this line to avoid build warnings if none of the
              * services below are defined (note that nm may be used
              * in TARGET_SERVICE_CHECK_HOOK() macro). */
             if (nm);

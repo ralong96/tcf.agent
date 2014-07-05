@@ -911,18 +911,18 @@ int suspend_debug_context(Context * ctx) {
     return 0;
 }
 
-static void command_suspend(char * token, Channel * c) {
+typedef struct CommandSuspendArgs {
+    char token[256];
     char id[256];
+} CommandSuspendArgs;
+
+static void command_suspend_cache_client(void * x) {
+    CommandSuspendArgs * args = (CommandSuspendArgs *)x;
+    Channel * c = cache_channel();
     Context * ctx = NULL;
-    ContextExtensionRC * ext = NULL;
     int err = 0;
 
-    json_read_string(&c->inp, id, sizeof(id));
-    json_test_char(&c->inp, MARKER_EOA);
-    json_test_char(&c->inp, MARKER_EOM);
-
-    ctx = id2ctx(id);
-    ext = EXT(ctx);
+    ctx = id2ctx(args->id);
 
     if (ctx == NULL) {
         err = ERR_INV_CONTEXT;
@@ -930,14 +930,31 @@ static void command_suspend(char * token, Channel * c) {
     else if (ctx->exited) {
         err = ERR_ALREADY_EXITED;
     }
-    else if (ext->intercepted) {
-        err = ERR_ALREADY_STOPPED;
-    }
-    else if (suspend_debug_context(ctx) < 0) {
-        err = errno;
+    else {
+        ContextExtensionRC * ext = EXT(ctx);
+        if (ext->intercepted) {
+            err = ERR_ALREADY_STOPPED;
+        }
+        else if (suspend_debug_context(ctx) < 0) {
+            err = errno;
+        }
     }
 
-    send_simple_result(c, token, err);
+    cache_exit();
+
+    send_simple_result(c, args->token, err);
+}
+
+static void command_suspend(char * token, Channel * c) {
+    CommandSuspendArgs args;
+
+    memset(&args, 0, sizeof(args));
+    json_read_string(&c->inp, args.id, sizeof(args.id));
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(command_suspend_cache_client, c, &args, sizeof(args));
 }
 
 static void terminate_context_tree(Context * ctx) {
