@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014 Stanislav Yakovlev.
+ * Copyright (c) 2014 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -13,12 +13,19 @@
  *     Stanislav Yakovlev - initial API and implementation
  *******************************************************************************/
 
-#include <stdio.h>
 #include <tcf/config.h>
+
+#include <stdio.h>
+#include <tcf/services/symbols.h>
 #include <machine/powerpc/tcf/disassembler-powerpc.h>
 
 static char buf[128];
 static size_t buf_pos = 0;
+static Context * ctx = NULL;
+static ContextAddress ctx_addr = 0;
+
+#define bits_uint8(instr, bit, cnt) (uint8_t)((instr >> (32 - bit - cnt)) & ((1u << cnt) - 1))
+#define bits_uint32(instr, bit, cnt) (uint32_t)((instr >> (32 - bit - cnt)) & ((1u << cnt) - 1))
 
 static void add_char(char ch) {
     if (buf_pos >= sizeof(buf) - 1) return;
@@ -49,6 +56,50 @@ static void add_hex_uint16(uint16_t n) {
 
     snprintf(buf, sizeof(buf), "0x%.4x", (unsigned int)n);
     add_str(buf);
+}
+
+static void add_dec_uint32(uint32_t n) {
+    char s[32];
+    size_t i = 0;
+    do {
+        s[i++] = (char)('0' + n % 10);
+        n = n / 10;
+    }
+    while (n != 0);
+    while (i > 0) add_char(s[--i]);
+}
+
+static void add_hex_uint64(uint64_t n) {
+    char s[64];
+    size_t i = 0;
+    while (i < 16) {
+        uint32_t d = n & 0xf;
+        s[i++] = (char)(d < 10 ? '0' + d : 'a' + d - 10);
+        n = n >> 4;
+    }
+    while (i > 0) add_char(s[--i]);
+}
+
+static void add_addr(uint64_t addr) {
+    add_hex_uint64(addr);
+#if ENABLE_Symbols
+    if (ctx != NULL) {
+        Symbol * sym = NULL;
+        char * name = NULL;
+        ContextAddress sym_addr = 0;
+        if (find_symbol_by_addr(ctx, STACK_NO_FRAME, (ContextAddress)addr, &sym) < 0) return;
+        if (get_symbol_name(sym, &name) < 0 || name == NULL) return;
+        if (get_symbol_address(sym, &sym_addr) < 0) return;
+        if (sym_addr <= addr) {
+            add_str(" ; ");
+            add_str(name);
+            if (sym_addr < addr) {
+                add_str(" + 0x");
+                add_hex_uint64(addr - sym_addr);
+            }
+        }
+    }
+#endif
 }
 
 static void add_trap_immediate(const char * mnemonic, uint8_t rX, uint8_t rA, uint16_t immediate) {
@@ -122,6 +173,211 @@ static void add_store_access_immediate(const char * mnemonic, uint8_t rX, uint8_
     add_str(")");
 }
 
+static void add_xo_form(uint32_t instr, const char * mnemonic) {
+    uint8_t rA = bits_uint8(instr, 11, 5);
+    uint8_t rB = bits_uint8(instr, 16, 5);
+    uint8_t rD = bits_uint8(instr, 6, 5);
+
+    add_str(mnemonic);
+    if (bits_uint8(instr, 21, 1)) add_char('o');
+    if (bits_uint8(instr, 31, 1)) add_char('.');
+    add_str(" r");
+    add_dec_uint8(rD);
+    add_str(", r");
+    add_dec_uint8(rA);
+    add_str(", r");
+    add_dec_uint8(rB);
+}
+
+static void add_xo_form2(uint32_t instr, const char * mnemonic) {
+    uint8_t rA = bits_uint8(instr, 11, 5);
+    uint8_t rD = bits_uint8(instr, 6, 5);
+
+    add_str(mnemonic);
+    if (bits_uint8(instr, 21, 1)) add_char('o');
+    if (bits_uint8(instr, 31, 1)) add_char('.');
+    add_str(" r");
+    add_dec_uint8(rD);
+    add_str(", r");
+    add_dec_uint8(rA);
+}
+
+static void add_op_31(uint32_t instr) {
+    uint32_t xop = bits_uint32(instr, 21, 10);
+    uint8_t rA = bits_uint8(instr, 11, 5);
+    uint8_t rB = bits_uint8(instr, 16, 5);
+    uint8_t rD = bits_uint8(instr, 6, 5);
+    switch (xop) {
+    case 0:
+        add_str("cmp");
+        add_str(" ");
+        add_dec_uint8(bits_uint8(instr, 6, 3));
+        add_str(", ");
+        add_dec_uint8(bits_uint8(instr, 10, 1));
+        add_str(", r");
+        add_dec_uint8(rA);
+        add_str(", r");
+        add_dec_uint8(rB);
+        break;
+    case 4:
+        add_str("tw");
+        add_str(" ");
+        add_dec_uint8(bits_uint8(instr, 6, 5));
+        add_str(", r");
+        add_dec_uint8(rA);
+        add_str(", r");
+        add_dec_uint8(rB);
+        break;
+    case 8:
+        add_xo_form(instr, "subfc");
+        break;
+    case 9:
+        add_xo_form(instr, "mulhdu");
+        break;
+    case 10:
+        add_xo_form(instr, "addc");
+        break;
+    case 11:
+        add_xo_form(instr, "mulhwu");
+        break;
+    case 40:
+        add_xo_form(instr, "subf");
+        break;
+    case 73:
+        add_xo_form(instr, "mulhd");
+        break;
+    case 75:
+        add_xo_form(instr, "mulhw");
+        break;
+    case 83:
+        add_str("mfmsr");
+        add_str(" r");
+        add_dec_uint8(rD);
+        break;
+    case 104:
+        add_xo_form(instr, "neg");
+        break;
+    case 136:
+        add_xo_form(instr, "subfe");
+        break;
+    case 138:
+        add_xo_form(instr, "adde");
+        break;
+    case 146:
+        add_str("mtmsr");
+        add_str(" r");
+        add_dec_uint8(rD);
+        add_str(", ");
+        add_dec_uint8(bits_uint8(instr, 15, 1));
+        break;
+    case 200:
+        add_xo_form(instr, "subfze");
+        break;
+    case 202:
+        add_xo_form(instr, "addze");
+        break;
+    case 232:
+        add_xo_form2(instr, "subfme");
+        break;
+    case 233:
+        add_xo_form(instr, "mulld");
+        break;
+    case 234:
+        add_xo_form2(instr, "addme");
+        break;
+    case 235:
+        add_xo_form(instr, "mullw");
+        break;
+    case 266:
+        add_xo_form(instr, "add");
+        break;
+    case 339:
+        {
+            uint32_t spr = bits_uint8(instr, 11, 10);
+            if (spr == 1) {
+                add_str("mfxer");
+                add_str(" r");
+                add_dec_uint8(rD);
+            }
+            else if (spr == 8) {
+                add_str("mflr");
+                add_str(" r");
+                add_dec_uint8(rD);
+            }
+            else if (spr == 9) {
+                add_str("mfctr");
+                add_str(" r");
+                add_dec_uint8(rD);
+            }
+            else {
+                add_str("mfspr");
+                add_str(" r");
+                add_dec_uint8(rD);
+                add_str(", ");
+                add_dec_uint32(spr);
+            }
+        }
+        break;
+    case 444:
+        if (rD == rB) {
+            add_str("mr");
+            add_str(" r");
+            add_dec_uint8(rA);
+            add_str(", r");
+            add_dec_uint8(rD);
+        }
+        else {
+            add_str("or");
+            add_str(" r");
+            add_dec_uint8(rA);
+            add_str(", r");
+            add_dec_uint8(rD);
+            add_str(", r");
+            add_dec_uint8(rB);
+        }
+        break;
+    case 457:
+        add_xo_form(instr, "divdu");
+        break;
+    case 459:
+        add_xo_form(instr, "divwu");
+        break;
+    case 467:
+        {
+            uint32_t spr = bits_uint8(instr, 11, 10);
+            if (spr == 1) {
+                add_str("mtxer");
+                add_str(" r");
+                add_dec_uint8(rD);
+            }
+            else if (spr == 8) {
+                add_str("mtlr");
+                add_str(" r");
+                add_dec_uint8(rD);
+            }
+            else if (spr == 9) {
+                add_str("mtctr");
+                add_str(" r");
+                add_dec_uint8(rD);
+            }
+            else {
+                add_str("mtspr");
+                add_str(" ");
+                add_dec_uint32(spr);
+                add_str(", ");
+                add_dec_uint8(rD);
+            }
+        }
+        break;
+    case 489:
+        add_xo_form(instr, "divd");
+        break;
+    case 491:
+        add_xo_form(instr, "divw");
+        break;
+    }
+}
+
 static void disassemble_opcode(uint32_t instr) {
     uint8_t opcode = (instr & 0xfc000000) >> 26; /* bits 0-5 */
     /* D-Form */
@@ -174,7 +430,24 @@ static void disassemble_opcode(uint32_t instr) {
         case 15:
             add_arithmetic_immediate("addis", rX, rA, immediate);
             break;
-        /* 16 - 23 */
+        /* 16 - 17 */
+        case 18:
+            {
+                uint64_t addr = bits_uint32(instr, 6, 24) << 2;
+                if (addr & (1 << 25)) addr |= ~(((uint64_t)1 << 26) - 1);
+                add_str("b");
+                if (bits_uint8(instr, 31, 1)) add_char('l');
+                if (bits_uint8(instr, 30, 1)) {
+                    add_char('a');
+                }
+                else {
+                    addr = ctx_addr + addr;
+                }
+                add_str(" ");
+                add_addr(addr);
+            }
+            break;
+        /* 18 - 23 */
         case 24:
             add_logical_immediate("ori", rX, rA, immediate);
             break;
@@ -194,6 +467,9 @@ static void disassemble_opcode(uint32_t instr) {
             add_logical_immediate("andis.", rX, rA, immediate);
             break;
         /* 30 - 31 */
+        case 31:
+            add_op_31(instr);
+            break;
         case 32:
             add_store_access_immediate("lwz", rX, rA, immediate);
             break;
@@ -340,6 +616,8 @@ DisassemblyResult * disassemble_powerpc(uint8_t * code,
     memset(&dr, 0, sizeof(dr));
     dr.size = 4;
     buf_pos = 0;
+    ctx = params->ctx;
+    ctx_addr = addr;
 
     instr = code[0];
     instr <<= 8;
@@ -352,7 +630,8 @@ DisassemblyResult * disassemble_powerpc(uint8_t * code,
     disassemble_opcode(instr);
 
     if (buf_pos == 0) {
-        snprintf(buf, sizeof(buf), ".word 0x%08x", instr);
+        snprintf(buf, sizeof(buf), ".word 0x%08x ; opcode %d,%d",
+            instr, bits_uint8(instr, 0, 6), bits_uint32(instr, 21, 10));
     }
     else {
         buf[buf_pos] = 0;
