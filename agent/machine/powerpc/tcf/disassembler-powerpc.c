@@ -202,11 +202,49 @@ static void add_xo_form2(uint32_t instr, const char * mnemonic) {
     add_dec_uint8(rA);
 }
 
-static void add_op_31(uint32_t instr) {
-    uint32_t xop = bits_uint32(instr, 21, 10);
+static void add_op_3r(uint32_t instr, const char * mnemonic) {
+    uint8_t rX = bits_uint8(instr, 6, 5);
     uint8_t rA = bits_uint8(instr, 11, 5);
     uint8_t rB = bits_uint8(instr, 16, 5);
-    uint8_t rD = bits_uint8(instr, 6, 5);
+    add_str(mnemonic);
+    add_str(" r");
+    add_dec_uint8(rX);
+    add_str(", r");
+    add_dec_uint8(rA);
+    add_str(", r");
+    add_dec_uint8(rB);
+}
+
+static void add_op_3r_rc(uint32_t instr, const char * mnemonic) {
+    uint8_t rX = bits_uint8(instr, 6, 5);
+    uint8_t rA = bits_uint8(instr, 11, 5);
+    uint8_t rB = bits_uint8(instr, 16, 5);
+    add_str(mnemonic);
+    if (bits_uint8(instr, 31, 1)) add_char('.');
+    add_str(" r");
+    add_dec_uint8(rA);
+    add_str(", r");
+    add_dec_uint8(rX);
+    add_str(", r");
+    add_dec_uint8(rB);
+}
+
+static void add_op_2r_rc(uint32_t instr, const char * mnemonic) {
+    uint8_t rX = bits_uint8(instr, 6, 5);
+    uint8_t rA = bits_uint8(instr, 11, 5);
+    add_str(mnemonic);
+    if (bits_uint8(instr, 31, 1)) add_char('.');
+    add_str(" r");
+    add_dec_uint8(rA);
+    add_str(", r");
+    add_dec_uint8(rX);
+}
+
+static void add_op_31(uint32_t instr) {
+    uint32_t xop = bits_uint32(instr, 21, 10);
+    uint8_t rX = bits_uint8(instr, 6, 5);
+    uint8_t rA = bits_uint8(instr, 11, 5);
+    uint8_t rB = bits_uint8(instr, 16, 5);
     switch (xop) {
     case 0:
         add_str("cmp");
@@ -240,8 +278,57 @@ static void add_op_31(uint32_t instr) {
     case 11:
         add_xo_form(instr, "mulhwu");
         break;
+    case 19:
+        if (bits_uint8(instr, 11, 1) == 0) {
+            add_str("mfcr");
+            add_str(" r");
+            add_dec_uint8(bits_uint8(instr, 6, 5));
+        }
+        else {
+            add_str("mfocrf");
+            add_str(" r");
+            add_dec_uint8(bits_uint8(instr, 6, 5));
+            add_str(", ");
+            add_dec_uint8(bits_uint32(instr, 12, 8));
+        }
+        break;
+    case 20:
+        add_op_3r(instr, "lwarx");
+        break;
+    case 21:
+        add_op_3r(instr, "ldx");
+        break;
+    case 23:
+        add_op_3r(instr, "lwzx");
+        break;
+    case 24:
+        add_op_3r_rc(instr, "slw");
+        break;
+    case 26:
+        add_op_2r_rc(instr, "cntlzw");
+        break;
+    case 27:
+        add_op_3r_rc(instr, "sld");
+        break;
+    case 28:
+        add_op_3r_rc(instr, "and");
+        break;
+    case 32:
+        add_str("cmpl");
+        add_str(" ");
+        add_dec_uint8(bits_uint8(instr, 6, 3));
+        add_str(", ");
+        add_dec_uint8(bits_uint8(instr, 10, 1));
+        add_str(", r");
+        add_dec_uint8(rA);
+        add_str(", r");
+        add_dec_uint8(rB);
+        break;
     case 40:
         add_xo_form(instr, "subf");
+        break;
+    case 55:
+        add_op_3r(instr, "lwzux");
         break;
     case 73:
         add_xo_form(instr, "mulhd");
@@ -252,7 +339,7 @@ static void add_op_31(uint32_t instr) {
     case 83:
         add_str("mfmsr");
         add_str(" r");
-        add_dec_uint8(rD);
+        add_dec_uint8(rX);
         break;
     case 104:
         add_xo_form(instr, "neg");
@@ -266,7 +353,7 @@ static void add_op_31(uint32_t instr) {
     case 146:
         add_str("mtmsr");
         add_str(" r");
-        add_dec_uint8(rD);
+        add_dec_uint8(rX);
         add_str(", ");
         add_dec_uint8(bits_uint8(instr, 15, 1));
         break;
@@ -297,41 +384,41 @@ static void add_op_31(uint32_t instr) {
             if (spr == 1) {
                 add_str("mfxer");
                 add_str(" r");
-                add_dec_uint8(rD);
+                add_dec_uint8(rX);
             }
             else if (spr == 8) {
                 add_str("mflr");
                 add_str(" r");
-                add_dec_uint8(rD);
+                add_dec_uint8(rX);
             }
             else if (spr == 9) {
                 add_str("mfctr");
                 add_str(" r");
-                add_dec_uint8(rD);
+                add_dec_uint8(rX);
             }
             else {
                 add_str("mfspr");
                 add_str(" r");
-                add_dec_uint8(rD);
+                add_dec_uint8(rX);
                 add_str(", ");
                 add_dec_uint32(spr);
             }
         }
         break;
     case 444:
-        if (rD == rB) {
+        if (rX == rB) {
             add_str("mr");
             add_str(" r");
             add_dec_uint8(rA);
             add_str(", r");
-            add_dec_uint8(rD);
+            add_dec_uint8(rX);
         }
         else {
             add_str("or");
             add_str(" r");
             add_dec_uint8(rA);
             add_str(", r");
-            add_dec_uint8(rD);
+            add_dec_uint8(rX);
             add_str(", r");
             add_dec_uint8(rB);
         }
@@ -348,24 +435,24 @@ static void add_op_31(uint32_t instr) {
             if (spr == 1) {
                 add_str("mtxer");
                 add_str(" r");
-                add_dec_uint8(rD);
+                add_dec_uint8(rX);
             }
             else if (spr == 8) {
                 add_str("mtlr");
                 add_str(" r");
-                add_dec_uint8(rD);
+                add_dec_uint8(rX);
             }
             else if (spr == 9) {
                 add_str("mtctr");
                 add_str(" r");
-                add_dec_uint8(rD);
+                add_dec_uint8(rX);
             }
             else {
                 add_str("mtspr");
                 add_str(" ");
                 add_dec_uint32(spr);
                 add_str(", ");
-                add_dec_uint8(rD);
+                add_dec_uint8(rX);
             }
         }
         break;
@@ -375,6 +462,118 @@ static void add_op_31(uint32_t instr) {
     case 491:
         add_xo_form(instr, "divw");
         break;
+    case 792:
+        add_op_3r_rc(instr, "sraw");
+        break;
+    case 794:
+        add_op_3r_rc(instr, "srad");
+        break;
+    case 824:
+        add_op_3r_rc(instr, "srawi");
+        break;
+    case 922:
+        add_op_2r_rc(instr, "extsh");
+        break;
+    case 954:
+        add_op_2r_rc(instr, "extsb");
+        break;
+    case 986:
+        add_op_2r_rc(instr, "extsw");
+        break;
+    }
+}
+
+static void add_m_form(uint32_t instr, const char * mnemonic) {
+    add_str(mnemonic);
+    if (bits_uint8(instr, 31, 1)) add_char('.');
+    add_str(" r");
+    add_dec_uint8(bits_uint8(instr, 11, 5));
+    add_str(", r");
+    add_dec_uint8(bits_uint8(instr, 6, 5));
+    add_str(", ");
+    add_dec_uint8(bits_uint8(instr, 16, 5));
+    add_str(", ");
+    add_dec_uint8(bits_uint8(instr, 21, 5));
+    add_str(", ");
+    add_dec_uint8(bits_uint8(instr, 26, 5));
+}
+
+static void add_op_19(uint32_t instr) {
+    uint32_t xop = bits_uint32(instr, 21, 10);
+    switch (xop) {
+    case 0:
+        add_str("mcrf");
+        add_str(" ");
+        add_dec_uint8(bits_uint8(instr, 6, 3));
+        add_str(", ");
+        add_dec_uint8(bits_uint8(instr, 11, 3));
+        return;
+    case 18:
+        add_str("rfid");
+        return;
+    case 150:
+        add_str("isync");
+        return;
+    case 274:
+        add_str("hrfid");
+        return;
+    }
+
+    switch (xop) {
+    case 16:
+        add_str("bclr");
+        break;
+    case 528:
+        add_str("bcctr");
+        break;
+    }
+
+    if (buf_pos > 0) {
+        if (bits_uint8(instr, 31, 1)) add_char('l');
+        add_str(" ");
+        add_dec_uint8(bits_uint8(instr, 6, 5));
+        add_str(", ");
+        add_dec_uint8(bits_uint8(instr, 11, 5));
+        add_str(", ");
+        add_dec_uint8(bits_uint8(instr, 19, 2));
+        return;
+    }
+
+    switch (xop) {
+    case 33:
+        add_str("crnor");
+        break;
+    case 129:
+        add_str("crandc");
+        break;
+    case 193:
+        add_str("crxor");
+        break;
+    case 225:
+        add_str("crnand");
+        break;
+    case 257:
+        add_str("crand");
+        break;
+    case 289:
+        add_str("creqv");
+        break;
+    case 417:
+        add_str("crorc");
+        break;
+    case 449:
+        add_str("cror");
+        break;
+    }
+
+    if (buf_pos > 0) {
+        add_str(" ");
+        add_dec_uint8(bits_uint8(instr, 6, 5));
+        add_str(", ");
+        add_dec_uint8(bits_uint8(instr, 11, 5));
+        add_str(", ");
+        add_dec_uint8(bits_uint8(instr, 16, 5));
+        return;
     }
 }
 
@@ -430,7 +629,27 @@ static void disassemble_opcode(uint32_t instr) {
         case 15:
             add_arithmetic_immediate("addis", rX, rA, immediate);
             break;
-        /* 16 - 17 */
+        case 16:
+            {
+                uint64_t addr = bits_uint32(instr, 16, 14) << 2;
+                if (addr & (1 << 15)) addr |= ~(((uint64_t)1 << 16) - 1);
+                add_str("bc");
+                if (bits_uint8(instr, 31, 1)) add_char('l');
+                if (bits_uint8(instr, 30, 1)) {
+                    add_char('a');
+                }
+                else {
+                    addr = ctx_addr + addr;
+                }
+                add_str(" ");
+                add_dec_uint8(bits_uint8(instr, 6, 5));
+                add_str(", ");
+                add_dec_uint8(bits_uint8(instr, 11, 5));
+                add_str(", ");
+                add_addr(addr);
+            }
+            break;
+        /* 17 */
         case 18:
             {
                 uint64_t addr = bits_uint32(instr, 6, 24) << 2;
@@ -447,7 +666,19 @@ static void disassemble_opcode(uint32_t instr) {
                 add_addr(addr);
             }
             break;
-        /* 18 - 23 */
+        case 19:
+            add_op_19(instr);
+            break;
+        case 20:
+            add_m_form(instr, "rlwimi");
+            break;
+        case 21:
+            add_m_form(instr, "rlwinm");
+            break;
+        /* 23 */
+        case 23:
+            add_m_form(instr, "rlwnm");
+            break;
         case 24:
             add_logical_immediate("ori", rX, rA, immediate);
             break;
@@ -466,7 +697,7 @@ static void disassemble_opcode(uint32_t instr) {
         case 29:
             add_logical_immediate("andis.", rX, rA, immediate);
             break;
-        /* 30 - 31 */
+        /* 30 */
         case 31:
             add_op_31(instr);
             break;
