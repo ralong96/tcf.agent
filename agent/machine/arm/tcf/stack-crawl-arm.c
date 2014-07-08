@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1818,7 +1818,8 @@ static int trace_arm(void) {
     else if ((instr & 0x0f000000) == 0x0a000000) { /* Branch */
         trace_arm_branch_instruction(instr);
     }
-    else if ((instr & 0x0f000000) == 0x0b000000) { /* BL */
+    else if ((instr & 0x0f000000) == 0x0b000000 ||
+             (instr & 0x0ffffff0) == 0x012fff30 ) { /* BL */
         /* Subroutines are expected to preserve the contents of r4 to r11 and r13 */
         unsigned i;
         for (i = 0; i <= 14; i++) {
@@ -1829,9 +1830,6 @@ static int trace_arm(void) {
     }
     else if ((instr & 0x0f9000f0) == 0x01000000) { /* MRS, MSR */
         trace_arm_mrs_msr(instr);
-    }
-    else if ((instr & 0x0fff00ff) == 0x03200000) { /* NOP */
-        /* No register changes */
     }
     else if ((instr & 0x0c000000) == 0x04000000) { /* LDR, STR */
         trace_arm_ldr_str(instr);
@@ -1868,10 +1866,14 @@ static int trace_arm(void) {
     else if ((instr & 0x0c000000) == 0x0c000000) {
         trace_coprocessor_instr(instr);
     }
+    else if ((instr & 0x0fff0000) == 0x03200000) { /* Hints: NOP, YIELD, etc. */
+        /* No register changes */
+    }
     else {
         unsigned i;
-        /* Unknown/undecoded.  May alter some register, so invalidate file */
-        for (i = 0; i < 13; i++) reg_data[i].o = 0;
+        /* Unknown/undecoded. May alter some register, so invalidate file */
+        for (i = 0; i < 11; i++) reg_data[i].o = 0;
+        trace(LOG_ALWAYS, "ARM stack crawl: unknown instruction %08x", instr);
     }
 
     if (!trace_return && !trace_branch) {

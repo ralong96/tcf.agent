@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1068,29 +1068,11 @@ static void read_frame_fde(U8_T IP, U8_T fde_pos) {
             }
             dwarf_stack_trace_addr = location0;
             dwarf_stack_trace_size = rules.location - location0;
-            if (rules.reg_id_scope.machine == EM_ARM && rules.location == Addr + Range) {
+            if (rules.reg_id_scope.machine == EM_ARM && IP + 4 == Addr + Range) {
                 /* GCC generates invalid frame info for ARM function epilogue */
-                U4_T instr = 0;
-                ContextAddress addr = elf_map_to_run_time_address(
-                    rules.ctx, rules.section->file, rules.text_section, IP);
-                dwarf_stack_trace_addr = IP;
-                dwarf_stack_trace_size = 1;
-                if (addr != 0 && context_read_mem(rules.ctx, addr, &instr, sizeof(instr)) == 0) {
-                    if (rules.section->file->byte_swap) SWAP(instr);
-                    if ((instr & 0xfff000ff) == 0xe120001e) {
-                        /* bx lr */
-                        int n;
-                        clear_frame_registers(&cie_regs);
-                        clear_frame_registers(&frame_regs);
-                        rules.return_address_register = 14; /* LR */
-                        frame_regs.cfa_rule = RULE_OFFSET;
-                        frame_regs.cfa_register = 13; /* SP */
-                        for (n = 0; n < 15; n++) {
-                            RegisterRules * r = get_reg(&frame_regs, n);
-                            if (r->rule == 0) r->rule = RULE_SAME_VALUE;
-                        }
-                    }
-                }
+                /* Ignore frame info, fall-back to stack crawl logic */
+                dio_ExitSection();
+                return;
             }
             generate_commands();
         }
