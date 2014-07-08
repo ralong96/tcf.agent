@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <tcf/framework/context.h>
+#include <tcf/services/symbols.h>
 #include <machine/arm/tcf/disassembler-arm.h>
 
 static char buf[128];
@@ -122,6 +123,30 @@ static void add_modifed_immediate_constant(uint16_t suffix) {
 #endif
 }
 
+static void add_addr(uint32_t addr) {
+    while (buf_pos < 16) add_char(' ');
+    add_str("; addr=0x");
+    add_hex_uint32(addr);
+#if ENABLE_Symbols
+    if (params->ctx != NULL) {
+        Symbol * sym = NULL;
+        char * name = NULL;
+        ContextAddress sym_addr = 0;
+        if (find_symbol_by_addr(params->ctx, STACK_NO_FRAME, addr, &sym) < 0) return;
+        if (get_symbol_name(sym, &name) < 0 || name == NULL) return;
+        if (get_symbol_address(sym, &sym_addr) < 0) return;
+        if (sym_addr <= addr) {
+            add_str(": ");
+            add_str(name);
+            if (sym_addr < addr) {
+                add_str(" + 0x");
+                add_hex_uint32(addr - (uint32_t)sym_addr);
+            }
+        }
+    }
+#endif
+}
+
 static void add_branch_address(int32_t offset) {
     add_char(' ');
     if (offset < 0) {
@@ -132,8 +157,7 @@ static void add_branch_address(int32_t offset) {
         add_char('+');
         add_dec_uint32(offset);
     }
-    add_str(" ; addr=0x");
-    add_hex_uint32(instr_addr + offset + 4);
+    add_addr(instr_addr + offset + 4);
 }
 
 static void disassemble_thumb0(void) {
@@ -590,6 +614,69 @@ static void disassemble_load_store_32(uint16_t suffix) {
         return;
     }
 
+    if ((instr & 0xffe0) == 0xe840) {
+        /* Load/store exclusive */
+        uint32_t imm = (instr & 0xff) << 2;
+        add_str(instr & (1u << 4) ? "ldrex" : "strex");
+        if (it_cond_name) add_str(it_cond_name);
+        add_char(' ');
+        add_reg_name((suffix >> 8) & 0xf);
+        add_str(", ");
+        add_reg_name((suffix >> 12) & 0xf);
+        add_str(", [");
+        add_reg_name(instr & 0xf);
+        if (imm != 0) {
+            add_str(", #");
+            add_dec_uint32(imm);
+        }
+        add_char(']');
+        return;
+    }
+
+    if ((instr & 0xff60) == 0xe860 || (instr & 0xff40) == 0xe940) {
+        /* Load/store register dual */
+        add_str(instr & (1u << 4) ? "ldrd" : "strd");
+        if (it_cond_name) add_str(it_cond_name);
+        add_char(' ');
+        add_reg_name((suffix >> 12) & 0xf);
+        add_str(", ");
+        add_reg_name((suffix >> 8) & 0xf);
+        add_str(", [");
+        if ((instr & 0xf) != 0xf) {
+            /* Immediate */
+            uint32_t imm = (suffix & 0xff) << 2;
+            int P = (instr & (1u << 8)) != 0;
+            int U = (instr & (1u << 7)) != 0;
+            int W = (instr & (1u << 5)) != 0;
+            add_reg_name(instr & 0xf);
+            if (P) {
+                if (imm != 0 || W) {
+                    add_str(", #");
+                    add_char(U ? '+' : '-');
+                    add_dec_uint32(imm);
+                }
+                add_char(']');
+                if (W) add_char('!');
+            }
+            else {
+                add_str("], #");
+                add_char(U ? '+' : '-');
+                add_dec_uint32(imm);
+            }
+        }
+        else {
+            /* Literal */
+            uint32_t imm = (suffix & 0xff) << 2;
+            int U = (instr & (1u << 7)) != 0;
+            add_str("pc, #");
+            add_char(U ? '+' : '-');
+            add_dec_uint32(imm);
+            add_char(']');
+            add_addr(U ? instr_addr + imm + 4 : instr_addr - imm + 4);
+        }
+        return;
+    }
+
     if ((instr & 0xfff0) == 0xe8d0 && (suffix & 0x00e0) == 0x0000) {
         /* Table Branch */
         add_str("tb");
@@ -992,7 +1079,156 @@ static void disassemble_memory_hints(uint16_t suffix) {
 }
 
 static void disassemble_data_processing_32_reg(uint16_t suffix) {
-    /* TODO: Data-processing (register) */
+    uint32_t op1 = (instr >> 4) & 0xf;
+    uint32_t op2 = (suffix >> 4) & 0xf;
+
+    if (op2 == 0) {
+        switch (op1 >> 1) {
+        case 0: add_str("lsl"); break;
+        case 1: add_str("lsr"); break;
+        case 2: add_str("asr"); break;
+        case 3: add_str("ror"); break;
+        }
+        if (buf_pos > 0) {
+            if (instr & (1u << 4)) add_char('s');
+            if (it_cond_name) add_str(it_cond_name);
+            add_str(".w ");
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+            add_reg_name(instr & 0xf);
+            add_str(", ");
+            add_reg_name(suffix & 0xf);
+            return;
+        }
+    }
+
+    if (op2 >= 8) {
+        int pc = (instr & 0xf) == 0xf;
+        switch (op1) {
+        case 0: add_str(pc ? "sxth" : "sxtah"); break;
+        case 1: add_str(pc ? "uxth" : "uxtah"); break;
+        case 2: add_str(pc ? "sxtb16" : "sxtab16"); break;
+        case 3: add_str(pc ? "uxtb16" : "uxtab16"); break;
+        case 4: add_str(pc ? "sxtb" : "sxtab"); break;
+        case 5: add_str(pc ? "uxtb" : "uxtab"); break;
+        }
+        if (buf_pos > 0) {
+            uint32_t rot = (suffix >> 4) & 3;
+            if (it_cond_name) add_str(it_cond_name);
+            if (pc) {
+                switch (op1) {
+                case 0:
+                case 1:
+                case 4:
+                case 5:
+                    add_str(".w");
+                    break;
+                }
+            }
+            add_char(' ');
+            add_reg_name((suffix >> 8) & 0xf);
+            if (!pc) {
+                add_str(", ");
+                add_reg_name(instr & 0xf);
+            }
+            add_str(", ");
+            add_reg_name(suffix & 0xf);
+            switch (rot) {
+            case 1: add_str(", ror #8"); break;
+            case 2: add_str(", ror #16"); break;
+            case 3: add_str(", ror #24"); break;
+            }
+            return;
+        }
+    }
+
+    if (op1 >= 8 && (op1 & 3) != 3 && op2 < 8 && (op2 & 3) != 3) {
+        /* Parallel addition and subtraction */
+        op1 &= 7;
+        op2 &= 3;
+        if (suffix & (1u << 6)) add_char('u');
+        else if (op2 != 1) add_char('s');
+        if (op2 == 1) add_char('q');
+        if (op2 == 2) add_char('h');
+        switch (op1) {
+        case 1: add_str("add16"); break;
+        case 2: add_str("asx"); break;
+        case 6: add_str("sax"); break;
+        case 5: add_str("sub16"); break;
+        case 0: add_str("add8"); break;
+        case 4: add_str("sub8"); break;
+        }
+        if (it_cond_name) add_str(it_cond_name);
+        add_str(" ");
+        add_reg_name((suffix >> 8) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name(suffix & 0xf);
+        return;
+    }
+
+    if ((op1 >> 2) == 2 && (op2 >> 2) == 2) {
+        /* Miscellaneous operations */
+        op1 &= 3;
+        op2 &= 3;
+        if (op1 == 0) {
+            switch (op2) {
+            case 0: add_str("qadd"); break;
+            case 1: add_str("qdadd"); break;
+            case 2: add_str("qsub"); break;
+            case 3: add_str("qdsub"); break;
+            }
+            if (it_cond_name) add_str(it_cond_name);
+            add_str(" ");
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+            add_reg_name(suffix & 0xf);
+            add_str(", ");
+            add_reg_name(instr & 0xf);
+            return;
+        }
+        if (op1 == 1) {
+            switch (op2) {
+            case 0: add_str("rev"); break;
+            case 1: add_str("rev16"); break;
+            case 2: add_str("rbit"); break;
+            case 3: add_str("revsh"); break;
+            }
+            if (it_cond_name) add_str(it_cond_name);
+            if (op2 != 2) {
+                add_str(".w ");
+            }
+            else {
+                add_str(" ");
+            }
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+            add_reg_name(suffix & 0xf);
+            return;
+        }
+        if (op1 == 2 && op2 == 0) {
+            add_str("sel");
+            if (it_cond_name) add_str(it_cond_name);
+            add_str(" ");
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+            add_reg_name(instr & 0xf);
+            add_str(", ");
+            add_reg_name(suffix & 0xf);
+            return;
+        }
+        if (op1 == 3 && op2 == 0) {
+            add_str("clz");
+            if (it_cond_name) add_str(it_cond_name);
+            add_str(" ");
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+            add_reg_name(suffix & 0xf);
+            return;
+        }
+        return;
+    }
 }
 
 static void disassemble_multiply_32(uint16_t suffix) {
@@ -1084,7 +1320,74 @@ static void disassemble_multiply_32(uint16_t suffix) {
 }
 
 static void disassemble_long_multiply_32(uint16_t suffix) {
-    /* TODO: Long multiply, long multiply accumulate, and divide */
+    /* Long multiply, long multiply accumulate, and divide */
+    uint32_t op1 = (instr >> 4) & 7;
+    uint32_t op2 = (suffix >> 4) & 0xf;
+    switch (op1) {
+    case 0:
+        if (op2 == 0) add_str("smull");
+        break;
+    case 1:
+        if (op2 == 15) add_str("sdiv");
+        break;
+    case 2:
+        if (op2 == 0) add_str("umull");
+        break;
+    case 3:
+        if (op2 == 15) add_str("udiv");
+        break;
+    case 4:
+        if (op2 == 0) {
+            add_str("smlal");
+        }
+        else if ((op2 >> 2) == 2) {
+            add_str("smlal");
+            add_char(suffix & (1 << 5) ? 't' : 'b');
+            add_char(suffix & (1 << 4) ? 't' : 'b');
+        }
+        else if ((op2 >> 1) == 6) {
+            add_str("smlald");
+        }
+        break;
+    case 5:
+        if ((op2 >> 1) == 6) {
+            add_str("smlsld");
+            if (suffix & (1 << 4)) add_char('x');
+        }
+        break;
+    case 6:
+        if (op2 == 0) add_str("umlal");
+        else if (op2 == 6) add_str("umaal");
+        break;
+    }
+    if (buf_pos > 0) {
+        if (it_cond_name) add_str(it_cond_name);
+        switch (op1) {
+        case 0:
+        case 2:
+        case 4:
+        case 5:
+        case 6:
+            add_char(' ');
+            add_reg_name((suffix >> 12) & 0xf);
+            add_str(", ");
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+            add_reg_name(instr & 0xf);
+            add_str(", ");
+            add_reg_name(suffix & 0xf);
+            return;
+        case 1:
+        case 3:
+            add_char(' ');
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+            add_reg_name(instr & 0xf);
+            add_str(", ");
+            add_reg_name(suffix & 0xf);
+            return;
+        }
+    }
 }
 
 static void disassemble_thumb7(void) {
