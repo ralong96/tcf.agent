@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -202,7 +202,7 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
         ContextAddress addr = buf_addr + offs;
         ContextAddress size = mem_size - offs;
         DisassemblyResult * dr = NULL;
-        if ((args->isa == NULL) && (addr < isa->addr || addr >= isa->addr + isa->size)) {
+        if (args->isa == NULL && (addr < isa->addr || addr >= isa->addr + isa->size)) {
             if (get_isa(ctx, addr, isa) < 0) return -1;
             disassembler_ok = 0;
         }

@@ -1643,6 +1643,18 @@
 					>
 				</File>
 			</Filter>
+			<Filter
+				Name="a64"
+				>
+				<File
+					RelativePath=".\machine\a64\tcf\disassembler-a64.c"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\a64\tcf\disassembler-a64.h"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<File
 			RelativePath=".\tcf\config.h"
