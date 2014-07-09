@@ -1099,8 +1099,15 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
         void * ptr = NULL;
         int sym_class = 0;
         if (find_test_symbol(expression_context, name, &ptr, &sym_class) >= 0) {
-            v->type_class = TYPE_CLASS_CARDINAL;
-            set_ctx_word_value(v, (ContextAddress)ptr);
+            if (sym_class == SYM_CLASS_FUNCTION) {
+                set_ctx_word_value(v, (ContextAddress)ptr);
+                v->type_class = TYPE_CLASS_POINTER;
+                v->function = 1;
+            }
+            else {
+                v->address = (ContextAddress)ptr;
+                v->remote = 1;
+            }
             return sym_class;
         }
     }
