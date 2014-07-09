@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -170,6 +170,16 @@ extern unsigned cache_transaction_id(void);
  * Return number of cache misses in the current transaction.
  */
 extern unsigned cache_miss_count(void);
+
+/*
+ * Cache transaction listeners.
+ */
+#define CTLE_START      1
+#define CTLE_RETRY      2
+#define CTLE_ABORT      3
+#define CTLE_COMMIT     4
+typedef void CacheTransactionListener(int /* event */);
+extern void add_cache_transaction_listener(CacheTransactionListener * l);
 
 /*
  * Dispose a cache.

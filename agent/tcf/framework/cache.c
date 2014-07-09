@@ -51,6 +51,10 @@ static LINK cache_list = TCF_LIST_INIT(cache_list);
 static Channel * def_channel = NULL;
 static const char * channel_lock_msg = "Cache client lock";
 
+static CacheTransactionListener ** listeners = NULL;
+static unsigned listeners_cnt = 0;
+static unsigned listeners_max = 0;
+
 #define link_all2cache(x) ((AbstractCache *)((char *)(x) - offsetof(AbstractCache, link)))
 
 #ifndef NDEBUG
@@ -83,12 +87,14 @@ static void cache_timer(void * x) {
 }
 #endif
 
-static void run_cache_client(void) {
+static void run_cache_client(int retry) {
     Trap trap;
+    unsigned i;
 
     cache_miss_cnt = 0;
     client_exited = 0;
     def_channel = NULL;
+    for (i = 0; i < listeners_cnt; i++) listeners[i](retry ? CTLE_RETRY : CTLE_START);
     if (set_trap(&trap)) {
         current_client.client(current_client.args);
         clear_trap(&trap);
@@ -98,6 +104,7 @@ static void run_cache_client(void) {
     else if (get_error_code(trap.error) != ERR_CACHE_MISS || client_exited || cache_miss_cnt == 0) {
         trace(LOG_ALWAYS, "Unhandled exception in data cache client: %d %s", trap.error, errno_to_str(trap.error));
     }
+    for (i = 0; i < listeners_cnt; i++) listeners[i](client_exited ? CTLE_COMMIT : CTLE_ABORT);
     if (cache_miss_cnt == 0 && current_client.args_copy) loc_free(current_client.args);
     memset(&current_client, 0, sizeof(current_client));
     cache_miss_cnt = 0;
@@ -117,7 +124,7 @@ void cache_enter(CacheClient * client, Channel * channel, void * args, size_t ar
     current_client.args = args;
     current_client.args_size = args_size;
     current_client.args_copy = 0;
-    run_cache_client();
+    run_cache_client(0);
 }
 
 void cache_exit(void) {
@@ -183,7 +190,7 @@ void cache_notify(AbstractCache * cache) {
     memcpy(wait_list_buf, cache->wait_list_buf, cnt * sizeof(WaitingCacheClient));
     for (i = 0; i < cnt; i++) {
         current_client = wait_list_buf[i];
-        run_cache_client();
+        run_cache_client(1);
         if (wait_list_buf[i].channel != NULL) channel_unlock_with_msg(wait_list_buf[i].channel, channel_lock_msg);
     }
 }
@@ -193,7 +200,7 @@ static void cache_notify_event(void * args) {
     WaitingCacheClient * buf = (WaitingCacheClient *)args;
     for (i = 0; buf[i].client != NULL; i++) {
         current_client = buf[i];
-        run_cache_client();
+        run_cache_client(1);
         if (buf[i].channel != NULL) channel_unlock_with_msg(buf[i].channel, channel_lock_msg);
     }
     loc_free(buf);
@@ -234,6 +241,15 @@ unsigned cache_transaction_id(void) {
 
 unsigned cache_miss_count(void) {
     return cache_miss_cnt;
+}
+
+void add_cache_transaction_listener(CacheTransactionListener * l) {
+    if (listeners_cnt >= listeners_max) {
+        listeners_max += 8;
+        listeners = (CacheTransactionListener **)loc_realloc(listeners,
+            sizeof(CacheTransactionListener *) * listeners_max);
+    }
+    listeners[listeners_cnt++] = l;
 }
 
 void cache_dispose(AbstractCache * cache) {

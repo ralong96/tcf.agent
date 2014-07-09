@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -59,6 +59,7 @@ static LINK clients;
 static char * buf = NULL;
 static unsigned buf_pos = 0;
 static unsigned buf_max = 0;
+static Client * buf_client = NULL;
 
 static Client * find_client(Channel * channel) {
     LINK * l;
@@ -106,15 +107,10 @@ static const void * load_remote_string(Context * ctx, Value * arg_val) {
 }
 
 void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsigned args_cnt) {
-    Client * client = find_client(cache_channel());
     unsigned fmt_pos = 0;
     unsigned arg_pos = 0;
 
-    if (client == NULL) return;
-
-    buf = NULL;
-    buf_pos = 0;
-    buf_max = 0;
+    if (buf_client == NULL) return;
 
     while (fmt[fmt_pos]) {
         char ch = fmt[fmt_pos];
@@ -238,18 +234,6 @@ void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsig
         add_ch(ch);
         fmt_pos++;
     }
-    if (buf_pos > 0) {
-        size_t done = 0;
-        virtual_stream_add_data(client->vstream, buf, buf_pos, &done, 0);
-        if (done < buf_pos) {
-            Buffer * b = (Buffer *)loc_alloc_zero(sizeof(Buffer));
-            b->size = buf_pos - done;
-            b->buf = (char *)loc_alloc(b->size);
-            memcpy(b->buf, buf + done, b->size);
-            if (list_is_empty(&client->bufs)) run_ctrl_lock();
-            list_add_last(&b->link, &client->bufs);
-        }
-    }
 }
 
 static void streams_callback(VirtualStream * stream, int event_code, void * args) {
@@ -302,11 +286,15 @@ static void command_open(char * token, Channel * c) {
 static void free_client(Client * client) {
     virtual_stream_delete(client->vstream);
     list_remove(&client->link);
-    while (!list_is_empty(&client->bufs)) {
-        Buffer * bf = link2buf(client->bufs.next);
-        list_remove(&bf->link);
-        loc_free(bf->buf);
-        loc_free(bf);
+    if (!list_is_empty(&client->bufs)) {
+        do {
+            Buffer * bf = link2buf(client->bufs.next);
+            list_remove(&bf->link);
+            loc_free(bf->buf);
+            loc_free(bf);
+        }
+        while (!list_is_empty(&client->bufs));
+        run_ctrl_unlock();
     }
     loc_free(client);
 }
@@ -322,6 +310,36 @@ static void command_close(char * token, Channel * c) {
     write_stringz(&c->out, token);
     write_errno(&c->out, 0);
     write_stream(&c->out, MARKER_EOM);
+}
+
+static void cache_transaction_listener(int evt) {
+    switch (evt) {
+    case CTLE_START:
+    case CTLE_RETRY:
+        buf_client = find_client(cache_channel());
+        break;
+    case CTLE_ABORT:
+        buf_client = NULL;
+        break;
+    case CTLE_COMMIT:
+        if (buf_pos > 0) {
+            size_t done = 0;
+            virtual_stream_add_data(buf_client->vstream, buf, buf_pos, &done, 0);
+            if (done < buf_pos) {
+                Buffer * b = (Buffer *)loc_alloc_zero(sizeof(Buffer));
+                b->size = buf_pos - done;
+                b->buf = (char *)loc_alloc(b->size);
+                memcpy(b->buf, buf + done, b->size);
+                if (list_is_empty(&buf_client->bufs)) run_ctrl_lock();
+                list_add_last(&b->link, &buf_client->bufs);
+            }
+        }
+        buf_client = NULL;
+        break;
+    }
+    buf = NULL;
+    buf_pos = 0;
+    buf_max = 0;
 }
 
 static void channel_close_listener(Channel * c) {
@@ -355,6 +373,7 @@ void ini_dprintf_service(Protocol * p) {
     list_init(&clients);
     add_command_handler(p, DPRINTF, "open", command_open);
     add_command_handler(p, DPRINTF, "close", command_close);
+    add_cache_transaction_listener(cache_transaction_listener);
     add_channel_close_listener(channel_close_listener);
     add_identifier_callback(identifier_callback);
 }
