@@ -134,6 +134,28 @@ static void add_addr(uint64_t addr) {
 #endif
 }
 
+static void add_data_barrier_option(void) {
+    uint32_t imm = (instr >> 8) & 0xf;
+    switch (imm) {
+    case  1: add_str("oshld"); break;
+    case  2: add_str("oshst"); break;
+    case  3: add_str("osh"); break;
+    case  5: add_str("nshld"); break;
+    case  6: add_str("nshst"); break;
+    case  7: add_str("nsh"); break;
+    case  9: add_str("ishld"); break;
+    case 10: add_str("ishst"); break;
+    case 11: add_str("ish"); break;
+    case 13: add_str("ld"); break;
+    case 14: add_str("st"); break;
+    case 15: add_str("sy"); break;
+    default:
+        add_char('#');
+        add_dec_uint32(imm);
+        break;
+    }
+}
+
 static void data_processing_immediate(void) {
     if ((instr & 0x1f000000) == 0x10000000) {
         /* PC-rel. addressing */
@@ -381,6 +403,16 @@ static void branch_exception_system() {
         uint32_t rt = instr & 0x1f;
         if (l == 0 && op0 == 0 && crn == 4 && rt == 31) {
             /* MSR (immediate) */
+            const char * psf = NULL;
+            if (op1 == 0 && op2 == 5) psf = "spsel";
+            else if (op1 == 3 && op2 == 6) psf = "daifset";
+            else if (op1 == 3 && op2 == 7) psf = "daifclr";
+            if (psf != NULL) {
+                add_str("msr ");
+                add_str(psf);
+                add_str(", #");
+                add_dec_uint32((instr >> 8) & 0xf);
+            }
         }
         else if (l == 0 && op0 == 0 && op1 == 3 && crn == 2 && rt == 31) {
             /* HINT */
@@ -395,33 +427,109 @@ static void branch_exception_system() {
         }
         else if (l == 0 && op0 == 0 && op1 == 3 && crn == 3 && op2 == 2 && rt == 31) {
             /* CLREX */
+            uint32_t imm = (instr >> 8) & 0xf;
+            add_str("clrex");
+            if (imm != 15) {
+                add_str(", #");
+                add_dec_uint32(imm);
+            }
         }
         else if (l == 0 && op0 == 0 && op1 == 3 && crn == 3 && op2 == 4 && rt == 31) {
             /* DSB */
+            add_str("dsb ");
+            add_data_barrier_option();
         }
         else if (l == 0 && op0 == 0 && op1 == 3 && crn == 3 && op2 == 5 && rt == 31) {
             /* DMB */
+            add_str("dmb ");
+            add_data_barrier_option();
         }
         else if (l == 0 && op0 == 0 && op1 == 3 && crn == 3 && op2 == 6 && rt == 31) {
             /* ISB */
+            uint32_t imm = (instr >> 8) & 0xf;
+            add_str("isb ");
+            switch (imm) {
+            case 15: add_str("sy"); break;
+            default:
+                add_char('#');
+                add_dec_uint32(imm);
+                break;
+            }
         }
         else if (l == 0 && op0 == 1) {
             /* SYS */
+            uint32_t crm = (instr >> 8) & 0xf;
+            add_str("sys #");
+            add_dec_uint32(op1);
+            add_str(", c");
+            add_dec_uint32(crn);
+            add_str(", c");
+            add_dec_uint32(crm);
+            add_str(", #");
+            add_dec_uint32(op2);
+            if (rt != 31) {
+                add_str(", ");
+                add_reg_name(rt, 1);
+            }
         }
         else if (l == 0 && op0 >= 2) {
             /* MSR (register) */
+            uint32_t reg = (instr >> 5) & 0x7fff;
+            add_str("msr ");
+            add_dec_uint32(reg);
+            add_str(", ");
+            add_reg_name(rt, 1);
         }
         else if (l == 1 && op0 == 1) {
             /* SYSL */
+            uint32_t crm = (instr >> 8) & 0xf;
+            add_str("sys ");
+            add_reg_name(rt, 1);
+            add_str(", #");
+            add_dec_uint32(op1);
+            add_str(", c");
+            add_dec_uint32(crn);
+            add_str(", c");
+            add_dec_uint32(crm);
+            add_str(", #");
+            add_dec_uint32(op2);
         }
         else if (l == 1 && op0 >= 2) {
             /* MRS */
+            uint32_t reg = (instr >> 5) & 0x7fff;
+            add_str("mrs ");
+            add_reg_name(rt, 1);
+            add_str(", ");
+            add_dec_uint32(reg);
         }
         return;
     }
 
     if ((instr & 0xfe000000) == 0xd6000000) {
         /* Unconditional branch (register) */
+        uint32_t opc = (instr >> 21) & 0x1f;
+        uint32_t op2 = (instr >> 16) & 0x1f;
+        uint32_t op3 = (instr >> 10) & 0x3f;
+        uint32_t op4 = (instr >>  0) & 0x1f;
+        uint32_t rn = (instr >> 5) & 0x3f;
+        if (op2 == 31 && op3 == 0 && op4 == 0) {
+            switch (opc) {
+            case 0: add_str("br"); break;
+            case 1: add_str("blr"); break;
+            case 2: add_str("ret"); break;
+            }
+            if (buf_pos > 0) {
+                add_char(' ');
+                add_reg_name(rn, 1);
+            }
+            else if (rn == 31) {
+                switch (opc) {
+                case 4: add_str("eret"); break;
+                case 5: add_str("drps"); break;
+                }
+            }
+        }
+        return;
     }
 }
 
@@ -444,10 +552,10 @@ DisassemblyResult * disassemble_a64(uint8_t * code,
     memset(&dr, 0, sizeof(dr));
     dr.size = 4;
     buf_pos = 0;
-    params = disass_params;
     instr = 0;
     instr_addr = addr;
     for (i = 0; i < 4; i++) instr |= (uint32_t)*code++ << (i * 8);
+    params = disass_params;
 
     if ((instr & 0x1c000000) == 0x10000000) data_processing_immediate();
     else if ((instr & 0x1c000000) == 0x14000000) branch_exception_system();
