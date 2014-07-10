@@ -105,8 +105,8 @@ static void add_flt_uint64(uint64_t n) {
     add_str(buf);
 }
 
-static void add_reg_name(uint32_t n, int x) {
-    add_char(x ? 'x' : 'w');
+static void add_reg_name(uint32_t n, int sf) {
+    add_char(sf ? 'x' : 'w');
     add_dec_uint32(n);
 }
 
@@ -164,7 +164,7 @@ static void data_processing_immediate(void) {
 
     if ((instr & 0x1f000000) == 0x11000000) {
         /* Add/subtract (immediate) */
-        int x = (instr & (1u << 31)) != 0;
+        int sf = (instr & (1u << 31)) != 0;
         switch ((instr >> 29) & 3) {
         case 0: add_str("add"); break;
         case 1: add_str("adds"); break;
@@ -172,9 +172,9 @@ static void data_processing_immediate(void) {
         case 3: add_str("subs"); break;
         }
         add_char(' ');
-        add_reg_name(instr & 0x1f, x);
+        add_reg_name(instr & 0x1f, sf);
         add_str(", ");
-        add_reg_name((instr >> 5) & 0x1f, x);
+        add_reg_name((instr >> 5) & 0x1f, sf);
         add_str(", #");
         add_hex_uint32((instr >> 10) & 0xfff);
         switch ((instr >> 22) & 3) {
@@ -186,7 +186,7 @@ static void data_processing_immediate(void) {
     if ((instr & 0x1f800000) == 0x12000000) {
         /* Logical (immediate) */
         uint32_t imm = 0;
-        int x = (instr & (1u << 31)) != 0;
+        int sf = (instr & (1u << 31)) != 0;
         switch ((instr >> 29) & 3) {
         case 0: add_str("and"); break;
         case 1: add_str("orr"); break;
@@ -194,9 +194,9 @@ static void data_processing_immediate(void) {
         case 3: add_str("ands"); break;
         }
         add_char(' ');
-        add_reg_name(instr & 0x1f, x);
+        add_reg_name(instr & 0x1f, sf);
         add_str(", ");
-        add_reg_name((instr >> 5) & 0x1f, x);
+        add_reg_name((instr >> 5) & 0x1f, sf);
         add_str(", #");
         imm |= ((instr >> 22) & 0x1) << 12;
         imm |= ((instr >> 10) & 0x3f) << 6;
@@ -207,7 +207,7 @@ static void data_processing_immediate(void) {
 
     if ((instr & 0x1f800000) == 0x12800000) {
         /* Move wide (immediate) */
-        int x = (instr & (1u << 31)) != 0;
+        int sf = (instr & (1u << 31)) != 0;
         switch ((instr >> 29) & 3) {
         case 0: add_str("movn"); break;
         case 1: return;
@@ -215,7 +215,7 @@ static void data_processing_immediate(void) {
         case 3: add_str("movk"); break;
         }
         add_char(' ');
-        add_reg_name(instr & 0x1f, x);
+        add_reg_name(instr & 0x1f, sf);
         add_str(", #");
         add_hex_uint32((instr >> 5) & 0xffff);
         switch ((instr >> 21) & 3) {
@@ -228,7 +228,7 @@ static void data_processing_immediate(void) {
 
     if ((instr & 0x1f800000) == 0x13000000) {
         /* Bitfield */
-        int x = (instr & (1u << 31)) != 0;
+        int sf = (instr & (1u << 31)) != 0;
         switch ((instr >> 29) & 3) {
         case 0: add_str("sbfm"); break;
         case 1: add_str("bfm"); break;
@@ -236,9 +236,9 @@ static void data_processing_immediate(void) {
         case 3: return;
         }
         add_char(' ');
-        add_reg_name(instr & 0x1f, x);
+        add_reg_name(instr & 0x1f, sf);
         add_str(", ");
-        add_reg_name((instr >> 5) & 0x1f, x);
+        add_reg_name((instr >> 5) & 0x1f, sf);
         add_str(", #");
         add_hex_uint32((instr >> 16) & 0x3f);
         add_str(", #");
@@ -248,7 +248,7 @@ static void data_processing_immediate(void) {
 
     if ((instr & 0x1f800000) == 0x13800000) {
         /* Extract */
-        int x = (instr & (1u << 31)) != 0;
+        int sf = (instr & (1u << 31)) != 0;
         switch ((instr >> 29) & 3) {
         case 0: add_str("extr"); break;
         case 1: return;
@@ -256,11 +256,11 @@ static void data_processing_immediate(void) {
         case 3: return;
         }
         add_char(' ');
-        add_reg_name(instr & 0x1f, x);
+        add_reg_name(instr & 0x1f, sf);
         add_str(", ");
-        add_reg_name((instr >> 5) & 0x1f, x);
+        add_reg_name((instr >> 5) & 0x1f, sf);
         add_str(", ");
-        add_reg_name((instr >> 16) & 0x1f, x);
+        add_reg_name((instr >> 16) & 0x1f, sf);
         add_str(", #");
         add_hex_uint32((instr >> 10) & 0x3f);
         return;
@@ -288,22 +288,136 @@ static void branch_exception_system() {
 
     if ((instr & 0x7e000000) == 0x34000000) {
         /* Compare & branch (immediate) */
+        int sf = (instr & (1u << 31)) != 0;
+        int32_t imm = (instr >> 5) & 0x7ffff;
+        add_str(instr & (1u << 24) ? "cbnz" : "cbz");
+        add_char(' ');
+        add_reg_name(instr & 0x1f, sf);
+        add_str(", ");
+        if (imm & 0x00040000) {
+            imm |= 0xfffc0000;
+            add_char('-');
+            add_dec_uint32(~imm + 1);
+        }
+        else {
+            add_char('+');
+            add_dec_uint32(imm);
+        }
+        add_addr(instr_addr + ((int64_t)imm << 2));
+        return;
     }
 
     if ((instr & 0x7e000000) == 0x36000000) {
         /* Test & branch (immediate) */
+        int sf = (instr & (1u << 31)) != 0;
+        int32_t imm = (instr >> 5) & 0x3fff;
+        add_str(instr & (1u << 24) ? "tbnz" : "tbz");
+        add_char(' ');
+        add_reg_name(instr & 0x1f, sf);
+        add_str(", #");
+        add_dec_uint32(((instr >> 19) & 0x1f) | (((instr >> 31) & 0x1) >> 5));
+        add_str(", ");
+        if (imm & 0x00040000) {
+            imm |= 0xfffc0000;
+            add_char('-');
+            add_dec_uint32(~imm + 1);
+        }
+        else {
+            add_char('+');
+            add_dec_uint32(imm);
+        }
+        add_addr(instr_addr + ((int64_t)imm << 2));
+        return;
     }
 
     if ((instr & 0xfe000000) == 0x54000000) {
         /* Conditional branch (immediate) */
+        int32_t imm = (instr >> 5) & 0x7ffff;
+        add_str("b.");
+        add_dec_uint32(instr & 0xf);
+        add_char(' ');
+        if (imm & 0x00040000) {
+            imm |= 0xfffc0000;
+            add_char('-');
+            add_dec_uint32(~imm + 1);
+        }
+        else {
+            add_char('+');
+            add_dec_uint32(imm);
+        }
+        add_addr(instr_addr + ((int64_t)imm << 2));
+        return;
     }
 
     if ((instr & 0xff000000) == 0xd4000000) {
         /* Exception generation */
+        uint32_t opc = (instr >> 21) & 0x7;
+        uint32_t op2 = (instr >> 2) & 0x7;
+        uint32_t ll = instr & 0x3;
+        uint32_t imm = (instr >> 5) & 0xffff;
+        if (opc == 0 && op2 == 0 && ll == 1) add_str("svc");
+        else if (opc == 0 && op2 == 0 && ll == 2) add_str("hvc");
+        else if (opc == 0 && op2 == 0 && ll == 3) add_str("smc");
+        else if (opc == 1 && op2 == 0 && ll == 0) add_str("brk");
+        else if (opc == 2 && op2 == 0 && ll == 0) add_str("hlt");
+        else if (opc == 5 && op2 == 0 && ll == 1) add_str("dcps1");
+        else if (opc == 5 && op2 == 0 && ll == 2) add_str("dcps2");
+        else if (opc == 5 && op2 == 0 && ll == 3) add_str("dcps3");
+        else return;
+        if (imm != 0 || opc != 5) {
+            add_str(" #");
+            add_hex_uint32(imm);
+        }
+        return;
     }
 
     if ((instr & 0xffc00000) == 0xd5000000) {
         /* System */
+        int l = (instr & (1u << 21)) != 0;
+        uint32_t op0 = (instr >> 19) & 0x3;
+        uint32_t op1 = (instr >> 16) & 0x7;
+        uint32_t crn = (instr >> 12) & 0xf;
+        uint32_t op2 = (instr >> 5) & 0x7;
+        uint32_t rt = instr & 0x1f;
+        if (l == 0 && op0 == 0 && crn == 4 && rt == 31) {
+            /* MSR (immediate) */
+        }
+        else if (l == 0 && op0 == 0 && op1 == 3 && crn == 2 && rt == 31) {
+            /* HINT */
+            switch (op2) {
+            case 1: add_str("yield"); break;
+            case 2: add_str("wfe"); break;
+            case 3: add_str("wfi"); break;
+            case 4: add_str("sev"); break;
+            case 5: add_str("sevl"); break;
+            default: add_str("nop"); break;
+            }
+        }
+        else if (l == 0 && op0 == 0 && op1 == 3 && crn == 3 && op2 == 2 && rt == 31) {
+            /* CLREX */
+        }
+        else if (l == 0 && op0 == 0 && op1 == 3 && crn == 3 && op2 == 4 && rt == 31) {
+            /* DSB */
+        }
+        else if (l == 0 && op0 == 0 && op1 == 3 && crn == 3 && op2 == 5 && rt == 31) {
+            /* DMB */
+        }
+        else if (l == 0 && op0 == 0 && op1 == 3 && crn == 3 && op2 == 6 && rt == 31) {
+            /* ISB */
+        }
+        else if (l == 0 && op0 == 1) {
+            /* SYS */
+        }
+        else if (l == 0 && op0 >= 2) {
+            /* MSR (register) */
+        }
+        else if (l == 1 && op0 == 1) {
+            /* SYSL */
+        }
+        else if (l == 1 && op0 >= 2) {
+            /* MRS */
+        }
+        return;
     }
 
     if ((instr & 0xfe000000) == 0xd6000000) {
@@ -331,11 +445,12 @@ DisassemblyResult * disassemble_a64(uint8_t * code,
     dr.size = 4;
     buf_pos = 0;
     params = disass_params;
+    instr = 0;
     instr_addr = addr;
     for (i = 0; i < 4; i++) instr |= (uint32_t)*code++ << (i * 8);
 
     if ((instr & 0x1c000000) == 0x10000000) data_processing_immediate();
-    else if ((instr & 0x1c000000) == 0x10000000) branch_exception_system();
+    else if ((instr & 0x1c000000) == 0x14000000) branch_exception_system();
     else if ((instr & 0x0a000000) == 0x08000000) loads_and_stores();
     else if ((instr & 0x0e000000) == 0x0a000000) data_processing_register();
     else if ((instr & 0x0e000000) == 0x0e000000) data_processing_simd_and_fp();
