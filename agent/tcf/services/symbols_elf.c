@@ -148,8 +148,6 @@ static struct BaseTypeAlias {
     { "signed long long int", "long long int" },
     { "unsigned long long", "unsigned long long int" },
     { "unsigned long long", "long long unsigned int" },
-    { "char", "signed char" },
-    { "char", "unsigned char" },
     { NULL, NULL }
 };
 
@@ -1179,20 +1177,35 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
             elf_list_done(sym_ctx);
         }
 
-        if (error == 0 && has_symbol_list_no_location_info()) {
+        if (error == 0 && find_symbol_list == NULL) {
             /* Check if the name is one of well known C/C++ names */
             Trap trap;
             if (set_trap(&trap)) {
-                unsigned i = 0;
-                while (base_types_aliases[i].name) {
-                    if (strcmp(name, base_types_aliases[i].name) == 0) {
-                        find_in_dwarf(base_types_aliases[i].alias);
-                        if (find_symbol_list != NULL) break;
+                if (strcmp(name, "char") == 0) {
+                    const char * alias = "signed char";
+                    if (curr_file != NULL) {
+                        switch (curr_file->machine) {
+                        case EM_PPC:
+                        case EM_PPC64:
+                        case EM_ARM:
+                            alias = "unsigned char";
+                            break;
+                        }
                     }
-                    i++;
+                    find_in_dwarf(alias);
                 }
-                if ((find_symbol_list == NULL) || (has_symbol_list_no_location_info())) {
-                    i = 0;
+                else {
+                    unsigned i = 0;
+                    while (base_types_aliases[i].name) {
+                        if (strcmp(name, base_types_aliases[i].name) == 0) {
+                            find_in_dwarf(base_types_aliases[i].alias);
+                            if (find_symbol_list != NULL) break;
+                        }
+                        i++;
+                    }
+                }
+                if (find_symbol_list == NULL) {
+                    unsigned i = 0;
                     while (constant_pseudo_symbols[i].name) {
                         if (strcmp(name, constant_pseudo_symbols[i].name) == 0) {
                             Trap trap;
