@@ -508,7 +508,7 @@ static void disassemble_thumb5(void) {
 static void disassemble_thumb6(void) {
     if ((instr & 0xff00) == 0xdf00) {
         /* Software interrupt */
-        add_str("swi");
+        add_str("svc");
         if (it_cond_name) add_str(it_cond_name);
         add_char(' ');
         add_dec_uint32(instr & 0xff);
@@ -596,7 +596,7 @@ static void disassemble_load_store_32(uint16_t suffix) {
             add_str(L ? "ldm" : "stm");
             add_str(instr & (1 << 8) ? "db" : "ia");
             if (it_cond_name) add_str(it_cond_name);
-            add_str(".w");
+            if ((instr & (1 << 8)) == 0) add_str(".w");
             add_char(' ');
             add_reg_name(instr & 0xf);
             if (W) add_char('!');
@@ -616,12 +616,14 @@ static void disassemble_load_store_32(uint16_t suffix) {
 
     if ((instr & 0xffe0) == 0xe840) {
         /* Load/store exclusive */
-        uint32_t imm = (instr & 0xff) << 2;
+        uint32_t imm = (suffix & 0xff) << 2;
         add_str(instr & (1u << 4) ? "ldrex" : "strex");
         if (it_cond_name) add_str(it_cond_name);
         add_char(' ');
-        add_reg_name((suffix >> 8) & 0xf);
-        add_str(", ");
+        if ((instr & (1u << 4)) == 0) {
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+        }
         add_reg_name((suffix >> 12) & 0xf);
         add_str(", [");
         add_reg_name(instr & 0xf);
@@ -631,6 +633,35 @@ static void disassemble_load_store_32(uint16_t suffix) {
         }
         add_char(']');
         return;
+    }
+
+    if ((instr & 0xffe0) == 0xe8c0) {
+        /* Load/store exclusive */
+        char sz = 0;
+        switch ((suffix >> 4) & 0xf) {
+        case 4: sz = 'b'; break;
+        case 5: sz = 'h'; break;
+        case 7: sz = 'd'; break;
+        }
+        if (sz != 0) {
+            add_str(instr & (1u << 4) ? "ldrex" : "strex");
+            add_char(sz);
+            if (it_cond_name) add_str(it_cond_name);
+            add_char(' ');
+            if ((instr & (1u << 4)) == 0) {
+                add_reg_name(suffix & 0xf);
+                add_str(", ");
+            }
+            add_reg_name((suffix >> 12) & 0xf);
+            if (sz == 'd') {
+                add_str(", ");
+                add_reg_name((suffix >> 8) & 0xf);
+            }
+            add_str(", [");
+            add_reg_name(instr & 0xf);
+            add_char(']');
+            return;
+        }
     }
 
     if ((instr & 0xff60) == 0xe860 || (instr & 0xff40) == 0xe940) {
@@ -686,6 +717,9 @@ static void disassemble_load_store_32(uint16_t suffix) {
         add_reg_name(instr & 0xf);
         add_str(", ");
         add_reg_name(suffix & 0xf);
+        if (suffix & (1 << 4)) {
+            add_str(", lsl #1");
+        }
         add_char(']');
         return;
     }
@@ -760,9 +794,9 @@ static void disassemble_data_processing_32(uint16_t suffix) {
         return;
     }
 
+    if (S) add_char('s');
     if (it_cond_name) add_str(it_cond_name);
-    else if (S) add_char('s');
-    if (op_code != 14 && (op_code != 4 || rd != 15)) add_str(".w");
+    if (op_code != 14 && (op_code != 4 || rd != 15) && (op_code != 3 || rn == 15)) add_str(".w");
     add_char(' ');
 
     if (!no_rd) {
@@ -851,15 +885,34 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
     if (it_cond_name) add_str(it_cond_name);
     add_char(' ');
     add_reg_name((suffix >> 8) & 0xf);
-    if (op_code != 4) {
+    if (op_code == 4) {
+        imm |= rn << 12;
+    }
+    else if (op_code == 22 && rn == 15) {
+        /* Nothing */
+    }
+    else {
         add_str(", ");
         add_reg_name(rn);
     }
-    else {
-        imm |= rn << 12;
-    }
     add_str(", #");
-    add_dec_uint32(imm);
+    if (op_code == 22) {
+        imm = (suffix >> 12) & 7;
+        imm = (imm << 2) | ((suffix >> 6) & 3);
+        add_dec_uint32(imm);
+        add_str(", #");
+        add_dec_uint32((suffix & 0x1f) + 1 - imm);
+    }
+    else if (op_code == 20 || op_code == 28) {
+        imm = (suffix >> 12) & 7;
+        imm = (imm << 2) | ((suffix >> 6) & 3);
+        add_dec_uint32(imm);
+        add_str(", #");
+        add_dec_uint32((suffix & 0x1f) + 1);
+    }
+    else {
+        add_dec_uint32(imm);
+    }
 }
 
 static void disassemble_branches_and_misc_32(uint16_t suffix) {
@@ -931,7 +984,7 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
                 return;
             }
             switch (suffix & 0xff) {
-            case 0: add_str("nop.w"); break;
+            case 0: add_str("nop"); break;
             case 1: add_str("yield"); break;
             case 2: add_str("wfe"); break;
             case 3: add_str("wfi"); break;
@@ -939,6 +992,7 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
             }
             if (buf_pos > 0) {
                 if (it_cond_name) add_str(it_cond_name);
+                add_str(".w");
                 return;
             }
             if ((suffix & 0x00f0) == 0x00f0) {
@@ -987,6 +1041,14 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
         }
         if (op == 0x3d) {
             /* Exception Return */
+            add_str("subs");
+            if (it_cond_name) add_str(it_cond_name);
+            add_char(' ');
+            add_reg_name((suffix >> 8) & 0xf);
+            add_str(", ");
+            add_reg_name(instr & 0xf);
+            add_str(", #");
+            add_dec_uint32(suffix & 0xff);
             return;
         }
         if ((op & 0x7e) == 0x3e) {
@@ -995,7 +1057,8 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
             if (it_cond_name) add_str(it_cond_name);
             add_char(' ');
             add_reg_name((suffix >> 8) & 0xf);
-            add_str(", cpsr");
+            add_str(", ");
+            add_str(instr & (1 << 4) ? "spsr" : "cpsr");
             return;
         }
         if (op == 0x7f) {
@@ -1305,6 +1368,7 @@ static void disassemble_multiply_32(uint16_t suffix) {
         uint32_t rn = (instr >> 0) & 0xf;
         uint32_t rd = (suffix >> 8) & 0xf;
         uint32_t rm = (suffix >> 0) & 0xf;
+        if (it_cond_name) add_str(it_cond_name);
         add_char(' ');
         add_reg_name(rd);
         add_str(", ");
@@ -1435,26 +1499,34 @@ static void disassemble_thumb7(void) {
     }
 
     if ((instr & 0xfe00) == 0xf800) {
-        if ((instr & (1 << 4)) && (suffix & 0xf000) == 0xf000) {
+        int T = 0;
+        if ((instr & 0x0070) == 0x0010 && (suffix & 0xf000) == 0xf000) {
             /* Memory hints */
             disassemble_memory_hints(suffix);
             return;
         }
 
         /* Load/Store single data item */
+        T = (suffix & 0x0f00) == 0x0e00 && (instr & (1 << 7)) == 0;
         add_str(instr & (1 << 4) ? "ldr" : "str");
         if ((instr &  (1 << 6)) == 0) {
             if (instr & (1 << 8)) add_char('s');
             add_char(instr & (1 << 5) ? 'h' : 'b');
         }
-        if ((suffix & 0x0f00) == 0x0e00) add_char('t');
+        if (T) add_char('t');
         if (it_cond_name) add_str(it_cond_name);
-        add_str(".w");
+        if (!T) add_str(".w");
         add_char(' ');
         add_reg_name((suffix >> 12) & 0xf);
         add_str(", [");
         add_reg_name(instr & 0xf);
-        if (instr & (1 << 7)) {
+        if ((instr & 0xf) == 15) {
+            add_str(", #");
+            add_char(instr & (1 << 7) ? '+' : '-');
+            add_dec_uint32(suffix & 0xfff);
+            add_char(']');
+        }
+        else if (instr & (1 << 7)) {
             uint32_t imm = suffix & 0xfff;
             if (imm) {
                 add_str(", #");
