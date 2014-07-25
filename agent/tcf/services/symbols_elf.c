@@ -155,6 +155,8 @@ static struct BaseTypeAlias {
 
 #define equ_symbol_names(x, y) (*x == *y && cmp_symbol_names(x, y) == 0)
 
+static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym);
+
 /* This function is used for DWARF reader testing */
 extern ObjectInfo * get_symbol_object(Symbol * sym);
 ObjectInfo * get_symbol_object(Symbol * sym) {
@@ -717,6 +719,7 @@ static int has_symbol_address(Symbol * sym) {
     }
     if (sym->obj != NULL) {
         if (sym->obj->mFlags & DOIF_location) {
+            ELF_SYMS_HAS_ADDR;
             /* AT_location defined, so we have an address */
             return 1;
         }
