@@ -719,7 +719,9 @@ static int has_symbol_address(Symbol * sym) {
     }
     if (sym->obj != NULL) {
         if (sym->obj->mFlags & DOIF_location) {
+#ifdef ELF_SYMS_HAS_ADDR
             ELF_SYMS_HAS_ADDR;
+#endif
             /* AT_location defined, so we have an address */
             return 1;
         }
