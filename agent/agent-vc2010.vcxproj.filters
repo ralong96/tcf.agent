@@ -55,6 +55,9 @@
     <Filter Include="machine\ppc">
       <UniqueIdentifier>{ff538629-61f5-41bb-907c-975bcb6161f1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="machine\a64">
+      <UniqueIdentifier>{76724f0c-3379-471f-8bc4-40df8a15a95d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="tcf\framework\asyncreq.c">
@@ -347,6 +350,9 @@
     </ClCompile>
     <ClCompile Include="machine\powerpc\tcf\disassembler-powerpc.c">
       <Filter>machine\ppc</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\a64\tcf\disassembler-a64.c">
+      <Filter>machine\a64</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -662,6 +668,9 @@
     </ClInclude>
     <ClInclude Include="machine\powerpc\tcf\regset-mdep.h">
       <Filter>machine\ppc</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\disassembler-a64.h">
+      <Filter>machine\a64</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
