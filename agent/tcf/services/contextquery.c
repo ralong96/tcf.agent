@@ -67,10 +67,8 @@ static int parse_wildcard(const char ** q) {
     const char * c = *q;
     str_pos = 0;
     add_char(*c++);
-    if (*c == '*'){
-        add_char(*c++);
-    }
-    if ((*c != '\0') && (*c != '/')) {
+    if (*c == '*') add_char(*c++);
+    if (*c != '\0' && *c != '/') {
         set_errno(ERR_OTHER, "Invalid context query syntax: * and ** are"
                              " the only valid wildcards");
         return -1;
@@ -83,9 +81,7 @@ static int parse_wildcard(const char ** q) {
 static int parse_number(const char ** q) {
     const char * c = *q;
     str_pos = 0;
-    while (*c && ((*c >= '0') && (*c <= '9'))) {
-        add_char(*c++);
-    }
+    while (*c >= '0' && *c <= '9') add_char(*c++);
     if (*c != ',' && *c != '/' && *c != '\0' ) {
         set_errno(ERR_OTHER, "Invalid context query syntax: expecting [0-9] "
                              "or ',' or '/' after number");
@@ -110,7 +106,7 @@ static int parse_symbol(const char **q) {
         add_char(*c++);
     }
 
-    if ((*c != '/') && (*c != '=') && (*c != ',') && (*c != '\0')) {
+    if (*c != '/' && *c != '=' && *c != ',' && *c != '\0') {
         set_errno(ERR_OTHER, "Invalid context query syntax:"
                   " unquoted strings must only contain"
                   " alphanumerical characters or '_'");
@@ -186,7 +182,7 @@ static Attribute * parse_property(const char **q) {
 
     if (*c == '=') {
         c++;
-        if ((*c == '/') || (*c == '=') || (*c == ',') || (*c == '\0')) {
+        if (*c == '/' || *c == '=' || *c == ',' || *c == '\0') {
             set_errno(ERR_OTHER, "Invalid context query syntax: missing value");
             return NULL;
         }
@@ -216,12 +212,12 @@ int parse_context_query(const char * q) {
     attrs = NULL;
     abs_path = 0;
 
-    if ((q == NULL) || (*q == '\0')) return 0;
+    if (q == NULL || *q == '\0') return 0;
 
     str_max = 64;
     str_buf = (char *)tmp_alloc(str_max);
     if ((abs_path = *q == '/') != 0) q++;
-    if ((*q == '/') || (*q == '=') || (*q == ',') || (*q == '\0')) {
+    if (*q == '/' || *q == '=' || *q == ',' || *q == '\0') {
         set_errno(ERR_OTHER, "Invalid context query syntax: missing context "
                              "name, property or wildcard");
         return -1;
@@ -230,7 +226,7 @@ int parse_context_query(const char * q) {
     while (*q) {
         Attribute * a;
         str_pos = 0;
-        if (*q == '*'){
+        if (*q == '*') {
             if (parse_wildcard(&q) < 0) return -1;
             a = (Attribute *) tmp_alloc_zero(sizeof(Attribute));
             a->value = tmp_strdup(str_buf);
@@ -248,7 +244,7 @@ int parse_context_query(const char * q) {
             attrs = attr;
             attr = NULL;
             q++;
-            if ((*q == '/') || (*q == '=') || (*q == ',') || (*q == '\0')) {
+            if (*q == '/' || *q == '=' || *q == ',' || *q == '\0') {
                 set_errno(ERR_OTHER, "Invalid context query syntax: missing "
                                      "context name, property or wildcard");
                 return -1;
@@ -256,7 +252,7 @@ int parse_context_query(const char * q) {
         }
         else if (*q == ',') { /* start parsing a new property */
             q++;
-            if ((*q == '/') || (*q == '=') || (*q == ',') || (*q == '\0')) {
+            if (*q == '/' || *q == '=' || *q == ',' || *q == '\0') {
                 set_errno(ERR_OTHER, "Invalid context query syntax: "
                                      "missing property");
                 return -1;
