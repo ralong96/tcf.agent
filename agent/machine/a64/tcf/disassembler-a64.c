@@ -283,7 +283,8 @@ static void data_processing_immediate(void) {
         uint32_t imm = (instr >> 10) & 0xfff;
         uint32_t op = (instr >> 29) & 3;
         uint32_t rt = instr & 0x1f;
-        if (op == 0 && imm == 0) {
+        uint32_t rn = (instr >> 5) & 0x1f;
+        if (op == 0 && imm == 0 && rt != rn) {
             add_str("mov ");
             add_reg_name(rt, sf, 1);
             add_str(", ");
@@ -309,7 +310,7 @@ static void data_processing_immediate(void) {
         add_char(' ');
         add_reg_name(rt, sf, 1);
         add_str(", ");
-        add_reg_name((instr >> 5) & 0x1f, sf, 1);
+        add_reg_name(rn, sf, 1);
         add_str(", #0x");
         add_hex_uint32(imm);
         switch ((instr >> 22) & 3) {
@@ -371,6 +372,25 @@ static void data_processing_immediate(void) {
                 else imm ^= 0xffffffff;
             }
             add_str("mov");
+            if (hw > 0) {
+                if (sf) {
+                    uint64_t n = imm;
+                    switch (hw) {
+                    case 1: imm = (n << 16) | (n >> 48); break;
+                    case 2: imm = (n << 32) | (n >> 32); break;
+                    case 3: imm = (n << 48) | (n >> 16); break;
+                    }
+                }
+                else {
+                    uint32_t n = (uint32_t)imm;
+                    switch (hw) {
+                    case 1: imm = (n << 16) | (n >> 16); break;
+                    case 2: imm = n; break;
+                    case 3: imm = (n << 16) | (n >> 16); break;
+                    }
+                }
+                hw = 0;
+            }
         }
         else {
             switch (op) {
@@ -868,9 +888,9 @@ static void loads_and_stores(void) {
             add_dec_uint32((instr >> 10) & 0x1f);
         }
         else {
-            add_reg_name(instr & 0x1f, opc >= 2, 1);
+            add_reg_name(instr & 0x1f, opc >= 2, 0);
             add_str(", ");
-            add_reg_name((instr >> 10) & 0x1f, opc >= 2, 1);
+            add_reg_name((instr >> 10) & 0x1f, opc >= 2, 0);
             shift = opc >= 2 ? 3 : 2;
         }
         add_str(", [");
@@ -915,9 +935,9 @@ static void loads_and_stores(void) {
             add_dec_uint32((instr >> 10) & 0x1f);
         }
         else {
-            add_reg_name(instr & 0x1f, opc >= 2, 1);
+            add_reg_name(instr & 0x1f, opc >= 2, 0);
             add_str(", ");
-            add_reg_name((instr >> 10) & 0x1f, opc >= 2, 1);
+            add_reg_name((instr >> 10) & 0x1f, opc >= 2, 0);
             shift = opc >= 2 ? 3 : 2;
         }
         add_str(", [");
@@ -959,9 +979,9 @@ static void loads_and_stores(void) {
             add_dec_uint32((instr >> 10) & 0x1f);
         }
         else {
-            add_reg_name(instr & 0x1f, opc >= 2, 1);
+            add_reg_name(instr & 0x1f, opc >= 2, 0);
             add_str(", ");
-            add_reg_name((instr >> 10) & 0x1f, opc >= 2, 1);
+            add_reg_name((instr >> 10) & 0x1f, opc >= 2, 0);
             shift = opc >= 2 ? 3 : 2;
         }
         add_str(", [");
@@ -1262,6 +1282,10 @@ static void data_processing_register(void) {
             add_str("cmp");
             no_rd = 1;
         }
+        else if ((instr & 0x6000001f) == 0x2000001f) {
+            add_str("cmn");
+            no_rd = 1;
+        }
         else if ((instr & 0x600003e0) == 0x400003e0) {
             add_str("neg");
             no_rn = 1;
@@ -1301,6 +1325,7 @@ static void data_processing_register(void) {
         uint32_t option = (instr >> 13) & 7;
         uint32_t rn = (instr >> 5) & 0x1f;
         uint32_t rd = instr & 0x1f;
+        int s = instr & (1 << 29);
         int no_rd = 0;
 
         if ((instr & 0x6000001f) == 0x6000001f) {
@@ -1309,14 +1334,14 @@ static void data_processing_register(void) {
         }
         else {
             add_str(instr & (1 << 30) ? "sub" : "add");
-            if (instr & (1 << 29)) add_char('s');
+            if (s) add_char('s');
         }
         add_char(' ');
         if (!no_rd) {
-            add_reg_name(rd, sf, 0);
+            add_reg_name(rd, sf, !s);
             add_str(", ");
         }
-        add_reg_name(rn, sf, 0);
+        add_reg_name(rn, sf, 1);
         add_str(", ");
         add_reg_name((instr >> 16) & 0x1f, sf && (option == 3 || option == 7), 1);
         if (imm == 0 && !sf && option == 2) {
@@ -1437,6 +1462,21 @@ static void data_processing_register(void) {
                 add_str(cond_names[cond ^ 1]);
                 return;
             }
+            if (rn == rm && cond < 14 && op2 == 0 && op) {
+                if (rn == 31) {
+                    add_str("csetm ");
+                    add_reg_name(instr & 0x1f, sf, 0);
+                }
+                else {
+                    add_str("cinv ");
+                    add_reg_name(instr & 0x1f, sf, 0);
+                    add_str(", ");
+                    add_reg_name(rn, sf, 0);
+                }
+                add_str(", ");
+                add_str(cond_names[cond ^ 1]);
+                return;
+            }
             switch (op2) {
             case 0: add_str(op ? "csinv" : "csel"); break;
             case 1: add_str(op ? "csneg" : "csinc"); break;
@@ -1507,11 +1547,66 @@ static void data_processing_register(void) {
 
     if ((instr & 0x5fe00000) == 0x1ac00000) {
         /* Data-processing (2 source) */
+        int sf = (instr & (1 << 31)) != 0;
+        int s = (instr & (1 << 29)) != 0;
+        uint32_t opcode = (instr >> 10) & 0x3f;
+
+        if (!s) {
+            int no_sf = 0;
+            switch (opcode) {
+            case 2: add_str("udiv"); break;
+            case 3: add_str("sdiv"); break;
+            case 8: add_str("lsl"); break;
+            case 9: add_str("lsr"); break;
+            case 10: add_str("asr"); break;
+            case 11: add_str("ror"); break;
+            case 16: add_str(sf ? "" : "crc32b"); no_sf = 1; break;
+            case 17: add_str(sf ? "" : "crc32h"); no_sf = 1; break;
+            case 18: add_str(sf ? "" : "crc32w"); no_sf = 1; break;
+            case 19: add_str(sf ? "crc32x" : ""); no_sf = 1; break;
+            case 20: add_str(sf ? "" : "crc32cb"); no_sf = 1; break;
+            case 21: add_str(sf ? "" : "crc32ch"); no_sf = 1; break;
+            case 22: add_str(sf ? "" : "crc32cw"); no_sf = 1; break;
+            case 23: add_str(sf ? "crc32cx" : ""); no_sf = 1; break;
+            }
+
+            if (buf_pos > 0) {
+                add_char(' ');
+                add_reg_name(instr & 0x1f, !no_sf && sf, 0);
+                add_str(", ");
+                add_reg_name((instr >> 5) & 0x1f, !no_sf && sf, 0);
+                add_str(", ");
+                add_reg_name((instr >> 16) & 0x1f, sf, 0);
+            }
+        }
+
         return;
     }
 
     if ((instr & 0x5fe00000) == 0x5ac00000) {
         /* Data-processing (1 source) */
+        int sf = (instr & (1 << 31)) != 0;
+        int s = (instr & (1 << 29)) != 0;
+        uint32_t opcode = (instr >> 10) & 0x3f;
+        uint32_t opcode2 = (instr >> 16) & 0x1f;
+
+        if (!s && opcode2 == 0) {
+            switch (opcode) {
+            case 0: add_str("rbit"); break;
+            case 1: add_str("rev16"); break;
+            case 2: add_str(sf ? "rev32" : "rev"); break;
+            case 3: add_str(sf ? "rev" : ""); break;
+            case 4: add_str("clz"); break;
+            case 5: add_str("cls"); break;
+            }
+            if (buf_pos > 0) {
+                add_char(' ');
+                add_reg_name(instr & 0x1f, sf, 0);
+                add_str(", ");
+                add_reg_name((instr >> 5) & 0x1f, sf, 0);
+            }
+        }
+
         return;
     }
 }
