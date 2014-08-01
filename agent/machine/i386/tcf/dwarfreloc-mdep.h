@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,7 +22,7 @@
 #define R_386_PC32  2
 
 static void elf_relocate(void) {
-    if (relocs->type == SHT_REL) {
+    if (relocs->type == SHT_REL && reloc_type != R_386_NONE) {
         U4_T x = *(U4_T *)((char *)section->data + reloc_offset);
         if (section->file->type != ET_REL) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
         if (section->file->byte_swap) SWAP(x);

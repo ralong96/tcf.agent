@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -24,12 +24,29 @@
 #define R_ARM_ABS16     5
 
 static void elf_relocate(void) {
-    if (relocs->type == SHT_REL) {
-        U4_T x = *(U4_T *)((char *)section->data + reloc_offset);
+    if (relocs->type == SHT_REL && reloc_type != R_ARM_NONE) {
         if (section->file->type != ET_REL) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
-        if (section->file->byte_swap) SWAP(x);
         assert(reloc_addend == 0);
-        reloc_addend = x;
+        switch (reloc_type) {
+        case R_ARM_ABS32:
+        case R_ARM_REL32:
+        case R_ARM_LDR_PC_G0:
+            {
+                U4_T x = *(U4_T *)((char *)section->data + reloc_offset);
+                if (section->file->byte_swap) SWAP(x);
+                reloc_addend = x;
+            }
+            break;
+        case R_ARM_ABS16:
+            {
+                U2_T x = *(U2_T *)((char *)section->data + reloc_offset);
+                if (section->file->byte_swap) SWAP(x);
+                reloc_addend = x;
+            }
+            break;
+        default:
+            str_exception(ERR_INV_FORMAT, "Unsupported relocation type");
+        }
     }
     switch (reloc_type) {
     case R_ARM_NONE:

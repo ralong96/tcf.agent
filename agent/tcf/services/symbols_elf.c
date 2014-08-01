@@ -1193,6 +1193,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                         case EM_PPC:
                         case EM_PPC64:
                         case EM_ARM:
+                        case EM_AARCH64:
                             alias = "unsigned char";
                             break;
                         }
@@ -1904,6 +1905,7 @@ int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
         case EM_X86_64     : *isa = "X86_64"; break;
         case EM_MICROBLAZE : *isa = "MicroBlaze"; break;
         case EM_V850       : *isa = "V850"; break;
+        case EM_AARCH64    : *isa = "A64"; break;
         }
     }
     {

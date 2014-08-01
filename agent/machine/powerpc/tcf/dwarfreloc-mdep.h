@@ -23,7 +23,7 @@
 #define R_PPC_REL32    26
 
 static void elf_relocate(void) {
-    if (relocs->type == SHT_REL) {
+    if (relocs->type == SHT_REL && reloc_type != R_PPC_NONE) {
         U4_T x = *(U4_T *)((char *)section->data + reloc_offset);
         if (section->file->type != ET_REL) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
         if (section->file->byte_swap) SWAP(x);

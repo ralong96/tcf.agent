@@ -234,6 +234,19 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
                 regs->regs[n].offset = 15; /* R15 is used for func return address */
             }
             break;
+        case EM_AARCH64:
+            min_reg_cnt = 32;
+            if (n >= 19 && n <= 28) { /* Callee-saved registers */
+                regs->regs[n].rule = RULE_SAME_VALUE;
+            }
+            else if (n == 31) { /* Stack pointer */
+                regs->regs[n].rule = RULE_VAL_OFFSET;
+            }
+            else if (n == rules.return_address_register) {
+                regs->regs[n].rule = RULE_REGISTER;
+                regs->regs[n].offset = 30; /* LR */
+            }
+            break;
         }
     }
     return regs->regs + reg;
@@ -934,6 +947,12 @@ static void generate_plt_section_commands(Context * ctx, ELF_File * file, U8_T o
         rules.return_address_register = 15; /* R15 */
         frame_regs.cfa_rule = RULE_OFFSET;
         frame_regs.cfa_register = 1; /* R1 */
+        generate_commands();
+        break;
+    case EM_AARCH64:
+        rules.return_address_register = 30; /* LR */
+        frame_regs.cfa_rule = RULE_OFFSET;
+        frame_regs.cfa_register = 31; /* SP */
         generate_commands();
         break;
     }

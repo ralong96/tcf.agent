@@ -1475,6 +1475,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\machine\x86_64\tcf\dwarfreloc-mdep.h"
+					>
+				</File>
+				<File
 					RelativePath=".\machine\x86_64\tcf\regset-mdep.h"
 					>
 				</File>
@@ -1603,6 +1607,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\machine\arm\tcf\dwarfreloc-mdep.h"
+					>
+				</File>
+				<File
 					RelativePath=".\machine\arm\tcf\regset-mdep.h"
 					>
 				</File>
@@ -1652,6 +1660,10 @@
 				</File>
 				<File
 					RelativePath=".\machine\a64\tcf\disassembler-a64.h"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\a64\tcf\dwarfreloc-mdep.h"
 					>
 				</File>
 			</Filter>
