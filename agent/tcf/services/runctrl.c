@@ -75,6 +75,7 @@ typedef struct ContextExtensionRC {
     int step_mode;
     int step_cnt;
     int step_line_cnt;
+    int stop_group_mark;
     ContextAddress step_range_start;
     ContextAddress step_range_end;
     ContextAddress step_frame_fp;
@@ -2035,9 +2036,23 @@ static void sync_run_state_event(void * args) {
     cache_enter(sync_run_state_cache_client, NULL, NULL, 0);
 }
 
+static void mark_stop_groups(void) {
+    LINK * l = context_root.next;
+    SafeEvent * e = safe_event_list;
+    while (l != &context_root) {
+        Context * grp = context_get_group(ctxl2ctxp(l), CONTEXT_GROUP_STOP);
+        EXT(grp)->stop_group_mark = 0;
+        l = l->next;
+    }
+    while (e != NULL) {
+        Context * grp = context_get_group(e->ctx, CONTEXT_GROUP_STOP);
+        EXT(grp)->stop_group_mark = 1;
+        e = e->next;
+    }
+}
+
 static void run_safe_events(void * arg) {
     LINK * l;
-    Context * grp;
 
     run_safe_events_posted--;
     if (run_safe_events_posted > 0) return;
@@ -2048,9 +2063,8 @@ static void run_safe_events(void * arg) {
     }
 
     if (safe_event_list == NULL) return;
-    grp = context_get_group(safe_event_list->ctx, CONTEXT_GROUP_STOP);
-    context_lock(grp);
 
+    mark_stop_groups();
     safe_event_pid_count = 0;
 
     l = context_root.next;
@@ -2061,7 +2075,7 @@ static void run_safe_events(void * arg) {
         ext->pending_safe_event = 0;
         if (ctx->exited || ctx->exiting || ext->cannot_stop) continue;
         if (ctx->stopped || !context_has_state(ctx)) continue;
-        if (!ext->safe_single_step && context_get_group(ctx, CONTEXT_GROUP_STOP) != grp) continue;
+        if (!ext->safe_single_step && !EXT(context_get_group(ctx, CONTEXT_GROUP_STOP))->stop_group_mark) continue;
         if (stop_all_timer_cnt >= STOP_ALL_MAX_CNT) {
             trace(LOG_ALWAYS, "can't stop %s: timeout", ctx->id);
             ext->cannot_stop = 1;
@@ -2101,7 +2115,7 @@ static void run_safe_events(void * arg) {
     while (safe_event_list) {
         Trap trap;
         SafeEvent * i = safe_event_list;
-        if (context_get_group(i->ctx, CONTEXT_GROUP_STOP) != grp) {
+        if (!EXT(context_get_group(i->ctx, CONTEXT_GROUP_STOP))->stop_group_mark) {
             assert(run_ctrl_lock_cnt > 0);
             if (run_safe_events_posted == 0) {
                 run_safe_events_posted++;
@@ -2116,7 +2130,6 @@ static void run_safe_events(void * arg) {
             }
             break;
         }
-        assert(context_get_group(i->ctx, CONTEXT_GROUP_STOP) == grp);
         assert(is_all_stopped(i->ctx));
         safe_event_list = i->next;
         if (safe_event_list == NULL) safe_event_last = NULL;
@@ -2136,7 +2149,6 @@ static void run_safe_events(void * arg) {
         context_unlock(i->ctx);
         loc_free(i);
     }
-    context_unlock(grp);
     if (safe_event_list == NULL) cache_notify(&safe_events_cache);
 }
 
