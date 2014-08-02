@@ -1873,7 +1873,7 @@ static int trace_arm(void) {
         unsigned i;
         /* Unknown/undecoded. May alter some register, so invalidate file */
         for (i = 0; i < 11; i++) reg_data[i].o = 0;
-        trace(LOG_ALWAYS, "ARM stack crawl: unknown instruction %08x", instr);
+        trace(LOG_STACK, "ARM stack crawl: unknown instruction %08x", instr);
     }
 
     if (!trace_return && !trace_branch) {
