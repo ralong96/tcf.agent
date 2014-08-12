@@ -410,8 +410,14 @@
 #define OP_GNU_push_tls_address     0xe0
 #define OP_GNU_uninit               0xf0
 #define OP_GNU_encoded_addr         0xf1
+/* The GNU implicit pointer extension.
+   See http://www.dwarfstd.org/ShowIssue.php?issue=100831.1&type=open */
 #define OP_GNU_implicit_pointer     0xf2
+/* The GNU entry value extension.
+   See http://www.dwarfstd.org/ShowIssue.php?issue=100909.1&type=open */
 #define OP_GNU_entry_value          0xf3
+/* The GNU typed stack extension.
+   See http://www.dwarfstd.org/doc/040408.1.html */
 #define OP_GNU_const_type           0xf4
 #define OP_GNU_regval_type          0xf5
 #define OP_GNU_deref_type           0xf6

@@ -106,6 +106,17 @@ static U4_T read_u4leb128(void) {
     return v;
 }
 
+static U8_T read_u8leb128(void) {
+    U8_T v = 0;
+    int i = 0;
+    for (;; i += 7) {
+        U1_T n = expr->expr_addr[expr_pos++];
+        v |= (U8_T)(n & 0x7f) << i;
+        if ((n & 0x80) == 0) break;
+    }
+    return v;
+}
+
 static I8_T read_i8leb128(void) {
     U8_T v = 0;
     int i = 0;
@@ -862,7 +873,7 @@ static void add_expression(DWARFExpressionInfo * info) {
             {
                 U8_T size = 0;
                 U4_T reg = read_u4leb128();
-                U4_T type = read_u4leb128();
+                U8_T type = read_u8leb128();
                 ObjectInfo * obj = find_object(
                     get_dwarf_cache(expr->object->mCompUnit->mFile),
                     expr->object->mCompUnit->mDesc.mSection->addr +
@@ -873,6 +884,38 @@ static void add_expression(DWARFExpressionInfo * info) {
                 add_uleb128(reg);
                 add(OP_piece);
                 add_uleb128(size);
+            }
+            break;
+        case OP_GNU_convert:
+            expr_pos++;
+            {
+                U8_T type = read_u8leb128();
+                if (type == 0) {
+                    /* 0 means to cast the value back to the "implicit" type */
+                }
+                else {
+                    U8_T size = 0;
+                    ObjectInfo * obj = find_object(
+                        get_dwarf_cache(expr->object->mCompUnit->mFile),
+                        expr->object->mCompUnit->mDesc.mSection->addr +
+                        expr->object->mCompUnit->mDesc.mUnitOffs + type);
+                    if (obj != NULL && obj->mTag == TAG_base_type && get_num_prop(obj, AT_byte_size, &size)) {
+                        switch (obj->u.mFundType) {
+                        case ATE_unsigned:
+                            if (size < 8) {
+                                add(OP_constu);
+                                add_uleb128(((U8_T)1 << (size * 8)) - 1);
+                                add(OP_and);
+                            }
+                            break;
+                        default:
+                            str_exception(ERR_INV_DWARF, "Unsupported type in OP_GNU_convert");
+                            break;
+                        }
+                        break;
+                    }
+                    str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_convert");
+                }
             }
             break;
         default:
