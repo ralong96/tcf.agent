@@ -375,6 +375,33 @@ static int errcmp(int err, const char * msg) {
 static void test(void * args);
 static void loc_var_func(void * args, Symbol * sym);
 
+static int is_cpp_reference(Symbol * type) {
+    int type_class = 0;
+    if (type == NULL) return 0;
+    if (get_symbol_type_class(type, &type_class) < 0) {
+        error_sym("get_symbol_type_class", type);
+    }
+    if (type_class == TYPE_CLASS_POINTER) {
+        Symbol * ptr = type;
+        for (;;) {
+            SYM_FLAGS ptr_flags = 0;
+            Symbol * next = NULL;
+            if (get_symbol_flags(ptr, &ptr_flags) < 0) {
+                error_sym("get_symbol_flags", ptr);
+            }
+            if (ptr_flags & SYM_FLAG_REFERENCE) {
+                return 1;
+            }
+            if (get_symbol_type(ptr, &next) < 0) {
+                error_sym("get_symbol_type", ptr);
+            }
+            if (next == ptr) break;
+            ptr = next;
+        }
+    }
+    return 0;
+}
+
 static void test_enumeration_type(Symbol * type) {
     int i;
     int count = 0;
@@ -483,6 +510,10 @@ static void test_composite_type(Symbol * type) {
             }
         }
         if (member_class == SYM_CLASS_REFERENCE) {
+            Symbol * member_type = NULL;
+            if (get_symbol_type(children[i], &member_type) < 0) {
+                error_sym("get_symbol_type", children[i]);
+            }
             if (get_symbol_address(children[i], &offs) < 0) {
                 if (get_symbol_offset(children[i], &offs) < 0) {
 #if 0
@@ -499,7 +530,7 @@ static void test_composite_type(Symbol * type) {
                     }
 #endif
                 }
-                else {
+                else if (!is_cpp_reference(member_type)) {
                     Value v;
                     uint64_t n = 0;
                     char * expr = (char *)tmp_alloc(512);
@@ -714,25 +745,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (get_symbol_type_class(sym, &type_class) < 0) {
             error_sym("get_symbol_type_class", sym);
         }
-        if (type_class == TYPE_CLASS_POINTER) {
-            Symbol * ptr = type;
-            for (;;) {
-                SYM_FLAGS ptr_flags = 0;
-                Symbol * next = NULL;
-                if (get_symbol_flags(ptr, &ptr_flags) < 0) {
-                    error_sym("get_symbol_flags", ptr);
-                }
-                if (ptr_flags & SYM_FLAG_REFERENCE) {
-                    cpp_ref = 1;
-                    break;
-                }
-                if (get_symbol_type(ptr, &next) < 0) {
-                    error_sym("get_symbol_type", ptr);
-                }
-                if (next == ptr) break;
-                ptr = next;
-            }
-        }
+        cpp_ref = is_cpp_reference(type);
     }
     size_ok = 1;
     if (get_symbol_size(sym, &size) < 0) {
