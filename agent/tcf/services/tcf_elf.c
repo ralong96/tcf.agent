@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1079,7 +1079,10 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                         x.file_name = file->name;
                         x.file_offs = p->offset;
                         x.file_size = p->file_size;
-                        x.flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
+                        x.bss = p->file_size == 0 && p->mem_size != 0;
+                        if (p->flags & PF_R) x.flags |= MM_FLAG_R;
+                        if (p->flags & PF_W) x.flags |= MM_FLAG_W;
+                        if (p->flags & PF_X) x.flags |= MM_FLAG_X;
                         add_region(res, &x);
                     }
                 }
@@ -1278,6 +1281,7 @@ static int is_p_header_region(ELF_PHeader * p, MemoryRegion * r) {
         if (r->file_offs + r->file_size <= p->offset) return 0;
     }
     else {
+        if (r->bss && p->file_size > 0) return 0;
         if (r->file_offs + r->size <= p->offset) return 0;
     }
     if (r->file_offs >= p->offset + p->file_size) return 0;
