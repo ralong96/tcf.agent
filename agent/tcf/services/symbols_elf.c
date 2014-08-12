@@ -960,17 +960,19 @@ static void find_in_object_tree(ObjectInfo * parent, unsigned level,
     /* Search current scope */
     obj = children;
     while (obj != NULL) {
-        if (obj->mName != NULL && equ_symbol_names(obj->mName, name)) {
-            add_obj_to_find_symbol_buf(find_definition(obj), level);
-        }
-        if (parent->mTag == TAG_subprogram && ip != 0) {
-            if (!obj_ptr_chk) {
-                get_num_prop(parent, AT_object_pointer, &obj_ptr_id);
-                obj_ptr_chk = 1;
+        if (obj->mTag != TAG_GNU_call_site) {
+            if (obj->mName != NULL && equ_symbol_names(obj->mName, name)) {
+                add_obj_to_find_symbol_buf(find_definition(obj), level);
             }
-            if (obj->mID == obj_ptr_id || (obj_ptr_id == 0 && obj->mTag == TAG_formal_parameter &&
-                (obj->mFlags & DOIF_artificial) && obj->mName != NULL && strcmp(obj->mName, "this") == 0)) {
-                sym_this = obj;
+            if (parent->mTag == TAG_subprogram && ip != 0) {
+                if (!obj_ptr_chk) {
+                    get_num_prop(parent, AT_object_pointer, &obj_ptr_id);
+                    obj_ptr_chk = 1;
+                }
+                if (obj->mID == obj_ptr_id || (obj_ptr_id == 0 && obj->mTag == TAG_formal_parameter &&
+                    (obj->mFlags & DOIF_artificial) && obj->mName != NULL && strcmp(obj->mName, "this") == 0)) {
+                    sym_this = obj;
+                }
             }
         }
         obj = obj->mSibling;
