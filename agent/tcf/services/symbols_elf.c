@@ -2259,7 +2259,7 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
     case TAG_catch_block:
     case TAG_subroutine:
     case TAG_subprogram:
-        if ((obj->mFlags & DOIF_ranges) == 0 && (obj->mFlags & DOIF_low_pc) != 0 &&
+        if (!(obj->mFlags & DOIF_ranges) && (obj->mFlags & DOIF_low_pc) &&
                 obj->u.mCode.mHighPC.mAddr >= obj->u.mCode.mLowPC) {
             *byte_size = obj->u.mCode.mHighPC.mAddr - obj->u.mCode.mLowPC;
             return 1;
@@ -3407,12 +3407,11 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                 else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
                     return -1;
                 }
-                if (get_num_prop(obj, AT_low_pc, &addr)) {
+                if (!(obj->mFlags & DOIF_ranges) && (obj->mFlags & DOIF_low_pc)) {
+                    addr = elf_map_to_run_time_address(sym_ctx, obj->mCompUnit->mFile, obj->u.mCode.mSection, obj->u.mCode.mLowPC);
+                    if (errno) return -1;
                     add_location_command(info, SFT_CMD_NUMBER)->args.num = addr;
                     return 0;
-                }
-                else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
-                    return -1;
                 }
                 break;
             }

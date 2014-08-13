@@ -509,11 +509,6 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                 sCache->mCompUnitsCnt++;
                 break;
             case TAG_subprogram:
-                if (Info->mFlags & DOIF_specification &&
-                    Info->mFlags & DOIF_low_pc &&
-                    Info->u.mCode.mLowPC != 0) {
-                    add_object_addr_ranges(Info);
-                } /* Fall through */
             case TAG_global_subroutine:
             case TAG_inlined_subroutine:
             case TAG_subroutine:
@@ -522,6 +517,9 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             case TAG_mod_pointer:
             case TAG_const_type:
             case TAG_volatile_type:
+                if (Tag == TAG_subprogram && (Info->mFlags & DOIF_specification) && (Info->mFlags & DOIF_low_pc)) {
+                    add_object_addr_ranges(Info);
+                }
                 if (Info->mType == NULL) {
                     /* NULL here means "void" */
                     Info->mType = add_object_info(OBJECT_ID_VOID);
