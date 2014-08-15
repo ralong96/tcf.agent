@@ -2157,7 +2157,7 @@ UnitAddressRange * find_comp_unit_addr_range(DWARFCache * cache, ELF_Section * s
             int first = 1;
             if (k > 0) {
                 UnitAddressRange * rp = rk - 1;
-                first = rp->mAddr + rp->mSize <= addr_min;
+                first = rp->mSection != s || rp->mAddr + rp->mSize <= addr_min;
             }
             if (first) return rk;
             h = k;

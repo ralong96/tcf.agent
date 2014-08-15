@@ -1464,7 +1464,12 @@ static void next_file(void) {
                 r->addr = addr;
                 r->size = (ContextAddress)sec->size;
                 r->file_offs = sec->offset;
-                r->bss = strcmp(sec->name, ".bss") == 0;
+                if (sec->type == SHT_NOBITS) {
+                    r->bss = 1;
+                }
+                else {
+                    r->file_size = sec->size;
+                }
                 r->dev = st.st_dev;
                 r->ino = st.st_ino;
                 r->file_name = loc_strdup(elf_file_name);
