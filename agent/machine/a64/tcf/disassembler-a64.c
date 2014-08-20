@@ -754,7 +754,7 @@ static void branch_exception_system(void) {
         uint32_t op2 = (instr >> 16) & 0x1f;
         uint32_t op3 = (instr >> 10) & 0x3f;
         uint32_t op4 = (instr >>  0) & 0x1f;
-        uint32_t rn = (instr >> 5) & 0x3f;
+        uint32_t rn = (instr >> 5) & 0x1f;
         if (op2 == 31 && op3 == 0 && op4 == 0) {
             switch (opc) {
             case 0: add_str("br"); break;
