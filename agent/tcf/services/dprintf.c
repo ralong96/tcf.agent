@@ -49,17 +49,15 @@ struct Client {
     Channel * channel;
     VirtualStream * vstream;
     Buffer * queue;
+    char * tmp_buf;
+    unsigned tmp_pos;
+    unsigned tmp_max;
 };
 
 #define link2buf(x)  ((Buffer *)((char *)(x) - offsetof(Buffer, link)))
 #define link2client(x)  ((Client *)((char *)(x) - offsetof(Client, link)))
 
 static LINK clients;
-
-static char * buf = NULL;
-static unsigned buf_pos = 0;
-static unsigned buf_max = 0;
-static Client * buf_client = NULL;
 
 static Client * find_client(Channel * channel) {
     LINK * l;
@@ -71,12 +69,12 @@ static Client * find_client(Channel * channel) {
     return NULL;
 }
 
-static void add_ch(char ch) {
-    if (buf_pos >= buf_max) {
-        buf_max += 256;
-        buf = (char *)tmp_realloc(buf, buf_max);
+static void add_ch(Client * client, char ch) {
+    if (client->tmp_pos >= client->tmp_max) {
+        client->tmp_max += 256;
+        client->tmp_buf = (char *)loc_realloc(client->tmp_buf, client->tmp_max);
     }
-    buf[buf_pos++] = ch;
+    client->tmp_buf[client->tmp_pos++] = ch;
 }
 
 static const void * load_remote_string(Context * ctx, Value * arg_val) {
@@ -109,8 +107,9 @@ static const void * load_remote_string(Context * ctx, Value * arg_val) {
 void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsigned args_cnt) {
     unsigned fmt_pos = 0;
     unsigned arg_pos = 0;
+    Client * client = find_client(cache_channel());
 
-    if (buf_client == NULL) return;
+    if (client == NULL) return;
 
     while (fmt[fmt_pos]) {
         char ch = fmt[fmt_pos];
@@ -222,16 +221,16 @@ void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsig
                     break;
                 }
                 arg_len = strlen(arg_buf);
-                if (buf_pos + arg_len >= buf_max) {
-                    buf_max += arg_len + 256;
-                    buf = (char *)tmp_realloc(buf, buf_max);
+                if (client->tmp_pos + arg_len >= client->tmp_max) {
+                    client->tmp_max += arg_len + 256;
+                    client->tmp_buf = (char *)loc_realloc(client->tmp_buf, client->tmp_max);
                 }
-                memcpy(buf + buf_pos, arg_buf, arg_len);
-                buf_pos += arg_len;
+                memcpy(client->tmp_buf + client->tmp_pos, arg_buf, arg_len);
+                client->tmp_pos += arg_len;
                 continue;
             }
         }
-        add_ch(ch);
+        add_ch(client, ch);
         fmt_pos++;
     }
 }
@@ -296,6 +295,7 @@ static void free_client(Client * client) {
         while (!list_is_empty(&client->bufs));
         run_ctrl_unlock();
     }
+    loc_free(client->tmp_buf);
     loc_free(client);
 }
 
@@ -313,33 +313,35 @@ static void command_close(char * token, Channel * c) {
 }
 
 static void cache_transaction_listener(int evt) {
+    LINK * l;
     switch (evt) {
     case CTLE_START:
     case CTLE_RETRY:
-        buf_client = find_client(cache_channel());
+        for (l = clients.next; l != &clients; l = l->next) {
+            Client * client = link2client(l);
+            client->tmp_pos = 0;
+        }
         break;
     case CTLE_ABORT:
-        buf_client = NULL;
         break;
     case CTLE_COMMIT:
-        if (buf_pos > 0) {
-            size_t done = 0;
-            virtual_stream_add_data(buf_client->vstream, buf, buf_pos, &done, 0);
-            if (done < buf_pos) {
-                Buffer * b = (Buffer *)loc_alloc_zero(sizeof(Buffer));
-                b->size = buf_pos - done;
-                b->buf = (char *)loc_alloc(b->size);
-                memcpy(b->buf, buf + done, b->size);
-                if (list_is_empty(&buf_client->bufs)) run_ctrl_lock();
-                list_add_last(&b->link, &buf_client->bufs);
+        for (l = clients.next; l != &clients; l = l->next) {
+            Client * client = link2client(l);
+            if (client->tmp_pos > 0) {
+                size_t done = 0;
+                virtual_stream_add_data(client->vstream, client->tmp_buf, client->tmp_pos, &done, 0);
+                if (done < client->tmp_pos) {
+                    Buffer * b = (Buffer *)loc_alloc_zero(sizeof(Buffer));
+                    b->size = client->tmp_pos - done;
+                    b->buf = (char *)loc_alloc(b->size);
+                    memcpy(b->buf, client->tmp_buf + done, b->size);
+                    if (list_is_empty(&client->bufs)) run_ctrl_lock();
+                    list_add_last(&b->link, &client->bufs);
+                }
             }
         }
-        buf_client = NULL;
         break;
     }
-    buf = NULL;
-    buf_pos = 0;
-    buf_max = 0;
 }
 
 static void channel_close_listener(Channel * c) {
