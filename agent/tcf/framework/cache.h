@@ -17,6 +17,11 @@
 /*
  * Abstract asynchronous data cache support.
  *
+ * In TCF, asynchronous caches are used to implement software design,
+ * which we call ACPM (Asynchronous Cache Programming Model).
+ * ACPM is formalized Programming Pattern for guaranteed data consistency
+ * when dealing with multiple remote data sources.
+ *
  * Usage example.
  * This example assumes that Context represents execution context on remote target,
  * and context data is kept in a cache that is updated on demand by sending asynchronous
