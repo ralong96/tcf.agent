@@ -288,7 +288,7 @@ static void data_processing_immediate(void) {
             add_str("mov ");
             add_reg_name(rt, sf, 1);
             add_str(", ");
-            add_reg_name((instr >> 5) & 0x1f, sf, 1);
+            add_reg_name(rn, sf, 1);
             return;
         }
         if ((op == 1 || op == 3) && rt == 31) {
@@ -367,30 +367,11 @@ static void data_processing_immediate(void) {
         uint32_t hw = (instr >> 21) & 3;
         uint64_t imm = (instr >> 5) & 0xffff;
         if ((op == 0 || op == 2) && (imm > 0 || hw == 0)) {
-            if (op == 0) {
-                if (sf) imm = ~imm;
-                else imm ^= 0xffffffff;
-            }
             add_str("mov");
-            if (hw > 0) {
-                if (sf) {
-                    uint64_t n = imm;
-                    switch (hw) {
-                    case 1: imm = (n << 16) | (n >> 48); break;
-                    case 2: imm = (n << 32) | (n >> 32); break;
-                    case 3: imm = (n << 48) | (n >> 16); break;
-                    }
-                }
-                else {
-                    uint32_t n = (uint32_t)imm;
-                    switch (hw) {
-                    case 1: imm = (n << 16) | (n >> 16); break;
-                    case 2: imm = n; break;
-                    case 3: imm = (n << 16) | (n >> 16); break;
-                    }
-                }
-                hw = 0;
-            }
+            imm = imm << (hw * 16);
+            if (op == 0) imm = ~imm;
+            if (!sf) imm &= 0xffffffff;
+            hw = 0;
         }
         else {
             switch (op) {
@@ -1042,13 +1023,13 @@ static void loads_and_stores(void) {
                 case 0: add_char('b'); break;
                 case 1: add_char('h'); shift = 1; break;
                 case 2: add_char('s'); shift = 2; break;
-                case 3: add_char('d'); shift = 3; return;
+                case 3: add_char('d'); shift = 3; break;
                 }
             }
             else {
                 switch (size) {
                 case 0: add_char('q'); shift = 4; break;
-                default: shift = -1; return;
+                default: shift = -1; break;
                 }
             }
             add_dec_uint32(instr & 0x1f);

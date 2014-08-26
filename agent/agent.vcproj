@@ -1666,6 +1666,14 @@
 					RelativePath=".\machine\a64\tcf\dwarfreloc-mdep.h"
 					>
 				</File>
+				<File
+					RelativePath=".\machine\a64\tcf\stack-crawl-a64.c"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\a64\tcf\stack-crawl-a64.h"
+					>
+				</File>
 			</Filter>
 		</Filter>
 		<File

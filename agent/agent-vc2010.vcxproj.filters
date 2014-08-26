@@ -354,6 +354,9 @@
     <ClCompile Include="machine\a64\tcf\disassembler-a64.c">
       <Filter>machine\a64</Filter>
     </ClCompile>
+    <ClCompile Include="machine\a64\tcf\stack-crawl-a64.c">
+      <Filter>machine\a64</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tcf\framework\asyncreq.h">
@@ -670,6 +673,12 @@
       <Filter>machine\ppc</Filter>
     </ClInclude>
     <ClInclude Include="machine\a64\tcf\disassembler-a64.h">
+      <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\dwarfreloc-mdep.h">
+      <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\stack-crawl-a64.h">
       <Filter>machine\a64</Filter>
     </ClInclude>
   </ItemGroup>
