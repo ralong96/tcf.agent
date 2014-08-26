@@ -2372,7 +2372,7 @@ static void op_funccall(int mode, Value * v) {
 #endif /* ENABLE_FuncCallInjection */
 
 static void op_call(int mode, Value * v) {
-    if (v->func_cb) {
+    if (v->func_cb || mode == MODE_SKIP) {
         Value * args = NULL;
         unsigned args_cnt = 0;
         unsigned args_max = 0;
@@ -2388,6 +2388,10 @@ static void op_call(int mode, Value * v) {
                 if (text_sy != ',') break;
                 next_sy();
             }
+        }
+        if (mode == MODE_SKIP) {
+            ini_value(v);
+            return;
         }
         if (mode == MODE_NORMAL) {
             unsigned i;
