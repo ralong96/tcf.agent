@@ -569,18 +569,12 @@ static int loads_and_stores(void) {
         int V = (instr & (1 << 26)) != 0;
         int L = (instr & (1 << 22)) != 0;
         int px = (instr & (1 << 24)) != 0;
-        uint32_t imm = (instr >> 15) & 0x7f;
+        uint64_t imm = (instr >> 15) & 0x7f;
         uint32_t rn = (instr >> 5) & 0x1f;
         uint32_t rt1 = (instr >> 0) & 0x1f;
         uint32_t rt2 = (instr >> 10) & 0x1f;
         uint32_t shift = 0;
 
-        if (imm & 0x40) imm |= ~(uint64_t)0x3f;
-        if (chk_loaded(rn) < 0) reg_data[rn].o = 0;
-        if (px && reg_data[rn].o) {
-            assert(reg_data[rn].o == REG_VAL_OTHER);
-            reg_data[rn].v += imm << shift;
-        }
         if (V) {
             /* Floating Point */
             switch (opc) {
@@ -592,6 +586,14 @@ static int loads_and_stores(void) {
         }
         else {
             shift = opc >= 2 ? 3 : 2;
+        }
+        if (imm & 0x40) imm |= ~(uint64_t)0x3f;
+        if (chk_loaded(rn) < 0) reg_data[rn].o = 0;
+        if (px && reg_data[rn].o) {
+            assert(reg_data[rn].o == REG_VAL_OTHER);
+            reg_data[rn].v += imm << shift;
+        }
+        if (!V) {
             if (L) {
                 uint64_t addr = reg_data[rn].v;
                 reg_data[rt1].o = 0;
@@ -665,39 +667,39 @@ static int loads_and_stores(void) {
 
             if ((instr & 0x3b200c00) == 0x38000000) {
                 /* Load/store register (unscaled immediate) */
-                int32_t imm = (instr >> 12) & 0x1ff;
-                if (imm & 0x100) imm |= 0xffffff00;
+                int64_t imm = (instr >> 12) & 0x1ff;
+                if (imm & 0x100) imm |= ~(uint64_t)0xff;
                 chk_loaded(rn);
                 addr_ok = reg_data[rn].o == REG_VAL_OTHER;
-                addr = reg_data[rn].v + (int64_t)imm;
+                addr = reg_data[rn].v + imm;
                 instr_ok = 1;
             }
             else if ((instr & 0x3b200c00) == 0x38000400) {
                 /* Load/store register (immediate post-indexed) */
-                uint32_t imm = (instr >> 12) & 0x1ff;
-                if (imm & 0x100) imm |= 0xffffff00;
+                int64_t imm = (instr >> 12) & 0x1ff;
+                if (imm & 0x100) imm |= ~(uint64_t)0xff;
                 chk_loaded(rn);
                 addr_ok = reg_data[rn].o == REG_VAL_OTHER;
                 addr = reg_data[rn].v;
-                if (addr_ok) reg_data[rn].v += (int64_t)imm;
+                if (addr_ok) reg_data[rn].v += imm;
                 instr_ok = 1;
             }
             else if ((instr & 0x3b200c00) == 0x38000800) {
                 /* Load/store register (unprivileged) */
-                uint32_t imm = (instr >> 12) & 0x1ff;
-                if (imm & 0x100) imm |= 0xffffff00;
+                int64_t imm = (instr >> 12) & 0x1ff;
+                if (imm & 0x100) imm |= ~(uint64_t)0xff;
                 chk_loaded(rn);
                 addr_ok = reg_data[rn].o == REG_VAL_OTHER;
-                addr = reg_data[rn].v + (int64_t)imm;
+                addr = reg_data[rn].v + imm;
                 instr_ok = 1;
             }
             else if ((instr & 0x3b200c00) == 0x38000c00) {
                 /* Load/store register (immediate pre-indexed) */
-                uint32_t imm = (instr >> 12) & 0x1ff;
-                if (imm & 0x100) imm |= 0xffffff00;
+                int64_t imm = (instr >> 12) & 0x1ff;
+                if (imm & 0x100) imm |= ~(uint64_t)0xff;
                 chk_loaded(rn);
                 addr_ok = reg_data[rn].o == REG_VAL_OTHER;
-                addr = reg_data[rn].v + (int64_t)imm;
+                addr = reg_data[rn].v + imm;
                 if (addr_ok) reg_data[rn].v = addr;
                 instr_ok = 1;
             }
@@ -829,6 +831,66 @@ static int data_processing_register(void) {
                 case 3: v = reg_data[rn].v & v; break;
                 }
                 set_reg(rd, sf, v);
+            }
+            else {
+                reg_data[rd].o = 0;
+            }
+        }
+        return 0;
+    }
+
+    if ((instr & 0x1f200000) == 0x0b000000) {
+        /* Add/subtract (shifted register) */
+        int sf = (instr & (1 << 31)) != 0;
+        int n = (instr & (1 << 30)) != 0;
+        uint32_t imm = (instr >> 10) & 0x3f;
+        uint32_t shift = (instr >> 22) & 3;
+        uint32_t rm = (instr >> 16) & 0x1f;
+        uint32_t rn = (instr >> 5) & 0x1f;
+        uint32_t rd = instr & 0x1f;
+        uint64_t v = 0;
+
+        if (rd == 31) return 0;
+
+        if (rm != 31) {
+            chk_loaded(rm);
+            if (reg_data[rm].o != REG_VAL_OTHER) {
+                reg_data[rd].o = 0;
+                return 0;
+            }
+            v = reg_data[rm].v;
+        }
+        switch (shift) {
+        case 0: /* LSL */
+            v = v << imm;
+            break;
+        case 1: /* LSR */
+            v = v >> imm;
+            break;
+        case 2: /* ASR */
+            if (!sf) {
+                int sign = (v & (1 << 31)) != 0;
+                v = (v & 0xffffffff) >> imm;
+                if (sign) v |= 0xffffffff << (32 - imm);
+            }
+            else {
+                int sign = (v & ((uint64_t)1 << 63)) != 0;
+                v = v >> imm;
+                if (sign) v |= 0xffffffffffffffff << (64 - imm);
+            }
+            break;
+        default:
+            return 0;
+        }
+        if (n) v = ~v + 1;
+
+        if (rn == 31) {
+            set_reg(rd, sf, v);
+        }
+        else {
+            chk_loaded(rn);
+            if (reg_data[rn].o == REG_VAL_OTHER) {
+                set_reg(rd, sf, reg_data[rn].v + v);
             }
             else {
                 reg_data[rd].o = 0;
