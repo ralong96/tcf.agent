@@ -385,6 +385,8 @@ static ELF_File * find_open_file_by_inode(dev_t dev, ino_t ino, int64_t mtime) {
 
 static char * get_debug_info_file_name(ELF_File * file, int * error) {
     unsigned idx;
+    char fnm[FILE_PATH_SIZE];
+    struct stat buf;
 
     for (idx = 1; idx < file->section_cnt; idx++) {
         ELF_Section * sec = file->sections + idx;
@@ -410,9 +412,7 @@ static char * get_debug_info_file_name(ELF_File * file, int * error) {
                 offs += name_sz;
                 while (offs % 4 != 0) offs++;
                 if (type == 3 && strcmp(name, "GNU") == 0) {
-                    char fnm[FILE_PATH_SIZE];
                     char * lnm = fnm;
-                    struct stat buf;
                     char id[64];
                     size_t id_size = 0;
                     U1_T * desc = (U1_T *)sec->data + offs;
@@ -430,11 +430,6 @@ static char * get_debug_info_file_name(ELF_File * file, int * error) {
                     lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
 #endif
                     if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
-                    snprintf(fnm, sizeof(fnm), "%s.debug", file->name);
-#if SERVICE_PathMap
-                    lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
-#endif
-                    if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
                 }
                 offs += desc_sz;
                 while (offs % 4 != 0) offs++;
@@ -447,9 +442,7 @@ static char * get_debug_info_file_name(ELF_File * file, int * error) {
             }
             else {
                 /* TODO: check debug info CRC */
-                char fnm[FILE_PATH_SIZE];
                 char * lnm = fnm;
-                struct stat buf;
                 char * name = (char *)sec->data;
                 int l = (int)strlen(file->name);
                 while (l > 0 && file->name[l - 1] != '/' && file->name[l - 1] != '\\') l--;
@@ -466,6 +459,14 @@ static char * get_debug_info_file_name(ELF_File * file, int * error) {
                 if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
             }
         }
+    }
+    {
+        char * lnm = fnm;
+        snprintf(fnm, sizeof(fnm), "%s.debug", file->name);
+#if SERVICE_PathMap
+        lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
+#endif
+        if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
     }
     return NULL;
 }
@@ -1307,10 +1308,10 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
         }
         if (r->sect_name == NULL) {
             ELF_File * debug = get_dwarf_file(file);
-            for (j = 0; range == NULL && j < debug->pheader_cnt; j++) {
+            for (j = 0; range == NULL && j < file->pheader_cnt; j++) {
                 U8_T offs_min = 0;
                 U8_T offs_max = 0;
-                ELF_PHeader * p = debug->pheaders + j;
+                ELF_PHeader * p = file->pheaders + j;
                 ELF_Section * sec = NULL;
                 if (!is_p_header_region(p, r)) continue;
                 offs_min = addr_min - r->addr + r->file_offs;
