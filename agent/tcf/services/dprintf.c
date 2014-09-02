@@ -84,8 +84,10 @@ static const void * load_remote_string(Context * ctx, Value * arg_val) {
     char * sbf = (char *)tmp_alloc(sbf_max);
     ContextAddress addr = 0;
 
-    if (ctx == NULL || ctx->mem_access == 0) error = ERR_INV_CONTEXT;
-    else if (value_to_address(arg_val, &addr) < 0) error = errno;
+    if (ctx == NULL) error = ERR_INV_CONTEXT;
+    if (!error && ctx->mem_access == 0) ctx = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+    if (!error && ctx->mem_access == 0) error = ERR_INV_CONTEXT;
+    if (!error && value_to_address(arg_val, &addr) < 0) error = errno;
     while (!error) {
         char ch = 0;
         if (sbf_pos >= sbf_max) {
