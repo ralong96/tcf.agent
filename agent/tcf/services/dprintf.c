@@ -114,7 +114,10 @@ void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsig
     while (fmt[fmt_pos]) {
         char ch = fmt[fmt_pos];
         if (ch == 0) break;
-        if (ch == '%' && arg_pos < args_cnt) {
+        if (ch == '%' && fmt[fmt_pos + 1] == '%') {
+            fmt_pos++;
+        }
+        else if (ch == '%' && arg_pos < args_cnt) {
             char arg_buf[256];
             char arg_fmt[256];
             unsigned pos = fmt_pos++;
