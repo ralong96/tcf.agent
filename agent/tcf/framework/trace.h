@@ -56,7 +56,7 @@ extern int print_trace(int mode, const char * fmt, ...);
 
 extern FILE * log_file;
 
-#define trace log_file == NULL ? 0 : print_trace
+#define trace log_file == NULL ? (void)0 : (void)print_trace
 
 #else /* not ENABLE_Trace */
 
