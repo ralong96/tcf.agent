@@ -543,6 +543,20 @@ static void reopen_file(ELF_File * file) {
     }
 }
 
+static int read_fully(int fd, void * buf, size_t size) {
+    char * p = (char *)buf;
+    while (size > 0) {
+        int rd = read(fd, p, size);
+        if (rd <= 0) {
+            if (rd == 0) set_errno(ERR_OTHER, "Unexpected end of file");
+            return -1;
+        }
+        size -= rd;
+        p += rd;
+    }
+    return 0;
+}
+
 static ELF_File * create_elf_cache(const char * file_name) {
     struct stat st;
     int error = 0;
@@ -605,7 +619,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
         ELF_Section * dynsym_section;
 
         memset(&hdr, 0, sizeof(hdr));
-        if (read(file->fd, (char *)&hdr, sizeof(hdr)) < 0) error = errno;
+        if (read_fully(file->fd, (char *)&hdr, sizeof(hdr)) < 0) error = errno;
         if (error == 0 && strncmp((char *)hdr.e_ident, ELFMAG, SELFMAG) != 0) {
             error = set_errno(ERR_INV_FORMAT, "Unsupported ELF identification code");
         }
@@ -662,12 +676,10 @@ static ELF_File * create_elf_cache(const char * file_name) {
                 file->sections = (ELF_Section *)loc_alloc_zero(sizeof(ELF_Section) * hdr.e_shnum);
                 file->section_cnt = hdr.e_shnum;
                 while (error == 0 && cnt < hdr.e_shnum) {
-                    int rd = 0;
                     Elf32_Shdr shdr;
                     memset(&shdr, 0, sizeof(shdr));
                     if (error == 0 && sizeof(shdr) < hdr.e_shentsize) error = ERR_INV_FORMAT;
-                    if (error == 0 && (rd = read(file->fd, (char *)&shdr, hdr.e_shentsize)) < 0) error = errno;
-                    if (error == 0 && rd != hdr.e_shentsize) error = ERR_INV_FORMAT;
+                    if (error == 0 && read_fully(file->fd, (char *)&shdr, hdr.e_shentsize) < 0) error = errno;
                     if (error == 0) {
                         ELF_Section * sec = file->sections + cnt;
                         if (file->byte_swap) {
@@ -713,12 +725,10 @@ static ELF_File * create_elf_cache(const char * file_name) {
                 file->pheaders = (ELF_PHeader *)loc_alloc_zero(sizeof(ELF_PHeader) * hdr.e_phnum);
                 file->pheader_cnt = hdr.e_phnum;
                 while (error == 0 && cnt < hdr.e_phnum) {
-                    int rd = 0;
                     Elf32_Phdr phdr;
                     memset(&phdr, 0, sizeof(phdr));
                     if (error == 0 && sizeof(phdr) < hdr.e_phentsize) error = ERR_INV_FORMAT;
-                    if (error == 0 && (rd = read(file->fd, (char *)&phdr, hdr.e_phentsize)) < 0) error = errno;
-                    if (error == 0 && rd != hdr.e_phentsize) error = ERR_INV_FORMAT;
+                    if (error == 0 && read_fully(file->fd, (char *)&phdr, hdr.e_phentsize) < 0) error = errno;
                     if (error == 0) {
                         ELF_PHeader * p = file->pheaders + cnt;
                         if (file->byte_swap) {
@@ -750,7 +760,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
             file->elf64 = 1;
             memset(&hdr, 0, sizeof(hdr));
             if (error == 0 && lseek(file->fd, 0, SEEK_SET) == (off_t)-1) error = errno;
-            if (error == 0 && read(file->fd, (char *)&hdr, sizeof(hdr)) < 0) error = errno;
+            if (error == 0 && read_fully(file->fd, (char *)&hdr, sizeof(hdr)) < 0) error = errno;
             if (file->byte_swap) {
                 SWAP(hdr.e_type);
                 SWAP(hdr.e_machine);
@@ -785,12 +795,10 @@ static ELF_File * create_elf_cache(const char * file_name) {
                 file->sections = (ELF_Section *)loc_alloc_zero(sizeof(ELF_Section) * hdr.e_shnum);
                 file->section_cnt = hdr.e_shnum;
                 while (error == 0 && cnt < hdr.e_shnum) {
-                    int rd = 0;
                     Elf64_Shdr shdr;
                     memset(&shdr, 0, sizeof(shdr));
                     if (error == 0 && sizeof(shdr) < hdr.e_shentsize) error = ERR_INV_FORMAT;
-                    if (error == 0 && (rd = read(file->fd, (char *)&shdr, hdr.e_shentsize)) < 0) error = errno;
-                    if (error == 0 && rd != hdr.e_shentsize) error = ERR_INV_FORMAT;
+                    if (error == 0 && read_fully(file->fd, (char *)&shdr, hdr.e_shentsize) < 0) error = errno;
                     if (error == 0) {
                         ELF_Section * sec = file->sections + cnt;
                         if (file->byte_swap) {
@@ -836,12 +844,10 @@ static ELF_File * create_elf_cache(const char * file_name) {
                 file->pheaders = (ELF_PHeader *)loc_alloc_zero(sizeof(ELF_PHeader) * hdr.e_phnum);
                 file->pheader_cnt = hdr.e_phnum;
                 while (error == 0 && cnt < hdr.e_phnum) {
-                    int rd = 0;
                     Elf64_Phdr phdr;
                     memset(&phdr, 0, sizeof(phdr));
                     if (error == 0 && sizeof(phdr) < hdr.e_phentsize) error = ERR_INV_FORMAT;
-                    if (error == 0 && (rd = read(file->fd, (char *)&phdr, hdr.e_phentsize)) < 0) error = errno;
-                    if (error == 0 && rd != hdr.e_phentsize) error = ERR_INV_FORMAT;
+                    if (error == 0 && read_fully(file->fd, (char *)&phdr, hdr.e_phentsize) < 0) error = errno;
                     if (error == 0) {
                         ELF_PHeader * p = file->pheaders + cnt;
                         if (file->byte_swap) {
@@ -872,13 +878,11 @@ static ELF_File * create_elf_cache(const char * file_name) {
             error = set_errno(ERR_INV_FORMAT, "Invalid ELF class ID");
         }
         if (error == 0 && str_index != 0 && str_index < file->section_cnt) {
-            int rd = 0;
             ELF_Section * str = file->sections + str_index;
             file->str_pool = (char *)loc_alloc((size_t)str->size);
             if (str->offset == 0 || str->size == 0) error = set_errno(ERR_INV_FORMAT, "Invalid ELF string pool offset or size");
             if (error == 0 && lseek(file->fd, str->offset, SEEK_SET) == (off_t)-1) error = errno;
-            if (error == 0 && (rd = read(file->fd, file->str_pool, (size_t)str->size)) < 0) error = errno;
-            if (error == 0 && rd != (int)str->size) error = set_errno(ERR_INV_FORMAT, "Cannot read ELF string pool");
+            if (error == 0 && read_fully(file->fd, file->str_pool, (size_t)str->size) < 0) error = errno;
             if (error == 0) {
                 unsigned i;
                 for (i = 1; i < file->section_cnt; i++) {
@@ -1003,7 +1007,7 @@ int elf_load(ELF_Section * s) {
         }
         s->data = loc_alloc((size_t)s->size);
         if (lseek(file->fd, s->offset, SEEK_SET) == (off_t)-1 ||
-                read(file->fd, s->data, (size_t)s->size) < 0) {
+                read_fully(file->fd, s->data, (size_t)s->size) < 0) {
             int error = errno;
             loc_free(s->data);
             s->data = NULL;
