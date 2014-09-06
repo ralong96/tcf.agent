@@ -548,7 +548,7 @@ static int read_fully(int fd, void * buf, size_t size) {
     while (size > 0) {
         int rd = read(fd, p, size);
         if (rd <= 0) {
-            if (rd == 0) set_errno(ERR_OTHER, "Unexpected end of file");
+            if (rd == 0) set_errno(ERR_INV_FORMAT, "Unexpected end of file");
             return -1;
         }
         size -= rd;
