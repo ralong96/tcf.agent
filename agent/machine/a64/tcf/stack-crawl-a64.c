@@ -38,7 +38,7 @@
 
 typedef struct {
     uint64_t v;
-    uint64_t o;
+    unsigned o;
 } RegData;
 
 typedef struct {
@@ -475,10 +475,9 @@ static int branch_exception_system(void) {
             set_reg(30, 1, pc_data.v + 4);
             return 0;
         }
-        if (imm & 0x02000000) {
-            imm |= 0xfc000000;
-        }
-        pc_data.v += (int64_t)imm << 2;
+        if (imm & 0x02000000) imm |= 0xfc000000;
+        add_branch(pc_data.v + ((int64_t)imm << 2));
+        trace_branch = 1;
         return 0;
     }
 
@@ -486,15 +485,9 @@ static int branch_exception_system(void) {
         /* Conditional branch (immediate) */
         int32_t imm = (instr >> 5) & 0x7ffff;
         uint32_t cond = instr & 0xf;
-        if (imm & 0x00040000) {
-            imm |= 0xfffc0000;
-        }
-        if (cond == 0xe) {
-            pc_data.v += (int64_t)imm << 2;
-        }
-        else {
-            add_branch(pc_data.v + ((int64_t)imm << 2));
-        }
+        if (imm & 0x00040000) imm |= 0xfffc0000;
+        add_branch(pc_data.v + ((int64_t)imm << 2));
+        if (cond == 0xe) trace_branch = 1;
         return 0;
     }
 
@@ -509,7 +502,8 @@ static int branch_exception_system(void) {
             switch (opc) {
             case 0: /* br */
                 if (chk_loaded(rn) < 0) return -1;
-                pc_data = reg_data[rn];
+                if (reg_data[rn].o) add_branch(reg_data[rn].v);
+                trace_branch = 1;
                 break;
             case 1: /* blr */
                 set_reg(30, 1, pc_data.v + 4);

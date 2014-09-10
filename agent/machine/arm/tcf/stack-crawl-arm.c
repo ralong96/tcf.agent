@@ -441,6 +441,7 @@ static void trace_bx(unsigned rn) {
         trace_return = 1;
     }
     else {
+        add_branch(reg_data[15].v);
         trace_branch = 1;
     }
 }
