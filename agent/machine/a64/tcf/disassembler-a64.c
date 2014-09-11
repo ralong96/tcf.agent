@@ -1213,9 +1213,9 @@ static void data_processing_register(void) {
 
         if (opc == 1 && shift == 0 && imm == 0 && rn == 31) {
             add_str(n ? "mvn " : "mov ");
-            add_reg_name(instr & 0x1f, sf, 1);
+            add_reg_name(instr & 0x1f, sf, 0);
             add_str(", ");
-            add_reg_name((instr >> 16) & 0x1f, sf, 1);
+            add_reg_name((instr >> 16) & 0x1f, sf, 0);
             return;
         }
         if (rd == 31 && opc == 3 && !n) {
@@ -1232,12 +1232,12 @@ static void data_processing_register(void) {
         }
         add_char(' ');
         if (!no_rd) {
-            add_reg_name(rd, sf, 1);
+            add_reg_name(rd, sf, 0);
             add_str(", ");
         }
-        add_reg_name(rn, sf, 1);
+        add_reg_name(rn, sf, 0);
         add_str(", ");
-        add_reg_name((instr >> 16) & 0x1f, sf, 1);
+        add_reg_name((instr >> 16) & 0x1f, sf, 0);
         if (shift != 0 || imm != 0) {
             add_str(", ");
             switch (shift) {
