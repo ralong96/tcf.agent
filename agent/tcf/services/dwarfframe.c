@@ -353,7 +353,7 @@ static U8_T read_frame_data_pointer(U1_T encoding, ELF_Section ** sec, U8_T func
         break;
     case EH_PE_sdata4:
         if (rules.address_size == 4 && ((encoding >> 4) & 0x7) == EH_PB_pcrel) {
-            v += dio_ReadAddress(sec);
+            v += (I4_T)dio_ReadAddress(sec);
         }
         else {
             v += (I4_T)dio_ReadU4();
@@ -361,7 +361,7 @@ static U8_T read_frame_data_pointer(U1_T encoding, ELF_Section ** sec, U8_T func
         break;
     case EH_PE_sdata8:
         if (rules.address_size == 8 && ((encoding >> 4) & 0x7) == EH_PB_pcrel) {
-            v += dio_ReadAddress(sec);
+            v += (I8_T)dio_ReadAddress(sec);
         }
         else {
             v += (I8_T)dio_ReadU8();
