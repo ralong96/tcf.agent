@@ -705,6 +705,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (errcmp(err, "Division by zero in location") == 0) return;
         if (errcmp(err, "Cannot find loader debug") == 0) return;
         if (errcmp(err, "Cannot get TLS module ID") == 0) return;
+        if (errcmp(err, "Cannot get address of ELF symbol: indirect symbol") == 0) return;
         if (symbol_class == SYM_CLASS_TYPE && errcmp(err, "Wrong object kind") == 0) return;
         errno = err;
         error_sym("get_symbol_value", sym);
