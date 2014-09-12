@@ -330,10 +330,20 @@ static U8_T read_frame_data_pointer(U1_T encoding, ELF_Section ** sec, U8_T func
         v += dio_ReadU2();
         break;
     case EH_PE_udata4:
-        v += dio_ReadU4();
+        if (rules.address_size == 4 && ((encoding >> 4) & 0x7) == EH_PB_pcrel) {
+            v += dio_ReadAddress(sec);
+        }
+        else {
+            v += dio_ReadU4();
+        }
         break;
     case EH_PE_udata8:
-        v += dio_ReadU8();
+        if (rules.address_size == 8 && ((encoding >> 4) & 0x7) == EH_PB_pcrel) {
+            v += dio_ReadAddress(sec);
+        }
+        else {
+            v += dio_ReadU8();
+        }
         break;
     case EH_PE_sleb128:
         v += dio_ReadS8LEB128();
@@ -342,10 +352,20 @@ static U8_T read_frame_data_pointer(U1_T encoding, ELF_Section ** sec, U8_T func
         v += (I2_T)dio_ReadU2();
         break;
     case EH_PE_sdata4:
-        v += (I4_T)dio_ReadU4();
+        if (rules.address_size == 4 && ((encoding >> 4) & 0x7) == EH_PB_pcrel) {
+            v += dio_ReadAddress(sec);
+        }
+        else {
+            v += (I4_T)dio_ReadU4();
+        }
         break;
     case EH_PE_sdata8:
-        v += (I8_T)dio_ReadU8();
+        if (rules.address_size == 8 && ((encoding >> 4) & 0x7) == EH_PB_pcrel) {
+            v += dio_ReadAddress(sec);
+        }
+        else {
+            v += (I8_T)dio_ReadU8();
+        }
         break;
     default:
         str_exception(ERR_INV_DWARF, "Unknown encoding of .eh_frame section pointers");
