@@ -1379,10 +1379,26 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
         }
     }
 
-    if (error == 0 && find_symbol_list == NULL && scope != NULL && scope->obj != NULL) {
+    if (error == 0 && scope != NULL && scope->obj != NULL) {
         Trap trap;
         if (set_trap(&trap)) {
+            if (sym_frame != STACK_NO_FRAME) {
+                int use_frame = 0;
+                if (scope->obj->mTag == TAG_subprogram) {
+                    UnitAddress addr;
+                    find_unit(sym_ctx, sym_ip, &addr);
+                    if (addr.unit != NULL && check_in_range(scope->obj, &addr)) use_frame = 1;
+                }
+                if (!use_frame) sym_frame = STACK_NO_FRAME;
+            }
             find_in_object_tree(scope->obj, 2, NULL, name);
+            if (find_symbol_list == NULL && scope->obj->mTag == TAG_subprogram) {
+                ObjectInfo * obj = get_dwarf_children(scope->obj);
+                while (obj != NULL) {
+                    if (obj->mTag == TAG_lexical_block) find_in_object_tree(obj, 3, NULL, name);
+                    obj = obj->mSibling;
+                }
+            }
             clear_trap(&trap);
         }
         else {

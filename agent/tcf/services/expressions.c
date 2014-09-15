@@ -1047,10 +1047,20 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
         Symbol * sym = NULL;
         int n = 0;
 
-        if (scope != NULL) n = find_symbol_in_scope(
-            expression_context, expression_frame, expression_addr, scope->type, name, &sym);
-        else n = find_symbol_by_name(
-            expression_context, expression_frame, expression_addr, name, &sym);
+        if (scope != NULL) {
+            int scope_class = 0;
+            Symbol * scope_sym = scope->sym;
+            if (scope_sym != NULL && get_symbol_class(scope_sym, &scope_class) < 0) {
+                error(errno, "Cannot retrieve symbol class");
+            }
+            if (scope_class != SYM_CLASS_FUNCTION) {
+                scope_sym = scope->type;
+            }
+            n = find_symbol_in_scope(expression_context, expression_frame, expression_addr, scope_sym, name, &sym);
+        }
+        else {
+            n = find_symbol_by_name(expression_context, expression_frame, expression_addr, name, &sym);
+        }
 
         if (n < 0) {
             if (get_error_code(errno) != ERR_SYM_NOT_FOUND) error(errno, "Cannot read symbol data");
