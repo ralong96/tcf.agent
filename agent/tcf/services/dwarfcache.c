@@ -649,6 +649,9 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         Info->mFlags |= DOIF_extension;
         break;
     case AT_MIPS_linkage_name:
+        Info->mFlags |= DOIF_mips_linkage_name;
+        break;
+    case AT_linkage_name:
         Info->mFlags |= DOIF_linkage_name;
         break;
     case AT_mangled:
@@ -1027,6 +1030,7 @@ static int cmp_pub_objects(ObjectInfo * x, ObjectInfo * y) {
         DOIF_public |
         DOIF_ranges |
         DOIF_low_pc |
+        DOIF_mips_linkage_name |
         DOIF_linkage_name |
         DOIF_mangled_name |
         DOIF_optional;

@@ -669,8 +669,13 @@ static int cmp_object_profiles(ObjectInfo * x, ObjectInfo * y) {
 static const char * get_linkage_name(ObjectInfo * obj) {
     Trap trap;
     PropertyValue p;
-    if ((obj->mFlags & DOIF_linkage_name) && set_trap(&trap)) {
+    if ((obj->mFlags & DOIF_mips_linkage_name) && set_trap(&trap)) {
         read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_MIPS_linkage_name, &p);
+        clear_trap(&trap);
+        if (p.mAddr != NULL) return (char *)p.mAddr;
+    }
+    if ((obj->mFlags & DOIF_linkage_name) && set_trap(&trap)) {
+        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_linkage_name, &p);
         clear_trap(&trap);
         if (p.mAddr != NULL) return (char *)p.mAddr;
     }
@@ -1274,8 +1279,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                 no_loc_infos_in_list = has_symbol_list_no_location_info();
 
                 /* If we have no address, continue */
-                if (sym_ip != 0 && find_symbol_list != NULL && no_loc_infos_in_list == 0)
-                    break;
+                if (sym_ip != 0 && find_symbol_list != NULL && no_loc_infos_in_list == 0) break;
             }
             file = elf_list_next(sym_ctx);
             if (file == NULL) error = errno;
