@@ -1609,14 +1609,16 @@ static void primary_expression(int mode, Value * v) {
         next_sy();
     }
     else if (text_sy == SY_VAL) {
+        int flags = text_val_flags;
         *v = text_val;
+        next_sy();
 #if ENABLE_Symbols
         if (v->type_class == TYPE_CLASS_INTEGER || v->type_class == TYPE_CLASS_CARDINAL) {
             size_t size = 0;
             uint64_t n = to_uns(mode, v);
-            if (text_val_flags & VAL_FLAG_C) {
+            if (flags & VAL_FLAG_C) {
                 Symbol * type = NULL;
-                if (get_std_type(text_val_flags & VAL_FLAG_L ? "wchar_t" : "char", TYPE_CLASS_UNKNOWN, &type, &size)) {
+                if (get_std_type(flags & VAL_FLAG_L ? "wchar_t" : "char", TYPE_CLASS_UNKNOWN, &type, &size)) {
                     uint64_t m = ((uint64_t)1 << (size * 8 - 1)) - 1;
                     if (n <= m) {
                         v->type = type;
@@ -1625,7 +1627,7 @@ static void primary_expression(int mode, Value * v) {
                 }
             }
             else {
-                if ((text_val_flags & (VAL_FLAG_L | VAL_FLAG_U)) == 0) {
+                if ((flags & (VAL_FLAG_L | VAL_FLAG_U)) == 0) {
                     Symbol * type = NULL;
                     if (get_std_type("int", TYPE_CLASS_INTEGER, &type, &size)) {
                         uint64_t m = ((uint64_t)1 << (size * 8 - 1)) - 1;
@@ -1635,8 +1637,8 @@ static void primary_expression(int mode, Value * v) {
                         }
                     }
                 }
-                if (v->type == NULL && (text_val_flags & VAL_FLAG_L) == 0 &&
-                        (text_val_flags & (VAL_FLAG_X | VAL_FLAG_U)) != 0) {
+                if (v->type == NULL && (flags & VAL_FLAG_L) == 0 &&
+                        (flags & (VAL_FLAG_X | VAL_FLAG_U)) != 0) {
                     Symbol * type = NULL;
                     if (get_std_type("unsigned int", TYPE_CLASS_CARDINAL, &type, &size)) {
                         uint64_t m = ((uint64_t)1 << (size * 8)) - 1;
@@ -1646,7 +1648,7 @@ static void primary_expression(int mode, Value * v) {
                         }
                     }
                 }
-                if (v->type == NULL && (text_val_flags & VAL_FLAG_U) == 0) {
+                if (v->type == NULL && (flags & VAL_FLAG_U) == 0) {
                     Symbol * type = NULL;
                     if (get_std_type("long int", TYPE_CLASS_INTEGER, &type, &size)) {
                         uint64_t m = ((uint64_t)1 << (size * 8 - 1)) - 1;
@@ -1672,18 +1674,53 @@ static void primary_expression(int mode, Value * v) {
         else if (v->type_class == TYPE_CLASS_REAL) {
             size_t size = 0;
             Symbol * type = NULL;
-            const char * name = text_val_flags & VAL_FLAG_F ? "float" : "double";
+            const char * name = flags & VAL_FLAG_F ? "float" : "double";
             if (get_std_type(name, TYPE_CLASS_REAL, &type, &size)) {
                 v->type = type;
                 if (size != v->size) set_fp_value(v, size, to_double(mode, v));
             }
         }
-        else if (v->type_class == TYPE_CLASS_ARRAY) {
-            if (text_val_flags & VAL_FLAG_S) {
+        else if (v->type_class == TYPE_CLASS_ARRAY && (flags & VAL_FLAG_S) != 0) {
+            if (text_sy == SY_SCOPE) {
+                Value x;
+                char * name = NULL;
+                if (flags & VAL_FLAG_L) {
+                    unsigned i = 0;
+                    unsigned j = 0;
+                    unsigned size = (unsigned)v->size;
+                    name = (char *)tmp_alloc_zero(size + 1);
+                    for (i = 0; i + 3 < size; i += 4) {
+                        unsigned ch = ((uint8_t *)v->value)[i + 0];
+                        ch |= (unsigned)((uint8_t *)v->value)[i + 1] << 8;
+                        ch |= (unsigned)((uint8_t *)v->value)[i + 2] << 16;
+                        ch |= (unsigned)((uint8_t *)v->value)[i + 3] << 24;
+                        if (ch < 0x80) {
+                            name[j++] = (char)ch;
+                        }
+                        else if (ch < 0x800) {
+                            name[j++] = (char)((ch >> 6) | 0xc0);
+                            name[j++] = (char)((ch & 0x3f) | 0x80);
+                        }
+                        else {
+                            name[j++] = (char)((ch >> 12) | 0xe0);
+                            name[j++] = (char)(((ch >> 6) & 0x3f) | 0x80);
+                            name[j++] = (char)((ch & 0x3f) | 0x80);
+                        }
+                    }
+                }
+                else {
+                    name = (char *)v->value;
+                }
+                if (identifier(mode, NULL, name, 0, &x) < 0)
+                    error(ERR_INV_EXPRESSION, "Undefined identifier '%s'", name);
+                next_sy();
+                qualified_name_expression(mode, &x, v);
+            }
+            else {
                 size_t size = 0;
                 Symbol * type = NULL;
-                if (get_std_type(text_val_flags & VAL_FLAG_L ? "wchar_t" : "char", TYPE_CLASS_UNKNOWN, &type, &size)) {
-                    size_t def_size = text_val_flags & VAL_FLAG_L ? 4 : 1;
+                if (get_std_type(flags & VAL_FLAG_L ? "wchar_t" : "char", TYPE_CLASS_UNKNOWN, &type, &size)) {
+                    size_t def_size = flags & VAL_FLAG_L ? 4 : 1;
                     unsigned n = (unsigned)(v->size / def_size);
                     if (n > 0 && size > 0 && get_array_symbol(type, n, &type) >= 0) {
                         if (size != def_size) {
@@ -1702,15 +1739,6 @@ static void primary_expression(int mode, Value * v) {
             }
         }
 #endif
-        next_sy();
-        if (v->type_class == TYPE_CLASS_ARRAY && text_sy == SY_SCOPE) {
-            Value x;
-            char * name = (char *)v->value;
-            if (identifier(mode, NULL, name, 0, &x) < 0)
-                error(ERR_INV_EXPRESSION, "Undefined identifier '%s'", name);
-            next_sy();
-            qualified_name_expression(mode, &x, v);
-        }
     }
     else if (text_sy == SY_SCOPE) {
         Value x;
