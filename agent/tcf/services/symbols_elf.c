@@ -287,7 +287,12 @@ int elf_tcf_symbol(Context * ctx, ELF_SymbolInfo * sym_info, Symbol ** symbol) {
             sym->sym_class = SYM_CLASS_VALUE;
             break;
         }
-        /* fall through */
+        if ((sym_info->section->flags & SHF_EXECINSTR) == 0) {
+            sym->sym_class = SYM_CLASS_REFERENCE;
+            break;
+        }
+        sym->sym_class = SYM_CLASS_FUNCTION;
+        break;
     case STT_FUNC:
     case STT_GNU_IFUNC:
         sym->sym_class = SYM_CLASS_FUNCTION;
@@ -2584,7 +2589,11 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
             return 0;
         }
         unpack_elf_symbol_info(sym->tbl, sym->index, &info);
-        if (info.type == STT_FUNC || info.type == STT_GNU_IFUNC || info.type == STT_NOTYPE) {
+        if (info.type == STT_FUNC || info.type == STT_GNU_IFUNC) {
+            *type_class = TYPE_CLASS_FUNCTION;
+            return 0;
+        }
+        if (info.type == STT_NOTYPE && info.section != NULL && (info.section->flags & SHF_EXECINSTR) != 0) {
             *type_class = TYPE_CLASS_FUNCTION;
             return 0;
         }
