@@ -854,7 +854,7 @@ static int set_pe_context(Context * ctx, int frame, ContextAddress ip, HANDLE pr
     if (!SymSetContext(process, stack_frame, NULL)) {
         DWORD err = GetLastError();
         if (err == ERROR_SUCCESS) {
-            /* Don't know why Windows do that */
+            /* Don't know why Windows do this */
         }
         else if (err == ERROR_MOD_NOT_FOUND && frame != STACK_NO_FRAME) {
             /* No local symbols data, search global scope */
@@ -982,8 +982,84 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
     return 0;
 }
 
+typedef struct FSISEnumerateSymbolsContext {
+    Context * ctx;
+    int frame;
+    const char * name;
+    Symbol * sym;
+    unsigned cnt;
+} FSISEnumerateSymbolsContext;
+
+static BOOL CALLBACK fsis_enumerate_symbols(SYMBOL_INFO * info, ULONG symbol_size, VOID * user_context) {
+    FSISEnumerateSymbolsContext * enum_context = (FSISEnumerateSymbolsContext *)user_context;
+    if (strcmp(enum_context->name, info->Name) == 0) {
+        Symbol * sym = alloc_symbol();
+        if (syminfo2symbol(enum_context->ctx, enum_context->frame, info, sym)) {
+            enum_context->sym = sym;
+            enum_context->cnt++;
+        }
+    }
+    return TRUE;
+}
+
 int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * scope, const char * name, Symbol ** sym) {
-    /* TODO: find_symbol_in_scope() for Windows */
+    ContextAddress scope_addr = 0;
+    Symbol ** buf = NULL;
+    int cnt = 0;
+    int i;
+
+    if (scope == NULL) return find_symbol_by_name(ctx, frame, ip, name, sym);
+
+    if (get_symbol_children(scope, &buf, &cnt) < 0) return -1;
+    for (i = 0; i < cnt; i++) {
+        char * s = NULL;
+        if (get_symbol_name(buf[i], &s) < 0) return -1;
+        if (s != NULL && strcmp(s, name) == 0) {
+            *sym = buf[i];
+            return 0;
+        }
+    }
+
+    if (get_symbol_address(scope, &scope_addr) == 0) {
+        ULONG64 buffer[(sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR) + sizeof(ULONG64) - 1) / sizeof(ULONG64)];
+        HANDLE process = get_context_handle(context_get_group(ctx, CONTEXT_GROUP_PROCESS));
+        SYMBOL_INFO * symbol = (SYMBOL_INFO *)buffer;
+        IMAGEHLP_STACK_FRAME stack_frame;
+        FSISEnumerateSymbolsContext enum_context;
+
+        symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+        symbol->MaxNameLen = MAX_SYM_NAME;
+
+        memset(&stack_frame, 0, sizeof(IMAGEHLP_STACK_FRAME));
+        stack_frame.InstructionOffset = scope_addr;
+
+        if (!SymSetContext(process, &stack_frame, NULL)) {
+            DWORD err = GetLastError();
+            if (err == ERROR_SUCCESS) {
+                /* Don't know why Windows do this */
+            }
+            else {
+                set_win32_errno(err);
+                return -1;
+            }
+        }
+
+        memset(&enum_context, 0, sizeof(FSISEnumerateSymbolsContext));
+        enum_context.ctx = ctx;
+        enum_context.frame = frame;
+        enum_context.name = name;
+
+        if (!SymEnumSymbols(process, 0, NULL, fsis_enumerate_symbols, &enum_context)) {
+            set_win32_errno(GetLastError());
+            return -1;
+        }
+
+        if (enum_context.cnt == 1) {
+            *sym = enum_context.sym;
+            return 0;
+        }
+    }
+
     errno = ERR_SYM_NOT_FOUND;
     return -1;
 }
@@ -1038,7 +1114,7 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * call_
     if (!SymSetContext(process, &stack_frame, NULL)) {
         DWORD err = GetLastError();
         if (err == ERROR_SUCCESS) {
-            /* Don't know why Windows does that */
+            /* Don't know why Windows do this */
         }
         else {
             set_win32_errno(err);
