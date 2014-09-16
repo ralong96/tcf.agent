@@ -1050,11 +1050,13 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
         if (scope != NULL) {
             int scope_class = 0;
             Symbol * scope_sym = scope->sym;
-            if (scope_sym != NULL && get_symbol_class(scope_sym, &scope_class) < 0) {
-                error(errno, "Cannot retrieve symbol class");
-            }
-            if (scope_class != SYM_CLASS_FUNCTION) {
-                scope_sym = scope->type;
+            if (scope->type != NULL) {
+                if (scope_sym != NULL && get_symbol_class(scope_sym, &scope_class) < 0) {
+                    error(errno, "Cannot retrieve symbol class");
+                }
+                if (scope_class != SYM_CLASS_FUNCTION) {
+                    scope_sym = scope->type;
+                }
             }
             n = find_symbol_in_scope(expression_context, expression_frame, expression_addr, scope_sym, name, &sym);
         }
