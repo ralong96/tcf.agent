@@ -456,8 +456,8 @@ void dio_ReadAttribute(U2_T Attr, U2_T Form) {
     case FORM_REF4          : dio_ReadFormRelRef(dio_ReadU4()); break;
     case FORM_REF8          : dio_ReadFormRelRef(dio_ReadU8()); break;
     case FORM_REF_UDATA     : dio_ReadFormRelRef(dio_ReadULEB128()); break;
-    case FORM_SEC_OFFSET:   if (sUnit->m64bit) dio_ReadFormData(8, dio_ReadU8());
-                            else dio_ReadFormData(4, dio_ReadU4());
+    case FORM_SEC_OFFSET:   if (sUnit->m64bit) dio_ReadFormData(8, dio_ReadAddressX(&dio_gFormSection,8));
+                            else dio_ReadFormData(4, dio_ReadAddressX(&dio_gFormSection,4));
                             break;
     case FORM_EXPRLOC       : dio_ReadFormBlock(dio_ReadULEB128()); break;
     case FORM_REF_SIG8      : dio_ReadFormData(8, dio_ReadU8()); break;
