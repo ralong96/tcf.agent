@@ -3458,6 +3458,8 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         if (sym->dimension != 0) {
             /* @plt symbol */
             address = sym->tbl->addr + sym->cardinal + sym->index * sym->dimension;
+            address = elf_map_to_run_time_address(sym_ctx, sym->tbl->file, sym->tbl, address);
+            if (errno) return -1;
             add_location_command(info, SFT_CMD_NUMBER)->args.num = address;
             return 0;
         }
