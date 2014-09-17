@@ -868,6 +868,41 @@ static void add_expression(DWARFExpressionInfo * info) {
             check_frame();
             op_parameter_ref();
             break;
+        case OP_GNU_const_type:
+            expr_pos++;
+            {
+                U8_T type = read_u8leb128();
+                unsigned size = expr->expr_addr[expr_pos++];
+                int sign = 0;
+                ObjectInfo * obj = find_object(
+                    get_dwarf_cache(expr->object->mCompUnit->mFile),
+                    expr->object->mCompUnit->mDesc.mSection->addr +
+                    expr->object->mCompUnit->mDesc.mUnitOffs + type);
+                if (obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_const_type");
+                if (obj->mTag != TAG_base_type) str_exception(ERR_INV_DWARF, "Invalid object tag in OP_GNU_const_type");
+                switch (obj->u.mFundType) {
+                case ATE_address:
+                case ATE_unsigned:
+                case ATE_unsigned_char:
+                    break;
+                case ATE_signed:
+                case ATE_signed_char:
+                    sign = 1;
+                    break;
+                default:
+                    str_exception(ERR_INV_DWARF, "Unsupported type in OP_GNU_const_type");
+                    break;
+                }
+                switch (size) {
+                case 1: add(sign ? OP_const1s : OP_const1u); break;
+                case 2: add(sign ? OP_const2s : OP_const2u); break;
+                case 4: add(sign ? OP_const4s : OP_const4u); break;
+                case 8: add(sign ? OP_const8s : OP_const8u); break;
+                default: str_exception(ERR_INV_DWARF, "Invalid size in OP_GNU_const_type");
+                }
+                copy(size);
+            }
+            break;
         case OP_GNU_regval_type:
             expr_pos++;
             {
@@ -879,7 +914,7 @@ static void add_expression(DWARFExpressionInfo * info) {
                     expr->object->mCompUnit->mDesc.mSection->addr +
                     expr->object->mCompUnit->mDesc.mUnitOffs + type);
                 if (obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_regval_type");
-                if (!get_num_prop(obj, AT_byte_size, &size))str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_regval_type");
+                if (!get_num_prop(obj, AT_byte_size, &size)) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_regval_type");
                 add(OP_regx);
                 add_uleb128(reg);
                 add(OP_piece);
