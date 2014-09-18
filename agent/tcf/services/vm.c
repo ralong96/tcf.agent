@@ -640,14 +640,12 @@ static void evaluate_expression(void) {
                     size = read_u8leb128();
                     if (size == 0 || (n >= addr && n - addr < size)) {
                         Trap trap;
-                        LocationExpressionState * s = state;
                         size_t code_len_org = code_len;
                         if (set_trap(&trap)) {
                             code_len = state->code_len = nxt_pos;
                             evaluate_expression();
                             clear_trap(&trap);
                         }
-                        state = s;
                         code_len = state->code_len = code_len_org;
                         if (trap.error) exception(trap.error);
                         break;
@@ -659,7 +657,7 @@ static void evaluate_expression(void) {
             break;
         case OP_TCF_offset:
             if (reg_def != NULL || value_addr != NULL) add_piece();
-            if (state->pieces) {
+            if (state->pieces_cnt) {
                 unsigned cnt = 0;
                 uint32_t bit_offs = 0;
                 uint32_t offs = read_u4leb128();
@@ -689,6 +687,7 @@ static void evaluate_expression(void) {
                     }
                     bit_offs += org_piece->bit_size;
                 }
+                if (state->pieces_cnt == 0) inv_dwarf("Ivalid size of implicit value");
             }
             else {
                 check_e_stack(1);
