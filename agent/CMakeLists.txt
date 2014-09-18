@@ -34,6 +34,10 @@ endif()
 
 include(../cmake-tcf-lib.txt)
 
+if(WIN32)
+    target_link_libraries(${TCF_LIB_NAME} version.lib psapi.lib)
+endif()
+
 message(STATUS "operating system:" ${TCF_OPSYS})
 message(STATUS "machine:" ${TCF_MACHINE})
 
