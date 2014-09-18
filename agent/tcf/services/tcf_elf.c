@@ -1029,6 +1029,39 @@ ELF_File * get_dwarf_file(ELF_File * file) {
 
 #if ENABLE_DebugContext
 
+static U8_T get_pheader_file_size(ELF_File * file, ELF_PHeader * p, MemoryRegion * r) {
+    assert(p >= file->pheaders && p < file->pheaders + file->pheader_cnt);
+    /* p->file_size is no valid if the file is debug info file */
+    if (file->debug_info_file) {
+        ELF_File * exec = elf_open_memory_region_file(r, NULL);
+        if (get_dwarf_file(exec) == file) {
+            unsigned i;
+            for (i = 0; i < exec->pheader_cnt; i++) {
+                ELF_PHeader * q = exec->pheaders + i;
+                if (q->type == p->type && q->offset == p->offset)
+                    return q->file_size;
+            }
+        }
+        return 0;
+    }
+    return p->file_size;
+}
+
+static U8_T get_pheader_address(ELF_File * file, ELF_PHeader * p) {
+    ELF_File * debug = get_dwarf_file(file);
+    assert(p >= file->pheaders && p < file->pheaders + file->pheader_cnt);
+    /* p->address is no valid if the file is exec file with split debug info */
+    if (file != debug) {
+        unsigned i;
+        for (i = 0; i < debug->pheader_cnt; i++) {
+            ELF_PHeader * q = debug->pheaders + i;
+            if (q->type == p->type && q->offset == p->offset)
+                return q->address;
+        }
+    }
+    return p->address;
+}
+
 ELF_File * elf_open_memory_region_file(MemoryRegion * r, int * error) {
     ELF_File * file = NULL;
     ino_t ino = r->ino;
@@ -1265,6 +1298,8 @@ void elf_list_done(Context * ctx) {
 
 static ELF_Section * find_section_by_offset(ELF_File * file, U8_T offs) {
     unsigned i;
+    /* Note: debug info file has invalid section offsets */
+    assert(!file->debug_info_file);
     for (i = 1; i < file->section_cnt; i++) {
         ELF_Section * sec = file->sections + i;
         if (sec->size == 0) continue;
@@ -1274,7 +1309,20 @@ static ELF_Section * find_section_by_offset(ELF_File * file, U8_T offs) {
     return NULL;
 }
 
-static int is_p_header_region(ELF_PHeader * p, MemoryRegion * r) {
+static ELF_Section * find_section_by_address(ELF_File * file, U8_T addr, int to_dwarf) {
+    unsigned i;
+    /* Note: section->addr not valid in exec file with split debug info */
+    assert(!to_dwarf || get_dwarf_file(file) == file);
+    for (i = 1; i < file->section_cnt; i++) {
+        ELF_Section * s = file->sections + i;
+        if ((s->flags & SHF_ALLOC) == 0) continue;
+        if (s->addr <= addr && s->addr + s->size > addr) return s;
+    }
+    return NULL;
+}
+
+static int is_p_header_region(ELF_File * file, ELF_PHeader * p, MemoryRegion * r) {
+    assert(p >= file->pheaders && p < file->pheaders + file->pheader_cnt);
     if (p->type != PT_LOAD) return 0;
     if (r->sect_name != NULL) return 0;
     if (r->flags) {
@@ -1286,10 +1334,10 @@ static int is_p_header_region(ELF_PHeader * p, MemoryRegion * r) {
         if (r->file_offs + r->file_size <= p->offset) return 0;
     }
     else {
-        if (r->bss && p->file_size > 0) return 0;
+        if (r->bss && get_pheader_file_size(file, p, r) > 0) return 0;
         if (r->file_offs + r->size <= p->offset) return 0;
     }
-    if (r->file_offs >= p->offset + p->file_size) return 0;
+    if (r->file_offs >= p->offset + get_pheader_file_size(file, p, r)) return 0;
     return 1;
 }
 
@@ -1319,20 +1367,24 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
             for (j = 0; range == NULL && j < file->pheader_cnt; j++) {
                 U8_T offs_min = 0;
                 U8_T offs_max = 0;
+                U8_T pheader_address = 0;
+                U8_T pheader_file_size = 0;
                 ELF_PHeader * p = file->pheaders + j;
                 ELF_Section * sec = NULL;
-                if (!is_p_header_region(p, r)) continue;
+                if (!is_p_header_region(file, p, r)) continue;
+                pheader_address = get_pheader_address(file, p);
+                pheader_file_size = get_pheader_file_size(file, p, r);
                 offs_min = addr_min - r->addr + r->file_offs;
                 offs_max = addr_max - r->addr + r->file_offs;
-                if (p->offset >= offs_max || p->offset + p->file_size <= offs_min) continue;
-                link_addr_min = (ContextAddress)(offs_min - p->offset + p->address);
-                link_addr_max = (ContextAddress)(offs_max - p->offset + p->address);
-                if (link_addr_min < p->address) link_addr_min = (ContextAddress)p->address;
-                if (link_addr_max >= p->address + p->file_size) link_addr_max = (ContextAddress)(p->address + p->file_size);
+                if (p->offset >= offs_max || p->offset + pheader_file_size <= offs_min) continue;
+                link_addr_min = (ContextAddress)(offs_min - p->offset + pheader_address);
+                link_addr_max = (ContextAddress)(offs_max - p->offset + pheader_address);
+                if (link_addr_min < pheader_address) link_addr_min = (ContextAddress)pheader_address;
+                if (link_addr_max >= pheader_address + pheader_file_size) link_addr_max = (ContextAddress)(pheader_address + pheader_file_size);
                 sec = find_section_by_offset(file, offs_min);
                 range = find_comp_unit_addr_range(get_dwarf_cache(debug), sec, link_addr_min, link_addr_max);
                 if (range != NULL && range_rt_addr != NULL) {
-                    *range_rt_addr = (ContextAddress)(range->mAddr - p->address + p->offset - r->file_offs + r->addr);
+                    *range_rt_addr = (ContextAddress)(range->mAddr - pheader_address + p->offset - r->file_offs + r->addr);
                 }
             }
         }
@@ -1363,7 +1415,7 @@ ContextAddress elf_run_time_address_in_region(Context * ctx, MemoryRegion * r, E
     if (r->sect_name == NULL) {
         for (i = 0; i < file->pheader_cnt; i++) {
             ELF_PHeader * p = file->pheaders + i;
-            if (!is_p_header_region(p, r)) continue;
+            if (!is_p_header_region(file, p, r)) continue;
             if (addr < p->address || addr >= p->address + p->mem_size) continue;
             return (ContextAddress)(addr - p->address + p->offset - r->file_offs + r->addr);
         }
@@ -1422,63 +1474,45 @@ ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_S
     return 0;
 }
 
-ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, ELF_File ** file, ELF_Section ** sec) {
+ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, int to_dwarf, ELF_File ** file, ELF_Section ** sec) {
     unsigned i;
 
     if (elf_get_map(ctx, addr, addr, &elf_map) < 0) return 0;
     for (i = 0; i < elf_map.region_cnt; i++) {
         MemoryRegion * r = elf_map.regions + i;
         ELF_File * f = NULL;
+        ELF_File * d = NULL;
         assert(r->addr <= addr);
         assert(r->addr + r->size > addr);
         f = elf_open_memory_region_file(r, NULL);
         if (f == NULL) continue;
+        d = to_dwarf ? get_dwarf_file(f) : f;
         if (r->sect_name == NULL) {
             unsigned j;
             if (f->pheader_cnt == 0 && f->type == ET_EXEC) {
-                *file = f;
-                if (sec != NULL) {
-                    for (j = 1; j < f->section_cnt; j++) {
-                        ELF_Section * s = f->sections + j;
-                        if ((s->flags & SHF_ALLOC) == 0) continue;
-                        if (s->addr <= addr && s->addr + s->size > addr) {
-                            *sec = s;
-                            return addr;
-                        }
-                    }
-                    *sec = NULL;
-                }
+                *file = d;
+                if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
                 return addr;
             }
             for (j = 0; j < f->pheader_cnt; j++) {
                 U8_T offs = addr - r->addr + r->file_offs;
+                U8_T pheader_address = 0;
                 ELF_PHeader * p = f->pheaders + j;
-                if (!is_p_header_region(p, r)) continue;
+                if (!is_p_header_region(f, p, r)) continue;
                 if (offs < p->offset || offs >= p->offset + p->mem_size) continue;
-                *file = f;
-                addr = (ContextAddress)(offs - p->offset + p->address);
-                if (sec != NULL) {
-                    for (j = 1; j < f->section_cnt; j++) {
-                        ELF_Section * s = f->sections + j;
-                        if ((s->flags & SHF_ALLOC) == 0) continue;
-                        if (s->addr + s->size <= p->address) continue;
-                        if (s->addr >= p->address + p->mem_size) continue;
-                        if (s->addr <= addr && s->addr + s->size > addr) {
-                            *sec = s;
-                            return addr;
-                        }
-                    }
-                    *sec = NULL;
-                }
+                *file = d;
+                pheader_address = to_dwarf ? get_pheader_address(f, p) : p->address;
+                addr = (ContextAddress)(offs - p->offset + pheader_address);
+                if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
                 return addr;
             }
         }
         else {
             unsigned j;
-            *file = f;
-            for (j = 1; j < f->section_cnt; j++) {
-                ELF_Section * s = f->sections + j;
+            for (j = 1; j < d->section_cnt; j++) {
+                ELF_Section * s = d->sections + j;
                 if (strcmp(s->name, r->sect_name) == 0) {
+                    *file = d;
                     if (sec != NULL) *sec = s;
                     return (ContextAddress)(addr - r->addr + s->addr);
                 }

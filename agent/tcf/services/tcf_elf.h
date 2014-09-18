@@ -606,9 +606,15 @@ extern ContextAddress elf_run_time_address_in_region(Context * ctx, MemoryRegion
 
 /*
  * Map run-time address in a context to link time address in an ELF file.
+ * If debug info is moved into separate file,
+ * to_dwarf = 0 - return address in the main file,
+ * to_dwarf = 1 - return address in the debug info file.
+ * Usually a separate (split) debug info file has the same addresses as
+ * the object file it is derived from, but this is not the case if a library gets re-linked
+ * after debug info has been split out (see also https://bugs.kde.org/show_bug.cgi?id=185816).
  * Return 0 if the address is not currently mapped.
  */
-extern ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, ELF_File ** file, ELF_Section ** sec);
+extern ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, int to_dwarf, ELF_File ** file, ELF_Section ** sec);
 
 /*
  * Read a word from context memory. Word size and endianess are determened by ELF file.

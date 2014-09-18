@@ -1368,9 +1368,9 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
         if (set_trap(&trap)) {
             ELF_File * file = NULL;
             ELF_Section * sec = NULL;
-            ContextAddress addr = elf_map_to_link_time_address(ctx, sym_ip, &file, &sec);
+            ContextAddress addr = elf_map_to_link_time_address(ctx, sym_ip, 1, &file, &sec);
             if (file != NULL) {
-                DWARFCache * cache = get_dwarf_cache(get_dwarf_file(file));
+                DWARFCache * cache = get_dwarf_cache(file);
                 UnitAddressRange * range = find_comp_unit_addr_range(cache, sec, addr, addr);
                 if (range != NULL) {
                     find_in_object_tree(range->mUnit->mObject, 2, NULL, name);
@@ -1498,7 +1498,7 @@ static int find_by_addr_in_sym_tables(ContextAddress addr, Symbol ** res) {
     ELF_File * file = NULL;
     ELF_Section * section = NULL;
     ELF_SymbolInfo sym_info;
-    ContextAddress lt_addr = elf_map_to_link_time_address(sym_ctx, addr, &file, &section);
+    ContextAddress lt_addr = elf_map_to_link_time_address(sym_ctx, addr, 1, &file, &section);
     if (section == NULL) return 0;
     elf_find_symbol_by_address(section, lt_addr, &sym_info);
     while (sym_info.sym_section != NULL) {
@@ -1558,7 +1558,7 @@ int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol **
     if (!found && ip.unit != NULL) {
         /* Search in compilation unit that contains stack frame PC */
         if (loc.file == NULL) {
-            loc.lt_addr = elf_map_to_link_time_address(sym_ctx, addr, &loc.file, &loc.section);
+            loc.lt_addr = elf_map_to_link_time_address(sym_ctx, addr, 1, &loc.file, &loc.section);
         }
         if (loc.file != NULL) {
             found = find_by_addr_in_unit(
@@ -1865,7 +1865,7 @@ ContextAddress is_plt_section(Context * ctx, ContextAddress addr) {
     ELF_Section * sec = NULL;
     ContextAddress res = 0;
     errno = 0;
-    res = elf_map_to_link_time_address(ctx, addr, &file, &sec);
+    res = elf_map_to_link_time_address(ctx, addr, 0, &file, &sec);
     if (res == 0 || sec == NULL) return 0;
     if (sec->name == NULL) return 0;
     if (strcmp(sec->name, ".plt") != 0) return 0;
@@ -1876,7 +1876,7 @@ int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
         ContextAddress * range_addr, ContextAddress * range_size) {
     ELF_File * file = NULL;
     ELF_Section * sec = NULL;
-    ContextAddress lt_addr = elf_map_to_link_time_address(ctx, ip, &file, &sec);
+    ContextAddress lt_addr = elf_map_to_link_time_address(ctx, ip, 1, &file, &sec);
     *isa = NULL;
     *range_addr = ip;
     *range_size = 1;
@@ -2072,7 +2072,7 @@ int get_stack_tracing_info(Context * ctx, ContextAddress rt_addr, StackTracingIn
     if (set_trap(&trap)) {
         ELF_File * file = NULL;
         ELF_Section * sec = NULL;
-        ContextAddress lt_addr = elf_map_to_link_time_address(ctx, rt_addr, &file, &sec);
+        ContextAddress lt_addr = elf_map_to_link_time_address(ctx, rt_addr, 0, &file, &sec);
         if (file != NULL) {
             get_dwarf_stack_frame_info(ctx, file, sec, lt_addr);
             if (dwarf_stack_trace_fp->cmds_cnt > 0) {
@@ -2145,7 +2145,7 @@ void ini_symbols_lib(void) {
 static int reader_is_valid(Context * ctx, ContextAddress addr) {
     ELF_File * file = NULL;
     ELF_Section * sec = NULL;
-    elf_map_to_link_time_address(ctx, addr, &file, &sec);
+    elf_map_to_link_time_address(ctx, addr, 0, &file, &sec);
     return file != NULL;
 }
 #endif

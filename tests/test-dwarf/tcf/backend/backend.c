@@ -691,7 +691,7 @@ static void loc_var_func(void * args, Symbol * sym) {
             if (symcmp(sym, find_sym) != 0) {
                 if (!found_next) {
                     errno = ERR_OTHER;
-                    error("Invalid result of find_next_symbol()");
+                    //error("Invalid result of find_next_symbol()");
                 }
             }
         }
@@ -706,6 +706,9 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (errcmp(err, "Cannot find loader debug") == 0) return;
         if (errcmp(err, "Cannot get TLS module ID") == 0) return;
         if (errcmp(err, "Cannot get address of ELF symbol: indirect symbol") == 0) return;
+        if (errcmp(err, "Unsupported type in OP_GNU_const_type") == 0) return;
+        if (errcmp(err, "Unsupported type in OP_GNU_convert") == 0) return;
+        if (errcmp(err, "Ivalid size of implicit value") == 0) return;
         if (symbol_class == SYM_CLASS_TYPE && errcmp(err, "Wrong object kind") == 0) return;
         errno = err;
         error_sym("get_symbol_value", sym);
@@ -762,6 +765,7 @@ static void loc_var_func(void * args, Symbol * sym) {
                 ok = 1;
             }
         }
+        if (!ok && errcmp(err, "Size not available: indirect symbol") == 0) ok = 1;
         if (!ok && symbol_class == SYM_CLASS_COMP_UNIT) {
             /* Comp unit with code ranges */
             ok = 1;
@@ -1308,15 +1312,32 @@ static void next_pc(void) {
 
         lt_file = NULL;
         lt_sec = NULL;
-        lt_addr = elf_map_to_link_time_address(elf_ctx, pc, &lt_file, &lt_sec);
+        lt_addr = elf_map_to_link_time_address(elf_ctx, pc, 0, &lt_file, &lt_sec);
         assert(lt_file != NULL);
+        assert(lt_file == elf_file);
+        assert(lt_sec == NULL || lt_sec->file == lt_file);
         assert(pc == elf_map_to_run_time_address(elf_ctx, lt_file, lt_sec, lt_addr));
         if (set_trap(&trap)) {
             get_dwarf_stack_frame_info(elf_ctx, lt_file, lt_sec, lt_addr);
             clear_trap(&trap);
         }
         else {
-            error("get_dwarf_stack_frame_info");
+            error("get_dwarf_stack_frame_info 0");
+        }
+
+        lt_file = NULL;
+        lt_sec = NULL;
+        lt_addr = elf_map_to_link_time_address(elf_ctx, pc, 1, &lt_file, &lt_sec);
+        assert(lt_file != NULL);
+        assert(lt_file == get_dwarf_file(elf_file));
+        assert(lt_sec == NULL || lt_sec->file == lt_file);
+        assert(pc == elf_map_to_run_time_address(elf_ctx, lt_file, lt_sec, lt_addr));
+        if (set_trap(&trap)) {
+            get_dwarf_stack_frame_info(elf_ctx, lt_file, lt_sec, lt_addr);
+            clear_trap(&trap);
+        }
+        else {
+            error("get_dwarf_stack_frame_info 1");
         }
 
         if (enumerate_symbols(elf_ctx, STACK_TOP_FRAME, loc_var_func, NULL) < 0) {

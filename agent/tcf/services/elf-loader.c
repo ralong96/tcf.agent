@@ -249,7 +249,7 @@ static ContextAddress find_module(Context * ctx, ELF_File * exe_file, ELF_File *
             ContextAddress l_addr = 0;
             ELF_File * link_file = NULL;
             read_field(ctx, sym_l_addr, link, &l_addr);
-            elf_map_to_link_time_address(ctx, l_addr, &link_file, NULL);
+            elf_map_to_link_time_address(ctx, l_addr, 0, &link_file, NULL);
             if (link_file != NULL) {
                 if (link_file == module) return l_tls_modid;
                 if (get_dwarf_file(link_file) == module) return l_tls_modid;
