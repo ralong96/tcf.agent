@@ -3827,6 +3827,7 @@ static void command_evaluate_cache_client(void * x) {
     int frame = STACK_NO_FRAME;
     Expression * e = NULL;
     Value value;
+    int value_ok = 0;
     void * buf = NULL;
     int err = 0;
 
@@ -3838,6 +3839,7 @@ static void command_evaluate_cache_client(void * x) {
         expression_frame = frame;
         expression_addr = e->addr;
         if (evaluate_script(MODE_NORMAL, e->script, 0, &value) < 0) err = errno;
+        else value_ok = 1;
     }
     if (!err && value.remote && value.size <= 0x10000) {
         buf = tmp_alloc_zero((size_t)value.size);
@@ -3864,7 +3866,7 @@ static void command_evaluate_cache_client(void * x) {
         write_stringz(&c->out, "null");
     }
     write_errno(&c->out, err);
-    if (err) {
+    if (!value_ok) {
         write_stringz(&c->out, "null");
     }
     else {
