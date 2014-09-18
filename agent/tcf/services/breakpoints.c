@@ -255,7 +255,7 @@ static unsigned get_bp_access_types(BreakpointInfo * bp, int virtual_addr) {
     char * type = bp->type;
     unsigned access_types = bp->access_mode;
     if (access_types == 0 && (bp->file != NULL || bp->location != NULL)) access_types |= CTX_BP_ACCESS_INSTRUCTION;
-    if (type != NULL && strcmp(type, "Software") == 0) access_types |= CTX_BP_ACCESS_SOFTWARE;
+    if (virtual_addr && type != NULL && strcmp(type, "Software") == 0) access_types |= CTX_BP_ACCESS_SOFTWARE;
     if (virtual_addr) access_types |= CTX_BP_ACCESS_VIRTUAL;
     return access_types;
 }
