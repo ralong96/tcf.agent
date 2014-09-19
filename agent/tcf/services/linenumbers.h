@@ -29,8 +29,14 @@
 
 typedef void LineNumbersCallBack(CodeArea *, void *);
 
+/*
+ * Search line number information for given file, line and column.
+ */
 extern int line_to_address(Context * ctx, const char * file, int line, int column, LineNumbersCallBack * client, void * args);
 
+/*
+ * Search line number information in given run-time address range 'addr0' (inclusive) .. 'addr1' (exclusive).
+ */
 extern int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, LineNumbersCallBack * client, void * args);
 
 /*

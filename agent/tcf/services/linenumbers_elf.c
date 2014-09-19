@@ -310,7 +310,7 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
     if (ctx->exited) exception(ERR_ALREADY_EXITED);
     while (addr0 < addr1) {
         ContextAddress range_rt_addr = 0;
-        UnitAddressRange * range = elf_find_unit(ctx, addr0, addr1, &range_rt_addr);
+        UnitAddressRange * range = elf_find_unit(ctx, addr0, addr1 - 1, &range_rt_addr);
         if (range == NULL) break;
         if (!range->mUnit->mLineInfoLoaded) load_line_numbers(range->mUnit);
         if (range->mUnit->mStatesCnt >= 2) {
