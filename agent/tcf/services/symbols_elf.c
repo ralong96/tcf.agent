@@ -1863,9 +1863,7 @@ int id2symbol(const char * id, Symbol ** res) {
 ContextAddress is_plt_section(Context * ctx, ContextAddress addr) {
     ELF_File * file = NULL;
     ELF_Section * sec = NULL;
-    ContextAddress res = 0;
-    errno = 0;
-    res = elf_map_to_link_time_address(ctx, addr, 0, &file, &sec);
+    ContextAddress res = elf_map_to_link_time_address(ctx, addr, 0, &file, &sec);
     if (res == 0 || sec == NULL) return 0;
     if (sec->name == NULL) return 0;
     if (strcmp(sec->name, ".plt") != 0) return 0;
@@ -3433,7 +3431,8 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                     add_location_command(info, SFT_CMD_NUMBER)->args.num = addr;
                     return 0;
                 }
-                else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
+                else if (get_error_code(errno) != ERR_SYM_NOT_FOUND &&
+                            get_error_code(errno) != ERR_INV_ADDRESS) {
                     return -1;
                 }
                 if (!(obj->mFlags & DOIF_ranges) && (obj->mFlags & DOIF_low_pc)) {

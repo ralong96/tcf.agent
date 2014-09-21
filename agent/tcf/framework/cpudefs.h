@@ -124,6 +124,7 @@ typedef struct LocationPiece {
     size_t size;
     unsigned bit_offs;
     unsigned bit_size;
+    unsigned implicit_pointer;  /* >0 if the value is result of implicit pointer dereference */
 } LocationPiece;
 
 typedef struct LocationExpressionState {

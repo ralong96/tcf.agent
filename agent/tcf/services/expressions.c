@@ -941,15 +941,10 @@ static int sym2value(int mode, Symbol * sym, Value * v) {
                 v->remote = 1;
             }
             else {
-                size_t size = 0;
-                void * value = NULL;
-                read_location_pieces(expression_context, frame_info,
-                    state->pieces, state->pieces_cnt, loc_info->big_endian, &value, &size);
-                if (state->pieces_cnt == 1 && state->pieces->reg != NULL && state->pieces->reg->size == state->pieces->size) {
+                if (state->pieces_cnt == 1 && state->pieces->implicit_pointer == 0 &&
+                        state->pieces->reg != NULL && state->pieces->reg->size == state->pieces->size) {
                     v->reg = state->pieces->reg;
                 }
-                v->size = size;
-                v->value = value;
                 v->loc = state;
             }
             v->big_endian = loc_info->big_endian;
@@ -1392,6 +1387,17 @@ static void load_value(Value * v) {
         }
         v->value = buf;
         v->remote = 0;
+        v->loc = 0;
+    }
+    else if (v->value == NULL) {
+        size_t size = 0;
+        void * value = NULL;
+        LocationExpressionState * loc = v->loc;
+        read_location_pieces(expression_context, loc->stack_frame,
+            loc->pieces, loc->pieces_cnt, v->big_endian, &value, &size);
+        if (size > v->size) size = (size_t)v->size;
+        set_value(v, value, size, v->big_endian);
+        sign_extend(v, loc);
     }
 }
 
@@ -1780,14 +1786,23 @@ static void op_deref(int mode, Value * v) {
         error(ERR_OTHER, "Array or pointer base type is unknown");
     }
     if (v->type_class == TYPE_CLASS_POINTER) {
-        if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
-            error(errno, "Cannot retrieve symbol size");
+        if (v->loc && v->loc->pieces_cnt == 1 && v->loc->pieces->implicit_pointer) {
+            v->loc->pieces->implicit_pointer--;
         }
-        v->address = (ContextAddress)to_uns(mode, v);
-        v->remote = 1;
-        v->constant = 0;
-        v->value = NULL;
-        set_value_endianness(v, NULL, type);
+        else {
+            if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
+                error(errno, "Cannot retrieve symbol size");
+            }
+            v->address = (ContextAddress)to_uns(mode, v);
+            v->remote = 1;
+            v->sym_list = NULL;
+            v->sym = NULL;
+            v->reg = NULL;
+            v->loc = NULL;
+            v->value = NULL;
+            v->constant = 0;
+            set_value_endianness(v, NULL, type);
+        }
     }
     v->type = type;
     if (get_symbol_type_class(v->type, &v->type_class) < 0) {
@@ -1931,6 +1946,7 @@ static void op_field(int mode, Value * v) {
                     }
                     read_location_pieces(expression_context, frame_info,
                         loc->pieces, loc->pieces_cnt, big_endian, &value, &size);
+                    if (size > v->size) size = (size_t)v->size;
                     set_value(v, value, size, big_endian);
                     sign_extend(v, loc);
                 }
@@ -1990,15 +2006,25 @@ static void op_index(int mode, Value * v) {
         error(errno, "Cannot get array element type");
     }
     if (v->type_class == TYPE_CLASS_POINTER) {
-        v->address = (ContextAddress)to_uns(mode, v);
-        v->remote = 1;
-        v->constant = 0;
-        v->value = NULL;
-        set_value_endianness(v, NULL, type);
+        if (v->loc && v->loc->pieces_cnt == 1 && v->loc->pieces->implicit_pointer) {
+            v->loc->pieces->implicit_pointer--;
+        }
+        else {
+            v->address = (ContextAddress)to_uns(mode, v);
+            v->remote = 1;
+            v->sym_list = NULL;
+            v->sym = NULL;
+            v->reg = NULL;
+            v->loc = NULL;
+            v->value = NULL;
+            v->constant = 0;
+            set_value_endianness(v, NULL, type);
+        }
     }
     if (get_symbol_size(type, &size) < 0) {
         error(errno, "Cannot get array element size");
     }
+
     if (mode == MODE_NORMAL) {
         int64_t index = 0;
         int64_t lower_bound = 0;
@@ -2021,6 +2047,7 @@ static void op_index(int mode, Value * v) {
             v->address += offs;
         }
         else {
+            load_value(v);
             v->value = (char *)v->value + offs;
         }
     }
@@ -2694,18 +2721,23 @@ static void lazy_unary_expression(int mode, Value * v) {
             break;
         case TYPE_CLASS_ARRAY:
             if (v->type_class == TYPE_CLASS_POINTER) {
-                v->address = (ContextAddress)to_uns(mode, v);
-                v->sym_list = NULL;
-                v->sym = NULL;
-                v->reg = NULL;
-                v->loc = NULL;
+                if (v->loc && v->loc->pieces_cnt == 1 && v->loc->pieces->implicit_pointer) {
+                    v->loc->pieces->implicit_pointer--;
+                }
+                else {
+                    v->address = (ContextAddress)to_uns(mode, v);
+                    v->remote = 1;
+                    v->sym_list = NULL;
+                    v->sym = NULL;
+                    v->reg = NULL;
+                    v->loc = NULL;
+                    v->value = NULL;
+                    v->size = type_size;
+                    v->big_endian = expression_context->big_endian;
+                    v->constant = 0;
+                }
                 v->type = type;
                 v->type_class = type_class;
-                v->size = type_size;
-                v->big_endian = expression_context->big_endian;
-                v->remote = 1;
-                v->constant = 0;
-                v->value = NULL;
             }
             else {
                 error(ERR_INV_EXPRESSION, "Invalid type cast: illegal source type");
@@ -2770,7 +2802,6 @@ static void pm_expression(int mode, Value * v) {
             v->loc = NULL;
             v->remote = 1;
             v->function = 0;
-            v->sym_list = NULL;
             v->value = NULL;
             v->constant = 0;
             if (get_symbol_base_type(x.type, &v->type) < 0) {
@@ -3829,6 +3860,7 @@ static void command_evaluate_cache_client(void * x) {
     Value value;
     int value_ok = 0;
     void * buf = NULL;
+    int implicit_pointer = 0;
     int err = 0;
 
     memset(&value, 0, sizeof(value));
@@ -3845,6 +3877,23 @@ static void command_evaluate_cache_client(void * x) {
         buf = tmp_alloc_zero((size_t)value.size);
         if (!err && context_read_mem(ctx, value.address, buf, (size_t)value.size) < 0)
             err = set_errno(errno, "Cannot read target memory");
+    }
+    if (!err && value.loc) {
+        unsigned n;
+        for (n = 0; n < value.loc->pieces_cnt; n++) {
+            if (value.loc->pieces[n].implicit_pointer) {
+                implicit_pointer = 1;
+                break;
+            }
+        }
+    }
+    if (!err && !value.remote && value.value == NULL && !implicit_pointer) {
+        Trap trap;
+        if (set_trap(&trap)) {
+            load_value(&value);
+            clear_trap(&trap);
+        }
+        err = trap.error;
     }
 
     cache_exit();
@@ -3897,79 +3946,89 @@ static void command_evaluate_cache_client(void * x) {
             cnt++;
         }
 #endif
-        if (value.reg != NULL) {
-            int reg_frame = value.loc->ctx == ctx ? frame : STACK_NO_FRAME;
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "Register");
-            write_stream(&c->out, ':');
-            json_write_string(&c->out, register2id(value.loc->ctx, reg_frame, value.reg));
-            cnt++;
-        }
 
-        if (value.remote) {
+        if (implicit_pointer) {
             if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "Address");
-            write_stream(&c->out, ':');
-            json_write_uint64(&c->out, value.address);
-            cnt++;
-        }
-
-        if (value.loc != NULL && value.loc->pieces_cnt > 0 && value.reg == NULL) {
-            unsigned i;
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "Pieces");
-            write_stream(&c->out, ':');
-            write_stream(&c->out, '[');
-            for (i = 0; i < value.loc->pieces_cnt; i++) {
-                LocationPiece * piece = value.loc->pieces + i;
-                if (i > 0) write_stream(&c->out, ',');
-                write_stream(&c->out, '{');
-                if (piece->size) {
-                    json_write_string(&c->out, "Size");
-                    write_stream(&c->out, ':');
-                    json_write_ulong(&c->out, piece->size);
-                }
-                else {
-                    json_write_string(&c->out, "BitSize");
-                    write_stream(&c->out, ':');
-                    json_write_ulong(&c->out, piece->bit_size);
-                }
-                if (piece->bit_offs) {
-                    write_stream(&c->out, ',');
-                    json_write_string(&c->out, "BitOffs");
-                    write_stream(&c->out, ':');
-                    json_write_ulong(&c->out, piece->bit_offs);
-                }
-                write_stream(&c->out, ',');
-                if (piece->reg) {
-                    Context * reg_ctx = value.loc->ctx;
-                    int reg_frame = get_info_frame(value.loc->ctx, value.loc->stack_frame);
-                    json_write_string(&c->out, "Register");
-                    write_stream(&c->out, ':');
-                    json_write_string(&c->out, register2id(reg_ctx, reg_frame, piece->reg));
-                }
-                else if (piece->value) {
-                    json_write_string(&c->out, "Value");
-                    write_stream(&c->out, ':');
-                    json_write_binary(&c->out, piece->value, piece->size);
-                }
-                else {
-                    json_write_string(&c->out, "Address");
-                    write_stream(&c->out, ':');
-                    json_write_uint64(&c->out, piece->addr);
-                }
-                write_stream(&c->out, '}');
-            }
-            write_stream(&c->out, ']');
-            cnt++;
-        }
-
-        if (value.big_endian) {
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "BigEndian");
+            json_write_string(&c->out, "ImplicitPointer");
             write_stream(&c->out, ':');
             json_write_boolean(&c->out, 1);
             cnt++;
+        }
+        else {
+            if (value.reg != NULL) {
+                int reg_frame = value.loc->ctx == ctx ? frame : STACK_NO_FRAME;
+                if (cnt > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, "Register");
+                write_stream(&c->out, ':');
+                json_write_string(&c->out, register2id(value.loc->ctx, reg_frame, value.reg));
+                cnt++;
+            }
+
+            if (value.remote) {
+                if (cnt > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, "Address");
+                write_stream(&c->out, ':');
+                json_write_uint64(&c->out, value.address);
+                cnt++;
+            }
+
+            if (value.loc != NULL && value.loc->pieces_cnt > 0 && value.reg == NULL) {
+                unsigned i;
+                if (cnt > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, "Pieces");
+                write_stream(&c->out, ':');
+                write_stream(&c->out, '[');
+                for (i = 0; i < value.loc->pieces_cnt; i++) {
+                    LocationPiece * piece = value.loc->pieces + i;
+                    if (i > 0) write_stream(&c->out, ',');
+                    write_stream(&c->out, '{');
+                    if (piece->size) {
+                        json_write_string(&c->out, "Size");
+                        write_stream(&c->out, ':');
+                        json_write_ulong(&c->out, piece->size);
+                    }
+                    else {
+                        json_write_string(&c->out, "BitSize");
+                        write_stream(&c->out, ':');
+                        json_write_ulong(&c->out, piece->bit_size);
+                    }
+                    if (piece->bit_offs) {
+                        write_stream(&c->out, ',');
+                        json_write_string(&c->out, "BitOffs");
+                        write_stream(&c->out, ':');
+                        json_write_ulong(&c->out, piece->bit_offs);
+                    }
+                    write_stream(&c->out, ',');
+                    if (piece->reg) {
+                        Context * reg_ctx = value.loc->ctx;
+                        int reg_frame = get_info_frame(value.loc->ctx, value.loc->stack_frame);
+                        json_write_string(&c->out, "Register");
+                        write_stream(&c->out, ':');
+                        json_write_string(&c->out, register2id(reg_ctx, reg_frame, piece->reg));
+                    }
+                    else if (piece->value) {
+                        json_write_string(&c->out, "Value");
+                        write_stream(&c->out, ':');
+                        json_write_binary(&c->out, piece->value, piece->size);
+                    }
+                    else {
+                        json_write_string(&c->out, "Address");
+                        write_stream(&c->out, ':');
+                        json_write_uint64(&c->out, piece->addr);
+                    }
+                    write_stream(&c->out, '}');
+                }
+                write_stream(&c->out, ']');
+                cnt++;
+            }
+
+            if (value.big_endian) {
+                if (cnt > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, "BigEndian");
+                write_stream(&c->out, ':');
+                json_write_boolean(&c->out, 1);
+                cnt++;
+            }
         }
 
         write_stream(&c->out, '}');

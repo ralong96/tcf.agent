@@ -35,6 +35,7 @@ static LocationExpressionState * state = NULL;
 static RegisterDefinition * reg_def = NULL;
 static void * value_addr = NULL;
 static size_t value_size = 0;
+static unsigned implicit_pointer = 0;
 static uint8_t * code = NULL;
 static size_t code_pos = 0;
 static size_t code_len = 0;
@@ -160,8 +161,10 @@ static LocationPiece * add_piece(void) {
         state->stk_pos--;
         piece->addr = (ContextAddress)state->stk[state->stk_pos];
     }
-    reg_def = NULL;
+    piece->implicit_pointer = implicit_pointer;
+    implicit_pointer = 0;
     value_addr = NULL;
+    reg_def = NULL;
     return piece;
 }
 
@@ -170,11 +173,9 @@ static void set_state(LocationExpressionState * s) {
     code = state->code;
     code_pos = state->code_pos;
     code_len = state->code_len;
-    reg_def = NULL;
 }
 
 static void get_state(LocationExpressionState * s) {
-    if (reg_def != NULL || value_addr != NULL) add_piece();
     s->code_pos = code_pos;
     state = NULL;
     code = NULL;
@@ -684,6 +685,7 @@ static void evaluate_expression(void) {
                             piece->size = piece->bit_size / 8;
                             piece->bit_size = 0;
                         }
+                        piece->implicit_pointer++;
                     }
                     bit_offs += org_piece->bit_size;
                 }
@@ -692,6 +694,7 @@ static void evaluate_expression(void) {
             else {
                 check_e_stack(1);
                 state->stk[state->stk_pos - 1] += read_u8leb128();
+                implicit_pointer++;
             }
             break;
         case OP_GNU_entry_value:
@@ -756,9 +759,14 @@ int evaluate_vm_expression(LocationExpressionState * vm_state) {
     int error = 0;
     Trap trap;
 
+    implicit_pointer = 0;
+    value_addr = NULL;
+    reg_def = NULL;
+
     set_state(vm_state);
     if (set_trap(&trap)) {
         evaluate_expression();
+        if (reg_def != NULL || value_addr != NULL || implicit_pointer) add_piece();
         clear_trap(&trap);
     }
     else {

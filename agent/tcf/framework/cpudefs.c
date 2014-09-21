@@ -475,6 +475,10 @@ void read_location_pieces(Context * ctx, StackFrame * frame,
         unsigned piece_bits = piece->bit_size ? piece->bit_size : piece->size * 8;
         uint8_t * pbf = NULL;
         uint8_t * rbf = NULL;
+        if (piece->implicit_pointer) {
+            set_errno(ERR_OTHER, "Symbol value unknown: implicit pointer");
+            exception(errno);
+        }
         if (piece->reg) {
             if (piece->reg->size < piece_size) {
                 rbf = pbf = (uint8_t *)tmp_alloc_zero(piece_size);
@@ -529,6 +533,10 @@ void write_location_pieces(Context * ctx, StackFrame * frame,
         unsigned piece_bits = piece->bit_size ? piece->bit_size : piece->size * 8;
         uint8_t * pbf = NULL;
         uint8_t * rbf = NULL;
+        if (piece->implicit_pointer) {
+            set_errno(ERR_OTHER, "Cannot set symbol value: implicit pointer");
+            exception(errno);
+        }
         if (piece->reg) {
             if (piece->reg->size < piece_size) {
                 rbf = pbf = (uint8_t *)tmp_alloc_zero(piece_size);

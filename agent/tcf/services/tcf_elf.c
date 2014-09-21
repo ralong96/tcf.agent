@@ -1406,6 +1406,7 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
             }
         }
     }
+    errno = 0;
     return range;
 }
 
@@ -1492,6 +1493,7 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
             if (f->pheader_cnt == 0 && f->type == ET_EXEC) {
                 *file = d;
                 if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
+                errno = 0;
                 return addr;
             }
             for (j = 0; j < f->pheader_cnt; j++) {
@@ -1504,6 +1506,7 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
                 pheader_address = to_dwarf ? get_pheader_address(f, p) : p->address;
                 addr = (ContextAddress)(offs - p->offset + pheader_address);
                 if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
+                errno = 0;
                 return addr;
             }
         }
@@ -1513,12 +1516,15 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
                 ELF_Section * s = d->sections + j;
                 if (strcmp(s->name, r->sect_name) == 0) {
                     *file = d;
+                    addr = (ContextAddress)(addr - r->addr + s->addr);
                     if (sec != NULL) *sec = s;
-                    return (ContextAddress)(addr - r->addr + s->addr);
+                    errno = 0;
+                    return addr;
                 }
             }
         }
     }
+    errno = 0;
     return 0;
 }
 

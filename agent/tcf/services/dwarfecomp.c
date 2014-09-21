@@ -441,10 +441,6 @@ static void op_implicit_pointer(void) {
         read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, ref_obj, AT_location, &pv);
         dwarf_get_expression_list(&pv, &info);
         add_expression_list(info, 0, 0);
-        if (offset != 0) {
-            add(OP_TCF_offset);
-            add_uleb128(offset);
-        }
         clear_trap(&trap);
     }
     else if (trap.error == ERR_SYM_NOT_FOUND) {
@@ -471,11 +467,6 @@ static void op_implicit_pointer(void) {
             break;
         }
         if (pv.mAddr == NULL) str_exception(ERR_INV_DWARF, "Invalid OP_GNU_implicit_pointer");
-        if (offset != 0) {
-            if (offset > pv.mSize) str_exception(ERR_INV_DWARF, "Invalid OP_GNU_implicit_pointer");
-            pv.mSize -= (size_t)offset;
-            pv.mAddr = (U1_T *)pv.mAddr + offset;
-        }
         add(OP_implicit_value);
         add_uleb128(pv.mSize);
         for (i = 0; i < pv.mSize; i++) {
@@ -485,6 +476,8 @@ static void op_implicit_pointer(void) {
     else {
         exception(trap.error);
     }
+    add(OP_TCF_offset);
+    add_uleb128(offset);
 }
 
 static void op_push_tls_address(void) {

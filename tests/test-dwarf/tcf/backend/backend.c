@@ -66,6 +66,8 @@ static ContextAddress frame_addr = 0x40000000u;
 static const char * elf_file_name = NULL;
 static ELF_File * elf_file = NULL;
 static int mem_region_pos = 0;
+static int file_has_line_info = 0;
+static unsigned line_info_cnt = 0;
 static ContextAddress pc = 0;
 static unsigned pass_cnt = 0;
 static int test_posted = 0;
@@ -585,6 +587,87 @@ static void test_this_pointer(Symbol * base_type) {
     }
 }
 
+static void test_implicit_pointer(Symbol * sym) {
+    Trap trap;
+    StackFrame * frame_info = NULL;
+    LocationInfo * loc_info = NULL;
+    const char * id = symbol2id(sym);
+    LocationExpressionState * state = NULL;
+    int type_class = 0;
+    Symbol * type = NULL;
+    int cpp_ref = 0; /* '1' if the symbol is C++ reference */
+    Value v;
+
+    if (get_symbol_type(sym, &type) < 0) {
+        error_sym("get_symbol_type", sym);
+    }
+    if (type != NULL) {
+        if (get_symbol_type_class(sym, &type_class) < 0) {
+            error_sym("get_symbol_type_class", sym);
+        }
+        cpp_ref = is_cpp_reference(type);
+    }
+
+    if (get_location_info(sym, &loc_info) < 0) {
+        error_sym("get_location_info", sym);
+    }
+    else if (get_frame_info(elf_ctx, STACK_TOP_FRAME, &frame_info) < 0) {
+        error("get_frame_info");
+    }
+    assert(loc_info->value_cmds.cnt > 0);
+    assert(loc_info->code_size == 0 || (loc_info->code_addr <= pc && loc_info->code_addr + loc_info->code_size > pc));
+    if (set_trap(&trap)) {
+        unsigned i;
+        unsigned implicit_pointer = 0;
+        state = evaluate_location_expression(elf_ctx, frame_info,
+            loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, NULL, 0);
+        if (state->pieces_cnt == 0) {
+            errno = set_errno(ERR_OTHER, "Expected pieces");
+            error("evaluate_location_expression");
+        }
+        for (i = 0; i < state->pieces_cnt; i++) {
+            implicit_pointer += state->pieces[i].implicit_pointer;
+        }
+        if (implicit_pointer == 0) {
+            errno = set_errno(ERR_OTHER, "Expected implicit pointer");
+            error("evaluate_location_expression");
+        }
+        clear_trap(&trap);
+    }
+    else {
+        error("evaluate_location_expression");
+    }
+
+    if (state->pieces_cnt == 1 && !cpp_ref) {
+        char * expr = (char *)tmp_alloc(strlen(id) + 16);
+        sprintf(expr, "${%s}", id);
+        if (evaluate_expression(elf_ctx, STACK_TOP_FRAME, pc, expr, 0, &v) < 0) {
+            error_sym("evaluate_expression", sym);
+        }
+        if (v.loc->pieces->implicit_pointer != state->pieces->implicit_pointer) {
+            errno = set_errno(ERR_OTHER, "Invalid implicit_pointer");
+            error("evaluate_expression");
+        }
+
+        sprintf(expr, "*${%s}", id);
+        if (evaluate_expression(elf_ctx, STACK_TOP_FRAME, pc, expr, 0, &v) < 0) {
+            error_sym("evaluate_expression", sym);
+        }
+        if (v.loc && v.loc->pieces_cnt > 0) {
+            if (v.loc->pieces->implicit_pointer != state->pieces->implicit_pointer - 1) {
+                errno = set_errno(ERR_OTHER, "Invalid implicit_pointer");
+                error("evaluate_expression");
+            }
+        }
+        else {
+            if (state->pieces->implicit_pointer != 1) {
+                errno = set_errno(ERR_OTHER, "Invalid implicit_pointer");
+                error("evaluate_expression");
+            }
+        }
+    }
+}
+
 static void loc_var_func(void * args, Symbol * sym) {
     int frame = 0;
     Context * ctx = NULL;
@@ -709,6 +792,10 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (errcmp(err, "Unsupported type in OP_GNU_const_type") == 0) return;
         if (errcmp(err, "Unsupported type in OP_GNU_convert") == 0) return;
         if (errcmp(err, "Ivalid size of implicit value") == 0) return;
+        if (errcmp(err, "Symbol value unknown: implicit pointer") == 0) {
+            test_implicit_pointer(sym);
+            return;
+        }
         if (symbol_class == SYM_CLASS_TYPE && errcmp(err, "Wrong object kind") == 0) return;
         errno = err;
         error_sym("get_symbol_value", sym);
@@ -1127,6 +1214,8 @@ static void next_pc(void) {
     int test_cnt = 0;
     int loaded = mem_region_pos < 0;
     ContextAddress next_pc = pc + 1;
+    UnitAddressRange * unit_range = NULL;
+    ContextAddress rage_rt_addr = 0;
 
     for (;;) {
         if (mem_region_pos < 0) {
@@ -1277,6 +1366,25 @@ static void next_pc(void) {
             }
         }
 
+        unit_range = elf_find_unit(elf_ctx, pc, pc, &rage_rt_addr);
+        if (unit_range == NULL && errno) error("elf_find_unit");
+        if (unit_range != NULL) {
+            ELF_Section * sec = unit_range->mUnit->mFile->sections + unit_range->mSection;
+            ContextAddress addr = elf_map_to_run_time_address(elf_ctx, sec->file, sec, unit_range->mAddr);
+            if (addr > pc || addr + unit_range->mSize <= pc) {
+                set_errno(ERR_OTHER, "Invalid compile unit address");
+                error("elf_find_unit");
+            }
+            if (func_object != NULL && unit_range->mUnit != func_object->mCompUnit) {
+                set_errno(ERR_OTHER, "Invalid compile unit");
+                error("elf_find_unit");
+            }
+        }
+        else if (func_object != NULL) {
+            set_errno(ERR_OTHER, "Compile unit not found");
+            error("elf_find_unit");
+        }
+
         if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, "@ non existing name @", &sym) < 0) {
             if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
                 error("find_symbol_by_name");
@@ -1304,8 +1412,9 @@ static void next_pc(void) {
                 errno = set_errno(ERR_OTHER, "Invalid line area address");
                 error("line_to_address");
             }
+            line_info_cnt++;
         }
-        else if (func_object != NULL) {
+        else if (func_object != NULL && func_object->mCompUnit->mLineInfoOffs != 0) {
             //errno = set_errno(ERR_OTHER, "Line info not found");
             //error("address_to_line");
         }
@@ -1313,6 +1422,7 @@ static void next_pc(void) {
         lt_file = NULL;
         lt_sec = NULL;
         lt_addr = elf_map_to_link_time_address(elf_ctx, pc, 0, &lt_file, &lt_sec);
+        if (errno) error("elf_map_to_link_time_address");
         assert(lt_file != NULL);
         assert(lt_file == elf_file);
         assert(lt_sec == NULL || lt_sec->file == lt_file);
@@ -1328,6 +1438,7 @@ static void next_pc(void) {
         lt_file = NULL;
         lt_sec = NULL;
         lt_addr = elf_map_to_link_time_address(elf_ctx, pc, 1, &lt_file, &lt_sec);
+        if (errno) error("elf_map_to_link_time_address");
         assert(lt_file != NULL);
         assert(lt_file == get_dwarf_file(elf_file));
         assert(lt_sec == NULL || lt_sec->file == lt_file);
@@ -1514,6 +1625,16 @@ static void next_file(void) {
     memory_map_event_module_loaded(elf_ctx);
     mem_region_pos = -1;
 
+    line_info_cnt = 0;
+    file_has_line_info = 0;
+    for (j = 0; j < f->section_cnt; j++) {
+        ELF_Section * sec = f->sections + j;
+        if (sec->name == NULL) continue;
+        if (sec->size > 0 && (strcmp(sec->name, ".debug_line") == 0 || strcmp(sec->name, ".line") == 0)) {
+            file_has_line_info = 1;
+        }
+    }
+
     reg_size = 0;
     memset(reg_defs, 0, sizeof(reg_defs));
     memset(reg_vals, 0, sizeof(reg_vals));
@@ -1547,6 +1668,10 @@ static void test(void * args) {
     assert(test_posted);
     test_posted = 0;
     if (elf_file_name == NULL || mem_region_pos >= (int)mem_map.region_cnt) {
+        if (file_has_line_info && line_info_cnt == 0) {
+            set_errno(ERR_OTHER, "Line info not accessable");
+            error("address_to_line");
+        }
         next_file();
     }
     else {
