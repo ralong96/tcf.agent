@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1008,12 +1008,13 @@ static void load_addr_ranges(void) {
             if (j < i) memcpy(sCache->mAddrRanges + j, x, sizeof(UnitAddressRange));
             j++;
         }
+        /* duplicate seen - adjust size and complete copy */
         if (j < sCache->mAddrRangesCnt - 1) {
             UnitAddressRange * x = sCache->mAddrRanges + sCache->mAddrRangesCnt - 1;
             memcpy(sCache->mAddrRanges + j, x, sizeof(UnitAddressRange));
             j++;
+            sCache->mAddrRangesCnt = j;
         }
-        sCache->mAddrRangesCnt = j;
     }
 }
 
