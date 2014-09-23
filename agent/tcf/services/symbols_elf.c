@@ -1454,7 +1454,7 @@ static int find_by_addr_in_unit(ObjectInfo * obj, int level, UnitAddress * addr,
         case TAG_local_variable:
             if (sym_frame == STACK_NO_FRAME) break;
         case TAG_variable:
-            {
+            if (obj->mFlags & DOIF_location) {
                 U8_T lc = 0;
                 /* Ignore location evaluation errors. For example, the error can be caused by
                  * the object not being mapped into the context memory */
