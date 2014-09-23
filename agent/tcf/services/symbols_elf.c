@@ -62,9 +62,11 @@ struct Symbol {
     ObjectInfo * obj;
     ObjectInfo * var; /* 'this' object if the symbol represents implicit 'this' reference */
     ELF_Section * tbl;
-    int has_address;
+    int8_t sym_class;
+    int8_t has_address;
+    int8_t has_location;
+    int8_t priority;
     ContextAddress address;
-    int sym_class;
     Context * ctx;
     int frame;
     unsigned index;
@@ -76,7 +78,6 @@ struct Symbol {
     Symbol * next;
     unsigned level;
     unsigned pos;
-    unsigned dup;
 };
 
 #define is_array_type_pseudo_symbol(s) (s->sym_class == SYM_CLASS_TYPE && s->obj == NULL && s->base != NULL)
@@ -718,7 +719,7 @@ static int symbol_priority(ObjectInfo * obj) {
 }
 
 /* return 0 if symbol has no address, e.g. undef or common */
-static int has_symbol_address(Symbol * sym) {
+static int symbol_has_location(Symbol * sym) {
     if (sym->has_address) return 1;
     if (sym->tbl != NULL) {
         ELF_SymbolInfo info;
@@ -747,7 +748,7 @@ static int has_symbol_address(Symbol * sym) {
 static int has_symbol_list_no_location_info(void) {
     Symbol * s = find_symbol_list;
     while (s != NULL) {
-        if (has_symbol_address(s)) return 0;
+        if (s->has_location) return 0;
         s = s->next;
     }
     /* If we are here, no symbols has location info */
@@ -772,12 +773,10 @@ static int symbol_equ_comparator(const void * x, const void * y) {
 static int symbol_prt_comparator(const void * x, const void * y) {
     Symbol * sx = *(Symbol **)x;
     Symbol * sy = *(Symbol **)y;
-    int sx_addr = has_symbol_address(sx);
-    int sy_addr = has_symbol_address(sy);
 
     /* symbols with no address have lower priority */
-    if (sx_addr && !sy_addr) return +1;
-    if (sy_addr && !sx_addr) return -1;
+    if (sx->has_location && !sy->has_location) return +1;
+    if (sy->has_location && !sx->has_location) return -1;
 
     /* Symbols order by priority, from low to high,
      * most likely match must be last */
@@ -788,12 +787,8 @@ static int symbol_prt_comparator(const void * x, const void * y) {
     if (sx->obj == NULL && sy->obj != NULL) return -1;
     if (sx->obj != NULL && sy->obj == NULL) return +1;
 
-    if (sx->obj != sy->obj) {
-        int px = symbol_priority(sx->obj);
-        int py = symbol_priority(sy->obj);
-        if (px < py) return -1;
-        if (px > py) return +1;
-    }
+    if (sx->priority < sy->priority) return -1;
+    if (sx->priority > sy->priority) return +1;
 
     /* 'this' members have lower priority than local variables */
     if (sx->var == NULL && sy->var != NULL) return +1;
@@ -807,6 +802,8 @@ static int symbol_prt_comparator(const void * x, const void * y) {
 }
 
 static void add_to_find_symbol_buf(Symbol * sym) {
+    sym->has_location = symbol_has_location(sym);
+    sym->priority = sym->obj ? symbol_priority(sym->obj) : 0;
     sym->next = find_symbol_list;
     find_symbol_list = sym;
 }
@@ -835,6 +832,7 @@ static void sort_find_symbol_buf(void) {
      */
     unsigned cnt = 0;
     unsigned pos = 0;
+    unsigned dup = 0;
     Symbol ** buf = NULL;
     Symbol * s = find_symbol_list;
     if (s == NULL) return;
@@ -847,7 +845,6 @@ static void sort_find_symbol_buf(void) {
     s = find_symbol_list;
     buf = (Symbol **)tmp_alloc(sizeof(Symbol *) * cnt);
     while (s != NULL) {
-        s->dup = 0;
         s->pos = cnt - pos;
         buf[pos++] = s;
         s = s->next;
@@ -855,16 +852,15 @@ static void sort_find_symbol_buf(void) {
     find_symbol_list = NULL;
     /* Remove duplicate entries */
     qsort(buf, cnt, sizeof(Symbol *), symbol_equ_comparator);
-    for (pos = 1; pos < cnt; pos++) {
-        Symbol ** p = buf + pos;
-        if (symbol_equ_comparator(p - 1, p)) continue;
-        (*p)->dup = 1;
+    for (pos = 1, dup = 0; pos < cnt; pos++) {
+        if (symbol_equ_comparator(buf + pos, buf + dup) == 0) continue;
+        buf[++dup] = buf[pos];
     }
+    cnt = dup + 1;
     /* Final sort */
     qsort(buf, cnt, sizeof(Symbol *), symbol_prt_comparator);
     for (pos = 0; pos < cnt; pos++) {
         s = buf[pos];
-        if (s->dup) continue;
         s->next = find_symbol_list;
         find_symbol_list = s;
     }
