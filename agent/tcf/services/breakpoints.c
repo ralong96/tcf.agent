@@ -552,7 +552,7 @@ static void flush_instructions(void) {
         l = l->next;
         if (bi->virtual_addr) {
             if (!bi->planted) plant_instruction(bi);
-            if (!bi->planted && bi->unsupported) {
+            if (!bi->planted && bi->unsupported && bi->cb.length == 1) {
                 BreakInstruction * ca = plant_at_canonical_address(bi);
                 if (ca != NULL) {
                     bi->planted_as_sw_bp = 1;
@@ -1395,25 +1395,23 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
 
     if (evaluate_expression(ctx, STACK_NO_FRAME, ip, bp->location, 1, &v) < 0) error = errno;
     if (!error && value_to_address(&v, &addr) < 0) error = errno;
-    if (bp->access_mode & (CTX_BP_ACCESS_DATA_READ | CTX_BP_ACCESS_DATA_WRITE)) {
-        if (bp->access_size > 0) {
-            size = bp->access_size;
-        }
-        else {
-            size = context_word_size(ctx);
+    if (bp->access_size > 0) {
+        size = bp->access_size;
+    }
+    else if (bp->access_mode & (CTX_BP_ACCESS_DATA_READ | CTX_BP_ACCESS_DATA_WRITE)) {
+        size = context_word_size(ctx);
 #if ENABLE_Symbols
-            if (v.type != NULL) {
-                Symbol * type = v.type;
-                int type_class = 0;
-                if (!error && get_symbol_type_class(type, &type_class) < 0) error = errno;
-                if (!error && type_class == TYPE_CLASS_POINTER) {
-                    Symbol * base_type = NULL;
-                    if (!error && get_symbol_base_type(type, &base_type) < 0) error = errno;
-                    if (!error && base_type != NULL && get_symbol_size(base_type, &size) < 0) error = errno;
-                }
+        if (v.type != NULL) {
+            Symbol * type = v.type;
+            int type_class = 0;
+            if (!error && get_symbol_type_class(type, &type_class) < 0) error = errno;
+            if (!error && type_class == TYPE_CLASS_POINTER) {
+                Symbol * base_type = NULL;
+                if (!error && get_symbol_base_type(type, &base_type) < 0) error = errno;
+                if (!error && base_type != NULL && get_symbol_size(base_type, &size) < 0) error = errno;
             }
-#endif
         }
+#endif
     }
     if (error) {
         address_expression_error(ctx, bp, error);
