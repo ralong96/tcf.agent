@@ -1016,8 +1016,19 @@ static void read_frame_cie(U8_T fde_pos, U8_T pos) {
                 rules.lsda_encoding = dio_ReadU1();
                 break;
             case 'P':
-                rules.prh_encoding = dio_ReadU1();
-                read_frame_data_pointer(rules.prh_encoding, NULL, 0);
+                {
+                    Trap trap;
+                    U8_T addr_pos;
+                    rules.prh_encoding = dio_ReadU1();
+                    addr_pos = dio_GetPos();
+                    if (set_trap(&trap)) {
+                        read_frame_data_pointer(rules.prh_encoding, NULL, 0);
+                        clear_trap(&trap);
+                    }
+                    else {
+                        dio_SetPos(addr_pos + rules.address_size);
+                    }
+                }
                 break;
             case 'R':
                 rules.addr_encoding = dio_ReadU1();
