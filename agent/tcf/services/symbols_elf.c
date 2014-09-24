@@ -2243,12 +2243,11 @@ static U8_T get_array_index_length(ObjectInfo * obj) {
 }
 
 static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym) {
-    Trap trap;
-    Symbol * list = find_symbol_list;
-    if (set_trap(&trap)) {
-        *sym = NULL;
-        find_symbol_list = NULL;
-        if (obj->mFlags & DOIF_external) {
+    *sym = NULL;
+    if (obj->mFlags & DOIF_external) {
+        Trap trap;
+        Symbol * list = find_symbol_list;
+        if (set_trap(&trap)) {
             ELF_File * file = obj->mCompUnit->mFile;
             if (file->debug_info_file) {
                 size_t n = strlen(file->name);
@@ -2263,20 +2262,21 @@ static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym) {
                 }
             }
             if (file != NULL) {
+                find_symbol_list = NULL;
                 find_by_name_in_sym_table(file, get_linkage_name(obj), 1);
+                while (find_symbol_list != NULL) {
+                    Symbol * s = find_symbol_list;
+                    find_symbol_list = find_symbol_list->next;
+                    if (s->obj != obj) {
+                        *sym = s;
+                        break;
+                    }
+                }
             }
+            clear_trap(&trap);
         }
-        while (find_symbol_list != NULL) {
-            Symbol * s = find_symbol_list;
-            find_symbol_list = find_symbol_list->next;
-            if (s->obj != obj) {
-                *sym = s;
-                break;
-            }
-        }
-        clear_trap(&trap);
+        find_symbol_list = list;
     }
-    find_symbol_list = list;
     return *sym != NULL;
 }
 
