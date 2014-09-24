@@ -66,6 +66,7 @@ struct Symbol {
     int8_t has_address;
     int8_t has_location;
     int8_t priority;
+    int8_t weak;
     ContextAddress address;
     Context * ctx;
     int frame;
@@ -156,6 +157,7 @@ static struct BaseTypeAlias {
 
 #define equ_symbol_names(x, y) (*x == *y && cmp_symbol_names(x, y) == 0)
 
+static const char * get_linkage_name(ObjectInfo * obj);
 static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym);
 
 /* This function is used for DWARF reader testing */
@@ -407,6 +409,63 @@ static int is_thread_based_object(Symbol * sym) {
     return 0;
 }
 
+static int symbol_priority(ObjectInfo * obj) {
+    int p = 0;
+    if (obj->mFlags & DOIF_external) p += 2;
+    if (obj->mFlags & DOIF_declaration) p -= 4;
+    if (obj->mFlags & DOIF_abstract_origin) p += 1;
+    switch (obj->mTag) {
+    case TAG_class_type:
+    case TAG_structure_type:
+    case TAG_union_type:
+    case TAG_enumeration_type:
+        p -= 1;
+        break;
+    }
+    return p;
+}
+
+static int symbol_is_weak(ObjectInfo * obj) {
+    Trap trap;
+    if ((obj->mFlags & DOIF_external) == 0) return 0;
+    if ((obj->mFlags & DOIF_low_pc) == 0) return 0;
+    if (set_trap(&trap)) {
+        const char * name = get_linkage_name(obj);
+        unsigned h = calc_symbol_name_hash(name);
+        ELF_File * file = obj->mCompUnit->mFile;
+        unsigned m = 0;
+
+        for (m = 1; m < file->section_cnt; m++) {
+            unsigned n;
+            ELF_Section * tbl = file->sections + m;
+            if (tbl->sym_names_hash == NULL) continue;
+            n = tbl->sym_names_hash[h % tbl->sym_names_hash_size];
+            while (n) {
+                ELF_SymbolInfo sym_info;
+                unpack_elf_symbol_info(tbl, n, &sym_info);
+                if (sym_info.bind == STB_GLOBAL || sym_info.bind == STB_WEAK) {
+                    switch (sym_info.type) {
+                    case STT_OBJECT:
+                    case STT_FUNC:
+                        if (equ_symbol_names(name, sym_info.name)) {
+                            ContextAddress address = 0;
+                            if (elf_symbol_address(sym_ctx, &sym_info, &address)) break;
+                            if (obj->u.mCode.mLowPC != address) {
+                                clear_trap(&trap);
+                                return 1;
+                            }
+                        }
+                        break;
+                    }
+                }
+                n = tbl->sym_names_next[n];
+            }
+        }
+        clear_trap(&trap);
+    }
+    return 0;
+}
+
 static void object2symbol(ObjectInfo * obj, Symbol ** res) {
     Symbol * sym = alloc_symbol();
     sym->obj = obj;
@@ -484,6 +543,8 @@ static void object2symbol(ObjectInfo * obj, Symbol ** res) {
     else if (sym_ctx != sym->ctx && is_thread_based_object(sym)) {
         sym->ctx = sym_ctx;
     }
+    sym->priority = symbol_priority(obj);
+    sym->weak = symbol_is_weak(obj);
     *res = sym;
 }
 
@@ -702,22 +763,6 @@ static int cmp_object_linkage_names(ObjectInfo * x, ObjectInfo * y) {
     return strcmp(xname, yname) == 0;
 }
 
-static int symbol_priority(ObjectInfo * obj) {
-    int p = 0;
-    if (obj->mFlags & DOIF_external) p += 2;
-    if (obj->mFlags & DOIF_declaration) p -= 4;
-    if (obj->mFlags & DOIF_abstract_origin) p += 1;
-    switch (obj->mTag) {
-    case TAG_class_type:
-    case TAG_structure_type:
-    case TAG_union_type:
-    case TAG_enumeration_type:
-        p -= 1;
-        break;
-    }
-    return p;
-}
-
 /* return 0 if symbol has no address, e.g. undef or common */
 static int symbol_has_location(Symbol * sym) {
     if (sym->has_address) return 1;
@@ -778,6 +823,9 @@ static int symbol_prt_comparator(const void * x, const void * y) {
     if (sx->has_location && !sy->has_location) return +1;
     if (sy->has_location && !sx->has_location) return -1;
 
+    if (sx->weak && !sy->weak) return -1;
+    if (sy->weak && !sx->weak) return +1;
+
     /* Symbols order by priority, from low to high,
      * most likely match must be last */
 
@@ -803,7 +851,6 @@ static int symbol_prt_comparator(const void * x, const void * y) {
 
 static void add_to_find_symbol_buf(Symbol * sym) {
     sym->has_location = symbol_has_location(sym);
-    sym->priority = sym->obj ? symbol_priority(sym->obj) : 0;
     sym->next = find_symbol_list;
     find_symbol_list = sym;
 }
@@ -3534,6 +3581,11 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
         return 0;
     }
     if (unpack(sym) < 0) return -1;
+    if (sym->tbl != NULL) {
+        ELF_SymbolInfo info;
+        unpack_elf_symbol_info(sym->tbl, sym->index, &info);
+        if (info.bind == STB_GLOBAL || info.bind == STB_WEAK) *flags |= SYM_FLAG_EXTERNAL;
+    }
     if (obj != NULL) {
         if (obj->mFlags & DOIF_external) *flags |= SYM_FLAG_EXTERNAL;
         if (obj->mFlags & DOIF_artificial) *flags |= SYM_FLAG_ARTIFICIAL;

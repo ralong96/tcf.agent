@@ -1140,10 +1140,26 @@ static void test_public_names(void) {
     while (n < cache->mPubNames.mCnt) {
         ObjectInfo * obj = cache->mPubNames.mNext[n++].mObject;
         if (obj != NULL) {
+            SYM_FLAGS flags = 0;
             Symbol * sym1 = NULL;
             Symbol * sym2 = NULL;
+            ContextAddress addr = 0;
             if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, obj->mName, &sym1) < 0) {
                 error("find_symbol_by_name");
+            }
+            if (get_symbol_flags(sym1, &flags) < 0) error("get_symbol_flags");
+            if (obj->mTag == TAG_subprogram && (flags & SYM_FLAG_EXTERNAL) != 0 && get_symbol_address(sym1, &addr) == 0) {
+                /* Check weak symbol is not the first symbol */
+                while (find_next_symbol(&sym2) == 0) {
+                    ContextAddress nxt_addr = 0;
+                    if (get_symbol_object(sym2) == NULL && get_symbol_address(sym2, &nxt_addr) == 0) {
+                        if (get_symbol_flags(sym2, &flags) < 0) error("get_symbol_flags");
+                        if ((flags & SYM_FLAG_EXTERNAL) != 0 && addr != nxt_addr) {
+                            set_errno(ERR_OTHER, "Invalid address - weak symbol?");
+                            error("find_symbol_by_name");
+                        }
+                    }
+                }
             }
             if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, obj->mName, &sym2) < 0) {
                 error("find_symbol_by_name");
