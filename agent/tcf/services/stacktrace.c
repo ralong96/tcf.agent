@@ -153,10 +153,14 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
         }
 #endif
         if (get_next_stack_frame(frame, &down) < 0) {
-            error = errno;
             trace(LOG_STACK, "  trace error: %s", errno_to_str(errno));
-            loc_free(down.regs);
-            break;
+            if (get_error_code(errno) == ERR_CACHE_MISS) {
+                error = errno;
+                loc_free(down.regs);
+                break;
+            }
+            /* Try with stackcrawl */
+            frame->is_walked = 0;
         }
         if (frame->is_walked == 0) {
             trace(LOG_STACK, "  *** frame info not available ***");
