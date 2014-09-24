@@ -1172,7 +1172,7 @@ static void test_public_names(void) {
                 loc_var_func(NULL, sym1);
             }
         }
-        if ((n % 1000) == 0) tmp_gc();
+        if ((n % 100) == 0) tmp_gc();
     }
     for (m = 1; m < elf_file->section_cnt; m++) {
         ELF_Section * tbl = elf_file->sections + m;
@@ -1200,20 +1200,25 @@ static void test_public_names(void) {
 }
 
 static void check_addr_ranges(void) {
-    unsigned i;
     DWARFCache * cache = get_dwarf_cache(get_dwarf_file(elf_file));
     if (cache->mAddrRangesCnt > 1) {
+        unsigned i;
+        unsigned n = 0;
         for (i = 0; i < cache->mAddrRangesCnt - 1; i++) {
             UnitAddressRange * x = cache->mAddrRanges + i;
             UnitAddressRange * y = cache->mAddrRanges + i + 1;
             if (x->mSection == y->mSection &&
                     x->mAddr < y->mAddr + y->mSize &&
                     y->mAddr < x->mAddr + x->mSize) {
-                        printf("Overlapping address ranges: %08x %08x, %08x %08x\n",
-                            (unsigned)x->mAddr, (unsigned)x->mSize,
-                            (unsigned)y->mAddr, (unsigned)y->mSize);
+                if (n < 20) {
+                    printf("Overlapping address ranges: %08x %08x, %08x %08x\n",
+                        (unsigned)x->mAddr, (unsigned)x->mSize,
+                        (unsigned)y->mAddr, (unsigned)y->mSize);
+                }
+                n++;
             }
         }
+        if (n >= 20) printf("Overlapping address ranges: total %d ranges ...\n", n);
     }
 }
 
