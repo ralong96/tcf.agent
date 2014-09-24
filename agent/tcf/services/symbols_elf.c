@@ -431,34 +431,36 @@ static int symbol_is_weak(ObjectInfo * obj) {
     if ((obj->mFlags & DOIF_low_pc) == 0) return 0;
     if (set_trap(&trap)) {
         const char * name = get_linkage_name(obj);
-        unsigned h = calc_symbol_name_hash(name);
-        ELF_File * file = obj->mCompUnit->mFile;
-        unsigned m = 0;
+        if (name != NULL) {
+            unsigned h = calc_symbol_name_hash(name);
+            ELF_File * file = obj->mCompUnit->mFile;
+            unsigned m = 0;
 
-        for (m = 1; m < file->section_cnt; m++) {
-            unsigned n;
-            ELF_Section * tbl = file->sections + m;
-            if (tbl->sym_names_hash == NULL) continue;
-            n = tbl->sym_names_hash[h % tbl->sym_names_hash_size];
-            while (n) {
-                ELF_SymbolInfo sym_info;
-                unpack_elf_symbol_info(tbl, n, &sym_info);
-                if (sym_info.bind == STB_GLOBAL || sym_info.bind == STB_WEAK) {
-                    switch (sym_info.type) {
-                    case STT_OBJECT:
-                    case STT_FUNC:
-                        if (equ_symbol_names(name, sym_info.name)) {
-                            ContextAddress address = 0;
-                            if (elf_symbol_address(sym_ctx, &sym_info, &address)) break;
-                            if (obj->u.mCode.mLowPC != address) {
-                                clear_trap(&trap);
-                                return 1;
+            for (m = 1; m < file->section_cnt; m++) {
+                unsigned n;
+                ELF_Section * tbl = file->sections + m;
+                if (tbl->sym_names_hash == NULL) continue;
+                n = tbl->sym_names_hash[h % tbl->sym_names_hash_size];
+                while (n) {
+                    ELF_SymbolInfo sym_info;
+                    unpack_elf_symbol_info(tbl, n, &sym_info);
+                    if (sym_info.bind == STB_GLOBAL || sym_info.bind == STB_WEAK) {
+                        switch (sym_info.type) {
+                        case STT_OBJECT:
+                        case STT_FUNC:
+                            if (equ_symbol_names(name, sym_info.name)) {
+                                ContextAddress address = 0;
+                                if (elf_symbol_address(sym_ctx, &sym_info, &address)) break;
+                                if (obj->u.mCode.mLowPC != address) {
+                                    clear_trap(&trap);
+                                    return 1;
+                                }
                             }
+                            break;
                         }
-                        break;
                     }
+                    n = tbl->sym_names_next[n];
                 }
-                n = tbl->sym_names_next[n];
             }
         }
         clear_trap(&trap);
