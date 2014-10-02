@@ -862,6 +862,7 @@ static void set_value_endianness(Value * v, Symbol * sym, Symbol * type) {
 static void sign_extend(Value * v, LocationExpressionState * loc) {
     ContextAddress type_size = 0;
     assert(v->value != NULL);
+    if (v->type == NULL) return;
     if (get_symbol_size(v->type, &type_size) < 0) {
         error(errno, "Cannot retrieve value type size");
     }
@@ -1387,7 +1388,6 @@ static void load_value(Value * v) {
         }
         v->value = buf;
         v->remote = 0;
-        v->loc = 0;
     }
     else if (v->value == NULL) {
         size_t size = 0;
@@ -1396,7 +1396,8 @@ static void load_value(Value * v) {
         read_location_pieces(expression_context, loc->stack_frame,
             loc->pieces, loc->pieces_cnt, v->big_endian, &value, &size);
         if (size > v->size) size = (size_t)v->size;
-        set_value(v, value, size, v->big_endian);
+        v->value = value;
+        v->size = (ContextAddress)size;
         sign_extend(v, loc);
     }
 }
