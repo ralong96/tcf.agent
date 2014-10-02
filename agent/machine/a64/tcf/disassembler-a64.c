@@ -170,6 +170,25 @@ static void add_addr(uint64_t addr) {
 #endif
 }
 
+static void add_sys_reg_info(uint32_t reg) {
+    uint32_t op0 = (reg >> 14) & 3;
+    uint32_t op1 = (reg >> 11) & 7;
+    uint32_t CRn = (reg >> 7) & 0xf;
+    uint32_t CRm = (reg >> 3) & 0xf;
+    uint32_t op2 = (reg >> 0) & 7;
+    while (buf_pos < 20) add_char(' ');
+    add_str("; op0:op1:CRn:CRm:op2 = ");
+    add_dec_uint32(op0);
+    add_char(':');
+    add_dec_uint32(op1);
+    add_char(':');
+    add_dec_uint32(CRn);
+    add_char(':');
+    add_dec_uint32(CRm);
+    add_char(':');
+    add_dec_uint32(op2);
+}
+
 static void add_data_barrier_option(void) {
     uint32_t imm = (instr >> 8) & 0xf;
     switch (imm) {
@@ -698,11 +717,12 @@ static void branch_exception_system(void) {
         }
         else if (l == 0 && op0 >= 2) {
             /* MSR (register) */
-            uint32_t reg = (instr >> 5) & 0x7fff;
+            uint32_t reg = (instr >> 5) & 0xffff;
             add_str("msr ");
             add_dec_uint32(reg);
             add_str(", ");
             add_reg_name(rt, 1, 1);
+            add_sys_reg_info(reg);
         }
         else if (l == 1 && op0 == 1) {
             /* SYSL */
@@ -720,11 +740,12 @@ static void branch_exception_system(void) {
         }
         else if (l == 1 && op0 >= 2) {
             /* MRS */
-            uint32_t reg = (instr >> 5) & 0x7fff;
+            uint32_t reg = (instr >> 5) & 0xffff;
             add_str("mrs ");
             add_reg_name(rt, 1, 1);
             add_str(", ");
             add_dec_uint32(reg);
+            add_sys_reg_info(reg);
         }
         return;
     }
