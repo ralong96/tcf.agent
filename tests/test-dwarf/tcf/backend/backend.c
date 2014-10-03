@@ -692,6 +692,7 @@ static void loc_var_func(void * args, Symbol * sym) {
     char * type_name = NULL;
     StackFrame * frame_info = NULL;
     LocationInfo * loc_info = NULL;
+    LocationExpressionState * loc_state = NULL;
 
     if (get_symbol_class(sym, &symbol_class) < 0) {
         error_sym("get_symbol_class", sym);
@@ -811,12 +812,12 @@ static void loc_var_func(void * args, Symbol * sym) {
         assert(loc_info->value_cmds.cnt > 0);
         assert(loc_info->code_size == 0 || (loc_info->code_addr <= pc && loc_info->code_addr + loc_info->code_size > pc));
         if (set_trap(&trap)) {
-            LocationExpressionState * state = evaluate_location_expression(elf_ctx, frame_info,
+            loc_state = evaluate_location_expression(elf_ctx, frame_info,
                 loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, NULL, 0);
-            if (state->stk_pos == 1) {
-                if (state->stk[0] != addr) str_fmt_exception(ERR_OTHER,
+            if (loc_state->stk_pos == 1) {
+                if (loc_state->stk[0] != addr) str_fmt_exception(ERR_OTHER,
                     "ID 0x%" PRIX64 ": invalid location expression result 0x%" PRIX64 " != 0x%" PRIX64,
-                    get_symbol_object(sym)->mID, state->stk[0], addr);
+                    get_symbol_object(sym)->mID, loc_state->stk[0], addr);
                 addr_ok = 1;
             }
             clear_trap(&trap);
@@ -869,6 +870,66 @@ static void loc_var_func(void * args, Symbol * sym) {
     }
     if (get_symbol_frame(sym, &ctx, &frame) < 0) {
         error_sym("get_symbol_frame", sym);
+    }
+    if (symbol_class != SYM_CLASS_COMP_UNIT && size_ok) {
+        Value v;
+        char expr[300];
+        RegisterDefinition * reg = NULL;
+        if (!cpp_ref && loc_state != NULL && loc_state->pieces_cnt == 1 && loc_state->pieces->implicit_pointer == 0 &&
+            loc_state->pieces->reg != NULL && loc_state->pieces->reg->size == loc_state->pieces->size) reg = loc_state->pieces->reg;
+        sprintf(expr, "${%s}", symbol2id(sym));
+        if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
+            error_sym("evaluate_expression", sym);
+        }
+        if (!cpp_ref) {
+            if (v.sym == NULL) {
+                set_errno(ERR_OTHER, "Value.sym = NULL");
+                error_sym("evaluate_expression", sym);
+            }
+            if (symcmp(sym, v.sym) != 0) {
+                set_errno(ERR_OTHER, "Invalid Value.sym");
+                error_sym("evaluate_expression", sym);
+            }
+        }
+        else {
+            if (v.sym != NULL) {
+                set_errno(ERR_OTHER, "Value.sym != NULL");
+                error_sym("evaluate_expression", sym);
+            }
+        }
+        if (reg != v.reg) {
+            set_errno(ERR_OTHER, "Invalid Value.reg");
+            error_sym("evaluate_expression", sym);
+        }
+        if (!v.remote && !cpp_ref) {
+            unsigned n;
+            int implicit_pointer = 0;
+            if (v.loc != NULL) {
+                for (n = 0; n < v.loc->pieces_cnt; n++) {
+                    if (v.loc->pieces[n].implicit_pointer) {
+                        implicit_pointer = 1;
+                        break;
+                    }
+                }
+            }
+            if (!implicit_pointer) {
+                if (evaluate_expression(elf_ctx, frame, pc, expr, 1, &v) < 0) {
+                    error_sym("evaluate_expression", sym);
+                }
+                if (v.sym == NULL) {
+                    set_errno(ERR_OTHER, "Value.sym = NULL");
+                    error_sym("evaluate_expression", sym);
+                }
+                if (symcmp(sym, v.sym) != 0) {
+                    set_errno(ERR_OTHER, "Invalid Value.sym");
+                    error_sym("evaluate_expression", sym);
+                }
+                if (reg != v.reg) {
+                    set_errno(ERR_OTHER, "Invalid Value.reg");
+                    error_sym("evaluate_expression", sym);
+                }
+            }
+        }
     }
     if (name != NULL) {
         Symbol * find_sym = NULL;
