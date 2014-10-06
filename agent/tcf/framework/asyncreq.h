@@ -59,7 +59,8 @@ enum {
     AsyncReqOpenDir,                    /* Directory open */
     AsyncReqReadDir,                    /* Directory read */
     AsyncReqCloseDir,                   /* Directory close */
-    AsyncReqRoots                       /* Root device list */
+    AsyncReqRoots,                      /* Root device list */
+    AsyncReqUser                        /* User defined req */
 };
 
 #define AsyncReqSetSize         1
@@ -194,6 +195,14 @@ struct AsyncReqInfo {
             /* Out */
             int rval;
         } select;
+        struct {
+            /* In */
+            int (*func)(void *);
+            void * data;
+
+            /* Out */
+            int rval;
+        } user;
     } u;
     int error;                  /* Readable by callback function */
 };

@@ -477,6 +477,14 @@ static void * worker_thread_handler(void * x) {
             }
             break;
 
+        case AsyncReqUser:              /* User defined request */
+            req->u.user.rval = req->u.user.func(req->u.user.data);
+            if (req->u.user.rval == -1) {
+                req->error = errno;
+                assert(req->error);
+            }
+            break;
+
         default:
             req->error = ENOSYS;
             break;
