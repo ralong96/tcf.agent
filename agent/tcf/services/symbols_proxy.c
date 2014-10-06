@@ -231,6 +231,7 @@ static char ** find_next_buf = NULL;
 static int find_next_pos = 0;
 static int find_next_cnt = 0;
 static int symbols_cleanup_posted = 0;
+static int symbols_cleanup_delayed = 0;
 
 static LINK flush_rc;
 static LINK flush_mm;
@@ -270,6 +271,12 @@ static void clean_flush_list(LINK * list) {
 
 static void symbols_cleanup_event(void * arg) {
     assert(symbols_cleanup_posted);
+
+    if (symbols_cleanup_delayed) {
+    	post_event_with_delay(symbols_cleanup_event, NULL, SYMBOLS_PROXY_CLEANUP_DELAY);
+	symbols_cleanup_delayed = 0;
+	return;
+    }
     /* Flush the first entry of each cache */
     clean_flush_list(&flush_rc);
     clean_flush_list(&flush_mm);
@@ -324,7 +331,13 @@ static SymbolsCache * get_symbols_cache(void) {
     Channel * c = cache_channel();
     if (c == NULL) str_exception(ERR_OTHER, "Symbols cache: illegal cache access");
     if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
-    if (!symbols_cleanup_posted) {
+    if (symbols_cleanup_posted) {
+        /* There is some activity on the cache; let's delay the cache flush
+	 * to avoid flushing usefull entries.
+	 */
+	symbols_cleanup_delayed = 1;
+    }
+    else {
         symbols_cleanup_posted = 1;
         post_event_with_delay(symbols_cleanup_event, NULL, SYMBOLS_PROXY_CLEANUP_DELAY);
     }
