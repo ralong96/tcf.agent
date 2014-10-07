@@ -331,9 +331,7 @@ static void check_addr_and_size(void * args) {
 
     assert(sym->frame == STACK_NO_FRAME);
 
-    if (get_symbol_size(sym, &size) < 0) {
-         exception(errno);
-    }
+    if (get_symbol_size(sym, &size) < 0) exception(errno);
 
     if (sym->sym_class == SYM_CLASS_REFERENCE) {
         if (sym->obj->mTag == TAG_member || sym->obj->mTag == TAG_inheritance) {
@@ -2228,12 +2226,14 @@ static U8_T get_array_index_length(ObjectInfo * obj) {
     U8_T x, y;
 
     if (get_num_prop(obj, AT_count, &x)) return x;
+    if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
     if (get_num_prop(obj, AT_upper_bound, &x)) {
         if (!get_num_prop(obj, AT_lower_bound, &y)) {
             y = get_default_lower_bound(obj);
         }
         return x + 1 - y;
     }
+    if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
     if (obj->mTag == TAG_enumeration_type) {
         ObjectInfo * c = get_dwarf_children(obj);
         x = 0;
@@ -3700,7 +3700,6 @@ int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame) {
 int get_array_symbol(const Symbol * sym, ContextAddress length, Symbol ** ptr) {
     assert(sym->magic == SYMBOL_MAGIC);
     if (sym->sym_class != SYM_CLASS_TYPE) return err_wrong_obj();
-    assert(sym->frame == STACK_NO_FRAME);
     assert(sym->ctx == context_get_group(sym->ctx, CONTEXT_GROUP_SYMBOLS));
     *ptr = alloc_symbol();
     (*ptr)->ctx = sym->ctx;
