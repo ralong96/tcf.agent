@@ -769,10 +769,12 @@ static int cmp_object_linkage_names(ObjectInfo * x, ObjectInfo * y) {
 static int symbol_has_location(Symbol * sym) {
     if (sym->has_address) return 1;
     if (sym->tbl != NULL) {
-        ELF_SymbolInfo info;
-        unpack_elf_symbol_info(sym->tbl, sym->index, &info);
-        if (info.section_index == SHN_UNDEF) return 0;
-        if (info.section_index == SHN_COMMON) return 0;
+        if (sym->dimension == 0) {
+            ELF_SymbolInfo info;
+            unpack_elf_symbol_info(sym->tbl, sym->index, &info);
+            if (info.section_index == SHN_UNDEF) return 0;
+            if (info.section_index == SHN_COMMON) return 0;
+        }
         return 1;
     }
     if (sym->obj != NULL) {
@@ -3583,10 +3585,13 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
         return 0;
     }
     if (unpack(sym) < 0) return -1;
-    if (sym->tbl != NULL) {
+    if (sym->tbl != NULL && sym->dimension == 0) {
+        Trap trap;
         ELF_SymbolInfo info;
+        if (!set_trap(&trap)) return -1;
         unpack_elf_symbol_info(sym->tbl, sym->index, &info);
         if (info.bind == STB_GLOBAL || info.bind == STB_WEAK) *flags |= SYM_FLAG_EXTERNAL;
+        clear_trap(&trap);
     }
     if (obj != NULL) {
         if (obj->mFlags & DOIF_external) *flags |= SYM_FLAG_EXTERNAL;

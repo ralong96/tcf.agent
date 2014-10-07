@@ -273,9 +273,9 @@ static void symbols_cleanup_event(void * arg) {
     assert(symbols_cleanup_posted);
 
     if (symbols_cleanup_delayed) {
-    	post_event_with_delay(symbols_cleanup_event, NULL, SYMBOLS_PROXY_CLEANUP_DELAY);
-	symbols_cleanup_delayed = 0;
-	return;
+        post_event_with_delay(symbols_cleanup_event, NULL, SYMBOLS_PROXY_CLEANUP_DELAY);
+        symbols_cleanup_delayed = 0;
+        return;
     }
     /* Flush the first entry of each cache */
     clean_flush_list(&flush_rc);
@@ -333,9 +333,9 @@ static SymbolsCache * get_symbols_cache(void) {
     if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
     if (symbols_cleanup_posted) {
         /* There is some activity on the cache; let's delay the cache flush
-	 * to avoid flushing usefull entries.
-	 */
-	symbols_cleanup_delayed = 1;
+         * to avoid flushing usefull entries.
+         */
+        symbols_cleanup_delayed = 1;
     }
     else {
         symbols_cleanup_posted = 1;

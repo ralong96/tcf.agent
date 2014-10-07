@@ -1348,6 +1348,7 @@ static void next_pc(void) {
             Symbol * func_type = NULL;
             int func_children_count = 0;
             Symbol ** func_children = NULL;
+            SYM_FLAGS flags = 0;
             func_object = get_symbol_object(sym);
             if (get_symbol_name(sym, &func_name) < 0) {
                 error_sym("get_symbol_name", sym);
@@ -1361,6 +1362,9 @@ static void next_pc(void) {
             }
             if (get_symbol_type(sym, &func_type) < 0) {
                 error_sym("get_symbol_type", sym);
+            }
+            if (get_symbol_flags(sym, &flags) < 0) {
+                error_sym("get_symbol_flags", sym);
             }
             if (func_type != NULL) {
                 if (get_symbol_children(func_type, &func_children, &func_children_count) < 0) {
