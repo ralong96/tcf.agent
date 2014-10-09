@@ -35,11 +35,10 @@ static int is_separator(const char c) {
 }
 
 char * canonic_path_map_file_name(const char * fnm) {
-    char * buf;
     size_t buf_pos = 0;
     size_t buf_max = 0x100;
+    char * buf = (char *)tmp_alloc(buf_max);
 
-    buf = (char *)tmp_alloc(buf_max);
     for (;;) {
         char ch = *fnm++;
         if (ch == 0) break;
@@ -65,7 +64,7 @@ char * canonic_path_map_file_name(const char * fnm) {
             }
         }
         if (buf_pos == 0 && ch >= 'a' && ch <= 'z' && *fnm == ':') {
-            ch = (char) (ch - 'a' + 'A');
+            ch = (char)(ch - 'a' + 'A');
         }
         if (buf_pos + 1 >= buf_max) {
             buf_max += 0x100;
@@ -358,7 +357,7 @@ static char * map_file_name(Context * ctx, PathMap * m, char * fnm, int mode) {
         }
         if (r->query != NULL && !context_query(ctx, r->query)) continue;
         src = canonic_path_map_file_name(r->src);
-        k = (unsigned int) strlen(src);
+        k = (unsigned)strlen(src);
         if (strncmp(src, fnm, k)) continue;
 
         if (fnm[k] == 0) {
@@ -392,12 +391,13 @@ static char * map_file_name(Context * ctx, PathMap * m, char * fnm, int mode) {
 }
 
 char * apply_path_map(Channel * c, Context * ctx, char * fnm, int mode) {
+    char * cnm = canonic_path_map_file_name(fnm);
     if (c == NULL) {
         LINK * l = maps.next;
         while (l != &maps) {
             PathMap * m = maps2map(l);
-            char * lnm = map_file_name(ctx, m, fnm, mode);
-            if (lnm != fnm) return lnm;
+            char * lnm = map_file_name(ctx, m, cnm, mode);
+            if (lnm != cnm) return lnm;
             l = l->next;
         }
     }
@@ -408,15 +408,15 @@ char * apply_path_map(Channel * c, Context * ctx, char * fnm, int mode) {
         if (h != NULL) {
             m = find_map(h);
             if (m != NULL) {
-                char * lnm = map_file_name(ctx, m, fnm, mode);
-                if (lnm != fnm) return lnm;
+                char * lnm = map_file_name(ctx, m, cnm, mode);
+                if (lnm != cnm) return lnm;
             }
         }
 #endif
         m = find_map(c);
         if (m != NULL) {
-            char * lnm = map_file_name(ctx, m, fnm, mode);
-            if (lnm != fnm) return lnm;
+            char * lnm = map_file_name(ctx, m, cnm, mode);
+            if (lnm != cnm) return lnm;
         }
     }
     return fnm;
