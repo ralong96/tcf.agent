@@ -331,6 +331,11 @@ static void addr_to_line_callback(CodeArea * area, void * args) {
     *dst = *area;
 }
 
+static void addr_to_line_callback_p1(CodeArea * area, void * args) {
+    CodeArea * dst = (CodeArea *)args;
+    *dst = *area;
+}
+
 static void line_to_addr_callback(CodeArea * area, void * args) {
     CodeArea * org = (CodeArea *)args;
     if (area->start_line > org->start_line || (area->start_line == org->start_line && area->start_column > org->start_column) ||
@@ -1500,9 +1505,14 @@ static void next_pc(void) {
             }
             line_info_cnt++;
         }
-        else if (func_object != NULL && func_object->mCompUnit->mLineInfoOffs != 0) {
-            //errno = set_errno(ERR_OTHER, "Line info not found");
-            //error("address_to_line");
+        else {
+            if (address_to_line(elf_ctx, pc + 1, pc + 2, addr_to_line_callback_p1, &area) < 0) {
+                error("address_to_line");
+            }
+            if (pc >= area.start_address && pc < area.end_address) {
+                errno = set_errno(ERR_OTHER, "Line info not found");
+                error("address_to_line");
+            }
         }
 
         lt_file = NULL;

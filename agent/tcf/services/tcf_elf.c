@@ -1376,11 +1376,11 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
                 pheader_file_size = get_pheader_file_size(file, p, r);
                 offs_min = addr_min - r->addr + r->file_offs;
                 offs_max = addr_max - r->addr + r->file_offs;
-                if (p->offset >= offs_max || p->offset + pheader_file_size <= offs_min) continue;
+                if (p->offset > offs_max || p->offset + pheader_file_size <= offs_min) continue;
                 link_addr_min = (ContextAddress)(offs_min - p->offset + pheader_address);
                 link_addr_max = (ContextAddress)(offs_max - p->offset + pheader_address);
                 if (link_addr_min < pheader_address) link_addr_min = (ContextAddress)pheader_address;
-                if (link_addr_max >= pheader_address + pheader_file_size) link_addr_max = (ContextAddress)(pheader_address + pheader_file_size);
+                if (link_addr_max >= pheader_address + pheader_file_size) link_addr_max = (ContextAddress)(pheader_address + pheader_file_size - 1);
                 sec = find_section_by_offset(file, offs_min);
                 range = find_comp_unit_addr_range(get_dwarf_cache(debug), sec, link_addr_min, link_addr_max);
                 if (range != NULL && range_rt_addr != NULL) {
@@ -1397,7 +1397,7 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
                     link_addr_min = (ContextAddress)(addr_min - r->addr + sec->addr);
                     link_addr_max = (ContextAddress)(addr_max - r->addr + sec->addr);
                     if (link_addr_min < sec->addr) link_addr_min = (ContextAddress)sec->addr;
-                    if (link_addr_max >= sec->addr + sec->size) link_addr_max = (ContextAddress)(sec->addr + sec->size);
+                    if (link_addr_max >= sec->addr + sec->size) link_addr_max = (ContextAddress)(sec->addr + sec->size - 1);
                     range = find_comp_unit_addr_range(get_dwarf_cache(debug), sec, link_addr_min, link_addr_max);
                     if (range != NULL && range_rt_addr != NULL) {
                         *range_rt_addr = (ContextAddress)(range->mAddr - sec->addr + r->addr);
