@@ -40,6 +40,7 @@
 #include <tcf/framework/events.h>
 #include <tcf/framework/errors.h>
 #include <tcf/framework/trace.h>
+#include <tcf/framework/json.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/waitpid.h>
 #include <tcf/framework/signames.h>
@@ -1616,6 +1617,34 @@ static void eventpoint_at_main(Context * ctx, void * args) {
     }
 }
 
+static BreakpointInfo * create_eventpoint_at_main(void) {
+    static const char * attr_list[] = { BREAKPOINT_ENABLED, BREAKPOINT_SKIP_PROLOGUE, BREAKPOINT_LOCATION };
+    BreakpointAttribute * attrs = NULL;
+    BreakpointAttribute ** ref = &attrs;
+    unsigned i;
+
+    for (i = 0; i < sizeof(attr_list) / sizeof(char *); i++) {
+        ByteArrayOutputStream buf;
+        BreakpointAttribute * attr = (BreakpointAttribute *)loc_alloc_zero(sizeof(BreakpointAttribute));
+        OutputStream * out = create_byte_array_output_stream(&buf);
+        attr->name = loc_strdup(attr_list[i]);
+        switch (i) {
+        case 0:
+        case 1:
+            json_write_boolean(out, 1);
+            break;
+        case 2:
+            json_write_string(out, "main");
+            break;
+        }
+        write_stream(out, 0);
+        get_byte_array_output_stream_data(&buf, &attr->value, NULL);
+        *ref = attr;
+        ref = &attr->next;
+    }
+    return create_eventpoint_ext(attrs, NULL, eventpoint_at_main, NULL);
+}
+
 static int cmp_linux_pid(Context * ctx, const char * v) {
     ctx = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
     return ctx != NULL && EXT(ctx)->pid == atoi(v);
@@ -1641,10 +1670,10 @@ void init_contexts_sys_dep(void) {
     add_identifier_callback(expression_identifier_callback);
     create_eventpoint("$loader_brk", NULL, eventpoint_at_loader, NULL);
 #endif /* SERVICE_Expressions && ENABLE_ELF */
-    create_eventpoint("main", NULL, eventpoint_at_main, NULL);
     add_context_query_comparator("pid", cmp_linux_pid);
     add_context_query_comparator("tid", cmp_linux_tid);
     add_context_query_comparator("KernelName", cmp_linux_kernel_name);
+    create_eventpoint_at_main();
 }
 
 #endif  /* if ENABLE_DebugContext */

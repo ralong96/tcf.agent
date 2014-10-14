@@ -84,6 +84,7 @@ struct BreakpointInfo {
     char * file;
     char * client_data;
     int temporary;
+    int skip_prologue;
     int access_mode;
     int access_size;
     int line;
@@ -1387,6 +1388,31 @@ static void done_all_evaluations(void) {
     }
 }
 
+static void function_prolog_line_info(CodeArea * area, void * args) {
+    CodeArea * res = (CodeArea *)args;
+    if (res->file != NULL) return;
+    *res = *area;
+}
+
+static int skip_function_prologue(Context * ctx, Symbol * sym, ContextAddress * addr) {
+#if ENABLE_Symbols
+    int sym_class = SYM_CLASS_UNKNOWN;
+    ContextAddress sym_size = 0;
+    CodeArea area;
+
+    if (get_symbol_class(sym, &sym_class) < 0) return -1;
+    if (sym_class != SYM_CLASS_FUNCTION) return 0;
+    if (get_symbol_size(sym, &sym_size) < 0) return -1;
+    if (sym_size == 0) return 0;
+    memset(&area, 0, sizeof(area));
+    if (address_to_line(ctx, *addr, *addr + 1, function_prolog_line_info, &area) < 0) return -1;
+    if (area.start_address > *addr || area.end_address <= *addr) return 0;
+    if (*addr + sym_size <= area.end_address) return 0;
+    *addr = area.end_address;
+#endif
+    return 0;
+}
+
 static void plant_at_address_expression(Context * ctx, ContextAddress ip, BreakpointInfo * bp) {
     ContextAddress addr = 0;
     ContextAddress size = 1;
@@ -1395,6 +1421,7 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
 
     if (evaluate_expression(ctx, STACK_NO_FRAME, ip, bp->location, 1, &v) < 0) error = errno;
     if (!error && value_to_address(&v, &addr) < 0) error = errno;
+    if (!error && bp->skip_prologue && v.sym != NULL && skip_function_prologue(ctx, v.sym, &addr) < 0) error = errno;
     if (bp->access_size > 0) {
         size = bp->access_size;
     }
@@ -1425,6 +1452,7 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
             while (v.sym_list[n] != NULL) {
                 Symbol * sym = v.sym_list[n++];
                 if (get_symbol_address(sym, &addr) == 0) {
+                    if (bp->skip_prologue) skip_function_prologue(ctx, sym, &addr);
                     plant_breakpoint(ctx, bp, addr, size);
                 }
             }
@@ -1964,6 +1992,9 @@ static int set_breakpoint_attributes(BreakpointInfo * bp, BreakpointAttribute * 
         else if (strcmp(name, BREAKPOINT_TEMPORARY) == 0) {
             bp->temporary = json_read_boolean(buf_inp);
         }
+        else if (strcmp(name, BREAKPOINT_SKIP_PROLOGUE) == 0) {
+            bp->skip_prologue = json_read_boolean(buf_inp);
+        }
         else if (strcmp(name, BREAKPOINT_FILE) == 0) {
             loc_free(bp->file);
             bp->file = json_read_alloc_string(buf_inp);
@@ -2031,6 +2062,9 @@ static int set_breakpoint_attributes(BreakpointInfo * bp, BreakpointAttribute * 
         }
         else if (strcmp(name, BREAKPOINT_TEMPORARY) == 0) {
             bp->temporary = 0;
+        }
+        else if (strcmp(name, BREAKPOINT_SKIP_PROLOGUE) == 0) {
+            bp->skip_prologue = 0;
         }
         else if (strcmp(name, BREAKPOINT_FILE) == 0) {
             loc_free(bp->file);
@@ -2490,6 +2524,10 @@ static void command_get_capabilities(char * token, Channel * c) {
         json_write_boolean(out, 1);
         write_stream(out, ',');
         json_write_string(out, "Temporary");
+        write_stream(out, ':');
+        json_write_boolean(out, 1);
+        write_stream(out, ',');
+        json_write_string(out, "SkipPrologue");
         write_stream(out, ':');
         json_write_boolean(out, 1);
 #if ENABLE_ContextBreakpointCapabilities

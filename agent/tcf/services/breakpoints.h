@@ -67,6 +67,7 @@ struct BreakpointAttribute {
 #define BREAKPOINT_CLIENT_DATA      "ClientData"
 #define BREAKPOINT_CONTEXT_QUERY    "ContextQuery"
 #define BREAKPOINT_SERVICE          "Service"
+#define BREAKPOINT_SKIP_PROLOGUE    "SkipPrologue"
 
 
 /* Breakpoints event listener */
