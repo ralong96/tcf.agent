@@ -115,6 +115,7 @@ static struct TypePseudoSymbol {
     unsigned size;
     unsigned sign;
 } type_pseudo_symbols[] = {
+    { "void",     0, 0 },
     { "uint8_t",  1, 0 },
     { "uint16_t", 2, 0 },
     { "uint32_t", 4, 0 },
