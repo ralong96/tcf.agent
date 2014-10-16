@@ -507,17 +507,19 @@ static char * get_dwz_file_name(ELF_File * file, int * error) {
 }
 
 static int is_debug_info_file(ELF_File * file) {
-    unsigned i = 0;
-    size_t l = strlen(file->name);
-    if (l > 6 && strcmp(file->name + l - 6, ".debug") == 0) return 1;
-    if (file->section_cnt == 0) return 0;
-    for (i = 1; i < file->section_cnt - 1; i++) {
+    size_t l;
+    unsigned i;
+    for (i = 1; i < file->section_cnt; i++) {
         ELF_Section * sec = file->sections + i;
-        if (sec->size > 0 && sec->type == SHT_NOBITS && sec->name != NULL) {
+        if (sec->size == 0 || sec->name == NULL) continue;
+        if (sec->type == SHT_NOBITS) {
             if (strcmp(sec->name, ".text") == 0) return 1;
             if (strcmp(sec->name, ".data") == 0) return 1;
         }
+        if (strcmp(sec->name, ".gnu_debuglink") == 0) return 0;
     }
+    l = strlen(file->name);
+    if (l > 6 && strcmp(file->name + l - 6, ".debug") == 0) return 1;
     return 0;
 }
 
@@ -1022,7 +1024,13 @@ int elf_load(ELF_Section * s) {
 ELF_File * get_dwarf_file(ELF_File * file) {
     if (file != NULL && file->debug_info_file_name != NULL) {
         ELF_File * debug = elf_open(file->debug_info_file_name);
-        if (debug != NULL) return debug;
+        if (debug != NULL) {
+            /* See https://bugs.eclipse.org/bugs/show_bug.cgi?id=446410 */
+            if (debug != file && debug->debug_info_file_name != NULL) {
+                debug = elf_open(debug->debug_info_file_name);
+            }
+            if (debug != NULL) return debug;
+        }
     }
     return file;
 }
