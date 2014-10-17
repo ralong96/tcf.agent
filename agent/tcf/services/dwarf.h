@@ -241,6 +241,10 @@
 #define AT_wrs_options              0x2001
 #define AT_MIPS_linkage_name        0x2007
 #define AT_GNU_call_site_value      0x2111
+/* GNAT descriptive type extension.
+ * See http://gcc.gnu.org/wiki/DW_AT_GNAT_descriptive_type */
+#define AT_GNAT_use_descriptive_type 0x2301
+#define AT_GNAT_descriptive_type    0x2302
 #define AT_hi_user_v2               0x3fff
 
 

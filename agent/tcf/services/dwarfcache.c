@@ -1524,6 +1524,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
         case AT_specification_v2:
         case AT_abstract_origin:
         case AT_containing_type:
+        case AT_GNAT_descriptive_type:
             Value->mValue = gop_gFormData;
             break;
         default:
