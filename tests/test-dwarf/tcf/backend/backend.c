@@ -688,6 +688,7 @@ static void loc_var_func(void * args, Symbol * sym) {
     Symbol * index_type = NULL;
     Symbol * base_type = NULL;
     int cpp_ref = 0; /* '1' if the symbol is C++ reference */
+    int ref_size_ok = 0;
     ContextAddress length = 0;
     int64_t lower_bound = 0;
     void * value = NULL;
@@ -789,7 +790,11 @@ static void loc_var_func(void * args, Symbol * sym) {
             (get_symbol_register(sym, &ctx, &frame, &reg) < 0 || reg == NULL) &&
             (get_symbol_value(sym, &value, &value_size, &value_big_endian) < 0 || value == NULL)) {
         int err = errno;
+        ObjectInfo * obj = get_symbol_object(sym);
         if (errcmp(err, "No object location info found") == 0) return;
+        if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+            if (errcmp(err, "Symbol does not have a location information") == 0) return;
+        }
         if (errcmp(err, "Object is not available at this location") == 0) return;
         if (errcmp(err, "Division by zero in location") == 0) return;
         if (errcmp(err, "Cannot find loader debug") == 0) return;
@@ -848,6 +853,7 @@ static void loc_var_func(void * args, Symbol * sym) {
     if (get_symbol_size(sym, &size) < 0) {
         int ok = 0;
         int err = errno;
+        ObjectInfo * obj = get_symbol_object(sym);
         if (type != NULL) {
             unsigned type_flags;
             if (get_symbol_flags(type, &type_flags) < 0) {
@@ -867,16 +873,40 @@ static void loc_var_func(void * args, Symbol * sym) {
             /* GCC C++ 4.1 produces entries like this */
             ok = 1;
         }
+        if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+            if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
+        }
         if (!ok) {
             errno = err;
             error_sym("get_symbol_size", sym);
         }
         size_ok = 0;
     }
+    if (cpp_ref) {
+        Symbol * base_type = NULL;
+        ref_size_ok = 1;
+        if (get_symbol_base_type(sym, &base_type) < 0) {
+            error_sym("get_symbol_base_type", sym);
+        }
+        if (get_symbol_size(base_type, &size) < 0) {
+            int ok = 0;
+            int err = errno;
+            ObjectInfo * obj = get_symbol_object(base_type);
+            if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                if (!ok && errcmp(err, "Invalid reference in OP_call") == 0) ok = 1;
+                if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
+            }
+            if (!ok) {
+                errno = err;
+                error_sym("get_symbol_size", base_type);
+            }
+            ref_size_ok = 0;
+        }
+    }
     if (get_symbol_frame(sym, &ctx, &frame) < 0) {
         error_sym("get_symbol_frame", sym);
     }
-    if (symbol_class != SYM_CLASS_COMP_UNIT && size_ok) {
+    if (symbol_class != SYM_CLASS_COMP_UNIT && size_ok && (!cpp_ref || ref_size_ok)) {
         Value v;
         char expr[300];
         RegisterDefinition * reg = NULL;
@@ -1154,7 +1184,16 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (get_symbol_length(type, &length) < 0) {
             if (type_class == TYPE_CLASS_ARRAY) {
-                error_sym("get_symbol_length", type);
+                int ok = 0;
+                int err = errno;
+                ObjectInfo * obj = get_symbol_object(type);
+                if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                    if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
+                }
+                if (!ok) {
+                    errno = err;
+                    error_sym("get_symbol_length", type);
+                }
             }
         }
         else if (org_type != NULL) {
