@@ -2296,11 +2296,13 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
             *byte_size = n;
             return 1;
         }
+        if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
         if (get_num_prop(obj, AT_bit_size, &n)) {
             *byte_size = (n + 7) / 8;
             *bit_size = n;
             return 1;
         }
+        if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
     }
     switch (obj->mTag) {
     case TAG_enumerator:
