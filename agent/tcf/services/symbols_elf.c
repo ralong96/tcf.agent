@@ -2318,6 +2318,7 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
     case TAG_restrict_type:
     case TAG_shared_type:
     case TAG_typedef:
+    case TAG_subrange_type:
         if (obj->mType == NULL) return 0;
         return get_object_size(obj->mType, 0, byte_size, bit_size);
     case TAG_compile_unit:
