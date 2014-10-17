@@ -379,13 +379,15 @@ static int is_frame_based_object(Symbol * sym) {
                 case TAG_fund_type:
                 case TAG_class_type:
                 case TAG_union_type:
-                case TAG_structure_type:
                 case TAG_enumeration_type:
                 case TAG_subroutine_type:
-                case TAG_pointer_type:
-                case TAG_reference_type:
                 case TAG_ptr_to_member_type:
                     return 0;
+                case TAG_pointer_type:
+                case TAG_reference_type:
+                case TAG_structure_type:
+                    if (obj->mCompUnit->mLanguage == LANG_C) return 0;
+                    break;
                 }
                 break;
             }
@@ -394,6 +396,8 @@ static int is_frame_based_object(Symbol * sym) {
     }
 
     if (sym->obj != NULL) {
+        if (sym->obj->mCompUnit->mLanguage == LANG_ADA83) return 1;
+        if (sym->obj->mCompUnit->mLanguage == LANG_ADA95) return 1;
         if (elf_save_symbols_state(check_addr_and_size, sym) < 0) return 1;
     }
 
