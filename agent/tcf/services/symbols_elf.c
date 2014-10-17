@@ -2364,6 +2364,12 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
             *byte_size = n * length;
         }
         return 1;
+    case TAG_structure_type:
+        if (get_num_prop(obj, AT_GNAT_descriptive_type, &n)) {
+            ObjectInfo * type = find_object(get_dwarf_cache(obj->mCompUnit->mFile), (ContextAddress)n);
+            if (type != NULL) return get_object_size(type, 0, byte_size, bit_size);
+        }
+        break;
     }
     return 0;
 }
