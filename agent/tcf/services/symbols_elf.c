@@ -327,7 +327,7 @@ int elf_symbol_info(Symbol * sym, ELF_SymbolInfo * elf_sym) {
 }
 
 static void check_addr_and_size(void * args) {
-    Symbol * sym = (Symbol *) args;
+    Symbol * sym = (Symbol *)args;
     ContextAddress addr = 0;
     ContextAddress size = 0;
 
@@ -3460,7 +3460,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         }
 #endif
 #endif
-        {
+        if (obj->mTag != TAG_dwarf_procedure) {
             U8_T addr = 0;
             Symbol * s = NULL;
             if (set_trap(&trap)) {
