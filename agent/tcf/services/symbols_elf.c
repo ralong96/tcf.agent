@@ -238,7 +238,8 @@ int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * ad
     switch (info->type) {
     case STT_NOTYPE:
         /* Check if the NOTYPE symbol is for a section allocated in memory */
-        if (info->section == NULL || (info->section->flags & SHF_ALLOC) == 0) break;
+        if ((info->section == NULL || (info->section->flags & SHF_ALLOC) == 0)
+           && info->section_index != SHN_ABS) break;
         /* fall through */
     case STT_OBJECT:
     case STT_FUNC:
@@ -3544,7 +3545,10 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         switch (elf_sym_info.type) {
         case STT_NOTYPE:
             /* Check if the NOTYPE symbol is for a section allocated in memory */
-            if (elf_sym_info.section == NULL || (elf_sym_info.section->flags & SHF_ALLOC) == 0) break;
+            if ((elf_sym_info.section == NULL ||
+                (elf_sym_info.section->flags & SHF_ALLOC) == 0)
+               && elf_sym_info.section_index != SHN_ABS) break;
+
             /* fall through */
         case STT_OBJECT:
         case STT_FUNC:
