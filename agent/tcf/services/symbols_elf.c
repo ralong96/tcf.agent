@@ -3426,7 +3426,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
             }
             else {
                 if (errno != ERR_SYM_NOT_FOUND) set_errno(errno, "Cannot read member location expression");
-                else set_errno(ERR_OTHER, "Member location info not avaiable");
+                else set_errno(ERR_OTHER, "Member location info not available");
                 return -1;
             }
         }
