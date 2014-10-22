@@ -213,7 +213,8 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
             disassembler_ok = 1;
         }
         if (disassembler) dr = disassembler(mem_buf + (size_t)offs, addr, size, &param);
-        if (dr == NULL) {
+	/* To avoid looping forever, better check for instrcution size */
+        if ((dr == NULL) || (dr != NULL && dr->size == 0)){
             static char buf[32];
             static DisassemblyResult dd;
             memset(&dd, 0, sizeof(dd));
