@@ -238,6 +238,7 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
             dd.text = buf;
             dr = &dd;
         }
+        assert(dr->size > 0);
         if (offs > 0) write_stream(out, ',');
         write_stream(out, '{');
         json_write_string(out, "Address");
