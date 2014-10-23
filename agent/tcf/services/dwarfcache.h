@@ -48,6 +48,7 @@ typedef struct SymbolSection SymbolSection;
 typedef struct UnitAddressRange UnitAddressRange;
 typedef struct FrameInfoRange FrameInfoRange;
 typedef struct FrameInfoIndex FrameInfoIndex;
+typedef struct ObjectHashTable ObjectHashTable;
 typedef struct DWARFCache DWARFCache;
 
 struct FileInfo {
@@ -232,21 +233,25 @@ struct FrameInfoIndex {
     FrameInfoIndex * mNext;
 };
 
+struct ObjectHashTable {
+    ObjectInfo * mCompUnits;
+    ObjectInfo ** mObjectHash;
+    unsigned mObjectHashSize;
+    CompUnit ** mCompUnitsIndex;
+    unsigned mCompUnitsIndexSize;
+};
+
 #define DWARF_CACHE_MAGIC 0x34625490
 
 struct DWARFCache {
     int magic;
     ELF_File * mFile;
     ErrorReport * mErrorReport;
-    ObjectInfo * mCompUnits;
-    CompUnit ** mCompUnitsIndex;
-    unsigned mCompUnitsCnt;
     ELF_Section * mDebugLineV1;
     ELF_Section * mDebugLineV2;
     ELF_Section * mDebugLoc;
     ELF_Section * mDebugRanges;
-    ObjectInfo ** mObjectHash;
-    unsigned mObjectHashSize;
+    ObjectHashTable * mObjectHashTable; /* per ELF section */
     struct ObjectArray * mObjectList;
     unsigned mObjectArrayPos;
     UnitAddressRange * mAddrRanges;
@@ -280,7 +285,7 @@ extern unsigned calc_file_name_hash(const char * s);
 extern void load_line_numbers(CompUnit * unit);
 
 /* Find ObjectInfo by ID */
-extern ObjectInfo * find_object(DWARFCache * cache, ContextAddress ID);
+extern ObjectInfo * find_object(ELF_Section * sec, ContextAddress ID);
 
 /* Search and return first compilation unit address range in given link-time address range 'addr_min'..'addr_max' (inclusive). */
 extern UnitAddressRange * find_comp_unit_addr_range(DWARFCache * cache, ELF_Section * section,

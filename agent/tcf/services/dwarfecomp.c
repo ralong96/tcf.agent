@@ -447,7 +447,7 @@ static void op_implicit_pointer(void) {
     expr_pos += (size_t)(dio_GetPos() - dio_pos);
     dio_ExitSection();
 
-    ref_obj = find_object(get_dwarf_cache(unit->mFile), ref_id);
+    ref_obj = find_object(unit->mDesc.mSection, ref_id);
     if (ref_obj == NULL) str_exception(ERR_INV_DWARF, "OP_implicit_pointer: invalid object reference");
 
     memset(&pv, 0, sizeof(pv));
@@ -548,7 +548,7 @@ static void op_call(void) {
     expr_pos += (size_t)(dio_GetPos() - dio_pos);
     dio_ExitSection();
 
-    ref_obj = find_object(get_dwarf_cache(expr->object->mCompUnit->mFile), ref_id);
+    ref_obj = find_object(expr->object->mCompUnit->mDesc.mSection, ref_id);
     if (ref_obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_call");
     read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, ref_obj, AT_location, &pv);
     dwarf_get_expression_list(&pv, &info);
@@ -883,7 +883,7 @@ static void add_expression(DWARFExpressionInfo * info) {
                 unsigned size = expr->expr_addr[expr_pos++];
                 int sign = 0;
                 ObjectInfo * obj = find_object(
-                    get_dwarf_cache(expr->object->mCompUnit->mFile),
+                    expr->object->mCompUnit->mDesc.mSection,
                     expr->object->mCompUnit->mDesc.mSection->addr +
                     expr->object->mCompUnit->mDesc.mUnitOffs + type);
                 if (obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_const_type");
@@ -918,7 +918,7 @@ static void add_expression(DWARFExpressionInfo * info) {
                 U4_T reg = read_u4leb128();
                 U8_T type = read_u8leb128();
                 ObjectInfo * obj = find_object(
-                    get_dwarf_cache(expr->object->mCompUnit->mFile),
+                    expr->object->mCompUnit->mDesc.mSection,
                     expr->object->mCompUnit->mDesc.mSection->addr +
                     expr->object->mCompUnit->mDesc.mUnitOffs + type);
                 if (obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_regval_type");
@@ -939,7 +939,7 @@ static void add_expression(DWARFExpressionInfo * info) {
                 else {
                     U8_T size = 0;
                     ObjectInfo * obj = find_object(
-                        get_dwarf_cache(expr->object->mCompUnit->mFile),
+                        expr->object->mCompUnit->mDesc.mSection,
                         expr->object->mCompUnit->mDesc.mSection->addr +
                         expr->object->mCompUnit->mDesc.mUnitOffs + type);
                     if (obj != NULL && obj->mTag == TAG_base_type && get_num_prop(obj, AT_byte_size, &size)) {

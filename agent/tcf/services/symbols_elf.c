@@ -1076,7 +1076,7 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
         PropertyValue p;
         ObjectInfo * name_space;
         read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, parent, AT_extension, &p);
-        name_space = find_object(get_dwarf_cache(obj->mCompUnit->mFile), (ContextAddress)p.mValue);
+        name_space = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)p.mValue);
         if (name_space != NULL) find_in_object_tree(name_space, level, NULL, name);
     }
 
@@ -1095,7 +1095,7 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
                 PropertyValue p;
                 ObjectInfo * decl;
                 read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_import, &p);
-                decl = find_object(get_dwarf_cache(obj->mCompUnit->mFile), (ContextAddress)p.mValue);
+                decl = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)p.mValue);
                 if (decl != NULL) {
                     if (obj->mName != NULL || (decl->mName != NULL && equ_symbol_names(decl->mName, name))) {
                         add_obj_to_find_symbol_buf(find_definition(decl), level);
@@ -1109,7 +1109,7 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
                 PropertyValue p;
                 ObjectInfo * module;
                 read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_import, &p);
-                module = find_object(get_dwarf_cache(obj->mCompUnit->mFile), (ContextAddress)p.mValue);
+                module = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)p.mValue);
                 if (module != NULL && (module->mFlags & DOIF_find_mark) == 0) {
                     Trap trap;
                     if (set_trap(&trap)) {
@@ -1732,25 +1732,6 @@ static void tmp_app_hex(char ch, uint64_t n) {
     }
 }
 
-static void tmp_app_int(char ch, int n) {
-    char buf[32];
-    unsigned i = 0;
-    tmp_app_char(ch);
-    if (n < 0) {
-        tmp_app_char('-');
-        n = -n;
-    }
-    do {
-        buf[i++] = '0' + n % 10;
-        n = n / 10;
-    }
-    while (n != 0);
-    while (i > 0) {
-        ch = buf[--i];
-        tmp_app_char(ch);
-    }
-}
-
 const char * symbol2id(const Symbol * sym) {
     assert(sym->magic == SYMBOL_MAGIC);
     if (sym->base) {
@@ -1767,14 +1748,22 @@ const char * symbol2id(const Symbol * sym) {
     }
     else {
         ELF_File * file = NULL;
-        uint64_t obj_index = 0;
-        uint64_t var_index = 0;
+        unsigned obj_sec = 0;
+        uint64_t obj_id = 0;
+        unsigned var_sec = 0;
+        uint64_t var_id = 0;
         unsigned tbl_index = 0;
         int frame = sym->frame;
         if (sym->obj != NULL) file = sym->obj->mCompUnit->mFile;
         if (sym->tbl != NULL) file = sym->tbl->file;
-        if (sym->obj != NULL) obj_index = sym->obj->mID;
-        if (sym->var != NULL) var_index = sym->var->mID;
+        if (sym->obj != NULL) {
+            obj_sec = sym->obj->mCompUnit->mDesc.mSection->index;
+            obj_id = sym->obj->mID;
+        }
+        if (sym->var != NULL) {
+            var_sec = sym->var->mCompUnit->mDesc.mSection->index;
+            var_id = sym->var->mID;
+        }
         if (sym->tbl != NULL) tbl_index = sym->tbl->index;
         if (frame == STACK_TOP_FRAME) frame = get_top_frame(sym->ctx);
         assert(sym->var == NULL || sym->var->mCompUnit->mFile == file);
@@ -1784,10 +1773,19 @@ const char * symbol2id(const Symbol * sym) {
         tmp_app_hex('.', file ? file->dev : (dev_t)0);
         tmp_app_hex('.', file ? file->ino : (ino_t)0);
         tmp_app_hex('.', file ? file->mtime : (int64_t)0);
-        tmp_app_hex('.', obj_index);
-        tmp_app_hex('.', var_index);
-        tmp_app_hex('.', tbl_index);
-        tmp_app_int('.', frame);
+        if (obj_sec) {
+            tmp_app_hex('%', obj_sec);
+            tmp_app_hex('.', obj_id);
+        }
+        if (var_sec) {
+            tmp_app_hex('^', var_sec);
+            tmp_app_hex('.', var_id);
+        }
+        if (tbl_index) {
+            tmp_app_hex('&', tbl_index);
+        }
+        assert(frame + 3 >= 0);
+        tmp_app_hex('.', frame + 3);
         tmp_app_hex('.', sym->index);
         tmp_app_hex('.', sym->dimension);
         tmp_app_hex('.', sym->cardinal);
@@ -1810,30 +1808,15 @@ static uint64_t read_hex(const char ** s) {
     return res;
 }
 
-static int read_int(const char ** s) {
-    int neg = 0;
-    int res = 0;
-    const char * p = *s;
-    if (*p == '-') {
-        neg = 1;
-        p++;
-    }
-    for (;;) {
-        if (*p >= '0' && *p <= '9') res = res * 10 + (*p - '0');
-        else break;
-        p++;
-    }
-    *s = p;
-    return neg ? -res : res;
-}
-
 int id2symbol(const char * id, Symbol ** res) {
     Symbol * sym = alloc_symbol();
     dev_t dev = 0;
     ino_t ino = 0;
     int64_t mtime;
-    ContextAddress obj_index = 0;
-    ContextAddress var_index = 0;
+    unsigned obj_sec = 0;
+    unsigned var_sec = 0;
+    ContextAddress obj_id = 0;
+    ContextAddress var_id = 0;
     unsigned tbl_index = 0;
     ELF_File * file = NULL;
     const char * p;
@@ -1862,14 +1845,24 @@ int id2symbol(const char * id, Symbol ** res) {
         ino = (ino_t)read_hex(&p);
         if (*p == '.') p++;
         mtime = (int64_t)read_hex(&p);
+        if (*p == '%') {
+            p++;
+            obj_sec = (unsigned)read_hex(&p);
+            if (*p == '.') p++;
+            obj_id = (ContextAddress)read_hex(&p);
+        }
+        if (*p == '^') {
+            p++;
+            var_sec = (unsigned)read_hex(&p);
+            if (*p == '.') p++;
+            var_id = (ContextAddress)read_hex(&p);
+        }
+        if (*p == '&') {
+            p++;
+            tbl_index = (unsigned)read_hex(&p);
+        }
         if (*p == '.') p++;
-        obj_index = (ContextAddress)read_hex(&p);
-        if (*p == '.') p++;
-        var_index = (ContextAddress)read_hex(&p);
-        if (*p == '.') p++;
-        tbl_index = (unsigned)read_hex(&p);
-        if (*p == '.') p++;
-        sym->frame = read_int(&p);
+        sym->frame = (int)read_hex(&p) - 3;
         if (*p == '.') p++;
         sym->index = (unsigned)read_hex(&p);
         if (*p == '.') p++;
@@ -1886,13 +1879,14 @@ int id2symbol(const char * id, Symbol ** res) {
         file = elf_open_inode(sym->ctx, dev, ino, mtime);
         if (file == NULL) return -1;
         if (set_trap(&trap)) {
-            DWARFCache * cache = get_dwarf_cache(file);
-            if (obj_index) {
-                sym->obj = find_object(cache, obj_index);
+            if (obj_sec) {
+                if (obj_sec >= file->section_cnt) exception(ERR_INV_CONTEXT);
+                sym->obj = find_object(file->sections + obj_sec, obj_id);
                 if (sym->obj == NULL) exception(ERR_INV_CONTEXT);
             }
-            if (var_index) {
-                sym->var = find_object(cache, var_index);
+            if (var_sec) {
+                if (var_sec >= file->section_cnt) exception(ERR_INV_CONTEXT);
+                sym->var = find_object(file->sections + var_sec, var_id);
                 if (sym->var == NULL) exception(ERR_INV_CONTEXT);
             }
             if (tbl_index) {
@@ -2370,7 +2364,7 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
         return 1;
     case TAG_structure_type:
         if (get_num_prop(obj, AT_GNAT_descriptive_type, &n)) {
-            ObjectInfo * type = find_object(get_dwarf_cache(obj->mCompUnit->mFile), (ContextAddress)n);
+            ObjectInfo * type = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)n);
             if (type != NULL) return get_object_size(type, 0, byte_size, bit_size);
         }
         break;
@@ -2928,7 +2922,7 @@ int get_symbol_container(const Symbol * sym, Symbol ** container) {
             if (org->mTag == TAG_ptr_to_member_type) {
                 U8_T id = 0;
                 if (get_num_prop(org, AT_containing_type, &id)) {
-                    ObjectInfo * type = find_object(get_dwarf_cache(org->mCompUnit->mFile), (ContextAddress)id);
+                    ObjectInfo * type = find_object(org->mCompUnit->mDesc.mSection, (ContextAddress)id);
                     if (type != NULL) {
                         object2symbol(type, container);
                         return 0;
@@ -2941,11 +2935,11 @@ int get_symbol_container(const Symbol * sym, Symbol ** container) {
         parent = get_dwarf_parent(obj);
         if (parent != NULL && parent->mTag == TAG_compile_unit) {
             if ((obj->mFlags & DOIF_abstract_origin) && get_num_prop(obj, AT_abstract_origin, &origin)) {
-                ObjectInfo * org = find_object(get_dwarf_cache(obj->mCompUnit->mFile), (ContextAddress)origin);
+                ObjectInfo * org = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)origin);
                 if (org != NULL) obj = org;
             }
             if ((obj->mFlags & DOIF_specification) && get_num_prop(obj, AT_specification_v2, &spec)) {
-                ObjectInfo * spc = find_object(get_dwarf_cache(obj->mCompUnit->mFile), (ContextAddress)spec);
+                ObjectInfo * spc = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)spec);
                 if (spc != NULL) obj = spc;
             }
             parent = get_dwarf_parent(obj);

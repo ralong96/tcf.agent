@@ -250,7 +250,7 @@ int line_to_address(Context * ctx, const char * file_name, int line, int column,
     if (err == 0 && elf_get_map(ctx, 0, ~(ContextAddress)0, &map) < 0) err = errno;
 
     if (err == 0) {
-        unsigned i;
+        unsigned i, j;
         unsigned h = 0;
         char * fnm = NULL;
         for (i = 0; i < map.region_cnt; i++) {
@@ -261,11 +261,13 @@ int line_to_address(Context * ctx, const char * file_name, int line, int column,
             if (set_trap(&trap)) {
                 DWARFCache * cache = get_dwarf_cache(get_dwarf_file(file));
                 if (!cache->mLineInfoLoaded) {
-                    ObjectInfo * info = cache->mCompUnits;
-                    while (info != NULL) {
-                        CompUnit * unit = info->mCompUnit;
-                        if (!unit->mLineInfoLoaded) load_line_numbers(unit);
-                        info = info->mSibling;
+                    for (j = 0; j < file->section_cnt; j++) {
+                        ObjectInfo * info = cache->mObjectHashTable[j].mCompUnits;
+                        while (info != NULL) {
+                            CompUnit * unit = info->mCompUnit;
+                            if (!unit->mLineInfoLoaded) load_line_numbers(unit);
+                            info = info->mSibling;
+                        }
                     }
                     cache->mLineInfoLoaded = 1;
                 }

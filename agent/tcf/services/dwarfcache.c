@@ -33,7 +33,7 @@
 #include <tcf/services/dwarfexpr.h>
 #include <tcf/services/stacktrace.h>
 
-#define OBJ_HASH(Cache,ID) (((U4_T)(ID) + ((U4_T)(ID) >> 8)) % Cache->mObjectHashSize)
+#define OBJ_HASH(HashTable,ID) (((U4_T)(ID) + ((U4_T)(ID) >> 8)) % HashTable->mObjectHashSize)
 
 #define OBJECT_ARRAY_SIZE 128
 
@@ -82,8 +82,9 @@ unsigned calc_file_name_hash(const char * s) {
 }
 
 static ObjectInfo * add_object_info(ContextAddress ID) {
-    U4_T Hash = OBJ_HASH(sCache, ID);
-    ObjectInfo * Info = sCache->mObjectHash[Hash];
+    ObjectHashTable * HashTable = sCache->mObjectHashTable + sDebugSection->index;
+    U4_T Hash = OBJ_HASH(HashTable, ID);
+    ObjectInfo * Info = HashTable->mObjectHash[Hash];
     while (Info != NULL) {
         if (Info->mID == ID) return Info;
         Info = Info->mHashNext;
@@ -99,8 +100,8 @@ static ObjectInfo * add_object_info(ContextAddress ID) {
         sCache->mObjectArrayPos = 0;
     }
     Info = sCache->mObjectList->mArray + sCache->mObjectArrayPos++;
-    Info->mHashNext = sCache->mObjectHash[Hash];
-    sCache->mObjectHash[Hash] = Info;
+    Info->mHashNext = HashTable->mObjectHash[Hash];
+    HashTable->mObjectHash[Hash] = Info;
     Info->mID = ID;
     return Info;
 }
@@ -115,17 +116,18 @@ static CompUnit * add_comp_unit(ContextAddress ID) {
     return Info->mCompUnit;
 }
 
-static CompUnit * find_comp_unit(ContextAddress ObjID) {
-    if (sCompUnit != NULL) {
+static CompUnit * find_comp_unit(ELF_Section * Section, ContextAddress ObjID) {
+    ObjectHashTable * HashTable = sCache->mObjectHashTable + Section->index;
+    if (sCompUnit != NULL && sCompUnit->mDesc.mSection == Section) {
         ContextAddress ID = sCompUnit->mDesc.mSection->addr + sCompUnit->mDesc.mUnitOffs;
         if (ID <= ObjID && ID + sCompUnit->mDesc.mUnitSize > ObjID) return sCompUnit;
     }
-    if (sCache->mCompUnitsIndex != NULL) {
+    if (HashTable->mCompUnitsIndex != NULL) {
         unsigned l = 0;
-        unsigned h = sCache->mCompUnitsCnt;
+        unsigned h = HashTable->mCompUnitsIndexSize;
         while (l < h) {
             unsigned i = (l + h) / 2;
-            CompUnit * unit = sCache->mCompUnitsIndex[i];
+            CompUnit * unit = HashTable->mCompUnitsIndex[i];
             ContextAddress ID = unit->mDesc.mSection->addr + unit->mDesc.mUnitOffs;
             if (ID > ObjID) {
                 h = i;
@@ -142,10 +144,12 @@ static CompUnit * find_comp_unit(ContextAddress ObjID) {
 }
 
 static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form);
-static void read_object_refs(void);
+static void read_object_refs(ELF_Section * Section);
 
-ObjectInfo * find_object(DWARFCache * Cache, ContextAddress ID) {
-    ObjectInfo * Info = Cache->mObjectHash[OBJ_HASH(Cache, ID)];
+ObjectInfo * find_object(ELF_Section * Section, ContextAddress ID) {
+    DWARFCache * Cache = get_dwarf_cache(Section->file);
+    ObjectHashTable * HashTable = Cache->mObjectHashTable + Section->index;
+    ObjectInfo * Info = HashTable->mObjectHash[OBJ_HASH(HashTable, ID)];
     while (Info != NULL) {
         if (Info->mID == ID) return Info;
         Info = Info->mHashNext;
@@ -153,7 +157,7 @@ ObjectInfo * find_object(DWARFCache * Cache, ContextAddress ID) {
 #if ENABLE_DWARF_LAZY_LOAD
     sCache = Cache;
     sCompUnit = NULL;
-    sCompUnit = find_comp_unit(ID);
+    sCompUnit = find_comp_unit(Section, ID);
     if (sCompUnit != NULL) {
         Trap trap;
         sUnitDesc = sCompUnit->mDesc;
@@ -163,7 +167,7 @@ ObjectInfo * find_object(DWARFCache * Cache, ContextAddress ID) {
         dio_EnterSection(&sCompUnit->mDesc, sDebugSection, ID - sDebugSection->addr);
         if (set_trap(&trap)) {
             dio_ReadEntry(read_object_info, 0);
-            Info = Cache->mObjectHash[OBJ_HASH(Cache, ID)];
+            Info = HashTable->mObjectHash[OBJ_HASH(HashTable, ID)];
             while (Info != NULL) {
                 if (Info->mID == ID) break;
                 Info = Info->mHashNext;
@@ -172,27 +176,39 @@ ObjectInfo * find_object(DWARFCache * Cache, ContextAddress ID) {
         }
         dio_ExitSection();
         sDebugSection = NULL;
-        read_object_refs();
+        read_object_refs(Section);
     }
     sCompUnit = NULL;
 #endif
     return Info;
 }
 
-static ObjectInfo * find_loaded_object(DWARFCache * Cache, ContextAddress ID) {
-    ObjectInfo * Info = Cache->mObjectHash[OBJ_HASH(Cache, ID)];
-    while (Info != NULL) {
-        if (Info->mID == ID) return Info;
-        Info = Info->mHashNext;
+static ObjectInfo * find_loaded_object(ELF_Section * Section, ContextAddress ID) {
+    DWARFCache * Cache = (DWARFCache *)Section->file->dwarf_dt_cache;
+    if (Cache != NULL) {
+        ObjectHashTable * HashTable = Cache->mObjectHashTable + Section->index;
+        ObjectInfo * Info = HashTable->mObjectHash[OBJ_HASH(HashTable, ID)];
+        while (Info != NULL) {
+            if (Info->mID == ID) return Info;
+            Info = Info->mHashNext;
+        }
     }
     return NULL;
 }
 
 static ObjectInfo * find_alt_object_info(ContextAddress ID) {
+    unsigned i;
     ObjectInfo * Info = NULL;
     ELF_File * File = sCache->mFile;
     if (File->dwz_file == NULL) str_exception(errno, "Cannot open DWZ file");
-    Info = find_loaded_object(get_dwarf_cache(File->dwz_file), ID);
+    if (get_dwarf_cache(File->dwz_file) == NULL) str_exception(errno, "Cannot read DWZ file");
+    for (i = 0; i < File->dwz_file->section_cnt; i++) {
+        ELF_Section * section = File->dwz_file->sections + i;
+        if (section->name != NULL && strcmp(section->name, ".debug_info") == 0) {
+            if (Info != NULL) str_exception(ERR_INV_DWARF, "More then one .debug_info section in DWZ file");
+            Info = find_loaded_object(section, ID);
+        }
+    }
     if (Info == NULL) str_exception(errno, "Invalid DWZ file reference");
     return Info;
 }
@@ -203,7 +219,7 @@ static void add_object_reference(ObjectInfo * org, ObjectInfo * obj) {
 #else
     if (obj == NULL) return;
 #endif
-    if (org->mCompUnit == NULL) org->mCompUnit = find_comp_unit(org->mID);
+    if (org->mCompUnit == NULL) org->mCompUnit = find_comp_unit(sDebugSection, org->mID);
     if (sObjRefsCnt >= sObjRefsMax) {
         sObjRefsMax += sObjRefsMax ? sObjRefsMax * 2 : 256;
         sObjRefs = (ObjectReference *)loc_realloc(sObjRefs, sizeof(ObjectReference) * sObjRefsMax);
@@ -503,10 +519,13 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             switch (Tag) {
             case TAG_compile_unit:
             case TAG_partial_unit:
-                assert(sCache->mCompUnitsIndex == NULL);
-                if (Sibling == 0) Sibling = sUnitDesc.mUnitOffs + sUnitDesc.mUnitSize;
-                sCompUnit->mDesc = sUnitDesc;
-                sCache->mCompUnitsCnt++;
+                {
+                    ObjectHashTable * HashTable = sCache->mObjectHashTable + sDebugSection->index;
+                    assert(HashTable->mCompUnitsIndex == NULL);
+                    if (Sibling == 0) Sibling = sUnitDesc.mUnitOffs + sUnitDesc.mUnitSize;
+                    sCompUnit->mDesc = sUnitDesc;
+                    HashTable->mCompUnitsIndexSize++;
+                }
                 break;
             case TAG_subprogram:
             case TAG_global_subroutine:
@@ -544,8 +563,8 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             }
             if (sPrevSibling != NULL) sPrevSibling->mSibling = Info;
             else if (sParentObject != NULL) sParentObject->mChildren = Info;
-            else if (Tag == TAG_compile_unit) sCache->mCompUnits = Info;
-            else if (Tag == TAG_partial_unit) sCache->mCompUnits = Info;
+            else if (Tag == TAG_compile_unit) sCache->mObjectHashTable[sDebugSection->index].mCompUnits = Info;
+            else if (Tag == TAG_partial_unit) sCache->mObjectHashTable[sDebugSection->index].mCompUnits = Info;
             sPrevSibling = Info;
             if (Skip && Sibling != 0) {
                 dio_SetPos(Sibling);
@@ -772,7 +791,7 @@ static int object_references_comparator(const void * x, const void * y) {
     return 0;
 }
 
-static void read_object_refs(void) {
+static void read_object_refs(ELF_Section * Section) {
     U4_T pos = 0;
 #if ENABLE_DWARF_LAZY_LOAD
     /*
@@ -782,7 +801,7 @@ static void read_object_refs(void) {
     sCompUnit = NULL;
     while (pos < sObjRefsCnt) {
         ObjectReference ref = sObjRefs[pos++];
-        if (ref.org->mCompUnit == NULL) ref.org->mCompUnit = find_comp_unit(ref.org->mID);
+        if (ref.org->mCompUnit == NULL) ref.org->mCompUnit = find_comp_unit(Section, ref.org->mID);
         if (ref.org->mTag == 0) {
             Trap trap;
             ObjectInfo * obj = ref.org;
@@ -913,7 +932,7 @@ static void add_object_addr_ranges(ObjectInfo * info) {
     }
 }
 
-static void load_addr_ranges(void) {
+static void load_addr_ranges(ELF_Section * debug_info) {
     Trap trap;
     unsigned idx;
     ELF_File * file = sCache->mFile;
@@ -937,11 +956,13 @@ static void load_addr_ranges(void) {
                     }
                     next = dio_GetPos() + size;
                     if (dio_ReadU2() == 2) {
-                        U8_T offs = dio_ReadAddressX(NULL, dwarf64 ? 8 : 4);
+                        ELF_Section * unit_sec = NULL;
+                        U8_T unit_addr = dio_ReadAddressX(&unit_sec, dwarf64 ? 8 : 4);
                         U1_T addr_size = dio_ReadU1();
                         U1_T segm_size = dio_ReadU1();
                         if (segm_size != 0) str_exception(ERR_INV_DWARF, "segment descriptors are not supported");
-                        sCompUnit = find_comp_unit((ContextAddress)offs);
+                        if (unit_sec == NULL) unit_sec = debug_info;
+                        sCompUnit = find_comp_unit(unit_sec, (ContextAddress)unit_addr);
                         if (sCompUnit == NULL) str_exception(ERR_INV_DWARF, "invalid .debug_aranges section");
                         sCompUnit->mObject->mFlags |= DOIF_aranges;
                         while (dio_GetPos() % (addr_size * 2) != 0) dio_Skip(1);
@@ -964,8 +985,8 @@ static void load_addr_ranges(void) {
         }
     }
     if (trap.error) exception(trap.error);
-    if (sCache->mCompUnits != NULL) {
-        ObjectInfo * info = sCache->mCompUnits;
+    for (idx = 1; idx < file->section_cnt; idx++) {
+        ObjectInfo * info = sCache->mObjectHashTable[idx].mCompUnits;
         while (info != NULL) {
             if (info->mFlags & DOIF_low_pc) {
                 add_object_addr_ranges(info);
@@ -1096,7 +1117,8 @@ static void load_pub_names(ELF_Section * debug_info, ELF_Section * pub_names) {
             U8_T unit_addr = dio_ReadAddressX(&unit_sect, dwarf64 ? 8 : 4);
             U8_T unit_offs = unit_sect == NULL ? unit_addr : unit_addr - unit_sect->addr;
             U8_T unit_size = dwarf64 ? dio_ReadU8() : (U8_T)dio_ReadU4();
-            if (unit_offs + unit_size > debug_info->size) str_fmt_exception(ERR_INV_DWARF,
+            if (unit_sect == NULL) unit_sect = debug_info;
+            if (unit_offs + unit_size > unit_sect->size) str_fmt_exception(ERR_INV_DWARF,
                 "Invalid unit size in %s section", pub_names->name);
             for (;;) {
                 char * name = NULL;
@@ -1106,7 +1128,7 @@ static void load_pub_names(ELF_Section * debug_info, ELF_Section * pub_names) {
                 if (obj_offs >= unit_size) str_fmt_exception(ERR_INV_DWARF,
                     "Invalid object offset in %s section", pub_names->name);
                 name = dio_ReadString();
-                info = find_loaded_object(sCache, (ContextAddress)(debug_info->addr + unit_offs + obj_offs));
+                info = find_loaded_object(unit_sect, (ContextAddress)(unit_addr + obj_offs));
                 if (info == NULL) continue;
                 if (info->mName == NULL) continue;
                 if (info->mFlags & DOIF_pub_mark) continue;
@@ -1120,8 +1142,8 @@ static void load_pub_names(ELF_Section * debug_info, ELF_Section * pub_names) {
     dio_ExitSection();
 }
 
-static void create_pub_names(ELF_Section * debug_info) {
-    ObjectInfo * unit = sCache->mCompUnits;
+static void create_pub_names(unsigned idx) {
+    ObjectInfo * unit = sCache->mObjectHashTable[idx].mCompUnits;
     PubNamesTable * tbl = &sCache->mPubNames;
     while (unit != NULL) {
         ObjectInfo * obj = get_dwarf_children(unit);
@@ -1138,20 +1160,12 @@ static void create_pub_names(ELF_Section * debug_info) {
     }
 }
 
-static void allocate_obj_hash(void) {
-    unsigned idx;
-    U8_T size = 0;
-    ELF_File * file = sCache->mFile;
-    for (idx = 1; idx < file->section_cnt; idx++) {
-        ELF_Section * sec = file->sections + idx;
-        if (sec->name == NULL) continue;
-        if (strcmp(sec->name, ".debug") == 0 || strcmp(sec->name, ".debug_info") == 0) {
-            size += sec->size;
-        }
-    }
-    sCache->mObjectHashSize = (unsigned)(size / 53);
-    if (sCache->mObjectHashSize < 251) sCache->mObjectHashSize = 251;
-    sCache->mObjectHash = (ObjectInfo **)loc_alloc_zero(sizeof(ObjectInfo *) * sCache->mObjectHashSize);
+static void allocate_obj_hash(ELF_Section * sec) {
+    ObjectHashTable * HashTable = sCache->mObjectHashTable + sec->index;
+    assert(HashTable->mObjectHash == NULL);
+    HashTable->mObjectHashSize = (unsigned)(sec->size / 53);
+    if (HashTable->mObjectHashSize < 251) HashTable->mObjectHashSize = 251;
+    HashTable->mObjectHash = (ObjectInfo **)loc_alloc_zero(sizeof(ObjectInfo *) * HashTable->mObjectHashSize);
 }
 
 static int unit_id_comparator(const void * x1, const void * x2) {
@@ -1163,43 +1177,47 @@ static int unit_id_comparator(const void * x1, const void * x2) {
 }
 
 static void load_debug_info_section(ELF_Section * sec) {
+    ObjectHashTable * HashTable = sCache->mObjectHashTable + sec->index;
     Trap trap;
+
     sObjRefsCnt = 0;
     sDebugSection = sec;
     sParentObject = NULL;
     sPrevSibling = NULL;
+    allocate_obj_hash(sec);
     dio_EnterSection(NULL, sec, 0);
     if (set_trap(&trap)) {
+        assert(HashTable->mCompUnitsIndexSize == 0);
+        assert(HashTable->mCompUnitsIndex == NULL);
         while (dio_GetPos() < sec->size) {
             dio_ReadUnit(&sUnitDesc, read_object_info);
         }
         clear_trap(&trap);
     }
     dio_ExitSection();
+    assert(sDebugSection == sec);
     sDebugSection = NULL;
     sParentObject = NULL;
     sPrevSibling = NULL;
     sCompUnit = NULL;
-    if (sCache->mCompUnitsCnt > 0) {
+    if (HashTable->mCompUnitsIndexSize > 0) {
         unsigned i = 0;
-        ObjectInfo * unit = sCache->mCompUnits;
-        sCache->mCompUnitsIndex = (CompUnit **)loc_alloc(sizeof(CompUnit *) * sCache->mCompUnitsCnt);
+        ObjectInfo * unit = sCache->mObjectHashTable[sec->index].mCompUnits;
+        HashTable->mCompUnitsIndex = (CompUnit **)loc_alloc(sizeof(CompUnit *) * HashTable->mCompUnitsIndexSize);
         while (unit != NULL) {
             assert(unit->mTag == TAG_compile_unit || unit->mTag == TAG_partial_unit);
-            sCache->mCompUnitsIndex[i++] = unit->mCompUnit;
+            HashTable->mCompUnitsIndex[i++] = unit->mCompUnit;
             unit = unit->mSibling;
         }
-        assert(sCache->mCompUnitsCnt == i);
-        qsort(sCache->mCompUnitsIndex, sCache->mCompUnitsCnt, sizeof(CompUnit *), unit_id_comparator);
+        assert(HashTable->mCompUnitsIndexSize == i);
+        qsort(HashTable->mCompUnitsIndex, HashTable->mCompUnitsIndexSize, sizeof(CompUnit *), unit_id_comparator);
     }
     if (trap.error) exception(trap.error);
-    read_object_refs();
+    read_object_refs(sec);
 }
 
 static void load_debug_sections(void) {
     unsigned idx;
-    ELF_Section * pub_names = NULL;
-    ELF_Section * pub_types = NULL;
     ELF_Section * debug_info = NULL;
     FrameInfoIndex * frame_info_d = NULL;
     FrameInfoIndex * frame_info_e = NULL;
@@ -1212,21 +1230,18 @@ static void load_debug_sections(void) {
         if (sec->type == SHT_NOBITS) continue;
         if (strcmp(sec->name, ".debug_info") == 0) {
             load_debug_info_section(sec);
-            debug_info = sec;
+            if (debug_info == NULL) debug_info = sec;
         }
     }
 
-    if (debug_info == NULL) {
-        /* TODO: loading both .debug and .debug_info sections */
-        for (idx = 1; idx < file->section_cnt; idx++) {
-            ELF_Section * sec = file->sections + idx;
-            if (sec->size == 0) continue;
-            if (sec->name == NULL) continue;
-            if (sec->type == SHT_NOBITS) continue;
-            if (strcmp(sec->name, ".debug") == 0) {
-                load_debug_info_section(sec);
-                debug_info = sec;
-            }
+    for (idx = 1; idx < file->section_cnt; idx++) {
+        ELF_Section * sec = file->sections + idx;
+        if (sec->size == 0) continue;
+        if (sec->name == NULL) continue;
+        if (sec->type == SHT_NOBITS) continue;
+        if (strcmp(sec->name, ".debug") == 0) {
+            load_debug_info_section(sec);
+            if (debug_info == NULL) debug_info = sec;
         }
     }
 
@@ -1259,12 +1274,6 @@ static void load_debug_sections(void) {
             idx->mNext = frame_info_e;
             frame_info_e = idx;
         }
-        else if (strcmp(sec->name, ".debug_pubnames") == 0) {
-            pub_names = sec;
-        }
-        else if (strcmp(sec->name, ".debug_pubtypes") == 0) {
-            pub_types = sec;
-        }
     }
 
     while (frame_info_e != NULL) {
@@ -1280,15 +1289,25 @@ static void load_debug_sections(void) {
         sCache->mFrameInfo = idx;
     }
 
-    if (debug_info) {
+    if (debug_info != NULL) {
         PubNamesTable * tbl = &sCache->mPubNames;
         tbl->mHashSize = tbl->mMax = (unsigned)(debug_info->size / 151) + 16;
         tbl->mHash = (unsigned *)loc_alloc_zero(sizeof(unsigned) * tbl->mHashSize);
         tbl->mNext = (PubNamesInfo *)loc_alloc(sizeof(PubNamesInfo) * tbl->mMax);
         memset(tbl->mNext + tbl->mCnt++, 0, sizeof(PubNamesInfo));
-        if (pub_names) load_pub_names(debug_info, pub_names);
-        if (pub_types) load_pub_names(debug_info, pub_types);
-        create_pub_names(debug_info);
+        for (idx = 1; idx < file->section_cnt; idx++) {
+            ELF_Section * sec = file->sections + idx;
+            if (sec->size == 0) continue;
+            if (sec->name == NULL) continue;
+            if (sec->type == SHT_NOBITS) continue;
+            if (strcmp(sec->name, ".debug_pubnames") == 0 || strcmp(sec->name, ".debug_pubtypes") == 0) {
+                load_pub_names(debug_info, sec);
+            }
+        }
+        for (idx = 1; idx < file->section_cnt; idx++) {
+            create_pub_names(idx);
+        }
+        load_addr_ranges(debug_info);
     }
 }
 
@@ -1324,7 +1343,7 @@ ObjectInfo * get_dwarf_children(ObjectInfo * obj) {
     sPrevSibling = NULL;
     sCompUnit = NULL;
     if (trap.error) exception(trap.error);
-    read_object_refs();
+    read_object_refs(obj->mCompUnit->mDesc.mSection);
     assert(obj->mFlags & DOIF_children_loaded);
     return obj->mChildren;
 }
@@ -1530,7 +1549,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
         default:
             {
                 PropertyValue ValueAddr;
-                ObjectInfo * RefObj = find_object(sCache, (ContextAddress)gop_gFormData);
+                ObjectInfo * RefObj = find_object(sDebugSection, (ContextAddress)gop_gFormData);
 
                 if (RefObj == NULL) exception(ERR_INV_DWARF);
                 read_and_evaluate_dwarf_object_property(Ctx, Frame, RefObj, AT_location, &ValueAddr);
@@ -1611,9 +1630,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
                     while (d->mTag == TAG_imported_declaration) {
                         PropertyValue v;
                         read_and_evaluate_dwarf_object_property(Ctx, Frame, d, AT_import, &v);
-                        d = find_object(
-                            (DWARFCache *)Obj->mCompUnit->mFile->dwarf_dt_cache,
-                            (ContextAddress)get_numeric_property_value(&v));
+                        d = find_object(sDebugSection, (ContextAddress)get_numeric_property_value(&v));
                         if (d == NULL) break;
                     }
                     if (d == NULL) {
@@ -1734,14 +1751,19 @@ static void free_unit_cache(CompUnit * Unit) {
 static void free_dwarf_cache(ELF_File * file) {
     DWARFCache * Cache = (DWARFCache *)file->dwarf_dt_cache;
     if (Cache != NULL) {
+        unsigned i;
         assert(Cache->magic == DWARF_CACHE_MAGIC);
         Cache->magic = 0;
-        loc_free(Cache->mCompUnitsIndex);
-        while (Cache->mCompUnits != NULL) {
-            CompUnit * Unit = Cache->mCompUnits->mCompUnit;
-            Cache->mCompUnits = Cache->mCompUnits->mSibling;
-            free_unit_cache(Unit);
-            loc_free(Unit);
+        for (i = 0; i < file->section_cnt; i++) {
+            ObjectHashTable * Table = Cache->mObjectHashTable + i;
+            while (Table->mCompUnits != NULL) {
+                CompUnit * Unit = Table->mCompUnits->mCompUnit;
+                Table->mCompUnits = Table->mCompUnits->mSibling;
+                free_unit_cache(Unit);
+                loc_free(Unit);
+            }
+            loc_free(Table->mObjectHash);
+            loc_free(Table->mCompUnitsIndex);
         }
         while (Cache->mObjectList != NULL) {
             ObjectArray * Buf = Cache->mObjectList;
@@ -1754,7 +1776,7 @@ static void free_dwarf_cache(ELF_File * file) {
             loc_free(idx->mFrameInfoRanges);
             loc_free(idx);
         }
-        loc_free(Cache->mObjectHash);
+        loc_free(Cache->mObjectHashTable);
         loc_free(Cache->mAddrRanges);
         loc_free(Cache->mPubNames.mHash);
         loc_free(Cache->mPubNames.mNext);
@@ -1784,11 +1806,10 @@ DWARFCache * get_dwarf_cache(ELF_File * file) {
         sCache->magic = DWARF_CACHE_MAGIC;
         sCache->mFile = file;
         sCache->mObjectArrayPos = OBJECT_ARRAY_SIZE;
-        allocate_obj_hash();
+        sCache->mObjectHashTable = (ObjectHashTable *)loc_alloc_zero(sizeof(ObjectHashTable) * file->section_cnt);
         if (set_trap(&trap)) {
             dio_LoadAbbrevTable(file);
             load_debug_sections();
-            load_addr_ranges();
             clear_trap(&trap);
         }
         else {
