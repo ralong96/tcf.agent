@@ -602,7 +602,7 @@ void dio_ReadUnit(DIO_UnitDescriptor * Unit, DIO_EntryCallBack CallBack) {
             sUnit->mUnitSize += 4;
         }
         sUnit->mVersion = dio_ReadU2();
-        sUnit->mAbbrevTableOffs = (U4_T)dio_ReadAddressX(&Sect, 4);
+        sUnit->mAbbrevTableOffs = dio_ReadAddressX(&Sect, sUnit->m64bit ? 8 : 4);
         sUnit->mAddressSize = dio_ReadU1();
         dio_FindAbbrevTable();
     }
