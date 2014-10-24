@@ -415,6 +415,10 @@ static void test_enumeration_type(Symbol * type) {
     Symbol ** children = NULL;
     Symbol * enum_type = type;
     ContextAddress enum_type_size = 0;
+    char * type_name = NULL;
+    Symbol * find_sym = NULL;
+    int visible = 0;
+
     for (i = 0;; i++) {
         SYM_FLAGS enum_flags = 0;
         if (get_symbol_flags(enum_type, &enum_flags) < 0) {
@@ -436,12 +440,19 @@ static void test_enumeration_type(Symbol * type) {
     if (get_symbol_children(type, &children, &count) < 0) {
         error_sym("get_symbol_children", type);
     }
+    if (get_symbol_name(type, &type_name) < 0) {
+        error_sym("get_symbol_name", type);
+    }
+    if (type_name != NULL && find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, type_name, &find_sym) == 0) {
+        visible = symcmp(type, find_sym) == 0;
+    }
     for (i = 0; i < count; i++) {
         Symbol * child_type = NULL;
         void * value = NULL;
         size_t value_size = 0;
         int big_endian = 0;
         ContextAddress child_size = 0;
+        char * name = NULL;
         if (get_symbol_value(children[i], &value, &value_size, &big_endian) < 0) {
             error_sym("get_symbol_value", children[i]);
         }
@@ -462,6 +473,21 @@ static void test_enumeration_type(Symbol * type) {
         if (value_size != child_size) {
             errno = ERR_OTHER;
             error("Invalid size of enumeration constant");
+        }
+        if (get_symbol_name(children[i], &name) < 0) {
+            error_sym("get_symbol_name", children[i]);
+        }
+        if (visible && name != NULL && get_symbol_object(children[i]) != NULL) {
+            if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, name, &find_sym) < 0) {
+                error_sym("find_symbol_by_name", children[i]);
+            }
+#if 0
+            /* TODO: better enum const search */
+            if (symcmp(children[i], find_sym) != 0) {
+                errno = ERR_OTHER;
+                error_sym("find_symbol_by_name", children[i]);
+            }
+#endif
         }
     }
 }
@@ -1242,6 +1268,7 @@ static void test_public_names(void) {
     DWARFCache * cache = get_dwarf_cache(get_dwarf_file(elf_file));
     unsigned n = 0;
     unsigned m = 0;
+    time_t time_start = time(0);
     while (n < cache->mPubNames.mCnt) {
         ObjectInfo * obj = cache->mPubNames.mNext[n++].mObject;
         if (obj != NULL) {
@@ -1277,7 +1304,10 @@ static void test_public_names(void) {
                 loc_var_func(NULL, sym1);
             }
         }
-        if ((n % 100) == 0) tmp_gc();
+        if ((n % 100) == 0) {
+            tmp_gc();
+            if (time(0) - time_start >= 120) break;
+        }
     }
     for (m = 1; m < elf_file->section_cnt; m++) {
         ELF_Section * tbl = elf_file->sections + m;

@@ -110,6 +110,12 @@ static CompUnit * add_comp_unit(ContextAddress ID) {
     ObjectInfo * Info = add_object_info(ID);
     if (Info->mCompUnit == NULL) {
         CompUnit * Unit = (CompUnit *)loc_alloc_zero(sizeof(CompUnit));
+        Unit->mFile = sCache->mFile;
+        Unit->mRegIdScope.big_endian = sCache->mFile->big_endian;
+        Unit->mRegIdScope.machine = sCache->mFile->machine;
+        Unit->mRegIdScope.os_abi = sCache->mFile->os_abi;
+        Unit->mRegIdScope.elf64 = sCache->mFile->elf64;
+        Unit->mRegIdScope.id_type = REGNUM_DWARF;
         Unit->mObject = Info;
         Info->mCompUnit = Unit;
     }
@@ -141,6 +147,44 @@ static CompUnit * find_comp_unit(ELF_Section * Section, ContextAddress ObjID) {
         }
     }
     return NULL;
+}
+
+static void add_type_unit(CompUnit * Unit) {
+    unsigned Hash = (unsigned)(Unit->mDesc.mTypeSignature % sCache->mTypeUnitHashSize);
+    assert(Unit->mDesc.mTypeOffset != 0);
+    Unit->mNextTypeUnit = sCache->mTypeUnitHash[Hash];
+    sCache->mTypeUnitHash[Hash] = Unit;
+}
+
+static CompUnit * find_type_unit(U8_T Signature) {
+    unsigned Hash = (unsigned)(Signature % sCache->mTypeUnitHashSize);
+    CompUnit * Unit = sCache->mTypeUnitHash[Hash];
+    while (Unit != NULL) {
+        if (Unit->mDesc.mTypeSignature == Signature) return Unit;
+        Unit = Unit->mNextTypeUnit;
+    }
+    return NULL;
+}
+
+static void read_type_unit_header(U2_T Tag, U2_T Attr, U2_T Form) {
+    if (Attr == 0) {
+        if (Form) {
+            assert(sParentObject == NULL);
+            if (Tag != TAG_type_unit) str_exception(ERR_INV_DWARF, "Invalid .debug_types section");
+            sCompUnit = add_comp_unit((ContextAddress)(sDebugSection->addr + dio_gEntryPos));
+        }
+        else {
+            if (find_type_unit(sUnitDesc.mTypeSignature) != NULL) {
+                str_exception(ERR_INV_DWARF, "Invalid .debug_types section");
+            }
+            sCompUnit->mDesc = sUnitDesc;
+            add_type_unit(sCompUnit);
+            add_object_info((ContextAddress)(sDebugSection->addr + sUnitDesc.mUnitOffs + sUnitDesc.mTypeOffset));
+            sCompUnit = NULL;
+            assert(sUnitDesc.mUnitSize > 0);
+            dio_SetPos(sUnitDesc.mUnitOffs + sUnitDesc.mUnitSize);
+        }
+    }
 }
 
 static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form);
@@ -480,16 +524,11 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     switch (Attr) {
     case 0:
         if (Form) {
+            /* Initialization: executed before debug entry processing */
             high_pc_offs = 0;
-            if (Tag == TAG_compile_unit || Tag == TAG_partial_unit) {
+            if (Tag == TAG_compile_unit || Tag == TAG_partial_unit || Tag == TAG_type_unit) {
                 CompUnit * Unit = add_comp_unit((ContextAddress)(sDebugSection->addr + dio_gEntryPos));
                 assert(sParentObject == NULL);
-                Unit->mFile = sCache->mFile;
-                Unit->mRegIdScope.big_endian = sCache->mFile->big_endian;
-                Unit->mRegIdScope.machine = sCache->mFile->machine;
-                Unit->mRegIdScope.os_abi = sCache->mFile->os_abi;
-                Unit->mRegIdScope.elf64 = sCache->mFile->elf64;
-                Unit->mRegIdScope.id_type = REGNUM_DWARF;
                 Info = Unit->mObject;
                 assert(Info->mTag == 0);
                 sCompUnit = Unit;
@@ -506,6 +545,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                 assert(Info->mTag == Tag);
                 assert(Tag != TAG_compile_unit);
                 assert(Tag != TAG_partial_unit);
+                assert(Tag != TAG_type_unit);
                 assert(Info->mCompUnit == sCompUnit);
                 return;
             }
@@ -513,12 +553,14 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             Info->mCompUnit = sCompUnit;
         }
         else {
+            /* Finalization: executed after debug entry processing */
             if (high_pc_offs && !(Info->mFlags & DOIF_ranges) && (Info->mFlags & DOIF_low_pc)) {
                 Info->u.mCode.mHighPC.mAddr += Info->u.mCode.mLowPC;
             }
             switch (Tag) {
             case TAG_compile_unit:
             case TAG_partial_unit:
+            case TAG_type_unit:
                 {
                     ObjectHashTable * HashTable = sCache->mObjectHashTable + sDebugSection->index;
                     assert(HashTable->mCompUnitsIndex == NULL);
@@ -565,6 +607,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             else if (sParentObject != NULL) sParentObject->mChildren = Info;
             else if (Tag == TAG_compile_unit) sCache->mObjectHashTable[sDebugSection->index].mCompUnits = Info;
             else if (Tag == TAG_partial_unit) sCache->mObjectHashTable[sDebugSection->index].mCompUnits = Info;
+            else if (Tag == TAG_type_unit) sCache->mObjectHashTable[sDebugSection->index].mCompUnits = Info;
             sPrevSibling = Info;
             if (Skip && Sibling != 0) {
                 dio_SetPos(Sibling);
@@ -612,6 +655,16 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     case AT_type:
         if (Form == FORM_GNU_REF_ALT) {
             Info->mType = find_alt_object_info((ContextAddress)dio_gFormData);
+            break;
+        }
+        if (Form == FORM_REF_SIG8) {
+            CompUnit * Unit = find_type_unit(dio_gFormData);
+            if (Unit != NULL) {
+                ContextAddress ID = (ContextAddress)(Unit->mDesc.mSection->addr +
+                    Unit->mDesc.mUnitOffs + Unit->mDesc.mTypeOffset);
+                Info->mType = find_loaded_object(Unit->mDesc.mSection, ID);
+            }
+            if (Info->mType == NULL) str_exception(ERR_INV_DWARF, "Invalid type unit reference");
             break;
         }
         dio_ChkRef(Form);
@@ -753,7 +806,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         }
         break;
     }
-    if (Tag == TAG_compile_unit || Tag == TAG_partial_unit) {
+    if (Tag == TAG_compile_unit || Tag == TAG_partial_unit || Tag == TAG_type_unit) {
         CompUnit * Unit = Info->mCompUnit;
         switch (Attr) {
         case AT_low_pc:
@@ -1151,6 +1204,15 @@ static void create_pub_names(unsigned idx) {
             if ((obj->mFlags & DOIF_pub_mark) == 0 && obj->mDefinition == NULL && obj->mName != NULL) {
                 add_pub_name(tbl, obj);
             }
+            if (obj->mTag == TAG_enumeration_type) {
+                ObjectInfo * n = get_dwarf_children(obj);
+                while (n != NULL) {
+                    if ((n->mFlags & DOIF_pub_mark) == 0 && n->mName != NULL) {
+                        add_pub_name(tbl, n);
+                    }
+                    n = n->mSibling;
+                }
+            }
             obj = obj->mSibling;
         }
         if ((unit->mFlags & DOIF_pub_mark) == 0 && unit->mName != NULL) {
@@ -1189,6 +1251,12 @@ static void load_debug_info_section(ELF_Section * sec) {
     if (set_trap(&trap)) {
         assert(HashTable->mCompUnitsIndexSize == 0);
         assert(HashTable->mCompUnitsIndex == NULL);
+        if (strcmp(sec->name, ".debug_types") == 0) {
+            while (dio_GetPos() < sec->size) {
+                dio_ReadUnit(&sUnitDesc, read_type_unit_header);
+            }
+            dio_SetPos(0);
+        }
         while (dio_GetPos() < sec->size) {
             dio_ReadUnit(&sUnitDesc, read_object_info);
         }
@@ -1205,7 +1273,7 @@ static void load_debug_info_section(ELF_Section * sec) {
         ObjectInfo * unit = sCache->mObjectHashTable[sec->index].mCompUnits;
         HashTable->mCompUnitsIndex = (CompUnit **)loc_alloc(sizeof(CompUnit *) * HashTable->mCompUnitsIndexSize);
         while (unit != NULL) {
-            assert(unit->mTag == TAG_compile_unit || unit->mTag == TAG_partial_unit);
+            assert(unit->mTag == TAG_compile_unit || unit->mTag == TAG_partial_unit || unit->mTag == TAG_type_unit);
             HashTable->mCompUnitsIndex[i++] = unit->mCompUnit;
             unit = unit->mSibling;
         }
@@ -1222,6 +1290,33 @@ static void load_debug_sections(void) {
     FrameInfoIndex * frame_info_d = NULL;
     FrameInfoIndex * frame_info_e = NULL;
     ELF_File * file = sCache->mFile;
+    U8_T debug_types_size = 0;
+
+    for (idx = 1; idx < file->section_cnt; idx++) {
+        ELF_Section * sec = file->sections + idx;
+        if (sec->size == 0) continue;
+        if (sec->name == NULL) continue;
+        if (sec->type == SHT_NOBITS) continue;
+        if (strcmp(sec->name, ".debug_types") == 0) {
+            debug_types_size += sec->size;
+        }
+    }
+
+    if (debug_types_size > 0) {
+        sCache->mTypeUnitHashSize = (unsigned)(debug_types_size / 101);
+        if (sCache->mTypeUnitHashSize < 239) sCache->mTypeUnitHashSize = 239;
+        sCache->mTypeUnitHash = (CompUnit **)loc_alloc_zero(sizeof(CompUnit *) * sCache->mTypeUnitHashSize);
+    }
+
+    for (idx = 1; idx < file->section_cnt; idx++) {
+        ELF_Section * sec = file->sections + idx;
+        if (sec->size == 0) continue;
+        if (sec->name == NULL) continue;
+        if (sec->type == SHT_NOBITS) continue;
+        if (strcmp(sec->name, ".debug_types") == 0) {
+            load_debug_info_section(sec);
+        }
+    }
 
     for (idx = 1; idx < file->section_cnt; idx++) {
         ELF_Section * sec = file->sections + idx;
@@ -1353,6 +1448,7 @@ ObjectInfo * get_dwarf_parent(ObjectInfo * obj) {
     if (obj->mParent != NULL) return obj->mParent;
     if (obj->mTag == TAG_compile_unit) return NULL;
     if (obj->mTag == TAG_partial_unit) return NULL;
+    if (obj->mTag == TAG_type_unit) return NULL;
     x = get_dwarf_children(obj->mCompUnit->mObject);
     while (x != NULL && x->mID < obj->mID) {
         if (x->mSibling == NULL || x->mSibling->mID > obj->mID) {
@@ -1781,6 +1877,7 @@ static void free_dwarf_cache(ELF_File * file) {
         loc_free(Cache->mPubNames.mHash);
         loc_free(Cache->mPubNames.mNext);
         loc_free(Cache->mFileInfoHash);
+        loc_free(Cache->mTypeUnitHash);
         loc_free(Cache);
         file->dwarf_dt_cache = NULL;
     }

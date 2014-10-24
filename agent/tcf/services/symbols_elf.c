@@ -107,6 +107,8 @@ static struct ConstantPseudoSymbol {
 } constant_pseudo_symbols[] = {
     { "false", "bool", 0 },
     { "true", "bool", 1 },
+    { "false", "boolean", 0 },
+    { "true", "boolean", 1 },
     { NULL },
 };
 
@@ -1283,9 +1285,14 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                             Trap trap;
                             Symbol * type = NULL;
                             Symbol * list = find_symbol_list;
+                            const char * type_name = constant_pseudo_symbols[i].type;
                             if (set_trap(&trap)) {
                                 find_symbol_list = NULL;
-                                find_in_dwarf(constant_pseudo_symbols[i].type);
+                                find_in_dwarf(type_name);
+                                if (curr_file != NULL) {
+                                    DWARFCache * cache = get_dwarf_cache(get_dwarf_file(curr_file));
+                                    find_by_name_in_pub_names(cache, type_name);
+                                }
                                 sort_find_symbol_buf();
                                 type = find_symbol_list;
                                 clear_trap(&trap);

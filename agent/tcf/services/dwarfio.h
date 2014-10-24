@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2006, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -35,6 +35,8 @@ typedef struct DIO_UnitDescriptor {
     U8_T mUnitOffs;
     U8_T mUnitSize;
     U8_T mAbbrevTableOffs;
+    U8_T mTypeSignature;
+    U8_T mTypeOffset;
     struct DIO_Abbreviation ** mAbbrevTable;
     U4_T mAbbrevTableSize;
 } DIO_UnitDescriptor;

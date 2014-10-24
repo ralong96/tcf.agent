@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2006, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -214,6 +214,7 @@ struct CompUnit {
     U1_T mLineInfoLoaded;
 
     CompUnit * mBaseTypes;
+    CompUnit * mNextTypeUnit;
 };
 
 /* Address range of a compilation unit. A unit can occupy multiple address ranges. */
@@ -263,6 +264,8 @@ struct DWARFCache {
     unsigned mFileInfoHashSize;
     FileInfo ** mFileInfoHash;
     int mLineInfoLoaded;
+    CompUnit ** mTypeUnitHash;
+    unsigned mTypeUnitHashSize;
 };
 
 /* Return DWARF cache for given file, create and populate the cache if needed, throw an exception if error */

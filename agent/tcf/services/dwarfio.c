@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2006, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -564,7 +564,7 @@ int dio_ReadEntry(DIO_EntryCallBack CallBack, U2_T TargetAttr) {
             }
         }
         if (Attr != 0 && Form != 0) dio_ReadAttribute(Attr, Form);
-        if (Tag == TAG_compile_unit || Tag == TAG_partial_unit) {
+        if (Tag == TAG_compile_unit || Tag == TAG_partial_unit || Tag == TAG_type_unit) {
             if (Attr == AT_sibling && sUnit->mUnitSize == 0) {
                 dio_ChkRef(Form);
                 assert(sUnit->mVersion == 1);
@@ -604,6 +604,10 @@ void dio_ReadUnit(DIO_UnitDescriptor * Unit, DIO_EntryCallBack CallBack) {
         sUnit->mVersion = dio_ReadU2();
         sUnit->mAbbrevTableOffs = dio_ReadAddressX(&Sect, sUnit->m64bit ? 8 : 4);
         sUnit->mAddressSize = dio_ReadU1();
+        if (strcmp(sSection->name, ".debug_types") == 0) {
+            sUnit->mTypeSignature = dio_ReadU8();
+            sUnit->mTypeOffset = sUnit->m64bit ? dio_ReadU8() : dio_ReadU4();
+        }
         dio_FindAbbrevTable();
     }
     else {
