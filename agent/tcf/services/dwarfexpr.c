@@ -31,9 +31,6 @@
 #include <tcf/services/stacktrace.h>
 #include <tcf/services/vm.h>
 
-U8_T dwarf_expression_obj_addr = 0;
-U8_T dwarf_expression_pm_value = 0;
-
 void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** List) {
     CompUnit * Unit = Value->mObject->mCompUnit;
 
@@ -104,11 +101,10 @@ void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** Lis
     }
 }
 
-void dwarf_evaluate_expression(PropertyValue * Value) {
+void dwarf_evaluate_expression(PropertyValue * Value, uint64_t * args, unsigned args_cnt) {
     CompUnit * Unit = Value->mObject->mCompUnit;
     LocationExpressionState * State = NULL;
     DWARFExpressionInfo * Info = NULL;
-    U8_T args[2];
 
     State = (LocationExpressionState *)tmp_alloc_zero(sizeof(LocationExpressionState));
     State->stk = (U8_T *)tmp_alloc(sizeof(U8_T) * (State->stk_max = 8));
@@ -119,17 +115,16 @@ void dwarf_evaluate_expression(PropertyValue * Value) {
     State->addr_size = Unit->mDesc.mAddressSize;
     State->reg_id_scope = Unit->mRegIdScope;
     State->args = args;
-    args[0] = dwarf_expression_obj_addr;
-    args[1] = dwarf_expression_pm_value;
+    State->args_cnt = args_cnt;
 
     if (Value->mAttr == AT_data_member_location) {
-        State->stk[State->stk_pos++] = dwarf_expression_obj_addr;
-        State->args_cnt = 1;
+        if (args_cnt < 1) str_exception(ERR_INV_ADDRESS, "Invalid address of containing object");
+        State->stk[State->stk_pos++] = args[0];
     }
-    if (Value->mAttr == AT_use_location) {
-        State->stk[State->stk_pos++] = dwarf_expression_pm_value;
-        State->stk[State->stk_pos++] = dwarf_expression_obj_addr;
-        State->args_cnt = 2;
+    else if (Value->mAttr == AT_use_location) {
+        if (args_cnt < 2) str_exception(ERR_INV_ADDRESS, "Invalid address of containing object");
+        State->stk[State->stk_pos++] = args[1];
+        State->stk[State->stk_pos++] = args[0];
     }
     if (Value->mPieces != NULL || Value->mAddr == NULL || Value->mSize == 0) {
         str_exception(ERR_INV_DWARF, "Invalid DWARF expression reference");

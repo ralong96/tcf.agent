@@ -304,7 +304,12 @@ extern void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Ob
  * Read and evaluate a property of a DWARF object, perform ELF relocations if any.
  * FORM_ADDR values are mapped to run-time address space.
  */
-extern void read_and_evaluate_dwarf_object_property(Context * ctx, int frame, ObjectInfo * obj, U2_T attr_tag, PropertyValue * value);
+extern void read_and_evaluate_dwarf_object_property_with_args(
+    Context * ctx, int frame, ObjectInfo * obj, U2_T attr,
+    uint64_t * args, unsigned args_cnt, PropertyValue * value);
+
+#define read_and_evaluate_dwarf_object_property(ctx, frame, obj, attr, value) \
+    read_and_evaluate_dwarf_object_property_with_args(ctx, frame, obj, attr, NULL, 0, value)
 
 /*
  * Convert PropertyValue to a number.

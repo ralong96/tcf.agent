@@ -1661,14 +1661,14 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
                 }
                 else {
                     static U1_T Buf[8];
+                    U8_T Addr = get_numeric_property_value(&ValueAddr);
                     PropertyValue ValueSize;
                     size_t Size;
 
-                    dwarf_expression_obj_addr = get_numeric_property_value(&ValueAddr);
                     read_and_evaluate_dwarf_object_property(Ctx, Frame, RefObj, AT_byte_size, &ValueSize);
                     Size = (size_t)get_numeric_property_value(&ValueSize);
                     if (Size < 1 || Size > sizeof(Buf)) exception(ERR_INV_DATA_TYPE);
-                    if (context_read_mem(Ctx, (ContextAddress)dwarf_expression_obj_addr, Buf, Size) < 0) exception(errno);
+                    if (context_read_mem(Ctx, (ContextAddress)Addr, Buf, Size) < 0) exception(errno);
                     Value->mAddr = Buf;
                     Value->mSize = Size;
                 }
@@ -1768,14 +1768,16 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
     sDebugSection = NULL;
 }
 
-void read_and_evaluate_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T Attr, PropertyValue * Value) {
+void read_and_evaluate_dwarf_object_property_with_args(
+        Context * Ctx, int Frame, ObjectInfo * Obj, U2_T Attr,
+        uint64_t * Args, unsigned ArgsCnt, PropertyValue * Value) {
     read_dwarf_object_property(Ctx, Frame, Obj, Attr, Value);
     assert(Value->mContext == Ctx);
     assert(Value->mFrame == Frame);
     assert(Value->mObject == Obj);
     assert(Value->mAttr == Attr);
     if (Value->mForm == FORM_EXPRLOC) {
-        dwarf_evaluate_expression(Value);
+        dwarf_evaluate_expression(Value, Args, ArgsCnt);
     }
     else if (Attr == AT_data_member_location) {
         switch (Value->mForm) {
@@ -1785,7 +1787,8 @@ void read_and_evaluate_dwarf_object_property(Context * Ctx, int Frame, ObjectInf
         case FORM_DATA8     :
         case FORM_SDATA     :
         case FORM_UDATA     :
-            Value->mValue = dwarf_expression_obj_addr + get_numeric_property_value(Value);
+            if (ArgsCnt == 0) str_exception(ERR_INV_ADDRESS, "Invalid address of containing object");
+            Value->mValue = Args[0] + get_numeric_property_value(Value);
             Value->mForm = FORM_UDATA;
             Value->mAddr = NULL;
             Value->mSize = 0;
@@ -1794,7 +1797,7 @@ void read_and_evaluate_dwarf_object_property(Context * Ctx, int Frame, ObjectInf
         case FORM_BLOCK2    :
         case FORM_BLOCK4    :
         case FORM_BLOCK     :
-            dwarf_evaluate_expression(Value);
+            dwarf_evaluate_expression(Value, Args, ArgsCnt);
             break;
         }
     }
@@ -1807,7 +1810,7 @@ void read_and_evaluate_dwarf_object_property(Context * Ctx, int Frame, ObjectInf
         case FORM_BLOCK4    :
         case FORM_BLOCK     :
         case FORM_SEC_OFFSET:
-            dwarf_evaluate_expression(Value);
+            dwarf_evaluate_expression(Value, Args, ArgsCnt);
             break;
         }
     }
@@ -1817,7 +1820,7 @@ void read_and_evaluate_dwarf_object_property(Context * Ctx, int Frame, ObjectInf
         case FORM_BLOCK2    :
         case FORM_BLOCK4    :
         case FORM_BLOCK     :
-            dwarf_evaluate_expression(Value);
+            dwarf_evaluate_expression(Value, Args, ArgsCnt);
             break;
         }
     }

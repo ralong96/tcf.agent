@@ -30,9 +30,6 @@
 /* PropertyValue format for expresson evaluation results */
 #define FORM_EXPR_VALUE 0x00ff
 
-extern U8_T dwarf_expression_obj_addr;
-extern U8_T dwarf_expression_pm_value;
-
 typedef struct DWARFExpressionInfo {
     U8_T code_addr;
     U8_T code_size;
@@ -44,7 +41,7 @@ typedef struct DWARFExpressionInfo {
 } DWARFExpressionInfo;
 
 extern void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** List);
-extern void dwarf_evaluate_expression(PropertyValue * value);
+extern void dwarf_evaluate_expression(PropertyValue * value, uint64_t * args, unsigned args_cnt);
 
 #endif /* ENABLE_ELF && ENABLE_DebugContext */
 
