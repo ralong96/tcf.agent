@@ -1789,6 +1789,8 @@ static void op_deref(int mode, Value * v) {
     if (v->type_class == TYPE_CLASS_POINTER) {
         if (v->loc && v->loc->pieces_cnt == 1 && v->loc->pieces->implicit_pointer) {
             v->loc->pieces->implicit_pointer--;
+            assert(v->remote == 0);
+            assert(v->value == NULL);
         }
         else {
             if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
@@ -1796,14 +1798,14 @@ static void op_deref(int mode, Value * v) {
             }
             v->address = (ContextAddress)to_uns(mode, v);
             v->remote = 1;
-            v->sym_list = NULL;
-            v->sym = NULL;
-            v->reg = NULL;
             v->loc = NULL;
             v->value = NULL;
             v->constant = 0;
             set_value_endianness(v, NULL, type);
         }
+        v->sym_list = NULL;
+        v->sym = NULL;
+        v->reg = NULL;
     }
     v->type = type;
     if (get_symbol_type_class(v->type, &v->type_class) < 0) {
