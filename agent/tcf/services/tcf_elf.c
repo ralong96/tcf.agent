@@ -1389,7 +1389,7 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
                 link_addr_max = (ContextAddress)(offs_max - p->offset + pheader_address);
                 if (link_addr_min < pheader_address) link_addr_min = (ContextAddress)pheader_address;
                 if (link_addr_max >= pheader_address + pheader_file_size) link_addr_max = (ContextAddress)(pheader_address + pheader_file_size - 1);
-                sec = find_section_by_offset(file, offs_min);
+                if (!file->debug_info_file) sec = find_section_by_offset(file, offs_min);
                 range = find_comp_unit_addr_range(get_dwarf_cache(debug), sec, link_addr_min, link_addr_max);
                 if (range != NULL && range_rt_addr != NULL) {
                     *range_rt_addr = (ContextAddress)(range->mAddr - pheader_address + p->offset - r->file_offs + r->addr);
