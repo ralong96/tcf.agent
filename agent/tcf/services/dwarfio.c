@@ -203,9 +203,18 @@ U4_T dio_ReadU4(void) {
 }
 
 U8_T dio_ReadU8(void) {
+#if defined(__BYTE_ORDER__)
+    U8_T x;
+    if (sDataPos + 8 > sDataLen) exception(ERR_EOF);
+    memcpy(&x, sData + sDataPos, 8);
+    if (!sBigEndian != (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) swap_bytes(&x, 8);
+    sDataPos += 8;
+    return x;
+#else
     U8_T x0 = dio_ReadU4();
     U8_T x1 = dio_ReadU4();
     return sBigEndian ? (x0 << 32) | x1 : x0 | (x1 << 32);
+#endif
 }
 
 U4_T dio_ReadULEB128(void) {

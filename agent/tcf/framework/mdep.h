@@ -326,6 +326,13 @@ extern int posix_openpt(int flags);
 
 #if defined(__i386__) || defined(__x86_64__)
 #  define big_endian_host() (0)
+#  ifndef __BYTE_ORDER__
+#    define __ORDER_LITTLE_ENDIAN__ 1
+#    define __ORDER_BIG_ENDIAN__    2
+#    define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+#  endif
+#elif defined(__BYTE_ORDER__)
+#  define big_endian_host() (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 #else
    extern int big_endian_host(void);
 #endif
