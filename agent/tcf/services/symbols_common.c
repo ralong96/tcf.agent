@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -58,7 +58,7 @@ int get_symbol_address(const Symbol * sym, ContextAddress * address) {
         *address = (ContextAddress)state->stk[0];
         return 0;
     }
-    set_errno(ERR_OTHER, "Symbol does not have a memory address");
+    set_errno(ERR_OTHER, "Object does not have memory address");
     return -1;
 }
 
@@ -85,7 +85,7 @@ int get_symbol_offset(const Symbol * sym, ContextAddress * offset) {
         *offset = (ContextAddress)state->stk[0];
         return 0;
     }
-    set_errno(ERR_OTHER, "Symbol does not have a member offset");
+    set_errno(ERR_OTHER, "Object does not have member offset");
     return -1;
 }
 

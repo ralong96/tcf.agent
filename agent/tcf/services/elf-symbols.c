@@ -110,7 +110,7 @@ int elf_enumerate_symbols(Context * ctx, const char * file_name, EnumerateSymbol
             else if (sec->type == SHT_DYNSYM) dynsym_idx = ix;
         }
 
-        if (symtab_idx == 0 && dynsym_idx == 0) str_exception(ERR_OTHER, "The file does not have a symbol table");
+        if (symtab_idx == 0 && dynsym_idx == 0) str_exception(ERR_OTHER, "The file does not have symbol table");
 
        /* Set priority to the symbol table */
 

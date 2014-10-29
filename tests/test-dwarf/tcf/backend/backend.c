@@ -819,7 +819,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         ObjectInfo * obj = get_symbol_object(sym);
         if (errcmp(err, "No object location info found") == 0) return;
         if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-            if (errcmp(err, "Symbol does not have a location information") == 0) return;
+            if (errcmp(err, "Object does not have location information") == 0) return;
         }
         if (errcmp(err, "Object is not available at this location") == 0) return;
         if (errcmp(err, "Division by zero in location") == 0) return;
@@ -899,8 +899,11 @@ static void loc_var_func(void * args, Symbol * sym) {
             /* GCC C++ 4.1 produces entries like this */
             ok = 1;
         }
-        if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-            if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
+        if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+            if (errcmp(err, "Object is not available at this location") == 0) ok = 1;
+        }
+        if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+            if (errcmp(err, "Object does not have memory address") == 0) ok = 1;
         }
         if (!ok) {
             errno = err;
@@ -1035,6 +1038,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         Symbol * container = NULL;
         int container_class = 0;
         int base_type_class = 0;
+        ContextAddress type_length = 0;
         if (get_symbol_class(type, &type_sym_class) < 0) {
             error_sym("get_symbol_class", type);
         }
@@ -1106,7 +1110,7 @@ static void loc_var_func(void * args, Symbol * sym) {
             }
             if (symcmp(index_type, org_index_type) != 0) {
                 errno = ERR_OTHER;
-                error("Invalid inedx type of typedef");
+                error("Invalid index type of typedef");
             }
         }
         if (get_symbol_base_type(type, &base_type) < 0) {
@@ -1208,19 +1212,38 @@ static void loc_var_func(void * args, Symbol * sym) {
                 }
             }
         }
-        if (get_symbol_length(type, &length) < 0) {
+        if (get_symbol_length(sym, &length) < 0) {
             if (type_class == TYPE_CLASS_ARRAY) {
                 int ok = 0;
                 int err = errno;
-                ObjectInfo * obj = get_symbol_object(type);
+                ObjectInfo * obj = get_symbol_object(sym);
                 if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
                     if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
                 }
+                if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                    if (!ok && errcmp(err, "Object does not have memory address") == 0) ok = 1;
+                }
                 if (!ok) {
                     errno = err;
-                    error_sym("get_symbol_length", type);
+                    error_sym("get_symbol_length", sym);
                 }
             }
+        }
+        else if (get_symbol_length(type, &type_length) < 0) {
+            int ok = 0;
+            int err = errno;
+            ObjectInfo * obj = get_symbol_object(type);
+            if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                if (!ok && errcmp(err, "Invalid address of containing object") == 0) ok = 1;
+            }
+            if (!ok) {
+                errno = err;
+                error_sym("get_symbol_length", type);
+            }
+        }
+        else if (length != type_length) {
+            errno = ERR_OTHER;
+            error("Invalid length of a type");
         }
         else if (org_type != NULL) {
             ContextAddress org_length = 0;
@@ -1232,8 +1255,32 @@ static void loc_var_func(void * args, Symbol * sym) {
                 error("Invalid length of typedef");
             }
         }
-        if (get_symbol_lower_bound(type, &lower_bound) < 0) {
+        if (get_symbol_lower_bound(sym, &lower_bound) < 0) {
             if (type_class == TYPE_CLASS_ARRAY) {
+                int ok = 0;
+                int err = errno;
+                ObjectInfo * obj = get_symbol_object(sym);
+                if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                    if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
+                }
+                if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                    if (!ok && errcmp(err, "Object does not have memory address") == 0) ok = 1;
+                }
+                if (!ok) {
+                    errno = err;
+                    error_sym("get_symbol_lower_bound", sym);
+                }
+            }
+        }
+        else if (get_symbol_lower_bound(type, &lower_bound) < 0) {
+            int ok = 0;
+            int err = errno;
+            ObjectInfo * obj = get_symbol_object(type);
+            if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                if (!ok && errcmp(err, "Invalid address of containing object") == 0) ok = 1;
+            }
+            if (!ok) {
+                errno = err;
                 error_sym("get_symbol_lower_bound", type);
             }
         }
@@ -1446,12 +1493,23 @@ static void next_pc(void) {
                 }
                 for (i = 0; i < func_children_count; i++) {
                     Symbol * arg_type = NULL;
+                    int arg_class = 0;
                     ContextAddress arg_size = 0;
                     if (get_symbol_type(func_children[i], &arg_type) < 0) {
                         error_sym("get_symbol_type", func_children[i]);
                     }
+                    if (get_symbol_class(func_children[i], &arg_class) < 0) {
+                        error_sym("get_symbol_class", func_children[i]);
+                    }
                     if (get_symbol_size(func_children[i], &arg_size) < 0) {
-                        error_sym("get_symbol_size", func_children[i]);
+                        int error = errno;
+                        if (arg_class == SYM_CLASS_TYPE && errcmp(error, "Invalid address of containing object") == 0) {
+                            /* OK - dynamic array type */
+                        }
+                        else {
+                            errno = error;
+                            error_sym("get_symbol_size", func_children[i]);
+                        }
                     }
                 }
             }

@@ -354,7 +354,6 @@ static int is_frame_based_object(Symbol * sym) {
 
     if (sym->var != NULL) return 1;
     if (sym->obj != NULL && (sym->obj->mFlags & DOIF_need_frame)) return 1;
-    if (sym->obj != NULL && (sym->obj->mFlags & DOIF_pub_mark)) return 0;
 
     switch (sym->sym_class) {
     case SYM_CLASS_VALUE:
@@ -622,6 +621,21 @@ static int get_num_prop(ObjectInfo * obj, U2_T at, U8_T * res) {
 
     if (!set_trap(&trap)) return 0;
     read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, at, &v);
+    *res = get_numeric_property_value(&v);
+    clear_trap(&trap);
+    return 1;
+}
+
+static int get_num_prop_with_args(ObjectInfo * base, ObjectInfo * obj, U2_T at, U8_T * res) {
+    Trap trap;
+    PropertyValue v;
+    uint64_t args[1];
+
+    if (!set_trap(&trap)) return 0;
+    read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, base, AT_location, &v);
+    if (v.mPieces != NULL) str_exception(ERR_OTHER, "Object does not have memory address");
+    args[0] = get_numeric_property_value(&v);
+    read_and_evaluate_dwarf_object_property_with_args(sym_ctx, sym_frame, obj, at, args, 1, &v);
     *res = get_numeric_property_value(&v);
     clear_trap(&trap);
     return 1;
@@ -2227,17 +2241,36 @@ static U8_T get_default_lower_bound(ObjectInfo * obj) {
     return 0;
 }
 
-static U8_T get_array_index_length(ObjectInfo * obj) {
+static U8_T get_array_index_length(ObjectInfo * base, ObjectInfo * obj) {
     U8_T x, y;
 
     if (get_num_prop(obj, AT_count, &x)) return x;
     if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
+
     if (get_num_prop(obj, AT_upper_bound, &x)) {
         if (!get_num_prop(obj, AT_lower_bound, &y)) {
+            if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
             y = get_default_lower_bound(obj);
         }
         return x + 1 - y;
     }
+    else if (get_error_code(errno) == ERR_INV_ADDRESS) {
+        /* Dynamic array */
+        int error = errno;
+        if (!get_num_prop_with_args(base, obj, AT_upper_bound, &x)) {
+            if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
+            exception(error);
+        }
+        if (!get_num_prop_with_args(base, obj, AT_lower_bound, &y)) {
+            if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
+            y = get_default_lower_bound(obj);
+        }
+        return x + 1 - y;
+    }
+    else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
+        exception(errno);
+    }
+
     if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
     if (obj->mTag == TAG_enumeration_type) {
         ObjectInfo * c = get_dwarf_children(obj);
@@ -2291,7 +2324,7 @@ static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym) {
 
 static U8_T read_string_length(ObjectInfo * obj);
 
-static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_size, U8_T * bit_size) {
+static int get_object_size(ObjectInfo * base, ObjectInfo * obj, unsigned dimension, U8_T * byte_size, U8_T * bit_size) {
     U8_T n = 0, m = 0;
     obj = find_definition(obj);
     if (obj->mTag != TAG_string_type) {
@@ -2325,7 +2358,7 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
     case TAG_typedef:
     case TAG_subrange_type:
         if (obj->mType == NULL) return 0;
-        return get_object_size(obj->mType, 0, byte_size, bit_size);
+        return get_object_size(base, obj->mType, 0, byte_size, bit_size);
     case TAG_compile_unit:
     case TAG_partial_unit:
     case TAG_module:
@@ -2352,7 +2385,7 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
             U8_T length = 1;
             ObjectInfo * idx = get_dwarf_children(obj);
             while (idx != NULL) {
-                if (i++ >= dimension) length *= get_array_index_length(idx);
+                if (i++ >= dimension) length *= get_array_index_length(base, idx);
                 idx = idx->mSibling;
             }
             if (get_num_prop(obj, AT_stride_size, &n)) {
@@ -2361,7 +2394,7 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
                 return 1;
             }
             if (obj->mType == NULL) return 0;
-            if (!get_object_size(obj->mType, 0, &n, &m)) return 0;
+            if (!get_object_size(base, obj->mType, 0, &n, &m)) return 0;
             if (m != 0) {
                 *byte_size = (m * length + 7) / 8;
                 *bit_size = m * length;
@@ -2372,7 +2405,7 @@ static int get_object_size(ObjectInfo * obj, unsigned dimension, U8_T * byte_siz
     case TAG_structure_type:
         if (get_num_prop(obj, AT_GNAT_descriptive_type, &n)) {
             ObjectInfo * type = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)n);
-            if (type != NULL) return get_object_size(type, 0, byte_size, bit_size);
+            if (type != NULL) return get_object_size(base, type, 0, byte_size, bit_size);
         }
         break;
     }
@@ -2401,7 +2434,7 @@ static void read_object_value(PropertyValue * v, void ** value, size_t * size, i
                 val_size = v->mObject->mCompUnit->mDesc.mAddressSize;
             }
         }
-        else if (!get_object_size(v->mObject, 0, &val_size, &bit_size)) {
+        else if (!get_object_size(v->mObject, v->mObject, 0, &val_size, &bit_size)) {
             str_exception(ERR_INV_DWARF, "Unknown object size");
         }
         bf = (U1_T *)tmp_alloc((size_t)val_size);
@@ -2761,7 +2794,7 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
         U8_T n = 0;
 
         if (!set_trap(&trap)) return -1;
-        ok = get_object_size(obj, sym->dimension, &sz, &n);
+        ok = get_object_size(sym->obj, obj, sym->dimension, &sz, &n);
         clear_trap(&trap);
         if (!ok && sym->sym_class == SYM_CLASS_REFERENCE) {
             if (set_trap(&trap)) {
@@ -2991,7 +3024,7 @@ int get_symbol_length(const Symbol * sym, ContextAddress * length) {
             if (idx != NULL) {
                 Trap trap;
                 if (!set_trap(&trap)) return -1;
-                *length = (ContextAddress)get_array_index_length(idx);
+                *length = (ContextAddress)get_array_index_length(sym->obj, idx);
                 clear_trap(&trap);
                 return 0;
             }
@@ -3033,6 +3066,13 @@ int get_symbol_lower_bound(const Symbol * sym, int64_t * value) {
             }
             if (idx != NULL) {
                 if (get_num_prop(idx, AT_lower_bound, (U8_T *)value)) return 0;
+                if (get_error_code(errno) == ERR_INV_ADDRESS) {
+                    int error = errno;
+                    if (get_num_prop_with_args(sym->obj, idx, AT_lower_bound, (U8_T *)value)) return 0;
+                    if (get_error_code(errno) != ERR_SYM_NOT_FOUND) return -1;
+                    errno = error;
+                    return -1;
+                }
                 if (get_error_code(errno) != ERR_SYM_NOT_FOUND) return -1;
                 *value = get_default_lower_bound(obj);
                 return 0;
@@ -3263,7 +3303,7 @@ static void add_member_location_command(LocationInfo * info, ObjectInfo * obj) {
                 if (get_num_prop(obj, AT_byte_size, &byte_size)) {
                     cmd->args.piece.bit_offs = (unsigned)(byte_size * 8 - bit_offs - bit_size);
                 }
-                else if (obj->mType != NULL && get_object_size(obj->mType, 0, &type_byte_size, &type_bit_size)) {
+                else if (obj->mType != NULL && get_object_size(obj, obj->mType, 0, &type_byte_size, &type_bit_size)) {
                     cmd->args.piece.bit_offs = (unsigned)(type_byte_size * 8 - bit_offs - bit_size);
                 }
                 else {
@@ -3395,7 +3435,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                     U8_T val_size = 0;
                     U8_T bit_size = 0;
                     U1_T * p = (U1_T *)&v.mValue;
-                    if (!get_object_size(obj, 0, &val_size, &bit_size)) {
+                    if (!get_object_size(sym->obj, obj, 0, &val_size, &bit_size)) {
                         str_exception(ERR_INV_DWARF, "Unknown object size");
                     }
                     assert(v.mForm != FORM_EXPR_VALUE);
@@ -3585,7 +3625,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         return 0;
     }
 
-    set_errno(ERR_OTHER, "Symbol does not have a location information");
+    set_errno(ERR_OTHER, "Object does not have location information");
     return -1;
 }
 
