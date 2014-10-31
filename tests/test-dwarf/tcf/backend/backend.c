@@ -895,6 +895,9 @@ static void loc_var_func(void * args, Symbol * sym) {
             /* Comp unit with code ranges */
             ok = 1;
         }
+        if (!ok && obj->mTag == TAG_subprogram && (obj->mFlags & DOIF_declaration) != 0) {
+            ok = 1;
+        }
         if (!ok && symbol_class == SYM_CLASS_REFERENCE && addr_ok && type == NULL && name == NULL) {
             /* GCC C++ 4.1 produces entries like this */
             ok = 1;
@@ -1230,16 +1233,7 @@ static void loc_var_func(void * args, Symbol * sym) {
             }
         }
         else if (get_symbol_length(type, &type_length) < 0) {
-            int ok = 0;
-            int err = errno;
-            ObjectInfo * obj = get_symbol_object(type);
-            if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-                if (!ok && errcmp(err, "Invalid address of containing object") == 0) ok = 1;
-            }
-            if (!ok) {
-                errno = err;
-                error_sym("get_symbol_length", type);
-            }
+            error_sym("get_symbol_length", type);
         }
         else if (length != type_length) {
             errno = ERR_OTHER;
@@ -1273,16 +1267,7 @@ static void loc_var_func(void * args, Symbol * sym) {
             }
         }
         else if (get_symbol_lower_bound(type, &lower_bound) < 0) {
-            int ok = 0;
-            int err = errno;
-            ObjectInfo * obj = get_symbol_object(type);
-            if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-                if (!ok && errcmp(err, "Invalid address of containing object") == 0) ok = 1;
-            }
-            if (!ok) {
-                errno = err;
-                error_sym("get_symbol_lower_bound", type);
-            }
+            error_sym("get_symbol_lower_bound", type);
         }
         else if (org_type != NULL) {
             int64_t org_lower_bound = 0;
@@ -1503,8 +1488,10 @@ static void next_pc(void) {
                     }
                     if (get_symbol_size(func_children[i], &arg_size) < 0) {
                         int error = errno;
-                        if (arg_class == SYM_CLASS_TYPE && errcmp(error, "Invalid address of containing object") == 0) {
-                            /* OK - dynamic array type */
+                        ObjectInfo * obj = get_symbol_object(sym);
+                        if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95 &&
+                                errcmp(error, "Object location is relative to a stack frame") == 0) {
+                            /* OK */
                         }
                         else {
                             errno = error;
