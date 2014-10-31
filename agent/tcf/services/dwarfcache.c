@@ -1726,7 +1726,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
                     while (d->mTag == TAG_imported_declaration) {
                         PropertyValue v;
                         read_and_evaluate_dwarf_object_property(Ctx, Frame, d, AT_import, &v);
-                        d = find_object(sDebugSection, (ContextAddress)get_numeric_property_value(&v));
+                        d = find_object(Obj->mCompUnit->mDesc.mSection, (ContextAddress)get_numeric_property_value(&v));
                         if (d == NULL) break;
                     }
                     if (d == NULL) {
