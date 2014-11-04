@@ -622,14 +622,25 @@ typedef struct EvaluateRefObjectArgs {
     uint64_t args[1];
 } EvaluateRefObjectArgs;
 
+static int is_reference_type(Symbol * sym) {
+    for (;;) {
+        SYM_FLAGS flags = 0;
+        Symbol * next = NULL;
+        if (get_symbol_flags(sym, &flags) < 0) exception(errno);
+        if (flags & SYM_FLAG_REFERENCE) return 1;
+        if (get_symbol_type(sym, &next) < 0) exception(errno);
+        if (next == sym) break;
+        sym = next;
+    }
+    return 0;
+}
+
 static void evaluate_ref_object(void * x) {
     EvaluateRefObjectArgs * args = (EvaluateRefObjectArgs *)x;
     Symbol * sym = NULL;
-    SYM_FLAGS flags = 0;
     ContextAddress addr = 0;
     object2symbol(args->ref, &sym);
-    if (get_symbol_flags(sym, &flags) < 0) exception(errno);
-    if (flags & SYM_FLAG_REFERENCE) {
+    if (is_reference_type(sym)) {
         void * value = NULL;
         size_t size = 0;
         int big_endian = 0;
