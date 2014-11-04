@@ -445,6 +445,13 @@ LocationExpressionState * evaluate_location_expression(Context * ctx, StackFrame
             break;
         }
     }
+    if (stk_pos == 2) {
+        /* This looks like a bug in GNU Ada 4.9.2 20141023 for GNAT Pro 7.3.0w
+         * See https://bugs.eclipse.org/bugs/show_bug.cgi?id=449802
+         */
+        stk[0] += stk[1];
+        stk_pos = 1;
+    }
     state->stk = stk;
     state->stk_pos = stk_pos;
     state->stk_max = stk_max;
