@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -50,8 +50,8 @@ extern unsigned char BREAK_INST[1];
 extern void ini_cpudefs_mdep(void);
 
 #if defined(__x86_64__)
-extern RegisterDefinition * get_386_reg_by_id(Context * ctx, unsigned id);
-#  define GET_REG_BY_ID_HOOK if (scope->machine == 3) return get_386_reg_by_id(ctx, id)
+extern RegisterDefinition * get_386_reg_by_id(Context * ctx, unsigned id_type, unsigned id);
+#  define GET_REG_BY_ID_HOOK if (scope->machine == 3) return get_386_reg_by_id(ctx, scope->id_type, id)
 #endif
 
 #else
