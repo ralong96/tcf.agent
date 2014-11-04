@@ -1936,11 +1936,7 @@ static void op_field(int mode, Value * v) {
                 error(errno, "Cannot retrieve field size");
             }
             if (mode == MODE_NORMAL) {
-                if (loc->stk_pos == 1) {
-                    v->address = (ContextAddress)loc->stk[0];
-                    set_value_endianness(v, sym, v->type);
-                }
-                else {
+                if (loc->pieces_cnt > 0) {
                     size_t size = 0;
                     void * value = NULL;
                     StackFrame * frame_info = NULL;
@@ -1952,6 +1948,11 @@ static void op_field(int mode, Value * v) {
                     if (size > v->size) size = (size_t)v->size;
                     set_value(v, value, size, big_endian);
                     sign_extend(v, loc);
+                }
+                else {
+                    if (loc->stk_pos != 1) error(ERR_OTHER, "Invalid location expression");
+                    v->address = (ContextAddress)loc->stk[0];
+                    set_value_endianness(v, sym, v->type);
                 }
             }
         }
