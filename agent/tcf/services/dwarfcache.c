@@ -1634,47 +1634,8 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
     case FORM_REF4      :
     case FORM_REF8      :
     case FORM_REF_UDATA :
-        switch (Attr) {
-        case AT_import:
-        case AT_specification_v2:
-        case AT_abstract_origin:
-        case AT_containing_type:
-        case AT_GNAT_descriptive_type:
-            Value->mValue = gop_gFormData;
-            break;
-        default:
-            {
-                PropertyValue ValueAddr;
-                ObjectInfo * RefObj = find_object(sDebugSection, (ContextAddress)gop_gFormData);
-
-                if (RefObj == NULL) exception(ERR_INV_DWARF);
-                read_and_evaluate_dwarf_object_property(Ctx, Frame, RefObj, AT_location, &ValueAddr);
-                if (ValueAddr.mPieceCnt == 1 && ValueAddr.mPieces[0].reg != NULL && ValueAddr.mPieces[0].bit_size == 0) {
-                    static U1_T Buf[8];
-                    StackFrame * Frame = NULL;
-                    RegisterDefinition * Register = ValueAddr.mPieces[0].reg;
-                    if (get_frame_info(ValueAddr.mContext, ValueAddr.mFrame, &Frame) < 0) exception(errno);
-                    if (read_reg_bytes(Frame, Register, 0, Register->size, Buf) < 0) exception(errno);
-                    Value->mAddr = Buf;
-                    Value->mSize = ValueAddr.mSize;
-                    Value->mBigEndian = ValueAddr.mBigEndian;
-                }
-                else {
-                    static U1_T Buf[8];
-                    U8_T Addr = get_numeric_property_value(&ValueAddr);
-                    PropertyValue ValueSize;
-                    size_t Size;
-
-                    read_and_evaluate_dwarf_object_property(Ctx, Frame, RefObj, AT_byte_size, &ValueSize);
-                    Size = (size_t)get_numeric_property_value(&ValueSize);
-                    if (Size < 1 || Size > sizeof(Buf)) exception(ERR_INV_DATA_TYPE);
-                    if (context_read_mem(Ctx, (ContextAddress)Addr, Buf, Size) < 0) exception(errno);
-                    Value->mAddr = Buf;
-                    Value->mSize = Size;
-                }
-            }
-            break;
-        }
+        Value->mSection = dio_gFormSection;
+        Value->mValue = gop_gFormData;
         break;
     case FORM_DATA1     :
     case FORM_DATA2     :
@@ -1697,6 +1658,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
         Value->mValue = gop_gFormData;
         break;
     case FORM_ADDR      :
+        Value->mSection = dio_gFormSection;
         Value->mValue = elf_map_to_run_time_address(Ctx, Obj->mCompUnit->mFile, gop_gFormSection, (ContextAddress)gop_gFormData);
         if (errno) str_exception(errno, "Cannot get object run-time address");
         break;

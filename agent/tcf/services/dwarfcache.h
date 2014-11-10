@@ -161,6 +161,7 @@ struct PropertyValue {
     U1_T * mAddr;
     size_t mSize;
     int mBigEndian;
+    ELF_Section * mSection;
     LocationPiece * mPieces;
     U4_T mPieceCnt;
 };

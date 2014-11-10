@@ -376,7 +376,14 @@ static int symcmp(Symbol * x, Symbol * y) {
 }
 
 static int errcmp(int err, const char * msg) {
-    return strncmp(errno_to_str(err), msg, strlen(msg));
+    const char * txt = errno_to_str(err);
+    size_t msg_len = strlen(msg);
+    size_t txt_len = strlen(txt);
+    unsigned i;
+    for (i = 0; txt_len - i >= msg_len; i++) {
+       if (strncmp(txt + i, msg, msg_len) == 0) return 0;
+    }
+    return 1;
 }
 
 static void test(void * args);
@@ -519,6 +526,8 @@ static void test_composite_type(Symbol * type) {
         Symbol * member_container = NULL;
         int container_class = 0;
         ContextAddress offs = 0;
+        ContextAddress size = 0;
+        ContextAddress length = 0;
         if (get_symbol_class(children[i], &member_class) < 0) {
             error_sym("get_symbol_class", children[i]);
         }
@@ -544,8 +553,12 @@ static void test_composite_type(Symbol * type) {
         }
         if (member_class == SYM_CLASS_REFERENCE) {
             Symbol * member_type = NULL;
+            int member_type_class  = 0;
             if (get_symbol_type(children[i], &member_type) < 0) {
                 error_sym("get_symbol_type", children[i]);
+            }
+            if (get_symbol_type_class(children[i], &member_type_class) < 0) {
+                error_sym("get_symbol_type_class", children[i]);
             }
             if (get_symbol_address(children[i], &offs) < 0) {
                 if (get_symbol_offset(children[i], &offs) < 0) {
@@ -568,7 +581,7 @@ static void test_composite_type(Symbol * type) {
                     uint64_t n = 0;
                     char * expr = (char *)tmp_alloc(512);
                     sprintf(expr, "&(((${%s} *)0)->${%s})", tmp_strdup(symbol2id(type)), tmp_strdup(symbol2id(children[i])));
-                    if (evaluate_expression(elf_ctx, STACK_NO_FRAME, 0, expr, 0, &v) < 0) {
+                    if (evaluate_expression(elf_ctx, STACK_TOP_FRAME, 0, expr, 0, &v) < 0) {
                         error("evaluate_expression");
                     }
                     if (value_to_unsigned(&v, &n) < 0) {
@@ -579,6 +592,12 @@ static void test_composite_type(Symbol * type) {
                         error("invalid result of evaluate_expression");
                     }
                 }
+            }
+            if (get_symbol_size(children[i], &size) < 0) {
+                error_sym("get_symbol_size", children[i]);
+            }
+            if (member_type_class == TYPE_CLASS_ARRAY && get_symbol_length(children[i], &length) < 0) {
+                error_sym("get_symbol_length", children[i]);
             }
         }
         else if (member_class == SYM_CLASS_VALUE) {
@@ -903,6 +922,9 @@ static void loc_var_func(void * args, Symbol * sym) {
             ok = 1;
         }
         if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+            if (errcmp(err, "No object location info found in DWARF") == 0) ok = 1;
+        }
+        if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
             if (errcmp(err, "Object is not available at this location") == 0) ok = 1;
         }
         if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
@@ -1220,10 +1242,13 @@ static void loc_var_func(void * args, Symbol * sym) {
                 int ok = 0;
                 int err = errno;
                 ObjectInfo * obj = get_symbol_object(sym);
-                if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                    if (!ok && errcmp(err, "No object location info found in DWARF") == 0) ok = 1;
+                }
+                if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
                     if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
                 }
-                if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
                     if (!ok && errcmp(err, "Object does not have memory address") == 0) ok = 1;
                 }
                 if (!ok) {

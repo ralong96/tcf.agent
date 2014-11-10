@@ -474,7 +474,7 @@ static int symbol_is_weak(ObjectInfo * obj) {
     return 0;
 }
 
-static void object2symbol(ObjectInfo * obj, Symbol ** res) {
+static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
     Symbol * sym = alloc_symbol();
     sym->obj = obj;
     switch (obj->mTag) {
@@ -551,7 +551,8 @@ static void object2symbol(ObjectInfo * obj, Symbol ** res) {
     else if (sym_ctx != sym->ctx && is_thread_based_object(sym)) {
         sym->ctx = sym_ctx;
     }
-    if (sym->sym_class == SYM_CLASS_REFERENCE) sym->ref = obj;
+    sym->ref = ref;
+    if (sym->sym_class == SYM_CLASS_REFERENCE && obj->mTag != TAG_member) sym->ref = obj;
     sym->priority = symbol_priority(obj);
     sym->weak = symbol_is_weak(obj);
     *res = sym;
@@ -618,8 +619,12 @@ static ObjectInfo * get_original_type(ObjectInfo * obj) {
 }
 
 typedef struct EvaluateRefObjectArgs {
+    Context * ctx;
+    int frame;
+    U2_T at;
     ObjectInfo * ref;
-    uint64_t args[1];
+    ObjectInfo * obj;
+    U8_T res;
 } EvaluateRefObjectArgs;
 
 static int is_reference_type(Symbol * sym) {
@@ -635,16 +640,19 @@ static int is_reference_type(Symbol * sym) {
     return 0;
 }
 
-static void evaluate_ref_object(void * x) {
+static void evaluate_variable_num_prop(void * x) {
     EvaluateRefObjectArgs * args = (EvaluateRefObjectArgs *)x;
     Symbol * sym = NULL;
     ContextAddress addr = 0;
-    object2symbol(args->ref, &sym);
+    uint64_t arr[1];
+    PropertyValue v;
+    void * value = NULL;
+    size_t size = 0;
+    int big_endian = 0;
+    unsigned i;
+
+    object2symbol(NULL, args->ref, &sym);
     if (is_reference_type(sym)) {
-        void * value = NULL;
-        size_t size = 0;
-        int big_endian = 0;
-        unsigned i;
         if (get_symbol_value(sym, &value, &size, &big_endian) < 0) exception(errno);
         for (i = 0; i < size; i++) {
             ContextAddress b = *((uint8_t *)value + i);
@@ -654,7 +662,54 @@ static void evaluate_ref_object(void * x) {
     else {
         if (get_symbol_address(sym, &addr) < 0) exception(errno);
     }
-    args->args[0] = addr;
+    arr[0] = addr;
+    read_and_evaluate_dwarf_object_property_with_args(args->ctx, args->frame, args->obj, args->at, arr, 1, &v);
+    switch (v.mForm) {
+    case FORM_REF       :
+    case FORM_REF_ADDR  :
+    case FORM_REF1      :
+    case FORM_REF2      :
+    case FORM_REF4      :
+    case FORM_REF8      :
+    case FORM_REF_UDATA :
+        {
+            ObjectInfo * obj;
+            ELF_Section * sec = v.mSection;
+            LocationInfo * loc_info = NULL;
+            StackFrame * frame_info = NULL;
+            LocationExpressionState * state = NULL;
+
+            if (sec == NULL) sec = args->obj->mCompUnit->mDesc.mSection;
+            obj = find_object(sec, (ContextAddress)v.mValue);
+            if (obj == NULL) exception(ERR_INV_DWARF);
+            object2symbol(args->ref, obj, &sym);
+            if (get_location_info(sym, &loc_info) < 0) exception(errno);
+            if (loc_info->args_cnt > 1) str_exception(ERR_OTHER, "Invalid location expression");
+            if (args->frame != STACK_NO_FRAME && get_frame_info(args->ctx, args->frame, &frame_info) < 0) exception(errno);
+            state = evaluate_location_expression(args->ctx, frame_info,
+                loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, arr, loc_info->args_cnt);
+            if (state->pieces_cnt > 0) {
+                read_location_pieces(state->ctx, state->stack_frame,
+                    state->pieces, state->pieces_cnt, loc_info->big_endian, &value, &size);
+            }
+            else {
+                ContextAddress sym_size = 0;
+                if (state->stk_pos != 1) str_exception(ERR_OTHER, "Invalid location expression");
+                if (get_symbol_size(sym, &sym_size) < 0) exception(errno);
+                size = (size_t)sym_size;
+                value = tmp_alloc(size);
+                if (context_read_mem(state->ctx, (ContextAddress)state->stk[0], value, size) < 0) exception(errno);
+            }
+            big_endian = loc_info->big_endian;
+            args->res = 0;
+            for (i = 0; i < size; i++) {
+                U8_T b = *((uint8_t *)value + i);
+                args->res |= b << (big_endian ? (size - i - 1) * 8 : i * 8);
+            }
+        }
+        return;
+    }
+    args->res = get_numeric_property_value(&v);
 }
 
 static int get_num_prop(ObjectInfo * obj, U2_T at, U8_T * res) {
@@ -669,22 +724,55 @@ static int get_num_prop(ObjectInfo * obj, U2_T at, U8_T * res) {
 }
 
 static int get_variable_num_prop(ObjectInfo * ref, ObjectInfo * obj, U2_T at, U8_T * res) {
-    if (get_num_prop(obj, at, res)) return 1;
-    if (ref != NULL && get_error_code(errno) == ERR_INV_ADDRESS) {
-        /* Dynamic property - need object address */
-        Trap trap;
-        EvaluateRefObjectArgs args;
-        args.ref = ref;
-        if (elf_save_symbols_state(evaluate_ref_object, &args) < 0) return 0;
-        if (set_trap(&trap)) {
-            PropertyValue v;
-            read_and_evaluate_dwarf_object_property_with_args(sym_ctx, sym_frame, obj, at, args.args, 1, &v);
-            *res = get_numeric_property_value(&v);
-            clear_trap(&trap);
-            return 1;
+    Trap trap;
+    PropertyValue v;
+
+    if (set_trap(&trap)) {
+        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, at, &v);
+        switch (v.mForm) {
+        case FORM_REF       :
+        case FORM_REF_ADDR  :
+        case FORM_REF1      :
+        case FORM_REF2      :
+        case FORM_REF4      :
+        case FORM_REF8      :
+        case FORM_REF_UDATA :
+            exception(ERR_INV_ADDRESS);
         }
+        *res = get_numeric_property_value(&v);
+        clear_trap(&trap);
+        return 1;
+    }
+    else if (ref != NULL && get_error_code(errno) == ERR_INV_ADDRESS) {
+        /* Dynamic property - need object address */
+        EvaluateRefObjectArgs args;
+        memset(&args, 0, sizeof(args));
+        args.ctx = sym_ctx;
+        args.frame = sym_frame;
+        args.at = at;
+        args.ref = ref;
+        args.obj = obj;
+        if (elf_save_symbols_state(evaluate_variable_num_prop, &args) < 0) return 0;
+        *res = args.res;
+        return 1;
     }
     return 0;
+}
+
+static ObjectInfo * get_object_ref_prop(ObjectInfo * obj, U2_T at) {
+    Trap trap;
+    PropertyValue v;
+    ObjectInfo * res;
+    ELF_Section * sec;
+
+    if (!set_trap(&trap)) return NULL;
+    read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, at, &v);
+    sec = v.mSection;
+    if (sec == NULL) sec = obj->mCompUnit->mDesc.mSection;
+    res = find_object(sec, (ContextAddress)v.mValue);
+    if (res == NULL) str_exception(ERR_INV_DWARF, "Invalid debug info entry reference");
+    clear_trap(&trap);
+    return res;
 }
 
 /* Check link-time address 'addr' belongs to an object address range(s) */
@@ -927,7 +1015,7 @@ static void add_to_find_symbol_buf(Symbol * sym) {
 
 static void add_obj_to_find_symbol_buf(ObjectInfo * obj, unsigned level) {
     Symbol * sym = NULL;
-    object2symbol(obj, &sym);
+    object2symbol(NULL, obj, &sym);
     add_to_find_symbol_buf(sym);
     sym->level = level;
 }
@@ -1135,10 +1223,7 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
 
     if (parent->mFlags & DOIF_extension) {
         /* If the parent is namespace extension, search in base namespace */
-        PropertyValue p;
-        ObjectInfo * name_space;
-        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, parent, AT_extension, &p);
-        name_space = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)p.mValue);
+        ObjectInfo * name_space = get_object_ref_prop(parent, AT_extension);
         if (name_space != NULL) find_in_object_tree(name_space, level, NULL, name);
     }
 
@@ -1154,10 +1239,7 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
             break;
         case TAG_imported_declaration:
             if (obj->mName != NULL && equ_symbol_names(obj->mName, name)) {
-                PropertyValue p;
-                ObjectInfo * decl;
-                read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_import, &p);
-                decl = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)p.mValue);
+                ObjectInfo * decl = get_object_ref_prop(obj, AT_import);
                 if (decl != NULL) {
                     if (obj->mName != NULL || (decl->mName != NULL && equ_symbol_names(decl->mName, name))) {
                         add_obj_to_find_symbol_buf(find_definition(decl), level);
@@ -1168,10 +1250,7 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
         case TAG_imported_module:
             find_in_object_tree(obj, level, NULL, name);
             {
-                PropertyValue p;
-                ObjectInfo * module;
-                read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_import, &p);
-                module = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)p.mValue);
+                ObjectInfo * module = get_object_ref_prop(obj, AT_import);
                 if (module != NULL && (module->mFlags & DOIF_find_mark) == 0) {
                     Trap trap;
                     if (set_trap(&trap)) {
@@ -1569,7 +1648,7 @@ static int find_by_addr_in_unit(ObjectInfo * parent, int level, UnitAddress * ad
         case TAG_subroutine:
         case TAG_subprogram:
             if (check_in_range(obj, addr)) {
-                object2symbol(obj, res);
+                object2symbol(NULL, obj, res);
                 return 1;
             }
             if (find_by_addr_in_unit(obj, level + 1, addr, ip, res)) return 1;
@@ -1591,7 +1670,7 @@ static int find_by_addr_in_unit(ObjectInfo * parent, int level, UnitAddress * ad
                         exception(errno);
                     }
                     if (lc + sz > addr->rt_addr) {
-                        object2symbol(obj, res);
+                        object2symbol(NULL, obj, res);
                         return 1;
                     }
                 }
@@ -1739,7 +1818,7 @@ static void enumerate_local_vars(ObjectInfo * parent, int level,
         case TAG_variable:
             if (level > 0 && in_range) {
                 call_back->sym = NULL;
-                object2symbol(find_definition(obj), &call_back->sym);
+                object2symbol(NULL, find_definition(obj), &call_back->sym);
                 if (elf_save_symbols_state(local_vars_call_back, call_back) < 0) exception(errno);
             }
             break;
@@ -2133,7 +2212,7 @@ static void search_inlined_subroutine(ObjectInfo * obj, UnitAddress * addr, Stac
                     Symbol * sym = NULL;
                     U8_T call_file = 0;
                     CodeArea area;
-                    object2symbol(o, &sym);
+                    object2symbol(NULL, o, &sym);
                     memset(&area, 0, sizeof(area));
                     if (get_num_prop(o, AT_call_file, &call_file)) {
                         U8_T call_line = 0;
@@ -2321,7 +2400,7 @@ static U8_T get_default_lower_bound(ObjectInfo * obj) {
 static U8_T get_array_index_length(ObjectInfo * ref, ObjectInfo * obj) {
     U8_T x, y;
 
-    if (get_num_prop(obj, AT_count, &x)) return x;
+    if (get_variable_num_prop(ref, obj, AT_count, &x)) return x;
     if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
 
     if (get_variable_num_prop(ref, obj, AT_upper_bound, &x)) {
@@ -2331,7 +2410,9 @@ static U8_T get_array_index_length(ObjectInfo * ref, ObjectInfo * obj) {
         }
         return x + 1 - y;
     }
-    if (get_error_code(errno) != ERR_SYM_NOT_FOUND) exception(errno);
+    if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
+        str_exception(errno, "Cannot get array upper bound");
+    }
     if (obj->mTag == TAG_enumeration_type) {
         ObjectInfo * c = get_dwarf_children(obj);
         x = 0;
@@ -2463,8 +2544,8 @@ static int get_object_size(ObjectInfo * ref, ObjectInfo * obj, unsigned dimensio
         }
         return 1;
     case TAG_structure_type:
-        if (get_num_prop(obj, AT_GNAT_descriptive_type, &n)) {
-            ObjectInfo * type = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)n);
+        {
+            ObjectInfo * type = get_object_ref_prop(obj, AT_GNAT_descriptive_type);
             if (type != NULL) return get_object_size(ref, type, 0, byte_size, bit_size);
         }
         break;
@@ -2594,8 +2675,7 @@ int get_symbol_type(const Symbol * sym, Symbol ** type) {
         *type = (Symbol *)sym;
     }
     else {
-        object2symbol(find_definition(obj), type);
-        (*type)->ref = sym->ref;
+        object2symbol(sym->ref, find_definition(obj), type);
     }
     return 0;
 }
@@ -2923,7 +3003,7 @@ int get_symbol_base_type(const Symbol * sym, Symbol ** base_type) {
         if (sym->base->sym_class == SYM_CLASS_FUNCTION) {
             if (sym->base->obj != NULL && sym->base->obj->mType != NULL) {
                 if (unpack(sym->base) < 0) return -1;
-                object2symbol(sym->base->obj->mType, base_type);
+                object2symbol(sym->ref, sym->base->obj->mType, base_type);
                 return 0;
             }
             return err_no_info();
@@ -2940,7 +3020,7 @@ int get_symbol_base_type(const Symbol * sym, Symbol ** base_type) {
     if (unpack(sym) < 0) return -1;
     if (sym->sym_class == SYM_CLASS_FUNCTION) {
         if (sym->obj != NULL && sym->obj->mType != NULL) {
-            object2symbol(sym->obj->mType, base_type);
+            object2symbol(sym->ref, sym->obj->mType, base_type);
             return 0;
         }
         return err_no_info();
@@ -2955,14 +3035,14 @@ int get_symbol_base_type(const Symbol * sym, Symbol ** base_type) {
                 i--;
             }
             if (idx != NULL && idx->mSibling != NULL) {
-                object2symbol(obj, base_type);
+                object2symbol(sym->ref, obj, base_type);
                 (*base_type)->dimension = sym->dimension + 1;
                 return 0;
             }
         }
         obj = obj->mType;
         if (obj != NULL) {
-            object2symbol(find_definition(obj), base_type);
+            object2symbol(sym->ref, find_definition(obj), base_type);
             (*base_type)->ref = sym->ref;
             return 0;
         }
@@ -2995,7 +3075,7 @@ int get_symbol_index_type(const Symbol * sym, Symbol ** index_type) {
                 i--;
             }
             if (idx != NULL) {
-                object2symbol(idx, index_type);
+                object2symbol(sym->ref, idx, index_type);
                 return 0;
             }
         }
@@ -3015,20 +3095,15 @@ int get_symbol_container(const Symbol * sym, Symbol ** container) {
         obj = sym->obj;
     }
     if (obj != NULL) {
-        U8_T origin = 0;
-        U8_T spec = 0;
         ObjectInfo * parent = NULL;
         if (unpack(sym) < 0) return -1;
         if (sym->sym_class == SYM_CLASS_TYPE) {
             ObjectInfo * org = get_original_type(obj);
             if (org->mTag == TAG_ptr_to_member_type) {
-                U8_T id = 0;
-                if (get_num_prop(org, AT_containing_type, &id)) {
-                    ObjectInfo * type = find_object(org->mCompUnit->mDesc.mSection, (ContextAddress)id);
-                    if (type != NULL) {
-                        object2symbol(type, container);
-                        return 0;
-                    }
+                ObjectInfo * type = get_object_ref_prop(org, AT_containing_type);
+                if (type != NULL) {
+                    object2symbol(NULL, type, container);
+                    return 0;
                 }
                 set_errno(ERR_INV_DWARF, "Invalid AT_containing_type attribute");
                 return -1;
@@ -3036,23 +3111,25 @@ int get_symbol_container(const Symbol * sym, Symbol ** container) {
         }
         parent = get_dwarf_parent(obj);
         if (parent != NULL && parent->mTag == TAG_compile_unit) {
-            if ((obj->mFlags & DOIF_abstract_origin) && get_num_prop(obj, AT_abstract_origin, &origin)) {
-                ObjectInfo * org = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)origin);
-                if (org != NULL) obj = org;
+            if (obj->mFlags & DOIF_abstract_origin) {
+                ObjectInfo * org = get_object_ref_prop(obj, AT_abstract_origin);
+                if (org == NULL) return -1;
+                obj = org;
             }
-            if ((obj->mFlags & DOIF_specification) && get_num_prop(obj, AT_specification_v2, &spec)) {
-                ObjectInfo * spc = find_object(obj->mCompUnit->mDesc.mSection, (ContextAddress)spec);
-                if (spc != NULL) obj = spc;
+            if (obj->mFlags & DOIF_specification) {
+                ObjectInfo * spc = get_object_ref_prop(obj, AT_specification_v2);
+                if (spc == NULL) return -1;
+                obj = spc;
             }
             parent = get_dwarf_parent(obj);
         }
         if (parent != NULL) {
-            object2symbol(parent, container);
+            object2symbol(NULL, parent, container);
             return 0;
         }
         if (obj->mTag >= TAG_fund_type && obj->mTag < TAG_fund_type + 0x100) {
             /* Virtual DWARF object that is created by the DWARF reader. */
-            object2symbol(obj->mCompUnit->mObject, container);
+            object2symbol(NULL, obj->mCompUnit->mObject, container);
             return 0;
         }
         return err_wrong_obj();
@@ -3147,8 +3224,7 @@ static Symbol ** boolean_children(ObjectInfo * ref, ObjectInfo * type_obj) {
     unsigned n = 0;
     Symbol * type_sym = NULL;
     Symbol ** buf = (Symbol **)tmp_alloc(sizeof(Symbol *) * 2);
-    object2symbol(type_obj, &type_sym);
-    type_sym->ref = ref;
+    object2symbol(ref, type_obj, &type_sym);
     while (constant_pseudo_symbols[i].name != NULL) {
         if (n < 2 && strcmp(constant_pseudo_symbols[i].type, "bool") == 0) {
             Symbol * sym = alloc_symbol();
@@ -3188,7 +3264,7 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
                     if (i->mTag == TAG_formal_parameter || i->mTag == TAG_unspecified_parameters) {
                         Symbol * x = NULL;
                         Symbol * y = NULL;
-                        object2symbol(i, &x);
+                        object2symbol(sym->ref, i, &x);
                         if (get_symbol_type(x, &y) < 0) return -1;
                         if (y == NULL && i->mTag == TAG_unspecified_parameters) {
                             y = alloc_symbol();
@@ -3245,8 +3321,7 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
             ObjectInfo * i = get_dwarf_children(find_definition(obj));
             while (i != NULL) {
                 Symbol * x = NULL;
-                object2symbol(find_definition(i), &x);
-                if (x->ref == NULL) x->ref = sym->ref;
+                object2symbol(sym->ref, find_definition(i), &x);
                 if (buf_len <= n) {
                     buf_len += 16;
                     buf = (Symbol **)tmp_realloc(buf, sizeof(Symbol *) * buf_len);
