@@ -689,7 +689,7 @@ static void evaluate_expression(void) {
                     }
                     bit_offs += org_piece->bit_size;
                 }
-                if (state->pieces_cnt == 0) inv_dwarf("Ivalid size of implicit value");
+                if (state->pieces_cnt == 0) inv_dwarf("Invalid size of implicit value");
             }
             else {
                 check_e_stack(1);

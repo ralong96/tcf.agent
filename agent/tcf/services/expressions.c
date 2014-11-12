@@ -908,6 +908,59 @@ static void sign_extend(Value * v, LocationExpressionState * loc) {
     }
 }
 
+static void check_hidden_redirection(Value * v) {
+    Symbol * type = v->type;
+    if (!v->remote) return;
+    if (type == NULL) return;
+    for (;;) {
+        SYM_FLAGS flags = 0;
+        Symbol * next = NULL;
+        if (get_symbol_flags(type, &flags) < 0) {
+            error(errno, "Cannot retrieve symbol flags");
+        }
+        if (flags & SYM_FLAG_INDIRECT) {
+            LocationExpressionState * state = NULL;
+            LocationInfo * loc_info = NULL;
+            StackFrame * frame_info = NULL;
+            uint64_t args[1];
+            args[0] = v->address;
+            if (get_location_info(type, &loc_info) < 0) {
+                if (get_error_code(errno) == ERR_SYM_NOT_FOUND) break;
+                error(errno, "Cannot get symbol data location information");
+            }
+            if (expression_frame != STACK_NO_FRAME && get_frame_info(expression_context, expression_frame, &frame_info) < 0) {
+                error(errno, "Cannot get stack frame info");
+            }
+            state = evaluate_location_expression(expression_context, frame_info,
+                loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, args, 1);
+            if (state->stk_pos == 1) {
+                v->address = (ContextAddress)state->stk[0];
+                v->remote = 1;
+                v->loc = NULL;
+            }
+            else {
+                if (state->pieces_cnt == 1 && state->pieces->implicit_pointer == 0 &&
+                        state->pieces->reg != NULL && state->pieces->reg->size == state->pieces->size) {
+                    v->reg = state->pieces->reg;
+                }
+                v->remote = 0;
+                v->loc = state;
+            }
+            v->big_endian = loc_info->big_endian;
+            if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
+                error(errno, "Cannot retrieve symbol size");
+            }
+            v->sym = NULL;
+            if (!v->remote) break;
+        }
+        if (get_symbol_type(type, &next) < 0) {
+            error(errno, "Cannot retrieve symbol type");
+        }
+        if (next == type) break;
+        type = next;
+    }
+}
+
 /* Note: sym2value() does NOT set v->size if v->sym != NULL */
 static int sym2value(int mode, Symbol * sym, Value * v) {
     int sym_class = 0;
@@ -972,6 +1025,9 @@ static int sym2value(int mode, Symbol * sym, Value * v) {
         break;
     }
     v->sym = sym;
+    if (sym_class == SYM_CLASS_REFERENCE && mode == MODE_NORMAL) {
+        check_hidden_redirection(v);
+    }
     return sym_class;
 }
 
@@ -1957,6 +2013,9 @@ static void op_field(int mode, Value * v) {
             }
         }
         v->loc = loc;
+        if (sym_class == SYM_CLASS_REFERENCE && mode == MODE_NORMAL) {
+            check_hidden_redirection(v);
+        }
 #else
         error(ERR_UNSUPPORTED, "Symbols service not available");
 #endif

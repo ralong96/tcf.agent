@@ -402,6 +402,7 @@ static void op_fbreg(void) {
     DWARFExpressionInfo * info;
     ObjectInfo * parent = get_parent_function(expr->object);
     I8_T offs = 0;
+    Trap trap;
 
     expr_pos++;
     offs = read_i8leb128();
@@ -422,13 +423,18 @@ static void op_fbreg(void) {
         }
     }
     if (parent == NULL) str_exception(ERR_INV_DWARF, "OP_fbreg: no parent function");
-    read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, parent, AT_frame_base, &fp);
+    if (set_trap(&trap)) {
+        read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, parent, AT_frame_base, &fp);
+        clear_trap(&trap);
+    }
+    else {
+        str_exception(trap.error, "OP_fbreg: cannot read AT_frame_base");
+    }
     dwarf_get_expression_list(&fp, &info);
     add_expression_list(info, 1, offs);
 }
 
 static void op_implicit_pointer(void) {
-    Trap trap;
     PropertyValue pv;
     U1_T op = expr->expr_addr[expr_pos];
     CompUnit * unit = expr->object->mCompUnit;
@@ -451,14 +457,13 @@ static void op_implicit_pointer(void) {
     if (ref_obj == NULL) str_exception(ERR_INV_DWARF, "OP_implicit_pointer: invalid object reference");
 
     memset(&pv, 0, sizeof(pv));
-    if (set_trap(&trap)) {
+    if (ref_obj->mFlags & DOIF_location) {
         DWARFExpressionInfo * info = NULL;
         read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, ref_obj, AT_location, &pv);
         dwarf_get_expression_list(&pv, &info);
         add_expression_list(info, 0, 0);
-        clear_trap(&trap);
     }
-    else if (trap.error == ERR_SYM_NOT_FOUND) {
+    else if (ref_obj->mFlags & DOIF_const_value) {
         size_t i;
         union {
             U4_T u4;
@@ -481,7 +486,7 @@ static void op_implicit_pointer(void) {
             if (unit->mFile->byte_swap) swap_bytes(buf.arr, pv.mSize);
             break;
         }
-        if (pv.mAddr == NULL) str_exception(ERR_INV_DWARF, "Invalid OP_GNU_implicit_pointer");
+        if (pv.mAddr == NULL) str_exception(ERR_INV_DWARF, "Invalid implicit pointer");
         add(OP_implicit_value);
         add_uleb128(pv.mSize);
         for (i = 0; i < pv.mSize; i++) {
@@ -489,7 +494,7 @@ static void op_implicit_pointer(void) {
         }
     }
     else {
-        exception(trap.error);
+        str_exception(ERR_INV_DWARF, "Invalid implicit pointer");
     }
     add(OP_TCF_offset);
     add_uleb128(offset);

@@ -89,6 +89,8 @@ struct FileInfo {
 #define DOIF_mangled_name       0x080000
 #define DOIF_optional           0x100000
 #define DOIF_location           0x200000
+#define DOIF_data_location      0x400000
+#define DOIF_const_value        0x800000
 
 struct ObjectInfo {
 

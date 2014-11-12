@@ -416,6 +416,26 @@ static int is_cpp_reference(Symbol * type) {
     return 0;
 }
 
+static int is_indirect(Symbol * type) {
+    if (type == NULL) return 0;
+    for (;;) {
+        SYM_FLAGS flags = 0;
+        Symbol * next = NULL;
+        if (get_symbol_flags(type, &flags) < 0) {
+            error_sym("get_symbol_flags", type);
+        }
+        if (flags & SYM_FLAG_INDIRECT) {
+            return 1;
+        }
+        if (get_symbol_type(type, &next) < 0) {
+            error_sym("get_symbol_type", type);
+        }
+        if (next == type) break;
+        type = next;
+    }
+    return 0;
+}
+
 static void test_enumeration_type(Symbol * type) {
     int i;
     int count = 0;
@@ -733,6 +753,7 @@ static void loc_var_func(void * args, Symbol * sym) {
     Symbol * index_type = NULL;
     Symbol * base_type = NULL;
     int cpp_ref = 0; /* '1' if the symbol is C++ reference */
+    int indirect = 0;
     int ref_size_ok = 0;
     ContextAddress length = 0;
     int64_t lower_bound = 0;
@@ -841,13 +862,15 @@ static void loc_var_func(void * args, Symbol * sym) {
             if (errcmp(err, "Object does not have location information") == 0) return;
         }
         if (errcmp(err, "Object is not available at this location") == 0) return;
+        if (errcmp(err, "OP_fbreg: cannot read AT_frame_base") == 0) return;
         if (errcmp(err, "Division by zero in location") == 0) return;
         if (errcmp(err, "Cannot find loader debug") == 0) return;
         if (errcmp(err, "Cannot get TLS module ID") == 0) return;
         if (errcmp(err, "Cannot get address of ELF symbol: indirect symbol") == 0) return;
         if (errcmp(err, "Unsupported type in OP_GNU_const_type") == 0) return;
         if (errcmp(err, "Unsupported type in OP_GNU_convert") == 0) return;
-        if (errcmp(err, "Ivalid size of implicit value") == 0) return;
+        if (errcmp(err, "Invalid size of implicit value") == 0) return;
+        if (errcmp(err, "Invalid implicit pointer") == 0) return;
         if (errcmp(err, "Symbol value unknown: implicit pointer") == 0) {
             test_implicit_pointer(sym);
             return;
@@ -893,6 +916,7 @@ static void loc_var_func(void * args, Symbol * sym) {
             error_sym("get_symbol_type_class", sym);
         }
         cpp_ref = is_cpp_reference(type);
+        indirect = is_indirect(type);
     }
     size_ok = 1;
     if (get_symbol_size(sym, &size) < 0) {
@@ -970,7 +994,13 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
             error_sym("evaluate_expression", sym);
         }
-        if (!cpp_ref) {
+        if (indirect) {
+            if (v.sym != NULL) {
+                set_errno(ERR_OTHER, "Value.sym != NULL");
+                error_sym("evaluate_expression", sym);
+            }
+        }
+        else if (!cpp_ref) {
             if (v.sym == NULL) {
                 set_errno(ERR_OTHER, "Value.sym = NULL");
                 error_sym("evaluate_expression", sym);
@@ -1049,7 +1079,7 @@ static void loc_var_func(void * args, Symbol * sym) {
                 if (value_to_address(&v, &a1) < 0) {
                     error_sym("value_to_address", sym);
                 }
-                if (a0 != a1) {
+                if (a0 != a1 && !indirect) {
                     errno = ERR_INV_ADDRESS;
                     error_sym("value_to_address", sym);
                 }

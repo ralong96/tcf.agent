@@ -2937,7 +2937,7 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
         if (!set_trap(&trap)) return -1;
         ok = get_object_size(sym->ref, obj, sym->dimension, &sz, &n);
         clear_trap(&trap);
-        if (!ok && sym->sym_class == SYM_CLASS_REFERENCE) {
+        if (!ok && sym->sym_class == SYM_CLASS_REFERENCE && (obj->mFlags & DOIF_location) != 0) {
             if (set_trap(&trap)) {
                 PropertyValue v;
                 read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_location, &v);
@@ -3549,44 +3549,40 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
             add_location_command(info, SFT_CMD_ADD);
             return 0;
         }
-        if (obj->mTag != TAG_inlined_subroutine) {
-            if (set_trap(&trap)) {
-                LocationExpressionCommand * cmd = NULL;
-                read_dwarf_object_property(sym_ctx, sym_frame, obj, AT_const_value, &v);
-                assert(v.mObject == obj);
-                assert(v.mPieces == NULL);
-                assert(v.mForm != FORM_EXPRLOC);
-                if (v.mAddr != NULL) {
-                    assert(v.mBigEndian == info->big_endian);
-                    cmd = add_location_command(info, SFT_CMD_PIECE);
-                    cmd->args.piece.bit_size = v.mSize * 8;
-                    cmd->args.piece.value = v.mAddr;
-                }
-                else {
-                    U1_T * bf = NULL;
-                    U8_T val_size = 0;
-                    U8_T bit_size = 0;
-                    U1_T * p = (U1_T *)&v.mValue;
-                    if (!get_object_size(sym->ref, obj, 0, &val_size, &bit_size)) {
-                        str_exception(ERR_INV_DWARF, "Unknown object size");
-                    }
-                    assert(v.mForm != FORM_EXPR_VALUE);
-                    if (val_size > sizeof(v.mValue)) str_exception(ERR_INV_DWARF, "Unknown object size");
-                    bf = (U1_T *)tmp_alloc((size_t)val_size);
-                    if (big_endian_host()) p += sizeof(v.mValue) - (size_t)val_size;
-                    memcpy(bf, p, (size_t)val_size);
-                    info->big_endian = big_endian_host();
-                    if (bit_size % 8 != 0) bf[bit_size / 8] &= (1 << (bit_size % 8)) - 1;
-                    cmd = add_location_command(info, SFT_CMD_PIECE);
-                    cmd->args.piece.bit_size = (unsigned)(bit_size ? bit_size : val_size * 8);
-                    cmd->args.piece.value = bf;
-                }
-                clear_trap(&trap);
-                return 0;
+        if (obj->mTag != TAG_inlined_subroutine && (obj->mFlags & DOIF_const_value) != 0) {
+            LocationExpressionCommand * cmd = NULL;
+            if (!set_trap(&trap)) return -1;
+            read_dwarf_object_property(sym_ctx, sym_frame, obj, AT_const_value, &v);
+            assert(v.mObject == obj);
+            assert(v.mPieces == NULL);
+            assert(v.mForm != FORM_EXPRLOC);
+            if (v.mAddr != NULL) {
+                assert(v.mBigEndian == info->big_endian);
+                cmd = add_location_command(info, SFT_CMD_PIECE);
+                cmd->args.piece.bit_size = v.mSize * 8;
+                cmd->args.piece.value = v.mAddr;
             }
-            else if (trap.error != ERR_SYM_NOT_FOUND) {
-                return -1;
+            else {
+                U1_T * bf = NULL;
+                U8_T val_size = 0;
+                U8_T bit_size = 0;
+                U1_T * p = (U1_T *)&v.mValue;
+                if (!get_object_size(sym->ref, obj, 0, &val_size, &bit_size)) {
+                    str_exception(ERR_INV_DWARF, "Unknown object size");
+                }
+                assert(v.mForm != FORM_EXPR_VALUE);
+                if (val_size > sizeof(v.mValue)) str_exception(ERR_INV_DWARF, "Unknown object size");
+                bf = (U1_T *)tmp_alloc((size_t)val_size);
+                if (big_endian_host()) p += sizeof(v.mValue) - (size_t)val_size;
+                memcpy(bf, p, (size_t)val_size);
+                info->big_endian = big_endian_host();
+                if (bit_size % 8 != 0) bf[bit_size / 8] &= (1 << (bit_size % 8)) - 1;
+                cmd = add_location_command(info, SFT_CMD_PIECE);
+                cmd->args.piece.bit_size = (unsigned)(bit_size ? bit_size : val_size * 8);
+                cmd->args.piece.value = bf;
             }
+            clear_trap(&trap);
+            return 0;
         }
         if (obj->mTag == TAG_member || obj->mTag == TAG_inheritance) {
             if (set_trap(&trap)) {
@@ -3644,17 +3640,24 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
 #endif
 #endif
         if (obj->mTag != TAG_dwarf_procedure) {
-            U8_T addr = 0;
-            Symbol * s = NULL;
-            if (set_trap(&trap)) {
+            if (obj->mFlags & DOIF_location) {
+                if (!set_trap(&trap)) return -1;
                 read_dwarf_object_property(sym_ctx, sym_frame, obj, AT_location, &v);
                 add_dwarf_location_command(info, &v);
                 clear_trap(&trap);
                 return 0;
             }
-            else if (errno != ERR_SYM_NOT_FOUND) {
-                return -1;
+            if (obj->mFlags & DOIF_data_location) {
+                if (!set_trap(&trap)) return -1;
+                read_dwarf_object_property(sym_ctx, sym_frame, obj, AT_data_location, &v);
+                add_dwarf_location_command(info, &v);
+                clear_trap(&trap);
+                return 0;
             }
+        }
+        {
+            U8_T addr = 0;
+            Symbol * s = NULL;
             switch (sym->sym_class) {
             case SYM_CLASS_FUNCTION:
             case SYM_CLASS_COMP_UNIT:
@@ -3676,9 +3679,9 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                 break;
             }
             if (map_to_sym_table(obj, &s)) return get_location_info(s, res);
-            set_errno(ERR_OTHER, "No object location info found in DWARF data");
-            return -1;
         }
+        set_errno(ERR_OTHER, "No object location info found in DWARF data");
+        return -1;
     }
 
     if (sym->tbl != NULL) {
@@ -3788,6 +3791,7 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
         if (obj->mFlags & DOIF_protected) *flags |= SYM_FLAG_PROTECTED;
         if (obj->mFlags & DOIF_public) *flags |= SYM_FLAG_PUBLIC;
         if (obj->mFlags & DOIF_optional) *flags |= SYM_FLAG_OPTIONAL;
+        if (obj->mFlags & DOIF_data_location) *flags |= SYM_FLAG_INDIRECT;
         switch (obj->mTag) {
         case TAG_subrange_type:
             *flags |= SYM_FLAG_SUBRANGE_TYPE;
