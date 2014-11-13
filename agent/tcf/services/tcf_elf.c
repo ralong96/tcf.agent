@@ -1696,6 +1696,8 @@ static int section_symbol_comparator(const void * x, const void * y) {
     ELF_SecSymbol * ry = (ELF_SecSymbol *)y;
     if (rx->address < ry->address) return -1;
     if (rx->address > ry->address) return +1;
+    if (rx->index < ry->index) return -1;
+    if (rx->index > ry->index) return +1;
     return 0;
 }
 
