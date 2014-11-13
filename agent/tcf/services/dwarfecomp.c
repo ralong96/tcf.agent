@@ -897,6 +897,7 @@ static void add_expression(DWARFExpressionInfo * info) {
                 case ATE_address:
                 case ATE_unsigned:
                 case ATE_unsigned_char:
+                case ATE_UTF:
                     break;
                 case ATE_signed:
                 case ATE_signed_char:

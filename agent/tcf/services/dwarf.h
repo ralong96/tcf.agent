@@ -522,6 +522,13 @@
 #define ATE_unsigned                0x07
 #define ATE_unsigned_char           0x08
 #define ATE_imaginary_float         0x09  /* v3 */
+#define ATE_packed_decimal          0x0a  /* v3 */
+#define ATE_numeric_string          0x0b  /* v3 */
+#define ATE_edited                  0x0c  /* v3 */
+#define ATE_signed_fixed            0x0d  /* v3 */
+#define ATE_unsigned_fixed          0x0e  /* v3 */
+#define ATE_decimal_float           0x0f  /* v3 */
+#define ATE_UTF                     0x10  /* v4 */
 #define ATE_lo_user                 0x80
 #define ATE_hi_user                 0xff
 
