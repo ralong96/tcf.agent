@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -112,7 +112,8 @@ static void command_get_context_cache_client(void * x) {
             has_length = get_symbol_length(sym, &length) == 0;
             if (has_length) has_lower_bound = get_symbol_lower_bound(sym, &lower_bound) == 0;
         }
-        if (sym_class == SYM_CLASS_REFERENCE || sym_class == SYM_CLASS_FUNCTION || sym_class == SYM_CLASS_VALUE) {
+        if (sym_class == SYM_CLASS_REFERENCE || sym_class == SYM_CLASS_FUNCTION ||
+                sym_class == SYM_CLASS_VALUE || sym_class == SYM_CLASS_TYPE) {
             LocationInfo * loc_info = NULL;
             if (has_frame && get_location_info(sym, &loc_info) == 0) {
                 LocationExpressionState * state = NULL;
