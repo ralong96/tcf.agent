@@ -1925,9 +1925,13 @@ static void find_field(int mode,
             *field_sym = children[i];
             return;
         }
+        if (sym_class == SYM_CLASS_VARIANT_PART || sym_class == SYM_CLASS_VARIANT) {
+            find_field(mode, children[i], obj_addr, name, id, field_sym, field_loc, big_endian);
+            if (*field_sym != NULL) return;
+        }
     }
     for (i = 0; i < h; i++) {
-        ContextAddress addr = 0;
+        ContextAddress addr = obj_addr;
         if (mode == MODE_NORMAL) {
             LocationExpressionState * x = NULL;
             evaluate_symbol_location(inheritance[i], obj_addr, 0, &x, NULL);

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -26,7 +26,7 @@
 /*
  * Symbol information can change at any time as result of target background activities.
  * Clients should not cache symbol information, and should not retain the information
- * longer then one dispatch cycle.
+ * longer than one dispatch cycle.
  */
 
 typedef struct Symbol Symbol;
@@ -40,6 +40,8 @@ typedef struct FunctionCallInfo FunctionCallInfo;
 #define SYM_CLASS_COMP_UNIT     5   /* Symbol represents a compilation unit */
 #define SYM_CLASS_BLOCK         6   /* Symbol represents a block of code */
 #define SYM_CLASS_NAMESPACE     7   /* Symbol represents a namespace */
+#define SYM_CLASS_VARIANT_PART  8   /* Symbol represents a variant part of a structure */
+#define SYM_CLASS_VARIANT       9   /* Symbol represents a member of a variant part of a structure */
 
 #define TYPE_CLASS_UNKNOWN      0
 #define TYPE_CLASS_CARDINAL     1

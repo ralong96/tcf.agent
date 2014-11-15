@@ -541,6 +541,12 @@ static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
     case TAG_namespace:
         sym->sym_class = SYM_CLASS_NAMESPACE;
         break;
+    case TAG_variant_part:
+        sym->sym_class = SYM_CLASS_VARIANT_PART;
+        break;
+    case TAG_variant:
+        sym->sym_class = SYM_CLASS_VARIANT;
+        break;
     }
     sym->frame = STACK_NO_FRAME;
     sym->ctx = context_get_group(sym_ctx, CONTEXT_GROUP_SYMBOLS);
@@ -557,6 +563,8 @@ static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
     sym->weak = symbol_is_weak(obj);
     *res = sym;
 }
+
+static ObjectInfo * get_object_ref_prop(ObjectInfo * obj, U2_T at);
 
 static ObjectInfo * get_object_type(ObjectInfo * obj) {
     if (obj != NULL) {
@@ -578,6 +586,14 @@ static ObjectInfo * get_object_type(ObjectInfo * obj) {
         case TAG_constant:
             obj = obj->mType;
             break;
+        case TAG_variant_part:
+            if (obj->mType != NULL) {
+                obj = obj->mType;
+                break;
+            }
+            return get_object_type(get_object_ref_prop(obj, AT_discr));
+        case TAG_variant:
+            return NULL;
         }
     }
     return obj;
@@ -3302,7 +3318,9 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
         return 0;
     }
     if (unpack(sym) < 0) return -1;
-    obj = get_original_type(obj);
+    if (obj != NULL && obj->mTag != TAG_variant_part && obj->mTag != TAG_variant) {
+        obj = get_original_type(obj);
+    }
     if (obj != NULL) {
         int n = 0;
         Symbol ** buf = NULL;
@@ -3508,6 +3526,15 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         Trap trap;
         PropertyValue v;
         ObjectInfo * org_type;
+
+        if (obj->mTag == TAG_variant_part) {
+            ObjectInfo * discr = get_object_ref_prop(obj, AT_discr);
+            if (discr == NULL) {
+                set_errno(ERR_OTHER, "Discriminant value not available");
+                return -1;
+            }
+            obj = discr;
+        }
 
         obj = find_definition(obj);
         org_type = obj;

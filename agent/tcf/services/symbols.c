@@ -113,7 +113,8 @@ static void command_get_context_cache_client(void * x) {
             if (has_length) has_lower_bound = get_symbol_lower_bound(sym, &lower_bound) == 0;
         }
         if (sym_class == SYM_CLASS_REFERENCE || sym_class == SYM_CLASS_FUNCTION ||
-                sym_class == SYM_CLASS_VALUE || sym_class == SYM_CLASS_TYPE) {
+                sym_class == SYM_CLASS_VALUE || sym_class == SYM_CLASS_TYPE ||
+                sym_class == SYM_CLASS_VARIANT_PART) {
             LocationInfo * loc_info = NULL;
             if (has_frame && get_location_info(sym, &loc_info) == 0) {
                 LocationExpressionState * state = NULL;
