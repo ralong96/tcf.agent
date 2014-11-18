@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2013, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -37,10 +37,8 @@ static int sys_context_get_supported_bp_access_types(Context * ctx);
 static int sys_context_plant_breakpoint(ContextBreakpoint * bp);
 static int sys_context_unplant_breakpoint(ContextBreakpoint * bp);
 static int sys_context_has_state(Context * ctx);
-static int sys_context_write_mem(Context * ctx, ContextAddress address,
-                void * buf, size_t size);
-static int sys_context_read_mem(Context * ctx, ContextAddress address,
-                void * buf, size_t size);
+static int sys_context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t size);
+static int sys_context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t size);
 static unsigned sys_context_word_size(Context * ctx);
 static int sys_context_read_reg(Context * ctx, RegisterDefinition * def,
                 unsigned offs, unsigned size, void * buf);
@@ -49,8 +47,7 @@ static int sys_context_write_reg(Context * ctx, RegisterDefinition * def,
 static Context * sys_context_get_group(Context * ctx, int group);
 static int sys_context_get_memory_map(Context * ctx, MemoryMap * map);
 #if ENABLE_ContextStateProperties
-static int sys_context_get_state_properties(Context * ctx, const char *** names, const char *** values,
-        int * cnt);
+static int sys_context_get_state_properties(Context * ctx, const char *** names, const char *** values, int * cnt);
 #endif
 #if ENABLE_ExtendedMemoryErrorReports
 static int sys_context_get_mem_error_info(MemoryErrorInfo * info);
@@ -64,6 +61,10 @@ static int sys_context_get_extra_properties(Context * ctx, const char *** names,
 #if ENABLE_ContextISA
 static int sys_context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa);
 #endif
+#if ENABLE_MemoryAccessModes
+static int sys_context_write_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size);
+static int sys_context_read_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size);
+#endif
 
 ContextIf sys_ctx_if = {
         sys_context_has_state,
@@ -74,7 +75,8 @@ ContextIf sys_ctx_if = {
         sys_context_can_resume,
         sys_context_single_step,
         sys_context_write_mem,
-        sys_context_read_mem, sys_context_word_size,
+        sys_context_read_mem,
+        sys_context_word_size,
         sys_context_read_reg,
         sys_context_write_reg,
         sys_context_get_group,
@@ -98,7 +100,11 @@ ContextIf sys_ctx_if = {
 #if ENABLE_ContextISA
         sys_context_get_isa,
 #endif
-        };
+#if ENABLE_MemoryAccessModes
+        sys_context_write_mem_ext,
+        sys_context_read_mem_ext,
+#endif
+};
 
 static void sys_send_context_created_event(Context * ctx) {
     static int initialized = 0;
@@ -145,4 +151,8 @@ static void sys_send_context_created_event(Context * ctx) {
 #endif
 #if ENABLE_ContextISA
 #define context_get_isa                 sys_context_get_isa
+#endif
+#if ENABLE_MemoryAccessModes
+#define context_write_mem_ext           sys_context_write_mem_ext
+#define context_read_mem_ext            sys_context_read_mem_ext
 #endif

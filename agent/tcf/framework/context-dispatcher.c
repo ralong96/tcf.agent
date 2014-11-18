@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2013, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -28,6 +28,7 @@ typedef struct ContextExtensionMux {
 #if ENABLE_ExtendedMemoryErrorReports
 /* Last memory access error info */
 static MemoryErrorInfo mem_err_info;
+static int get_err_info_errno;
 #endif
 
 static size_t context_extension_offset = 0;
@@ -46,9 +47,26 @@ int set_dispatcher_mem_error_info(MemoryErrorInfo * info) {
     }
     /* Errno must already have been set by caller */
     assert(errno == info->error);
+    get_err_info_errno = 0;
     mem_err_info = *info;
     return -1;
 }
+
+static int set_mem_error_info(ContextExtensionMux * ext, int rc) {
+    get_err_info_errno = 0;
+    memset(&mem_err_info, 0, sizeof(mem_err_info));
+    if (rc < 0) {
+        int error = errno;
+        if (ext->ctx_iface->context_get_mem_error_info != NULL &&
+                ext->ctx_iface->context_get_mem_error_info(&mem_err_info) < 0) {
+            get_err_info_errno = errno;
+        }
+        errno = error;
+    }
+    return rc;
+}
+#else
+#  define set_mem_error_info(ext, rc) rc
 #endif
 
 const char * context_suspend_reason(Context * ctx) {
@@ -106,56 +124,42 @@ int context_single_step(Context * ctx) {
 }
 
 int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
-#if ENABLE_ExtendedMemoryErrorReports
-    MemoryErrorInfo info = {0};
-#endif
-    int rc;
     ContextExtensionMux * ext = EXT(ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_write_mem == NULL) {
         errno = ERR_UNSUPPORTED;
         return -1;
     }
-    /* Call the context specific memory write routine. If the memory access has failed, get
-     * memory access error info and store it in dispatcher memory error info structure
-     * that will be used latter by dispatcher context_get_mem_error_info() API.
-     */
-    if ((rc = ext->ctx_iface->context_write_mem(ctx, address, buf, size)) != 0) {
-#if ENABLE_ExtendedMemoryErrorReports
-        if (ext->ctx_iface->context_get_mem_error_info(&info) != 0) info.error = errno;
-#endif
-    }
-#if ENABLE_ExtendedMemoryErrorReports
-    return (set_dispatcher_mem_error_info(&info));
-#else
-    return rc;
-#endif
+    return set_mem_error_info(ext, ext->ctx_iface->context_write_mem(ctx, address, buf, size));
 }
 
 int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
-#if ENABLE_ExtendedMemoryErrorReports
-    MemoryErrorInfo info = {0};
-#endif
-    int rc;
     ContextExtensionMux * ext = EXT(ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_read_mem == NULL) {
         errno = ERR_UNSUPPORTED;
         return -1;
     }
-    /* Call the context specific memory read routine. If the memory access has failed, get
-     * memory access error info and store it in dispatcher memory error info structure
-     * that will be used latter by dispatcher context_get_mem_error_info() API.
-     */
-    if ((rc = ext->ctx_iface->context_read_mem(ctx, address, buf, size)) != 0) {
-#if ENABLE_ExtendedMemoryErrorReports
-        if (ext->ctx_iface->context_get_mem_error_info(&info) != 0) info.error = errno;
-#endif
-    }
-#if ENABLE_ExtendedMemoryErrorReports
-    return (set_dispatcher_mem_error_info(&info));
-#else
-    return rc;
-#endif
+    return set_mem_error_info(ext, ext->ctx_iface->context_read_mem(ctx, address, buf, size));
 }
+
+#if ENABLE_MemoryAccessModes
+int context_write_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size) {
+    ContextExtensionMux * ext = EXT(ctx);
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_write_mem_ext == NULL) {
+        errno = ERR_UNSUPPORTED;
+        return -1;
+    }
+    return set_mem_error_info(ext, ext->ctx_iface->context_write_mem_ext(ctx, mode, address, buf, size));
+}
+
+int context_read_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size) {
+    ContextExtensionMux * ext = EXT(ctx);
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_read_mem_ext == NULL) {
+        errno = ERR_UNSUPPORTED;
+        return -1;
+    }
+    return set_mem_error_info(ext, ext->ctx_iface->context_read_mem_ext(ctx, mode, address, buf, size));
+}
+#endif
 
 unsigned context_word_size(Context * ctx) {
     ContextExtensionMux * ext = EXT(ctx);
@@ -281,6 +285,10 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
 
 #if ENABLE_ExtendedMemoryErrorReports
 int context_get_mem_error_info(MemoryErrorInfo * info) {
+    if (get_err_info_errno != 0) {
+        errno = get_err_info_errno;
+        return -1;
+    }
     if (mem_err_info.error == 0) {
         set_errno(ERR_OTHER, "Extended memory error info not available");
         return -1;
@@ -333,6 +341,14 @@ uint8_t * get_break_instruction(Context * ctx, size_t * size) {
     if (ext->ctx_iface == NULL || ext->ctx_iface->cpudefs_if.get_break_instruction == NULL) return NULL;
     return ext->ctx_iface->cpudefs_if.get_break_instruction(ctx, size);
 }
+
+#if ENABLE_StackCrawlMux
+int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
+    ContextExtensionMux * ext = EXT(frame->ctx);
+    if (ext->ctx_iface == NULL || ext->ctx_iface->cpudefs_if.crawl_stack_frame == NULL) return 0;
+    return ext->ctx_iface->cpudefs_if.crawl_stack_frame(frame, down);
+}
+#endif
 
 ContextIf * context_get_interface(Context * ctx) {
     return EXT(ctx)->ctx_iface;

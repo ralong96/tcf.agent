@@ -300,6 +300,10 @@
 #  define ENABLE_ExternalStackcrawl 0
 #endif
 
+#if !defined(ENABLE_StackCrawlMux)
+#  define ENABLE_StackCrawlMux 0
+#endif
+
 #if !defined(ENABLE_ContextISA)
 #  define ENABLE_ContextISA SERVICE_Disassembly
 #endif

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2013, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -29,6 +29,9 @@ typedef struct CpuDefsIf {
     int (*read_reg_bytes)(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs, unsigned size, uint8_t * buf);
     int (*write_reg_bytes)(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs, unsigned size, uint8_t * buf);
     uint8_t * (*get_break_instruction)(Context * ctx, size_t * size);
+#if ENABLE_StackCrawlMux
+    int (*crawl_stack_frame)(StackFrame * frame, StackFrame * down);
+#endif
 } CpuDefsIf;
 
 typedef struct ContextIf {
@@ -39,10 +42,8 @@ typedef struct ContextIf {
     int (*context_resume)(Context * ctx, int mode, ContextAddress range_start, ContextAddress range_end);
     int (*context_can_resume)(Context * ctx, int mode);
     int (*context_single_step)(Context * ctx);
-    int (*context_write_mem)(Context * ctx, ContextAddress address, void * buf,
-            size_t size);
-    int (*context_read_mem)(Context * ctx, ContextAddress address, void * buf,
-            size_t size);
+    int (*context_write_mem)(Context * ctx, ContextAddress address, void * buf, size_t size);
+    int (*context_read_mem)(Context * ctx, ContextAddress address, void * buf, size_t size);
     unsigned (*context_word_size)(Context * ctx);
     int (*context_read_reg)(Context * ctx, RegisterDefinition * def,
             unsigned offs, unsigned size, void * buf);
@@ -57,8 +58,7 @@ typedef struct ContextIf {
     int (*context_plant_breakpoint) (ContextBreakpoint * bp);
     int (*context_unplant_breakpoint) (ContextBreakpoint * bp);
 #if ENABLE_ContextStateProperties
-    int (*context_get_state_properties)(Context * ctx, const char *** names, const char *** values,
-            int * cnt);
+    int (*context_get_state_properties)(Context * ctx, const char *** names, const char *** values, int * cnt);
 #endif
 #if ENABLE_ExtendedMemoryErrorReports
     int (*context_get_mem_error_info) (MemoryErrorInfo * info);
@@ -71,6 +71,10 @@ typedef struct ContextIf {
 #endif
 #if ENABLE_ContextISA
     int (*context_get_isa)(Context * ctx, ContextAddress addr, ContextISA * isa);
+#endif
+#if ENABLE_MemoryAccessModes
+    int (*context_write_mem_ext)(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size);
+    int (*context_read_mem_ext)(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size);
 #endif
     CpuDefsIf cpudefs_if;
     ContextExtIf ctxext_if;
@@ -91,8 +95,12 @@ extern int context_set_interface(Context * ctx, ContextIf * ctx_iface);
  */
 extern ContextIf * context_get_interface(Context * ctx);
 
-/* Set the context dispatcher context memory error info */
+#if ENABLE_ExtendedMemoryErrorReports
+/* Set the context dispatcher context memory error info.
+ * Deprecated: clients should not modify dispatcher internal data.
+ */
 extern int set_dispatcher_mem_error_info(MemoryErrorInfo * info);
+#endif
 
 extern void ini_context_dispatcher(void );
 
