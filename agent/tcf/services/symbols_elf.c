@@ -643,12 +643,12 @@ typedef struct EvaluateRefObjectArgs {
     U8_T res;
 } EvaluateRefObjectArgs;
 
-static int is_reference_type(Symbol * sym) {
+static int is_pointer_type(Symbol * sym) {
     for (;;) {
-        SYM_FLAGS flags = 0;
+        int type_class = 0;
         Symbol * next = NULL;
-        if (get_symbol_flags(sym, &flags) < 0) exception(errno);
-        if (flags & SYM_FLAG_REFERENCE) return 1;
+        if (get_symbol_type_class(sym, &type_class) < 0) exception(errno);
+        if (type_class == TYPE_CLASS_POINTER) return 1;
         if (get_symbol_type(sym, &next) < 0) exception(errno);
         if (next == sym) break;
         sym = next;
@@ -668,7 +668,7 @@ static void evaluate_variable_num_prop(void * x) {
     unsigned i;
 
     object2symbol(NULL, args->ref, &sym);
-    if (is_reference_type(sym)) {
+    if (is_pointer_type(sym)) {
         if (get_symbol_value(sym, &value, &size, &big_endian) < 0) exception(errno);
         for (i = 0; i < size; i++) {
             ContextAddress b = *((uint8_t *)value + i);
@@ -1895,15 +1895,20 @@ static void tmp_app_hex(char ch, uint64_t n) {
 }
 
 const char * symbol2id(const Symbol * sym) {
+    int frame = sym->frame;
     assert(sym->magic == SYMBOL_MAGIC);
+    if (frame == STACK_TOP_FRAME) frame = get_top_frame(sym->ctx);
     if (sym->base) {
         char base[256];
         assert(sym->ctx == sym->base->ctx);
-        assert(sym->frame == STACK_NO_FRAME);
         strlcpy(base, symbol2id(sym->base), sizeof(base));
         tmp_len = 0;
         tmp_app_char('@');
         tmp_app_hex('P', sym->sym_class);
+        if (frame != STACK_TOP_FRAME) {
+            assert(frame + 3 >= 0);
+            tmp_app_hex('+', frame + 3);
+        }
         tmp_app_hex('.', sym->index);
         tmp_app_hex('.', sym->length);
         tmp_app_str('.', base);
@@ -1917,7 +1922,6 @@ const char * symbol2id(const Symbol * sym) {
         uint64_t var_id = 0;
         uint64_t ref_id = 0;
         unsigned tbl_index = 0;
-        int frame = sym->frame;
         if (sym->obj != NULL) file = sym->obj->mCompUnit->mFile;
         if (sym->tbl != NULL) file = sym->tbl->file;
         if (sym->obj != NULL) {
@@ -1933,7 +1937,6 @@ const char * symbol2id(const Symbol * sym) {
             ref_id = sym->ref->mID;
         }
         if (sym->tbl != NULL) tbl_index = sym->tbl->index;
-        if (frame == STACK_TOP_FRAME) frame = get_top_frame(sym->ctx);
         assert(sym->var == NULL || sym->var->mCompUnit->mFile == file);
         tmp_len = 0;
         tmp_app_char('@');
@@ -1959,8 +1962,10 @@ const char * symbol2id(const Symbol * sym) {
         if (tbl_index) {
             tmp_app_hex('-', tbl_index);
         }
-        assert(frame + 3 >= 0);
-        tmp_app_hex('.', frame + 3);
+        if (frame != STACK_TOP_FRAME) {
+            assert(frame + 3 >= 0);
+            tmp_app_hex('+', frame + 3);
+        }
         tmp_app_hex('.', sym->index);
         tmp_app_hex('.', sym->dimension);
         tmp_app_hex('.', sym->cardinal);
@@ -2000,9 +2005,14 @@ int id2symbol(const char * id, Symbol ** res) {
     Trap trap;
 
     *res = sym;
+    sym->frame = STACK_NO_FRAME;
     if (id != NULL && id[0] == '@' && id[1] == 'P') {
         p = id + 2;
         sym->sym_class = (int)read_hex(&p);
+        if (*p == '+') {
+            p++;
+            sym->frame = (int)read_hex(&p) - 3;
+        }
         if (*p == '.') p++;
         sym->index = (unsigned)read_hex(&p);
         if (*p == '.') p++;
@@ -2010,7 +2020,6 @@ int id2symbol(const char * id, Symbol ** res) {
         if (*p == '.') p++;
         if (id2symbol(p, &sym->base)) return -1;
         sym->ctx = sym->base->ctx;
-        sym->frame = STACK_NO_FRAME;
         return 0;
     }
     else if (id != NULL && id[0] == '@' && id[1] == 'S') {
@@ -2049,8 +2058,10 @@ int id2symbol(const char * id, Symbol ** res) {
             p++;
             tbl_index = (unsigned)read_hex(&p);
         }
-        if (*p == '.') p++;
-        sym->frame = (int)read_hex(&p) - 3;
+        if (*p == '+') {
+            p++;
+            sym->frame = (int)read_hex(&p) - 3;
+        }
         if (*p == '.') p++;
         sym->index = (unsigned)read_hex(&p);
         if (*p == '.') p++;
@@ -3921,10 +3932,9 @@ int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame) {
 int get_array_symbol(const Symbol * sym, ContextAddress length, Symbol ** ptr) {
     assert(sym->magic == SYMBOL_MAGIC);
     if (sym->sym_class != SYM_CLASS_TYPE) return err_wrong_obj();
-    assert(sym->ctx == context_get_group(sym->ctx, CONTEXT_GROUP_SYMBOLS));
     *ptr = alloc_symbol();
     (*ptr)->ctx = sym->ctx;
-    (*ptr)->frame = STACK_NO_FRAME;
+    (*ptr)->frame = sym->frame;
     (*ptr)->sym_class = SYM_CLASS_TYPE;
     (*ptr)->base = (Symbol *)sym;
     (*ptr)->length = length;
