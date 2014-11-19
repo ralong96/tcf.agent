@@ -434,7 +434,7 @@ void dio_ReadAttribute(U2_T Attr, U2_T Form) {
         case FORM_DATA4     : Size = 4; break;
         case FORM_DATA8     : Size = 8; break;
         case FORM_SEC_OFFSET: Size = sUnit->m64bit ? 8 : 4; break;
-        default: str_exception(ERR_INV_DWARF, "Invalid FORM of DW_AT_stmt_list");
+        default: str_exception(ERR_INV_DWARF, "FORM_DATA or FORM_SEC_OFFSET was expected");
         }
         dio_gFormData = dio_ReadAddressX(&dio_gFormSection, Size);
         dio_gFormDataSize = Size;
