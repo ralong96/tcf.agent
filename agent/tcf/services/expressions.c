@@ -2107,9 +2107,6 @@ static void op_index(int mode, Value * v) {
         if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
             error(errno, "Cannot retrieve symbol size");
         }
-        if (v->type_class == TYPE_CLASS_ARRAY && offs + size > v->size) {
-            error(ERR_INV_EXPRESSION, "Invalid index");
-        }
         if (v->remote) {
             v->address += offs;
         }
