@@ -2803,6 +2803,13 @@ static void lazy_unary_expression(int mode, Value * v) {
                 v->type = type;
                 v->type_class = type_class;
             }
+            else if (v->remote) {
+                v->sym_list = NULL;
+                v->sym = NULL;
+                v->type = type;
+                v->size = type_size;
+                v->type_class = type_class;
+            }
             else {
                 error(ERR_INV_EXPRESSION, "Invalid type cast: illegal source type");
             }
