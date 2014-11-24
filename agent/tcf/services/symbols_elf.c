@@ -812,12 +812,14 @@ static int check_in_range(ObjectInfo * obj, UnitAddress * addr) {
 
                 dio_EnterSection(&unit->mDesc, debug_ranges, obj->u.mCode.mHighPC.mRanges);
                 for (;;) {
+                    U8_T AddrMax = ~(U8_T)0;
                     ELF_Section * x_sec = NULL;
                     ELF_Section * y_sec = NULL;
                     U8_T x = dio_ReadAddress(&x_sec);
                     U8_T y = dio_ReadAddress(&y_sec);
                     if (x == 0 && y == 0) break;
-                    if (x == ((U8_T)1 << unit->mDesc.mAddressSize * 8) - 1) {
+                    if (unit->mDesc.mAddressSize < 8) AddrMax = ((U8_T)1 << unit->mDesc.mAddressSize * 8) - 1;
+                    if (x == AddrMax) {
                         base = (ContextAddress)y;
                     }
                     else {

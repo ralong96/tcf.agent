@@ -968,12 +968,14 @@ static void add_object_addr_ranges(ObjectInfo * info) {
         if (sCache->mDebugRanges != NULL) {
             dio_EnterSection(&unit->mDesc, sCache->mDebugRanges, info->u.mCode.mHighPC.mRanges);
             for (;;) {
+                U8_T AddrMax = ~(U8_T)0;
                 ELF_Section * sec_x = NULL;
                 ELF_Section * sec_y = NULL;
                 U8_T x = dio_ReadAddress(&sec_x);
                 U8_T y = dio_ReadAddress(&sec_y);
                 if (x == 0 && y == 0) break;
-                if (x == ((U8_T)1 << unit->mDesc.mAddressSize * 8) - 1) {
+                if (unit->mDesc.mAddressSize < 8) AddrMax = ((U8_T)1 << unit->mDesc.mAddressSize * 8) - 1;
+                if (x == AddrMax) {
                     base = (ContextAddress)y;
                 }
                 else if (y > x) {
