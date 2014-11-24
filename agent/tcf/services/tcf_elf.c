@@ -68,12 +68,14 @@ typedef struct FileINode {
 
 static ELF_File * files = NULL;
 static FileINode * inodes = NULL;
-static ELFCloseListener * listeners = NULL;
-static unsigned listeners_cnt = 0;
-static unsigned listeners_max = 0;
+static ELFOpenListener * openlisteners = NULL;
+static unsigned openlisteners_cnt = 0;
+static unsigned openlisteners_max = 0;
+static ELFCloseListener * closelisteners = NULL;
+static unsigned closelisteners_cnt = 0;
+static unsigned closelisteners_max = 0;
 static int elf_cleanup_posted = 0;
 static ino_t elf_ino_cnt = 0;
-
 typedef struct ElfListState {
     Context * ctx;
     unsigned pos;
@@ -91,20 +93,28 @@ static MemoryMap elf_map;
 
 static ELF_File * find_open_file_by_name(const char * name);
 
-void elf_add_close_listener(ELFCloseListener listener) {
-    if (listeners_cnt >= listeners_max) {
-        listeners_max = listeners_max == 0 ? 16 : listeners_max * 2;
-        listeners = (ELFCloseListener *)loc_realloc(listeners, sizeof(ELFCloseListener) * listeners_max);
+void elf_add_open_listener(ELFOpenListener listener) {
+    if (openlisteners_cnt >= openlisteners_max) {
+        openlisteners_max = openlisteners_max == 0 ? 16 : openlisteners_max * 2;
+        openlisteners = (ELFOpenListener *)loc_realloc(openlisteners, sizeof(ELFOpenListener) * openlisteners_max);
     }
-    listeners[listeners_cnt++] = listener;
+    openlisteners[openlisteners_cnt++] = listener;
+}
+
+void elf_add_close_listener(ELFCloseListener listener) {
+    if (closelisteners_cnt >= closelisteners_max) {
+        closelisteners_max = closelisteners_max == 0 ? 16 : closelisteners_max * 2;
+        closelisteners = (ELFCloseListener *)loc_realloc(closelisteners, sizeof(ELFCloseListener) * closelisteners_max);
+    }
+    closelisteners[closelisteners_cnt++] = listener;
 }
 
 static void elf_dispose(ELF_File * file) {
     unsigned n;
     assert(file->lock_cnt == 0);
     trace(LOG_ELF, "Dispose ELF file cache %s", file->name);
-    for (n = 0; n < listeners_cnt; n++) {
-        listeners[n](file);
+    for (n = 0; n < closelisteners_cnt; n++) {
+        closelisteners[n](file);
     }
     if (file->dwz_file) {
         assert(file->dwz_file->lock_cnt > 0);
@@ -926,6 +936,11 @@ static ELF_File * create_elf_cache(const char * file_name) {
 
 ELF_File * elf_open(const char * file_name) {
     ELF_File * file = create_elf_cache(file_name);
+    int n = 0;
+
+    for (n = 0; n < openlisteners_cnt; n++) {
+        openlisteners[n](file);
+    }
     if (file->error == NULL) return file;
     set_error_report_errno(file->error);
     return NULL;

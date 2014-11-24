@@ -555,6 +555,13 @@ typedef void (*ELFCloseListener)(ELF_File *);
 extern void elf_add_close_listener(ELFCloseListener listener);
 
 /*
+ * Register ELF file open callback.
+ * The callback is called each time an ELF file data is about to be opened.
+ */
+typedef void (*ELFOpenListener)(ELF_File *);
+extern void elf_add_open_listener(ELFOpenListener listener);
+
+/*
  * Return ELF file that contains DWARF info for given file.
  * On some systems, DWARF is kept in a separate file.
  * If such file is not available, return 'file'.
