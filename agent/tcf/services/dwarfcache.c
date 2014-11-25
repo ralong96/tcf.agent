@@ -1682,7 +1682,8 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
             break;
         }
         if (Attr == AT_byte_size) {
-            if (Obj->mTag == TAG_pointer_type || Obj->mTag == TAG_reference_type || Obj->mTag == TAG_mod_pointer || Obj->mTag == TAG_mod_reference) {
+            if (Obj->mTag == TAG_pointer_type || Obj->mTag == TAG_reference_type || Obj->mTag == TAG_rvalue_reference_type ||
+                    Obj->mTag == TAG_mod_pointer || Obj->mTag == TAG_mod_reference) {
                 Value->mForm = FORM_UDATA;
                 Value->mValue = sCompUnit->mDesc.mAddressSize;
                 break;

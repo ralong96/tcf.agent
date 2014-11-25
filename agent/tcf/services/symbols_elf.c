@@ -387,6 +387,7 @@ static int is_frame_based_object(Symbol * sym) {
                     return 0;
                 case TAG_pointer_type:
                 case TAG_reference_type:
+                case TAG_rvalue_reference_type:
                 case TAG_structure_type:
                     if (obj->mCompUnit->mLanguage == LANG_C) return 0;
                     break;
@@ -490,6 +491,7 @@ static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
     case TAG_enumeration_type:
     case TAG_pointer_type:
     case TAG_reference_type:
+    case TAG_rvalue_reference_type:
     case TAG_mod_pointer:
     case TAG_mod_reference:
     case TAG_string_type:
@@ -2744,6 +2746,7 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
             return 0;
         case TAG_pointer_type:
         case TAG_reference_type:
+        case TAG_rvalue_reference_type:
         case TAG_mod_pointer:
         case TAG_mod_reference:
             *type_class = TYPE_CLASS_POINTER;
@@ -3862,6 +3865,10 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
         case TAG_reference_type:
         case TAG_mod_reference:
             *flags |= SYM_FLAG_REFERENCE;
+            break;
+        case TAG_rvalue_reference_type:
+            *flags |= SYM_FLAG_REFERENCE;
+            *flags |= SYM_FLAG_LVALUE;
             break;
         case TAG_union_type:
             *flags |= SYM_FLAG_UNION_TYPE;
