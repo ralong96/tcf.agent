@@ -344,18 +344,23 @@ static char * map_file_name(Context * ctx, PathMap * m, char * fnm, int mode) {
         if (r->ctx != NULL) {
             int ok = 0;
 #if ENABLE_DebugContext
-            Context * syms = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
-            if (syms != NULL) {
-                ok = strcmp(r->ctx, syms->id) == 0;
-                if (!ok && syms->name != NULL) {
-                    ok = strcmp(r->ctx, syms->name) == 0;
-                    if (!ok) ok = strcmp(r->ctx, context_full_name(syms)) == 0;
+            if (ctx != NULL) {
+                Context * syms = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
+                if (syms != NULL) {
+                    ok = strcmp(r->ctx, syms->id) == 0;
+                    if (!ok && syms->name != NULL) {
+                        ok = strcmp(r->ctx, syms->name) == 0;
+                        if (!ok) ok = strcmp(r->ctx, context_full_name(syms)) == 0;
+                    }
                 }
             }
 #endif
             if (!ok) continue;
         }
-        if (r->query != NULL && !context_query(ctx, r->query)) continue;
+        if (r->query != NULL) {
+            if (ctx == NULL) continue;
+            if (!context_query(ctx, r->query)) continue;
+        }
         src = canonic_path_map_file_name(r->src);
         k = (unsigned)strlen(src);
         if (strncmp(src, fnm, k)) continue;
