@@ -936,7 +936,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
 
 ELF_File * elf_open(const char * file_name) {
     ELF_File * file = create_elf_cache(file_name);
-    int n = 0;
+    unsigned n = 0;
 
     for (n = 0; n < openlisteners_cnt; n++) {
         openlisteners[n](file);
