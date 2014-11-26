@@ -53,6 +53,7 @@ typedef struct FunctionCallInfo FunctionCallInfo;
 #define TYPE_CLASS_ENUMERATION  7
 #define TYPE_CLASS_FUNCTION     8
 #define TYPE_CLASS_MEMBER_PTR   9
+#define TYPE_CLASS_COMPLEX      10
 
 typedef uint32_t SYM_FLAGS;
 

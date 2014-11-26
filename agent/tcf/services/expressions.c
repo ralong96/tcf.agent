@@ -215,6 +215,28 @@ static void set_fp_value(Value * v, size_t size, double n) {
     set_value(v, &buf, size, big_endian);
 }
 
+static void set_complex_value(Value * v, size_t size, double r, double i) {
+    float  f;
+    uint8_t buf[16];
+    switch (size) {
+    case 8:
+        assert(sizeof(f) == 4);
+        f = (float)r;
+        memcpy(buf, &f, 4);
+        f = (float)i;
+        memcpy(buf + 4, &f, 4);
+        set_value(v, buf, size, big_endian);
+        break;
+    case 16:
+        assert(sizeof(r) == 8);
+        memcpy(buf, &r, 8);
+        memcpy(buf + 8, &i, 8);
+        set_value(v, buf, size, big_endian);
+        break;
+    default: assert(0);
+    }
+}
+
 static void set_ctx_word_value(Value * v, ContextAddress data) {
     set_int_value(v, context_word_size(expression_context), data);
 }
@@ -1463,6 +1485,7 @@ static int is_number(Value * v) {
     case TYPE_CLASS_INTEGER:
     case TYPE_CLASS_CARDINAL:
     case TYPE_CLASS_REAL:
+    case TYPE_CLASS_COMPLEX:
     case TYPE_CLASS_ENUMERATION:
         return 1;
     }
@@ -1528,6 +1551,9 @@ static int64_t to_int(int mode, Value * v) {
             case 8: return (int64_t)*(double *)v->value;
             }
         }
+        else if (v->type_class == TYPE_CLASS_COMPLEX) {
+            /* Not supported */
+        }
         else if (v->type_class == TYPE_CLASS_CARDINAL) {
             switch (v->size)  {
             case 1: return (int64_t)*(uint8_t *)v->value;
@@ -1582,6 +1608,9 @@ static uint64_t to_uns(int mode, Value * v) {
             case 8: return (uint64_t)*(double *)v->value;
             }
         }
+        else if (v->type_class == TYPE_CLASS_COMPLEX) {
+            /* Not supported */
+        }
         else if (v->type_class == TYPE_CLASS_CARDINAL) {
             switch (v->size)  {
             case 1: return *(uint8_t *)v->value;
@@ -1623,6 +1652,9 @@ static double to_double(int mode, Value * v) {
             case 8: return *(double *)v->value;
             }
         }
+        else if (v->type_class == TYPE_CLASS_COMPLEX) {
+            /* Not supported */
+        }
         else if (v->type_class == TYPE_CLASS_CARDINAL) {
             switch (v->size)  {
             case 1: return (double)*(uint8_t *)v->value;
@@ -1643,6 +1675,58 @@ static double to_double(int mode, Value * v) {
 
     error(ERR_INV_EXPRESSION, "Operation is not applicable for the value type");
     return 0;
+}
+
+static double to_i_double(int mode, Value * v) {
+    if (mode != MODE_NORMAL) {
+        if (v->remote) {
+            v->value = tmp_alloc_zero((size_t)v->size);
+            v->remote = 0;
+        }
+        return 0;
+    }
+
+    if (is_number(v)) {
+        load_value(v);
+        to_host_endianness(v);
+
+        if (v->type_class == TYPE_CLASS_COMPLEX) {
+            switch (v->size)  {
+            case 8: return *(float *)((char *)v->value + 4);
+            case 16: return *(double *)((char *)v->value + 8);
+            }
+        }
+        else {
+            return 0.0;
+        }
+    }
+
+    error(ERR_INV_EXPRESSION, "Operation is not applicable for the value type");
+    return 0;
+}
+
+static double to_r_double(int mode, Value * v) {
+    if (mode != MODE_NORMAL) {
+        if (v->remote) {
+            v->value = tmp_alloc_zero((size_t)v->size);
+            v->remote = 0;
+        }
+        return 0;
+    }
+
+    if (is_number(v)) {
+        load_value(v);
+        to_host_endianness(v);
+
+        if (v->type_class == TYPE_CLASS_COMPLEX) {
+            switch (v->size)  {
+            case 8: return *(float *)v->value;
+            case 16: return *(double *)v->value;
+            }
+        }
+    }
+
+    return to_double(mode, v);
 }
 
 static int to_boolean(int mode, Value * v) {
@@ -1673,6 +1757,36 @@ static int get_std_type(const char * name, int type_class, Symbol ** type, size_
     return 1;
 }
 #endif
+
+static void set_fp_type(Value * v) {
+#if ENABLE_Symbols
+    Symbol * type = NULL;
+    size_t size = 0;
+    if (get_std_type("float", TYPE_CLASS_REAL, &type, &size) && v->size == size) {
+        v->type = type;
+        return;
+    }
+    if (get_std_type("double", TYPE_CLASS_REAL, &type, &size) && v->size == size) {
+        v->type = type;
+        return;
+    }
+#endif
+}
+
+static void set_complex_type(Value * v) {
+#if ENABLE_Symbols
+    Symbol * type = NULL;
+    size_t size = 0;
+    if (get_std_type("complex float", TYPE_CLASS_COMPLEX, &type, &size) && v->size == size) {
+        v->type = type;
+        return;
+    }
+    if (get_std_type("complex double", TYPE_CLASS_COMPLEX, &type, &size) && v->size == size) {
+        v->type = type;
+        return;
+    }
+#endif
+}
 
 static void expression(int mode, Value * v);
 
@@ -2642,6 +2756,9 @@ static void lazy_unary_expression(int mode, Value * v) {
             else if (v->type_class == TYPE_CLASS_REAL) {
                 set_fp_value(v, (size_t)v->size, -to_double(mode, v));
             }
+            else if (v->type_class == TYPE_CLASS_COMPLEX) {
+                set_complex_value(v, (size_t)v->size, -to_r_double(mode, v), -to_i_double(mode, v));
+            }
             else if (v->type_class != TYPE_CLASS_CARDINAL) {
                 int64_t value = -to_int(mode, v);
                 if (v->type_class == TYPE_CLASS_INTEGER) {
@@ -2781,6 +2898,7 @@ static void lazy_unary_expression(int mode, Value * v) {
                 v->type = type;
                 v->type_class = type_class;
                 set_fp_value(v, (size_t)type_size, value);
+                set_fp_type(v);
             }
             break;
         case TYPE_CLASS_ARRAY:
@@ -2901,7 +3019,41 @@ static void multiplicative_expression(int mode, Value * v) {
             if (!is_number(v) || !is_number(&x)) {
                 error(ERR_INV_EXPRESSION, "Numeric types expected");
             }
-            if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
+            else if (v->type_class == TYPE_CLASS_COMPLEX || x.type_class == TYPE_CLASS_COMPLEX) {
+                double r_value = 0;
+                double i_value = 0;
+                if (mode == MODE_NORMAL) {
+                    double d = 0;
+                    switch (sy) {
+                    case '*':
+                        r_value =
+                            to_r_double(mode, v) * to_r_double(mode, &x) +
+                            to_i_double(mode, v) * to_i_double(mode, &x);
+                        i_value =
+                            to_r_double(mode, v) * to_i_double(mode, &x) +
+                            to_i_double(mode, v) * to_r_double(mode, &x);
+                        break;
+                    case '/':
+                        d =
+                            to_r_double(mode, &x) * to_r_double(mode, &x) +
+                            to_i_double(mode, &x) * to_i_double(mode, &x);
+                        r_value =
+                            (to_r_double(mode, v) * to_r_double(mode, &x) +
+                            to_i_double(mode, v) * to_i_double(mode, &x)) / d;
+                        i_value =
+                            (to_i_double(mode, v) * to_r_double(mode, &x) +
+                            to_r_double(mode, v) * to_i_double(mode, &x)) / d;
+                        break;
+                    default:
+                        error(ERR_INV_EXPRESSION, "Invalid type");
+                    }
+                }
+                v->type = NULL;
+                v->type_class = TYPE_CLASS_COMPLEX;
+                set_complex_value(v, sizeof(double) * 2, r_value, i_value);
+                set_complex_type(v);
+            }
+            else if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
                 double value = 0;
                 if (mode == MODE_NORMAL) {
                     switch (sy) {
@@ -2913,6 +3065,7 @@ static void multiplicative_expression(int mode, Value * v) {
                 v->type = NULL;
                 v->type_class = TYPE_CLASS_REAL;
                 set_fp_value(v, sizeof(double), value);
+                set_fp_type(v);
             }
             else if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
                 uint64_t value = 0;
@@ -3030,6 +3183,24 @@ static void additive_expression(int mode, Value * v) {
             else if (!is_number(v) || !is_number(&x)) {
                 error(ERR_INV_EXPRESSION, "Numeric types expected");
             }
+            else if (v->type_class == TYPE_CLASS_COMPLEX || x.type_class == TYPE_CLASS_COMPLEX) {
+                double r_value = 0;
+                double i_value = 0;
+                switch (sy) {
+                case '+':
+                    r_value = to_r_double(mode, v) + to_r_double(mode, &x);
+                    i_value = to_i_double(mode, v) + to_i_double(mode, &x);
+                    break;
+                case '-':
+                    r_value = to_r_double(mode, v) - to_r_double(mode, &x);
+                    i_value = to_i_double(mode, v) - to_i_double(mode, &x);
+                    break;
+                }
+                v->type = NULL;
+                v->type_class = TYPE_CLASS_COMPLEX;
+                set_complex_value(v, sizeof(double) * 2, r_value, i_value);
+                set_complex_type(v);
+            }
             else if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
                 double value = 0;
                 switch (sy) {
@@ -3039,6 +3210,7 @@ static void additive_expression(int mode, Value * v) {
                 v->type = NULL;
                 v->type_class = TYPE_CLASS_REAL;
                 set_fp_value(v, sizeof(double), value);
+                set_fp_type(v);
             }
             else if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
                 uint64_t value = 0;
@@ -3179,6 +3351,11 @@ static void equality_expression(int mode, Value * v) {
                 load_value(v);
                 load_value(&x);
                 value = strcmp((char *)v->value, (char *)x.value) == 0;
+            }
+            else if (v->type_class == TYPE_CLASS_COMPLEX || x.type_class == TYPE_CLASS_COMPLEX) {
+                value =
+                    to_r_double(mode, v) == to_r_double(mode, &x) &&
+                    to_i_double(mode, v) == to_i_double(mode, &x);
             }
             else if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
                 value = to_double(mode, v) == to_double(mode, &x);

@@ -2772,6 +2772,9 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
             case ATE_imaginary_float:
                 *type_class = TYPE_CLASS_REAL;
                 return 0;
+            case ATE_complex_float:
+                *type_class = TYPE_CLASS_COMPLEX;
+                return 0;
             case ATE_signed:
             case ATE_signed_char:
                 *type_class = TYPE_CLASS_INTEGER;
