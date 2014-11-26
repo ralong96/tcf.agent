@@ -3868,7 +3868,7 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
             break;
         case TAG_rvalue_reference_type:
             *flags |= SYM_FLAG_REFERENCE;
-            *flags |= SYM_FLAG_LVALUE;
+            *flags |= SYM_FLAG_RVALUE;
             break;
         case TAG_union_type:
             *flags |= SYM_FLAG_UNION_TYPE;

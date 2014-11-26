@@ -84,7 +84,7 @@ typedef uint32_t SYM_FLAGS;
 #define SYM_FLAG_INHERITANCE    0x02000000
 #define SYM_FLAG_BOOL_TYPE      0x04000000
 #define SYM_FLAG_INDIRECT       0x08000000
-#define SYM_FLAG_LVALUE         0x10000000
+#define SYM_FLAG_RVALUE         0x10000000
 
 /* Symbol properties update policies */
 #define UPDATE_ON_MEMORY_MAP_CHANGES 0
