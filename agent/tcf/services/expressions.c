@@ -3027,7 +3027,7 @@ static void multiplicative_expression(int mode, Value * v) {
                     switch (sy) {
                     case '*':
                         r_value =
-                            to_r_double(mode, v) * to_r_double(mode, &x) +
+                            to_r_double(mode, v) * to_r_double(mode, &x) -
                             to_i_double(mode, v) * to_i_double(mode, &x);
                         i_value =
                             to_r_double(mode, v) * to_i_double(mode, &x) +
@@ -3041,7 +3041,7 @@ static void multiplicative_expression(int mode, Value * v) {
                             (to_r_double(mode, v) * to_r_double(mode, &x) +
                             to_i_double(mode, v) * to_i_double(mode, &x)) / d;
                         i_value =
-                            (to_i_double(mode, v) * to_r_double(mode, &x) +
+                            (to_i_double(mode, v) * to_r_double(mode, &x) -
                             to_r_double(mode, v) * to_i_double(mode, &x)) / d;
                         break;
                     default:
