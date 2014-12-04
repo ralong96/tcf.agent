@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -21,6 +21,7 @@
 #define D_context
 
 #include <tcf/config.h>
+#include <tcf/framework/channel.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/errors.h>
 #include <tcf/framework/sigsets.h>
@@ -141,6 +142,7 @@ struct MemoryRegion {
     char * query;                   /* If not NULL, the region is only part of the memory map for contexts matches the query */
     char * id;                      /* Region ID, not NULL only if the region info is submitted by a client */
     MemoryRegionAttribute * attrs;  /* Additional memory region attributes */
+    Channel * channel;              /* Not NULL if the region info is submitted by a client */
 };
 
 struct MemoryRegionAttribute {

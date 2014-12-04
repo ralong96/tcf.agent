@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -148,7 +148,8 @@ static void update_context_client_map(Context * ctx) {
                         y->flags == x->flags &&
                         str_equ(y->file_name, x->file_name) &&
                         str_equ(y->sect_name, x->sect_name) &&
-                        str_equ(y->query, x->query);
+                        str_equ(y->query, x->query) &&
+                        y->channel == x->channel;
                     if (equ) {
                         MemoryRegionAttribute * ax = x->attrs;
                         MemoryRegionAttribute * ay = y->attrs;
@@ -197,6 +198,7 @@ static void update_context_client_map(Context * ctx) {
                             ax = ax->next;
                         }
                     }
+                    y->channel = m->channel;
                 }
             }
         }
