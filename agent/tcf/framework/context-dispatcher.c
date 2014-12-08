@@ -93,8 +93,7 @@ int context_stop(Context * ctx) {
 int context_continue(Context * ctx) {
     ContextExtensionMux * ext = EXT(ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_continue == NULL) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
+        return context_resume(ctx, RM_RESUME, 0, 0);
     }
     return ext->ctx_iface->context_continue(ctx);
 }
@@ -117,8 +116,7 @@ int context_can_resume(Context * ctx, int mode) {
 int context_single_step(Context * ctx) {
     ContextExtensionMux * ext = EXT(ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_single_step == NULL) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
+        return context_resume(ctx, RM_STEP_INTO, 0, 0);
     }
     return ext->ctx_iface->context_single_step(ctx);
 }
