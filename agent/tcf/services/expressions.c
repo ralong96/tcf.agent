@@ -1804,7 +1804,7 @@ static void primary_expression(int mode, Value * v) {
 #if ENABLE_Symbols
         if (v->type_class == TYPE_CLASS_INTEGER || v->type_class == TYPE_CLASS_CARDINAL) {
             size_t size = 0;
-            uint64_t n = to_uns(mode, v);
+            uint64_t n = to_uns(MODE_NORMAL, v);
             if (flags & VAL_FLAG_C) {
                 Symbol * type = NULL;
                 if (get_std_type(flags & VAL_FLAG_L ? "wchar_t" : "char", TYPE_CLASS_UNKNOWN, &type, &size)) {
@@ -1866,7 +1866,7 @@ static void primary_expression(int mode, Value * v) {
             const char * name = flags & VAL_FLAG_F ? "float" : "double";
             if (get_std_type(name, TYPE_CLASS_REAL, &type, &size)) {
                 v->type = type;
-                if (size != v->size) set_fp_value(v, size, to_double(mode, v));
+                if (size != v->size) set_fp_value(v, size, to_double(MODE_NORMAL, v));
             }
         }
         else if (v->type_class == TYPE_CLASS_ARRAY && (flags & VAL_FLAG_S) != 0) {
