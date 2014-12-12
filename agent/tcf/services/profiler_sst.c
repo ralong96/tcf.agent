@@ -84,8 +84,8 @@ static void get_stack_trace(ProfilerSST * prf) {
     StackFrame * info = NULL;
     int frame = get_prev_frame(prf->ctx, STACK_TOP_FRAME);
     RegisterDefinition * reg_pc = NULL;
-    uint64_t pc = 0;
     unsigned buf_max = prf->frame_cnt - 1;
+    uint64_t pc = 0;
 
     if (frame < 0) return;
     get_frame_info(prf->ctx, frame, &info);
@@ -127,14 +127,34 @@ static SampleStackTrace * find_stack_trace(ProfilerSST * prf) {
     return stk;
 }
 
-static void add_sample_cache_client(void * x) {
-    ProfilerSST * prf = *(ProfilerSST **)x;
-    ContextAddress pc = prf->pc;
+static void add_to_sample_array(ProfilerSST * prf, ContextAddress pc, SampleStackTrace * stk) {
+    unsigned i;
     unsigned h = (unsigned)(pc >> 4) % PSAMPLE_HASH_SIZE;
     ProfilerSampleArray * a = prf->psample_hash + h;
-    SampleStackTrace * stk = NULL;
     ProfilerSample * s = NULL;
-    unsigned i;
+    for (i = 0; i < a->buf_pos; i++) {
+        ProfilerSample * p = a->buf + i;
+        if (p->pc == pc && p->stk == stk) {
+            s = p;
+            break;
+        }
+    }
+    if (s == NULL) {
+        if (a->buf_pos >= a->buf_max) {
+            a->buf = (ProfilerSample *)loc_realloc(a->buf, sizeof(ProfilerSample) * (a->buf_max += 64));
+        }
+        s = a->buf + a->buf_pos++;
+        prf->psample_cnt += 3;
+        if (stk != NULL) prf->psample_cnt += stk->len;
+        s->pc = pc;
+        s->stk = stk;
+        s->cnt = 0;
+    }
+    s->cnt++;
+}
+
+static void add_sample_cache_client(void * x) {
+    ProfilerSST * prf = *(ProfilerSST **)x;
     buf_pos = 0;
     buf = NULL;
     if (prf->frame_cnt > 1) {
@@ -143,33 +163,14 @@ static void add_sample_cache_client(void * x) {
             context_stop(prf->ctx);
         }
         else {
+            prf->pc = get_regs_PC(prf->ctx);
             get_stack_trace(prf);
         }
     }
     cache_exit();
     if (!prf->disposed && !prf->stop_pending) {
-        stk = find_stack_trace(prf);
-        for (i = 0; i < a->buf_pos; i++) {
-            ProfilerSample * p = a->buf + i;
-            if (p->pc == pc && p->stk == stk) {
-                s = p;
-                break;
-            }
-        }
-        if (s != NULL) {
-            s->cnt++;
-        }
-        else {
-            if (a->buf_pos >= a->buf_max) {
-                a->buf = (ProfilerSample *)loc_realloc(a->buf, sizeof(ProfilerSample) * (a->buf_max += 64));
-            }
-            s = a->buf + a->buf_pos++;
-            prf->psample_cnt += 3;
-            if (stk != NULL) prf->psample_cnt += stk->len;
-            s->pc = pc;
-            s->stk = stk;
-            s->cnt = 1;
-        }
+        SampleStackTrace * stk = find_stack_trace(prf);
+        add_to_sample_array(prf, prf->pc, stk);
     }
     prf->lock--;
     if (prf->disposed && prf->lock == 0) loc_free(prf);
@@ -181,10 +182,9 @@ static void add_sample_event(void * args) {
     cache_enter(add_sample_cache_client, prf->channel, &prf, sizeof(prf));
 }
 
-static void add_sample(ProfilerSST * prf, ContextAddress pc) {
+static void add_sample(ProfilerSST * prf) {
     assert(!prf->disposed);
     prf->lock++;
-    prf->pc = pc;
     run_ctrl_lock();
     post_event(add_sample_event, prf);
 }
@@ -198,7 +198,14 @@ void profiler_sst_sample(Context * ctx, ContextAddress pc) {
     LINK * l;
     ContextExtensionPrfSST * ext = EXT(ctx);
     for (l = ext->list.next; l != &ext->list; l = l->next) {
-        add_sample(link_core2prf(l), pc);
+        ProfilerSST * prf = link_core2prf(l);
+        if (prf->frame_cnt <= 1) {
+            /* Shortcut for non-hierarchical profiling */
+            if (prf->frame_cnt > 0) add_to_sample_array(prf, pc, NULL);
+            continue;
+        }
+        prf->pc = pc;
+        add_sample(prf);
     }
 }
 
@@ -348,7 +355,7 @@ static void event_context_stopped(Context * ctx, void * args) {
         ProfilerSST * prf = link_core2prf(l);
         if (prf->stop_pending) {
             prf->stop_pending = 0;
-            add_sample(prf, get_regs_PC(ctx));
+            add_sample(prf);
         }
     }
 }
