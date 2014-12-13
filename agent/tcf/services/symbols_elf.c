@@ -561,8 +561,8 @@ static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
     }
     sym->ref = ref;
     if (sym->sym_class == SYM_CLASS_REFERENCE && obj->mTag != TAG_member) sym->ref = obj;
-    sym->priority = symbol_priority(obj);
-    sym->weak = symbol_is_weak(obj);
+    sym->priority = (int8_t)symbol_priority(obj);
+    sym->weak = (int8_t)symbol_is_weak(obj);
     *res = sym;
 }
 
@@ -1028,7 +1028,7 @@ static int symbol_prt_comparator(const void * x, const void * y) {
 }
 
 static void add_to_find_symbol_buf(Symbol * sym) {
-    sym->has_location = symbol_has_location(sym);
+    sym->has_location = (int8_t)symbol_has_location(sym);
     sym->next = find_symbol_list;
     find_symbol_list = sym;
 }
@@ -2012,7 +2012,7 @@ int id2symbol(const char * id, Symbol ** res) {
     sym->frame = STACK_NO_FRAME;
     if (id != NULL && id[0] == '@' && id[1] == 'P') {
         p = id + 2;
-        sym->sym_class = (int)read_hex(&p);
+        sym->sym_class = (int8_t)read_hex(&p);
         if (*p == '+') {
             p++;
             sym->frame = (int)read_hex(&p) - 3;
@@ -2028,7 +2028,7 @@ int id2symbol(const char * id, Symbol ** res) {
     }
     else if (id != NULL && id[0] == '@' && id[1] == 'S') {
         p = id + 2;
-        sym->sym_class = (int)read_hex(&p);
+        sym->sym_class = (int8_t)read_hex(&p);
         if (*p == '.') p++;
         dev = (dev_t)read_hex(&p);
         if (*p == '.') p++;
