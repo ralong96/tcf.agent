@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -146,6 +146,35 @@ static char * buf = NULL;
 static size_t buf_pos = 0;
 static size_t buf_max = 0;
 
+#if ENABLE_ContextIdHashTable
+
+#define CONTEXT_ID_HASH_SIZE  (32 * MEM_USAGE_FACTOR - 1)
+static LINK context_id_hash[CONTEXT_ID_HASH_SIZE];
+static size_t context_extension_offset = 0;
+
+#define ctx2idlink(ctx) ((LINK *)((char *)(ctx) + context_extension_offset))
+#define idlink2ctx(lnk) ((Context *)((char *)(lnk) - context_extension_offset))
+
+static unsigned id2hash(const char * id) {
+    unsigned hash = 0;
+    while (*id) hash = (hash >> 16) + hash + (unsigned char)*id++;
+    return hash % CONTEXT_ID_HASH_SIZE;
+}
+
+Context * id2ctx(const char * id) {
+    LINK * h = context_id_hash + id2hash(id);
+    LINK * l = h->next;
+    if (l == NULL) return NULL;
+    while (l != h) {
+        Context * ctx = idlink2ctx(l);
+        if (strcmp(ctx->id, id) == 0) return ctx;
+        l = l->next;
+    }
+    return NULL;
+}
+
+#endif
+
 static void buf_char(char ch) {
     if (buf_pos >= buf_max) {
         buf_max += 0x100;
@@ -197,6 +226,10 @@ void context_unlock(Context * ctx) {
             ctx->creator = NULL;
         }
 
+#if ENABLE_ContextIdHashTable
+        if (!list_is_empty(ctx2idlink(ctx))) list_remove(ctx2idlink(ctx));
+#endif
+
         assert(!ctx->event_notification);
         ctx->event_notification = 1;
         for (i = 0; i < listener_cnt; i++) {
@@ -224,6 +257,9 @@ void send_context_created_event(Context * ctx) {
     unsigned i;
     assert(ctx->ref_count > 0);
     assert(!ctx->event_notification);
+#if ENABLE_ContextIdHashTable
+    list_add_last(ctx2idlink(ctx), context_id_hash + id2hash(ctx->id));
+#endif
     ctx->event_notification = 1;
     for (i = 0; i < listener_cnt; i++) {
         Listener * l = listeners + i;
@@ -298,12 +334,22 @@ void send_context_exited_event(Context * ctx) {
         l->func->context_exited(ctx, l->args);
     }
     ctx->event_notification = 0;
+#if ENABLE_ContextIdHashTable
+    if (!list_is_empty(ctx2idlink(ctx))) list_remove(ctx2idlink(ctx));
+#endif
     context_unlock(ctx);
 }
 
 void ini_contexts(void) {
     ini_cpudefs();
     init_contexts_sys_dep();
+#if ENABLE_ContextIdHashTable
+    {
+        unsigned i;
+        context_extension_offset = context_extension(sizeof(LINK));
+        for (i = 0; i < CONTEXT_ID_HASH_SIZE; i++) list_init(context_id_hash + i);
+    }
+#endif
 }
 
 #endif  /* if ENABLE_DebugContext */

@@ -313,4 +313,8 @@
       ENABLE_DebugContext && !ENABLE_ContextProxy)
 #endif
 
+#if !defined(ENABLE_ContextIdHashTable)
+#  define ENABLE_ContextIdHashTable (ENABLE_DebugContext && !ENABLE_ContextProxy && TARGET_WINDOWS)
+#endif
+
 #endif /* D_config */
