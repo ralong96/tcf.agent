@@ -187,7 +187,10 @@ int context_write_reg(Context * ctx, RegisterDefinition * def, unsigned offs, un
 
 Context * context_get_group(Context * ctx, int group) {
     ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_group == NULL) return NULL;
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_group == NULL) {
+        if (group == CONTEXT_GROUP_BREAKPOINT) return NULL;
+        return ctx;
+    }
     return ext->ctx_iface->context_get_group(ctx, group);
 }
 
