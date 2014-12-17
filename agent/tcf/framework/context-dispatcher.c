@@ -165,8 +165,7 @@ unsigned context_word_size(Context * ctx) {
     return ext->ctx_iface->context_word_size(ctx);
 }
 
-int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, unsigned size,
-        void * buf) {
+int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, unsigned size, void * buf) {
     ContextExtensionMux * ext = EXT(ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_read_reg == NULL) {
         errno = ERR_UNSUPPORTED;
@@ -175,8 +174,7 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
     return ext->ctx_iface->context_read_reg(ctx, def, offs, size, buf);
 }
 
-int context_write_reg(Context * ctx, RegisterDefinition * def, unsigned offs, unsigned size,
-        void * buf) {
+int context_write_reg(Context * ctx, RegisterDefinition * def, unsigned offs, unsigned size, void * buf) {
     ContextExtensionMux * ext = EXT(ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_write_reg == NULL) {
         errno = ERR_UNSUPPORTED;
@@ -317,8 +315,7 @@ RegisterDefinition * get_reg_by_id(Context * ctx, unsigned id, RegisterIdScope *
     return ext->ctx_iface->cpudefs_if.get_reg_by_id(ctx, id, scope);
 }
 
-int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs, unsigned size,
-        uint8_t * buf) {
+int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs, unsigned size, uint8_t * buf) {
     ContextExtensionMux * ext = EXT(frame->ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->cpudefs_if.read_reg_bytes == NULL) {
         errno = ERR_UNSUPPORTED;
@@ -327,8 +324,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
     return ext->ctx_iface->cpudefs_if.read_reg_bytes(frame, reg_def, offs, size, buf);
 }
 
-int write_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs, unsigned size,
-        uint8_t * buf) {
+int write_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs, unsigned size, uint8_t * buf) {
     ContextExtensionMux * ext = EXT(frame->ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->cpudefs_if.write_reg_bytes == NULL) {
         errno = ERR_UNSUPPORTED;

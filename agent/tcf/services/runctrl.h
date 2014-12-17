@@ -66,6 +66,18 @@ extern void run_ctrl_lock(void);
 extern void run_ctrl_unlock(void);
 
 /*
+ * Lock run control: don't resume the context while its run control is locked.
+ * Each call to run_ctrl_ctx_lock() increments lock counter.
+ */
+extern void run_ctrl_ctx_lock(Context * ctx);
+
+/*
+ * Unlock run control: resume the context - if it is not intercepted.
+ * Each call to run_ctrl_unlock() decrements lock counter, debuggee resumed when the counter reaches zero.
+ */
+extern void run_ctrl_ctx_unlock(Context * ctx);
+
+/*
  * Add "safe" event.
  * Stops debuggee threads.
  * Callback function 'done' will be called when threads are stopped and

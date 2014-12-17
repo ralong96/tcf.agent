@@ -76,6 +76,7 @@ typedef struct ContextExtensionRC {
     int step_cnt;
     int step_line_cnt;
     int stop_group_mark;
+    int run_ctrl_ctx_lock_cnt;
     ContextAddress step_range_start;
     ContextAddress step_range_end;
     ContextAddress step_frame_fp;
@@ -1985,7 +1986,7 @@ static void sync_run_state(void) {
                 assert(!ctx->stopped);
             }
         }
-        else if (ctx->stopped && !ctx->pending_intercept) {
+        else if (ctx->stopped && !ctx->pending_intercept && ext->run_ctrl_ctx_lock_cnt == 0) {
             if (check_step_breakpoint(ctx) < 0) {
                 resume_error(ctx, errno);
                 err_cnt++;
@@ -2224,6 +2225,24 @@ void run_ctrl_unlock(void) {
 #if ENABLE_Cmdline
         cmdline_resume();
 #endif
+        /* Lazily continue execution of temporary stopped contexts */
+        run_safe_events_posted++;
+        post_event(run_safe_events, NULL);
+    }
+}
+
+void run_ctrl_ctx_lock(Context * ctx) {
+    ContextExtensionRC * ext = EXT(ctx);
+    assert(context_has_state(ctx));
+    ext->run_ctrl_ctx_lock_cnt++;
+}
+
+void run_ctrl_ctx_unlock(Context * ctx) {
+    ContextExtensionRC * ext = EXT(ctx);
+    assert(context_has_state(ctx));
+    assert(ext->run_ctrl_ctx_lock_cnt > 0);
+    ext->run_ctrl_ctx_lock_cnt--;
+    if (ext->run_ctrl_ctx_lock_cnt == 0) {
         /* Lazily continue execution of temporary stopped contexts */
         run_safe_events_posted++;
         post_event(run_safe_events, NULL);
