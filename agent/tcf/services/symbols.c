@@ -817,6 +817,32 @@ static void command_get_location_info_cache_client(void * x) {
             write_stream(&c->out, ':');
             json_write_uint64(&c->out, info->code_size);
         }
+        if (info->discr_cnt > 0) {
+            unsigned i;
+            write_stream(&c->out, ',');
+            json_write_string(&c->out, "Discriminant");
+            write_stream(&c->out, ':');
+            write_stream(&c->out, '[');
+            for (i = 0; i < info->discr_cnt; i++) {
+                DiscriminantRange * r = info->discr_lst + i;
+                if (i > 0) write_stream(&c->out, ',');
+                if (r->x == r->y) {
+                    json_write_int64(&c->out, r->x);
+                }
+                else {
+                    write_stream(&c->out, '{');
+                    json_write_string(&c->out, "X");
+                    write_stream(&c->out, ':');
+                    json_write_int64(&c->out, r->x);
+                    write_stream(&c->out, ',');
+                    json_write_string(&c->out, "Y");
+                    write_stream(&c->out, ':');
+                    json_write_int64(&c->out, r->y);
+                    write_stream(&c->out, '}');
+                }
+            }
+            write_stream(&c->out, ']');
+        }
         write_stream(&c->out, '}');
         write_stream(&c->out, 0);
     }

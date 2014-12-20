@@ -187,7 +187,7 @@
 #define AT_decl_file                0x003a
 #define AT_decl_line                0x003b
 #define AT_declaration              0x003c
-#define AT_distr_list               0x003d
+#define AT_discr_list               0x003d
 #define AT_encoding                 0x003e
 #define AT_external                 0x003f
 #define AT_frame_base               0x0040

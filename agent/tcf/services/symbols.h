@@ -101,12 +101,19 @@ typedef struct LocationCommands {
     unsigned max;
 } LocationCommands;
 
+typedef struct DiscriminantRange {
+    int64_t x;
+    int64_t y;
+} DiscriminantRange;
+
 typedef struct LocationInfo {
     ContextAddress code_addr;
     ContextAddress code_size;
     int big_endian;
     unsigned args_cnt;
     LocationCommands value_cmds;
+    DiscriminantRange * discr_lst;
+    unsigned discr_cnt;
 } LocationInfo;
 
 /* Stack tracing command sequence */

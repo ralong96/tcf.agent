@@ -519,6 +519,30 @@ static void test_enumeration_type(Symbol * type) {
     }
 }
 
+static void test_variant_part(Symbol * part) {
+    int i;
+    int count = 0;
+    Symbol ** children = NULL;
+
+    if (get_symbol_children(part, &children, &count) < 0) {
+        error_sym("get_symbol_children", part);
+    }
+    for (i = 0; i < count; i++) {
+        int member_class = 0;
+        Symbol * member_container = NULL;
+        LocationInfo * loc_info = NULL;
+        if (get_symbol_class(children[i], &member_class) < 0) {
+            error_sym("get_symbol_class", children[i]);
+        }
+        if (get_symbol_container(children[i], &member_container) < 0) {
+            error_sym("get_symbol_container", children[i]);
+        }
+        if (get_location_info(children[i], &loc_info) < 0) {
+            error_sym("get_location_info", children[i]);
+        }
+    }
+}
+
 static void test_composite_type(Symbol * type) {
     int i;
     int count = 0;
@@ -627,6 +651,9 @@ static void test_composite_type(Symbol * type) {
             if (get_symbol_value(children[i], &value, &value_size, &big_endian) < 0) {
                 error_sym("get_symbol_value", children[i]);
             }
+        }
+        else if (member_class == SYM_CLASS_VARIANT_PART) {
+            test_variant_part(children[i]);
         }
     }
 }
@@ -860,6 +887,9 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (errcmp(err, "No object location info found") == 0) return;
         if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
             if (errcmp(err, "Object does not have location information") == 0) return;
+        }
+        if (symbol_class == SYM_CLASS_TYPE && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+            if (errcmp(err, "Invalid address of containing object") == 0) return;
         }
         if (errcmp(err, "Object is not available at this location") == 0) return;
         if (errcmp(err, "OP_fbreg: cannot read AT_frame_base") == 0) return;
@@ -1383,12 +1413,12 @@ static void test_public_names(void) {
             if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, obj->mName, &sym2) < 0) {
                 error("find_symbol_by_name");
             }
-            if (symcmp(sym1, sym2) != 0) {
+            if (get_symbol_object(sym1) != get_symbol_object(sym2)) {
                 /* Something else with same name found in the top frame.
                  * Cannot call loc_var_func() - it will fail. */
             }
             else {
-                loc_var_func(NULL, sym1);
+                loc_var_func(NULL, sym2);
             }
         }
         if ((n % 100) == 0) {
@@ -1403,13 +1433,28 @@ static void test_public_names(void) {
             Trap trap;
             if (set_trap(&trap)) {
                 ELF_SymbolInfo sym_info;
-                unpack_elf_symbol_info(tbl, tbl->sym_names_hash[n], &sym_info);
-                if (sym_info.name) {
+                unpack_elf_symbol_info(tbl, n, &sym_info);
+                if (sym_info.name && sym_info.section_index != SHN_UNDEF && sym_info.type != STT_FILE) {
                     Symbol * sym = NULL;
+                    Symbol * sym1 = NULL;
+                    Symbol * sym2 = NULL;
                     if (elf_tcf_symbol(elf_ctx, &sym_info, &sym) < 0) {
                         error("elf_tcf_symbol");
                     }
                     loc_var_func(NULL, sym);
+                    if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, sym_info.name, &sym1) < 0) {
+                        error("find_symbol_by_name");
+                    }
+                    if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, sym_info.name, &sym2) < 0) {
+                        error("find_symbol_by_name");
+                    }
+                    if (get_symbol_object(sym1) != get_symbol_object(sym2)) {
+                        /* Something else with same name found in the top frame.
+                         * Cannot call loc_var_func() - it will fail. */
+                    }
+                    else {
+                        loc_var_func(NULL, sym2);
+                    }
                 }
                 clear_trap(&trap);
             }

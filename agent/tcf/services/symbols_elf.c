@@ -2711,21 +2711,7 @@ int get_symbol_type(const Symbol * sym, Symbol ** type) {
     return 0;
 }
 
-int get_symbol_type_class(const Symbol * sym, int * type_class) {
-    ObjectInfo * obj = sym->obj;
-    assert(sym->magic == SYMBOL_MAGIC);
-    if (is_constant_pseudo_symbol(sym)) return get_symbol_type_class(sym->base, type_class);
-    if (is_array_type_pseudo_symbol(sym)) {
-        if (sym->base->sym_class == SYM_CLASS_FUNCTION) *type_class = TYPE_CLASS_FUNCTION;
-        else if (sym->length > 0) *type_class = TYPE_CLASS_ARRAY;
-        else *type_class = TYPE_CLASS_POINTER;
-        return 0;
-    }
-    if (is_int_type_pseudo_symbol(sym)) {
-        *type_class = sym->dimension ? TYPE_CLASS_INTEGER : TYPE_CLASS_CARDINAL;
-        return 0;
-    }
-    if (unpack(sym) < 0) return -1;
+static void get_object_type_class(ObjectInfo * obj, int * type_class) {
     while (obj != NULL) {
         switch (obj->mTag) {
         case TAG_global_subroutine:
@@ -2735,71 +2721,71 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
         case TAG_entry_point:
         case TAG_subroutine_type:
             *type_class = TYPE_CLASS_FUNCTION;
-            return 0;
+            return;
         case TAG_array_type:
         case TAG_string_type:
             *type_class = TYPE_CLASS_ARRAY;
-            return 0;
+            return;
         case TAG_enumeration_type:
         case TAG_enumerator:
             *type_class = TYPE_CLASS_ENUMERATION;
-            return 0;
+            return;
         case TAG_pointer_type:
         case TAG_reference_type:
         case TAG_rvalue_reference_type:
         case TAG_mod_pointer:
         case TAG_mod_reference:
             *type_class = TYPE_CLASS_POINTER;
-            return 0;
+            return;
         case TAG_ptr_to_member_type:
             *type_class = TYPE_CLASS_MEMBER_PTR;
-            return 0;
+            return;
         case TAG_class_type:
         case TAG_structure_type:
         case TAG_union_type:
         case TAG_interface_type:
             *type_class = TYPE_CLASS_COMPOSITE;
-            return 0;
+            return;
         case TAG_base_type:
             switch (obj->u.mFundType) {
             case ATE_address:
                 *type_class = TYPE_CLASS_POINTER;
-                return 0;
+                return;
             case ATE_boolean:
                 *type_class = TYPE_CLASS_ENUMERATION;
-                return 0;
+                return;
             case ATE_float:
             case ATE_imaginary_float:
                 *type_class = TYPE_CLASS_REAL;
-                return 0;
+                return;
             case ATE_complex_float:
                 *type_class = TYPE_CLASS_COMPLEX;
-                return 0;
+                return;
             case ATE_signed:
             case ATE_signed_char:
                 *type_class = TYPE_CLASS_INTEGER;
-                return 0;
+                return;
             case ATE_unsigned:
             case ATE_unsigned_char:
             case ATE_UTF:
                 *type_class = TYPE_CLASS_CARDINAL;
-                return 0;
+                return;
             }
             *type_class = TYPE_CLASS_UNKNOWN;
-            return 0;
+            return;
         case TAG_fund_type:
             switch (obj->u.mFundType) {
             case FT_boolean:
                 *type_class = TYPE_CLASS_ENUMERATION;
-                return 0;
+                return;
             case FT_char:
                 *type_class = TYPE_CLASS_INTEGER;
-                return 0;
+                return;
             case FT_dbl_prec_float:
             case FT_ext_prec_float:
             case FT_float:
                 *type_class = TYPE_CLASS_REAL;
-                return 0;
+                return;
             case FT_signed_char:
             case FT_signed_integer:
             case FT_signed_long:
@@ -2808,19 +2794,19 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
             case FT_integer:
             case FT_long:
                 *type_class = TYPE_CLASS_INTEGER;
-                return 0;
+                return;
             case FT_unsigned_char:
             case FT_unsigned_integer:
             case FT_unsigned_long:
             case FT_unsigned_short:
                 *type_class = TYPE_CLASS_CARDINAL;
-                return 0;
+                return;
             case FT_pointer:
                 *type_class = TYPE_CLASS_POINTER;
-                return 0;
+                return;
             case FT_void:
                 *type_class = TYPE_CLASS_CARDINAL;
-                return 0;
+                return;
             case FT_label:
             case FT_complex:
             case FT_dbl_prec_complex:
@@ -2828,7 +2814,7 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
                 break;
             }
             *type_class = TYPE_CLASS_UNKNOWN;
-            return 0;
+            return;
         case TAG_subrange_type:
         case TAG_packed_type:
         case TAG_volatile_type:
@@ -2852,7 +2838,25 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
             break;
         }
     }
-    if (sym->tbl != NULL) {
+}
+
+int get_symbol_type_class(const Symbol * sym, int * type_class) {
+    assert(sym->magic == SYMBOL_MAGIC);
+    if (is_constant_pseudo_symbol(sym)) return get_symbol_type_class(sym->base, type_class);
+    if (is_array_type_pseudo_symbol(sym)) {
+        if (sym->base->sym_class == SYM_CLASS_FUNCTION) *type_class = TYPE_CLASS_FUNCTION;
+        else if (sym->length > 0) *type_class = TYPE_CLASS_ARRAY;
+        else *type_class = TYPE_CLASS_POINTER;
+        return 0;
+    }
+    if (is_int_type_pseudo_symbol(sym)) {
+        *type_class = sym->dimension ? TYPE_CLASS_INTEGER : TYPE_CLASS_CARDINAL;
+        return 0;
+    }
+    if (unpack(sym) < 0) return -1;
+    *type_class = TYPE_CLASS_UNKNOWN;
+    get_object_type_class(sym->obj, type_class);
+    if (*type_class == TYPE_CLASS_UNKNOWN && sym->tbl != NULL) {
         ELF_SymbolInfo info;
         if (sym->dimension != 0) {
             *type_class = TYPE_CLASS_FUNCTION;
@@ -2868,7 +2872,6 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
             return 0;
         }
     }
-    *type_class = TYPE_CLASS_UNKNOWN;
     return 0;
 }
 
@@ -3505,6 +3508,76 @@ static int add_member_location(LocationInfo * info, ObjectInfo * type, ObjectInf
     return 0;
 }
 
+static int read_discriminant_values(ObjectInfo * obj, LocationInfo * info) {
+    Trap trap;
+    U8_T value = 0;
+
+    if (get_num_prop(obj, AT_discr_value, &value)) {
+        info->discr_cnt = 1;
+        info->discr_lst = (DiscriminantRange *)tmp_alloc_zero(sizeof(DiscriminantRange));
+        info->discr_lst->x = value;
+        info->discr_lst->y = value;
+    }
+    else if (errno != ERR_SYM_NOT_FOUND) {
+        set_errno(errno, "Cannot read discriminant value");
+        return -1;
+    }
+    else if (set_trap(&trap)) {
+        ObjectInfo * type;
+        int type_class = TYPE_CLASS_UNKNOWN;
+        int discr_signed = 0;
+        PropertyValue v;
+        unsigned discr_max = 4;
+        U8_T end;
+
+        /*
+         * We need to check the type of the discriminant to know if the
+         * values has to be read as signed or unsigned LEB128. We consider
+         * that the parent of this object contains the info to the
+         * discriminant.
+         */
+        assert(obj->mParent != NULL);
+        type = get_original_type(obj->mParent);
+        get_object_type_class(type, &type_class);
+        discr_signed = type_class == TYPE_CLASS_INTEGER;
+
+        read_dwarf_object_property(sym_ctx, sym_frame, obj, AT_discr_list, &v);
+        dio_EnterSection(&obj->mCompUnit->mDesc, obj->mCompUnit->mDesc.mSection,
+                v.mAddr - (U1_T *)obj->mCompUnit->mDesc.mSection->data);
+        info->discr_lst = (DiscriminantRange *)tmp_alloc(sizeof(DiscriminantRange) * discr_max);
+        end = dio_GetPos() + v.mSize;
+        while (dio_GetPos() < end) {
+            U1_T code = dio_ReadU1();
+            if (info->discr_cnt >= discr_max) {
+                discr_max *= 2;
+                info->discr_lst = (DiscriminantRange *)tmp_realloc(info->discr_lst, sizeof(DiscriminantRange) * discr_max);
+            }
+            if (code == DSC_label) {
+                value = discr_signed ? dio_ReadS8LEB128() : (int64_t)dio_ReadU8LEB128();
+                info->discr_lst[info->discr_cnt].x = value;
+                info->discr_lst[info->discr_cnt].y = value;
+                info->discr_cnt++;
+            }
+            else if (code == DSC_range) {
+                info->discr_lst[info->discr_cnt].x = discr_signed ? dio_ReadS8LEB128() : (int64_t)dio_ReadU8LEB128();
+                info->discr_lst[info->discr_cnt].y = discr_signed ? dio_ReadS8LEB128() : (int64_t)dio_ReadU8LEB128();
+                info->discr_cnt++;
+            }
+            else {
+                str_exception(ERR_UNSUPPORTED, "Unsupported discriminant type");
+            }
+        }
+        dio_ExitSection();
+        clear_trap(&trap);
+    }
+    else if (errno != ERR_SYM_NOT_FOUND) {
+        set_errno(errno, "Cannot read discriminant list");
+        return -1;
+    }
+
+    return 0;
+}
+
 int get_location_info(const Symbol * sym, LocationInfo ** res) {
     ObjectInfo * obj = sym->obj;
     LocationInfo * info = *res = (LocationInfo *)tmp_alloc_zero(sizeof(LocationInfo));
@@ -3545,6 +3618,8 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
         Trap trap;
         PropertyValue v;
         ObjectInfo * org_type;
+
+        if (obj->mTag == TAG_variant) return read_discriminant_values(obj, info);
 
         if (obj->mTag == TAG_variant_part) {
             ObjectInfo * discr = get_object_ref_prop(obj, AT_discr);

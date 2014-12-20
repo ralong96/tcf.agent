@@ -533,6 +533,7 @@ static void free_location_info_cache(LocationInfoCache * c) {
         context_unlock(c->ctx);
         loc_free(c->sym_id);
         free_location_commands(&c->info.value_cmds);
+        loc_free(c->info.discr_lst);
         loc_free(c);
     }
 }
@@ -1487,9 +1488,13 @@ int get_context_isa(Context * ctx, ContextAddress addr, const char ** isa,
 
 static LocationCommands location_cmds = { NULL, 0, 0};
 
-static int trace_regs_cnt = 0;
-static int trace_regs_max = 0;
+static unsigned trace_regs_cnt = 0;
+static unsigned trace_regs_max = 0;
 static StackFrameRegisterLocation ** trace_regs = NULL;
+
+static unsigned discriminant_cnt = 0;
+static unsigned discriminant_max = 0;
+static DiscriminantRange * discriminant_lst = NULL;
 
 static int id2register_error = 0;
 
@@ -1582,6 +1587,38 @@ static void read_location_command_array(InputStream * inp, LocationCommands * cm
     }
 }
 
+static void read_discriminant_range(InputStream * inp, const char * name, void * args) {
+    DiscriminantRange * r = (DiscriminantRange *)args;
+    if (strcmp(name, "X") == 0) r->x = json_read_int64(inp);
+    else if (strcmp(name, "Y") == 0) r->y = json_read_int64(inp);
+    else json_skip_object(inp);
+}
+
+static void read_discriminant_value(InputStream * inp, void * args) {
+    DiscriminantRange * r;
+    if (discriminant_cnt >= discriminant_max) {
+        discriminant_max += 16;
+        discriminant_lst = (DiscriminantRange *)loc_realloc(discriminant_lst, sizeof(DiscriminantRange) * discriminant_max);
+    }
+    r = discriminant_lst + discriminant_cnt++;
+    if (peek_stream(inp) == '{') {
+        memset(r, 0, sizeof(DiscriminantRange));
+        json_read_struct(inp, read_discriminant_range, r);
+    }
+    else {
+        r->x = r->y = json_read_int64(inp);
+    }
+}
+
+static void read_discriminant_array(InputStream * inp, LocationInfo * info) {
+    discriminant_cnt = 0;
+    if (json_read_array(inp, read_discriminant_value, NULL)) {
+        info->discr_lst = (DiscriminantRange *)loc_alloc(discriminant_cnt * sizeof(DiscriminantRange));
+        memcpy(info->discr_lst, discriminant_lst, discriminant_cnt * sizeof(DiscriminantRange));
+        info->discr_cnt = discriminant_cnt;
+    }
+}
+
 static void read_location_attrs(InputStream * inp, const char * name, void * x) {
     LocationInfoCache * f = (LocationInfoCache *)x;
     if (strcmp(name, "ArgCnt") == 0) f->info.args_cnt = (unsigned)json_read_ulong(inp);
@@ -1589,6 +1626,7 @@ static void read_location_attrs(InputStream * inp, const char * name, void * x) 
     else if (strcmp(name, "CodeSize") == 0) f->info.code_size = (ContextAddress)json_read_uint64(inp);
     else if (strcmp(name, "BigEndian") == 0) f->info.big_endian = json_read_boolean(inp);
     else if (strcmp(name, "ValueCmds") == 0) read_location_command_array(inp, &f->info.value_cmds);
+    else if (strcmp(name, "Discriminant") == 0) read_discriminant_array(inp, &f->info);
     else json_skip_object(inp);
 }
 
