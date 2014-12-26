@@ -149,7 +149,7 @@ static void update_context_client_map(Context * ctx) {
                         str_equ(y->file_name, x->file_name) &&
                         str_equ(y->sect_name, x->sect_name) &&
                         str_equ(y->query, x->query) &&
-                        y->channel == x->channel;
+                        y->channel == m->channel;
                     if (equ) {
                         MemoryRegionAttribute * ax = x->attrs;
                         MemoryRegionAttribute * ay = y->attrs;
