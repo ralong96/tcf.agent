@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -964,6 +964,7 @@ static void loc_var_func(void * args, Symbol * sym) {
             }
         }
         if (!ok && errcmp(err, "Size not available: indirect symbol") == 0) ok = 1;
+        if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
         if (!ok && symbol_class == SYM_CLASS_COMP_UNIT) {
             /* Comp unit with code ranges */
             ok = 1;
@@ -977,9 +978,6 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
             if (errcmp(err, "No object location info found in DWARF") == 0) ok = 1;
-        }
-        if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-            if (errcmp(err, "Object is not available at this location") == 0) ok = 1;
         }
         if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
             if (errcmp(err, "Object does not have memory address") == 0) ok = 1;
@@ -1302,14 +1300,12 @@ static void loc_var_func(void * args, Symbol * sym) {
                 int ok = 0;
                 int err = errno;
                 ObjectInfo * obj = get_symbol_object(sym);
+                if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
                 if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-                    if (!ok && errcmp(err, "No object location info found in DWARF") == 0) ok = 1;
+                    if (errcmp(err, "No object location info found in DWARF") == 0) ok = 1;
                 }
                 if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-                    if (!ok && errcmp(err, "Object is not available at this location") == 0) ok = 1;
-                }
-                if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-                    if (!ok && errcmp(err, "Object does not have memory address") == 0) ok = 1;
+                    if (errcmp(err, "Object does not have memory address") == 0) ok = 1;
                 }
                 if (!ok) {
                     errno = err;
@@ -1389,23 +1385,26 @@ static void test_public_names(void) {
     while (n < cache->mPubNames.mCnt) {
         ObjectInfo * obj = cache->mPubNames.mNext[n++].mObject;
         if (obj != NULL) {
-            SYM_FLAGS flags = 0;
             Symbol * sym1 = NULL;
             Symbol * sym2 = NULL;
             ContextAddress addr = 0;
             if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, obj->mName, &sym1) < 0) {
                 error("find_symbol_by_name");
             }
-            if (get_symbol_flags(sym1, &flags) < 0) error("get_symbol_flags");
-            if (obj->mTag == TAG_subprogram && (flags & SYM_FLAG_EXTERNAL) != 0 && get_symbol_address(sym1, &addr) == 0) {
-                /* Check weak symbol is not the first symbol */
-                while (find_next_symbol(&sym2) == 0) {
-                    ContextAddress nxt_addr = 0;
-                    if (get_symbol_object(sym2) == NULL && get_symbol_address(sym2, &nxt_addr) == 0) {
-                        if (get_symbol_flags(sym2, &flags) < 0) error("get_symbol_flags");
-                        if ((flags & SYM_FLAG_EXTERNAL) != 0 && addr != nxt_addr) {
-                            set_errno(ERR_OTHER, "Invalid address - weak symbol?");
-                            error("find_symbol_by_name");
+            if (obj->mCompUnit->mLanguage == LANG_C) {
+                /* Note: this test fails for C++ because of name overloading */
+                SYM_FLAGS flags = 0;
+                if (get_symbol_flags(sym1, &flags) < 0) error("get_symbol_flags");
+                if (obj->mTag == TAG_subprogram && (flags & SYM_FLAG_EXTERNAL) != 0 && get_symbol_address(sym1, &addr) == 0) {
+                    /* Check weak symbol is not the first symbol */
+                    while (find_next_symbol(&sym2) == 0) {
+                        ContextAddress nxt_addr = 0;
+                        if (get_symbol_object(sym2) == NULL && get_symbol_address(sym2, &nxt_addr) == 0) {
+                            if (get_symbol_flags(sym2, &flags) < 0) error("get_symbol_flags");
+                            if ((flags & SYM_FLAG_EXTERNAL) != 0 && addr != nxt_addr) {
+                                set_errno(ERR_OTHER, "Invalid address - weak symbol?");
+                                error("find_symbol_by_name");
+                            }
                         }
                     }
                 }
@@ -1421,7 +1420,7 @@ static void test_public_names(void) {
                 loc_var_func(NULL, sym2);
             }
         }
-        if ((n % 100) == 0) {
+        if ((n % 10) == 0) {
             tmp_gc();
             if (time(0) - time_start >= 120) break;
         }
@@ -1429,6 +1428,7 @@ static void test_public_names(void) {
     for (m = 1; m < elf_file->section_cnt; m++) {
         ELF_Section * tbl = elf_file->sections + m;
         if (tbl->sym_names_hash == NULL) continue;
+        time_start = time(0);
         for (n = 0; n < tbl->sym_names_hash_size; n++) {
             Trap trap;
             if (set_trap(&trap)) {
@@ -1461,8 +1461,11 @@ static void test_public_names(void) {
             else {
                 error("unpack_elf_symbol_info");
             }
+            if ((n % 10) == 0) {
+                tmp_gc();
+                if (time(0) - time_start >= 120) break;
+            }
         }
-        tmp_gc();
     }
 }
 

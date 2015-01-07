@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -808,15 +808,25 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             Info->mFlags |= DOIF_need_frame;
         }
         break;
-    case AT_const_value:
-        Info->mFlags |= DOIF_const_value;
-        break;
     case AT_string_length:
-        if (Form == FORM_DATA4 || Form == FORM_DATA8 || Form == FORM_SEC_OFFSET || Tag == TAG_formal_parameter) {
+    case AT_return_addr:
+    case AT_data_member_location:
+    case AT_frame_base:
+    case AT_segment:
+    case AT_static_link:
+    case AT_use_location:
+    case AT_vtable_elem_location:
+        /* Note: FORM_DATA4, FORM_DATA8 and FORM_SEC_OFFSET are location lists.
+         * Location list needs PC, so we set DOIF_need_frame because of that */
+        if (Form == FORM_DATA4 || Form == FORM_DATA8 || Form == FORM_SEC_OFFSET) {
             Info->mFlags |= DOIF_need_frame;
         }
         break;
+    case AT_const_value:
+        Info->mFlags |= DOIF_const_value;
+        break;
     }
+
     if (Tag == TAG_compile_unit || Tag == TAG_partial_unit || Tag == TAG_type_unit) {
         CompUnit * Unit = Info->mCompUnit;
         switch (Attr) {
@@ -1663,6 +1673,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
     case FORM_SEC_OFFSET:
     case FORM_EXPRLOC   :
     case FORM_REF_SIG8  :
+    case FORM_STRING    :
         Value->mAddr = (U1_T *)gop_gFormDataAddr;
         Value->mSize = gop_gFormDataSize;
         break;
