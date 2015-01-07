@@ -827,6 +827,14 @@ static RegisterDefinition * alloc_reg(void) {
     return r;
 }
 
+#define read_fpsid(X) \
+    __asm __volatile("mrc p10, 7, %0, c0, c0, 0" \
+            : "=r" (*(X)) : : "memory")
+
+#define read_mvfr0(X) \
+    __asm __volatile("mrc p10, 7, %0, c7, c0, 0" \
+            : "=r" (*(X)) : : "memory")
+
 static void ini_reg_defs(void) {
     int i;
     RegisterDefinition * d;
@@ -855,23 +863,90 @@ static void ini_reg_defs(void) {
             cpsr_def = r;
         }
         if (strcmp(r->name, "vfp") == 0) {
-            RegisterDefinition * x = NULL;
-            for (i = 0; i < 32; i++) {
-                char nm[32];
+            uint32_t fpsid = 0;
+            read_fpsid(&fpsid);
+            if ((fpsid & (1 << 23)) == 0) {
+                int n;
+                RegisterDefinition * x = NULL;
+                uint32_t mvfr0 = 0;
+                read_mvfr0(&mvfr0);
+                for (n = 0; n < 3; n++) {
+                    RegisterDefinition * w = NULL;
+                    switch (n) {
+                    case 0:
+                        if (((mvfr0 >> 4) & 0xf) == 0) continue;
+                        break;
+                    case 1:
+                        if (((mvfr0 >> 8) & 0xf) == 0) continue;
+                        break;
+                    case 2:
+                        if ((mvfr0 & 0xf) == 0) continue;
+                        break;
+                    }
+                    w = alloc_reg();
+                    w->no_read = 1;
+                    w->no_write = 1;
+                    w->parent = r;
+                    switch (n) {
+                    case 0:
+                        w->name = "32-bit";
+                        for (i = 0; i < 32; i++) {
+                            char nm[32];
+                            x = alloc_reg();
+                            snprintf(nm, sizeof(nm), "s%d", i);
+                            x->name = loc_strdup(nm);
+                            x->offset = REG_OFFSET(fp.fpregs[i / 2]);
+                            if (r->big_endian) {
+                                if ((i & 1) == 0) x->offset += 4;
+                            }
+                            else {
+                                if ((i & 1) != 0) x->offset += 4;
+                            }
+                            x->size = 4;
+                            x->dwarf_id = 64 + i;
+                            x->eh_frame_id = 64 + i;
+                            x->fp_value = 1;
+                            x->parent = w;
+                        }
+                        break;
+                    case 1:
+                        w->name = "64-bit";
+                        for (i = 0; i < 32; i++) {
+                            char nm[32];
+                            if (i >= 16 && ((mvfr0 >> 8) & 0xf) < 2) continue;
+                            x = alloc_reg();
+                            snprintf(nm, sizeof(nm), "d%d", i);
+                            x->name = loc_strdup(nm);
+                            x->offset = REG_OFFSET(fp.fpregs[i]);
+                            x->size = 8;
+                            x->dwarf_id = 256 + i;
+                            x->eh_frame_id = 256 + i;
+                            x->fp_value = 1;
+                            x->parent = w;
+                        }
+                        break;
+                    case 2:
+                        w->name = "128-bit";
+                        for (i = 0; i < 16; i++) {
+                            char nm[32];
+                            if (i >= 8 && (mvfr0 & 0xf) < 2) continue;
+                            x = alloc_reg();
+                            snprintf(nm, sizeof(nm), "q%d", i);
+                            x->name = loc_strdup(nm);
+                            x->offset = REG_OFFSET(fp.fpregs[i * 2]);
+                            x->size = 16;
+                            x->fp_value = 1;
+                            x->parent = w;
+                        }
+                        break;
+                    }
+                }
                 x = alloc_reg();
-                snprintf(nm, sizeof(nm), "d%d", i);
-                x->name = loc_strdup(nm);
-                x->offset = REG_OFFSET(fp.fpregs[i]);
-                x->size = 8;
-                x->dwarf_id = 256 + i;
-                x->eh_frame_id = 256 + i;
+                x->name = "fpscr";
+                x->offset = REG_OFFSET(fp.fpscr);
+                x->size = 4;
                 x->parent = r;
             }
-            x = alloc_reg();
-            x->name = "fpscr";
-            x->offset = REG_OFFSET(fp.fpscr);
-            x->size = 4;
-            x->parent = r;
         }
     }
 }
