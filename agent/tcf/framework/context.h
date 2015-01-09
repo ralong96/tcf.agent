@@ -606,6 +606,14 @@ extern void send_context_stopped_event(Context * ctx);
 extern void send_context_started_event(Context * ctx);
 extern void send_context_exited_event(Context * ctx);
 
+#if ENABLE_ContextIdHashTable
+/*
+ * Add context to ID hash table, so it can be found by id2ctx().
+ * It is helper function to create "hidden" contexts.
+ */
+extern void add_context_to_id_hash_table(Context * ctx);
+#endif
+
 extern void ini_contexts(void);
 extern void init_contexts_sys_dep(void);
 

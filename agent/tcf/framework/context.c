@@ -258,7 +258,7 @@ void send_context_created_event(Context * ctx) {
     assert(ctx->ref_count > 0);
     assert(!ctx->event_notification);
 #if ENABLE_ContextIdHashTable
-    list_add_last(ctx2idlink(ctx), context_id_hash + id2hash(ctx->id));
+    if (list_is_empty(ctx2idlink(ctx))) list_add_last(ctx2idlink(ctx), context_id_hash + id2hash(ctx->id));
 #endif
     ctx->event_notification = 1;
     for (i = 0; i < listener_cnt; i++) {
@@ -339,6 +339,12 @@ void send_context_exited_event(Context * ctx) {
 #endif
     context_unlock(ctx);
 }
+
+#if ENABLE_ContextIdHashTable
+void add_context_to_id_hash_table(Context * ctx) {
+    if (list_is_empty(ctx2idlink(ctx))) list_add_last(ctx2idlink(ctx), context_id_hash + id2hash(ctx->id));
+}
+#endif
 
 void ini_contexts(void) {
     ini_cpudefs();
