@@ -126,6 +126,7 @@ struct BreakInstruction {
     size_t saved_size;
     ErrorReport * planting_error;
     ErrorReport * address_error;
+    ErrorReport * condition_error;
     int stepping_over_bp;
     InstructionRef * refs;
     unsigned ref_size;
@@ -149,6 +150,7 @@ struct EvaluationArgs {
 struct ConditionEvaluationRequest {
     Context * ctx;
     BreakpointInfo * bp;
+    BreakInstruction * bi;
     int condition_ok;
     int triggered;
 };
@@ -440,6 +442,7 @@ static void free_instruction(BreakInstruction * bi) {
     context_unlock(bi->cb.ctx);
     release_error_report(bi->address_error);
     release_error_report(bi->planting_error);
+    release_error_report(bi->condition_error);
     loc_free(bi->refs);
     loc_free(bi);
 }
@@ -870,6 +873,12 @@ static void write_breakpoint_status(OutputStream * out, BreakpointInfo * bp) {
                             write_stream(out, ':');
                             json_write_string(out, bi->saved_size ? "Software" : "Hardware");
                         }
+                        if (bi->condition_error != NULL) {
+                            write_stream(out, ',');
+                            json_write_string(out, "ConditionError");
+                            write_stream(out, ':');
+                            json_write_string(out, errno_to_str(set_error_report_errno(bi->condition_error)));
+                        }
                     }
                 }
                 write_stream(out, '}');
@@ -1042,7 +1051,8 @@ static EvaluationRequest * create_evaluation_request(Context * ctx) {
     return req;
 }
 
-static ConditionEvaluationRequest * add_condition_evaluation_request(EvaluationRequest * req, Context * ctx, BreakpointInfo * bp) {
+static ConditionEvaluationRequest * add_condition_evaluation_request(
+        EvaluationRequest * req, Context * ctx, BreakpointInfo * bp, BreakInstruction * bi) {
     unsigned i;
     ConditionEvaluationRequest * c = NULL;
 
@@ -1051,7 +1061,7 @@ static ConditionEvaluationRequest * add_condition_evaluation_request(EvaluationR
     assert(ctx->stopped_by_bp || ctx->stopped_by_cb);
 
     for (i = 0; i < req->bp_cnt; i++) {
-        if (req->bp_arr[i].ctx == ctx && req->bp_arr[i].bp == bp) return NULL;
+        if (req->bp_arr[i].ctx == ctx && req->bp_arr[i].bp == bp && req->bp_arr[i].bi == bi) return NULL;
     }
 
     if (req->bp_max <= req->bp_cnt) {
@@ -1061,6 +1071,7 @@ static ConditionEvaluationRequest * add_condition_evaluation_request(EvaluationR
     c = req->bp_arr + req->bp_cnt++;
     context_lock(c->ctx = ctx);
     c->bp = bp;
+    c->bi = bi;
     c->condition_ok = 0;
     c->triggered = 0;
     return c;
@@ -1578,6 +1589,8 @@ static void evaluate_condition(void * x) {
     EvaluationRequest * req = EXT(args->ctx)->req;
     ConditionEvaluationRequest * ce = req->bp_arr + args->index;
     BreakpointInfo * bp = ce->bp;
+    BreakInstruction * bi = ce->bi;
+    ErrorReport * condition_error = NULL;
 
     assert(req != NULL);
     assert(req->bp_cnt > 0);
@@ -1600,9 +1613,10 @@ static void evaluate_condition(void * x) {
                     switch (get_error_code(errno)) {
                     case ERR_CACHE_MISS:
                     case ERR_CHANNEL_CLOSED:
+                        condition_error = bi->condition_error;
                         break;
                     default:
-                        trace(LOG_ALWAYS, "%s: %s", errno_to_str(errno), bp->condition);
+                        condition_error = get_error_report(errno);
                         ce->condition_ok = 1;
                         break;
                     }
@@ -1615,6 +1629,14 @@ static void evaluate_condition(void * x) {
                 ce->condition_ok = 1;
             }
         }
+    }
+    if (compare_error_reports(bi->condition_error, condition_error)) {
+        release_error_report(condition_error);
+    }
+    else {
+        bp->status_changed = 1;
+        release_error_report(bi->condition_error);
+        bi->condition_error = condition_error;
     }
 }
 
@@ -2667,7 +2689,7 @@ void evaluate_breakpoint(Context * ctx) {
             for (i = 0; i < bi->ref_cnt; i++) {
                 if (bi->refs[i].ctx == grp) {
                     BreakpointInfo * bp = bi->refs[i].bp;
-                    ConditionEvaluationRequest * c = add_condition_evaluation_request(req, ctx, bp);
+                    ConditionEvaluationRequest * c = add_condition_evaluation_request(req, ctx, bp, bi);
                     if (c == NULL) continue;
                     if (need_to_post) continue;
                     if (is_disabled(bp)) continue;
@@ -2690,7 +2712,7 @@ void evaluate_breakpoint(Context * ctx) {
             for (i = 0; i < bi->ref_cnt; i++) {
                 if (bi->refs[i].ctx == grp) {
                     BreakpointInfo * bp = bi->refs[i].bp;
-                    ConditionEvaluationRequest * c = add_condition_evaluation_request(req, ctx, bp);
+                    ConditionEvaluationRequest * c = add_condition_evaluation_request(req, ctx, bp, bi);
                     if (c == NULL) continue;
                     if (need_to_post) continue;
                     if (is_disabled(bp)) continue;
