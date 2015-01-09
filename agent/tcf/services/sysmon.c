@@ -1115,7 +1115,7 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
             }
 
             memset(buf, 0, sizeof(buf));
-            if ((sz = read(f, buf, sizeof(buf))) > 0) {
+            if ((sz = read(f, buf, sizeof(buf) - 1)) > 0) {
                 char * str = buf;
                 int pid = 0;                /* The process ID. */
                 char * comm = fnm;          /* The  filename  of  the  executable,  in parentheses.  This is visible */
@@ -1183,15 +1183,15 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
                 unsigned long rt_priority=0;/* Real-time scheduling priority (see sched_setscheduler(2)). */
                 unsigned long policy = 0;   /* Scheduling policy (see sched_setscheduler(2)). */
 
-                assert(sz < (int)sizeof(buf));
-                buf[sz] = 0;
-
                 pid = (int)strtol(str, &str, 10);
                 while (*str == ' ') str++;
+
                 if (*str == '(') str++;
-                sz = 0;
-                while (*str && *str != ')') comm[sz++] = *str++;
+                sz = strlen(str);
+                while (sz > 0 && str[sz] != ')') sz--;
+                memcpy(comm, str, sz);
                 comm[sz] = 0;
+                str += sz;
                 if (*str == ')') str++;
                 while (*str == ' ') str++;
 
