@@ -108,6 +108,8 @@ static event_node * timer_queue = NULL;
 static EventCallBack * cancel_handler = NULL;
 static void * cancel_arg = NULL;
 static int process_events = 0;
+static volatile unsigned trigger_cnt = 8;
+static struct timespec trigger_time;
 
 static int time_cmp(const struct timespec * tv1, const struct timespec * tv2) {
     assert(tv1->tv_nsec < 1000000000);
@@ -129,10 +131,15 @@ static void time_add_usec(struct timespec * tv, unsigned long usec) {
     }
 }
 
-static void post_from_bg_thread(EventCallBack * handler, void * arg, struct timespec * runtime) {
+static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned long delay) {
     event_node * ev;
     event_node * next;
     event_node * prev;
+    struct timespec runtime;
+    struct timespec timenow;
+    if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
+    runtime = timenow;
+    time_add_usec(&runtime, delay);
 
     check_error(pthread_mutex_lock(&event_lock));
     if (cancel_handler == handler && cancel_arg == arg) {
@@ -142,9 +149,13 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, struct time
         return;
     }
     alloc_event_node_bg(ev);
-    ev->runtime = *runtime;
+    ev->runtime = runtime;
     ev->handler = handler;
     ev->arg = arg;
+
+    if (time_cmp(&trigger_time, &timenow) <= 0) {
+        trigger_cnt = 1;
+    }
 
     prev = NULL;
     next = timer_queue;
@@ -167,13 +178,15 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, struct time
 }
 
 void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long delay) {
-    struct timespec runtime;
-    if (clock_gettime(CLOCK_REALTIME, &runtime)) check_error(errno);
-    time_add_usec(&runtime, delay);
     if (is_event_thread) {
         event_node * ev;
         event_node * next;
         event_node * prev;
+        struct timespec runtime;
+        struct timespec timenow;
+        if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
+        runtime = timenow;
+        time_add_usec(&runtime, delay);
 
         alloc_event_node(ev);
         ev->runtime = runtime;
@@ -181,6 +194,11 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
         ev->arg = arg;
 
         check_error(pthread_mutex_lock(&event_lock));
+
+        if (time_cmp(&trigger_time, &timenow) <= 0) {
+            trigger_cnt = 1;
+        }
+
         prev = NULL;
         next = timer_queue;
         while (next != NULL && time_cmp(&ev->runtime, &next->runtime) >= 0) {
@@ -201,7 +219,7 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
             ev->runtime.tv_sec / 60 % 60, ev->runtime.tv_sec % 60, ev->runtime.tv_nsec / 1000000);
     }
     else {
-        post_from_bg_thread(handler, arg, &runtime);
+        post_from_bg_thread(handler, arg, delay);
     }
 }
 
@@ -210,6 +228,7 @@ void post_event(EventCallBack * handler, void * arg) {
         event_node * ev;
 
         alloc_event_node(ev);
+        ev->runtime.tv_sec = 0;
         ev->handler = handler;
         ev->arg = arg;
         ev->next = NULL;
@@ -224,8 +243,7 @@ void post_event(EventCallBack * handler, void * arg) {
         trace(LOG_EVENTCORE, "post_event: event %#lx, handler %#lx, arg %#lx", ev, ev->handler, ev->arg);
     }
     else {
-        static struct timespec runtime = { 0, 0 };
-        post_from_bg_thread(handler, arg, &runtime);
+        post_from_bg_thread(handler, arg, 0);
     }
 }
 
@@ -329,8 +347,10 @@ void run_event_loop(void) {
 
         event_node * ev = NULL;
 
-        if (event_queue == NULL || (event_cnt & 0x3fu) == 0) {
+        if (event_queue == NULL || event_cnt >= trigger_cnt) {
             check_error(pthread_mutex_lock(&event_lock));
+            trigger_cnt = 8;
+            event_cnt = 0;
 #if ENABLE_FastMemAlloc
             while (free_queue != NULL && (free_bg_queue == NULL || free_bg_queue->next == NULL)) {
                 event_node * x = free_queue;
@@ -340,14 +360,29 @@ void run_event_loop(void) {
             }
 #endif
             for (;;) {
-                if (timer_queue != NULL) {
-                    struct timespec timenow;
-                    if (clock_gettime(CLOCK_REALTIME, &timenow)) {
-                        check_error(errno);
+                struct timespec timenow;
+                if (clock_gettime(CLOCK_REALTIME, &timenow)) {
+                    check_error(errno);
+                }
+                trigger_time = timenow;
+                time_add_usec(&trigger_time, 1000);
+                if ((ev = timer_queue) != NULL) {
+                    event_node * evlast = NULL;
+                    while (ev != NULL && time_cmp(&ev->runtime, &timenow) <= 0) {
+                        evlast = ev;
+                        ev = ev->next;
                     }
-                    if (time_cmp(&timer_queue->runtime, &timenow) <= 0) {
+                    if (evlast != NULL) {
+                        /* Move timed events that are ready to the
+                         * beginning of the untimed event queue. */
                         ev = timer_queue;
-                        timer_queue = ev->next;
+                        timer_queue = evlast->next;
+                        evlast->next = event_queue;
+                        if (event_queue == NULL) {
+                            assert(event_last == NULL);
+                            event_last = evlast;
+                        }
+                        event_queue = ev;
                         break;
                     }
                     if (event_queue == NULL) {
@@ -368,19 +403,22 @@ void run_event_loop(void) {
             check_error(pthread_mutex_unlock(&event_lock));
         }
 
-        if (ev == NULL) {
-            assert(event_queue != NULL);
-            ev = event_queue;
-            event_queue = ev->next;
-            if (event_queue == NULL) {
-                assert(event_last == ev);
-                event_last = NULL;
-            }
+        assert(event_queue != NULL);
+        ev = event_queue;
+        event_queue = ev->next;
+        if (event_queue == NULL) {
+            assert(event_last == ev);
+            event_last = NULL;
         }
 
         trace(LOG_EVENTCORE, "run_event_loop: event %#lx, handler %#lx, arg %#lx", ev, ev->handler, ev->arg);
+        if (ev->runtime.tv_sec == 0) {
+            /* Don't count timed events since getting new timed events
+             * before the previous batch of timed events are processed
+             * can cause starvation */
+            event_cnt++;
+        }
         ev->handler(ev->arg);
         free_event_node(ev);
-        event_cnt++;
     }
 }
