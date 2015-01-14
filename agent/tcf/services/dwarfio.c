@@ -745,6 +745,7 @@ static void dio_FindAbbrevTable(void) {
 
 void dio_ChkFlag(U2_T Form) {
     switch (Form) {
+    case FORM_DATA1         :
     case FORM_FLAG          :
     case FORM_FLAG_PRESENT  :
         return;
