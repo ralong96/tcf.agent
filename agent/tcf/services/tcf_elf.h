@@ -441,6 +441,7 @@ struct ELF_File {
 
     unsigned pheader_cnt;
     ELF_PHeader * pheaders;
+    unsigned bss_segment_cnt;
 
     void * dwarf_io_cache;
     void * dwarf_dt_cache;

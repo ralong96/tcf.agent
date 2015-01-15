@@ -1044,7 +1044,7 @@ ELF_File * get_dwarf_file(ELF_File * file) {
             if (debug != file && debug->debug_info_file_name != NULL) {
                 debug = elf_open(debug->debug_info_file_name);
             }
-            if (debug != NULL) return debug;
+            if (debug != NULL && debug->debug_info_file) return debug;
         }
     }
     return file;
@@ -1054,7 +1054,7 @@ ELF_File * get_dwarf_file(ELF_File * file) {
 
 static U8_T get_pheader_file_size(ELF_File * file, ELF_PHeader * p, MemoryRegion * r) {
     assert(p >= file->pheaders && p < file->pheaders + file->pheader_cnt);
-    /* p->file_size is no valid if the file is debug info file */
+    /* p->file_size is not valid if the file is debug info file */
     if (file->debug_info_file) {
         ELF_File * exec = elf_open_memory_region_file(r, NULL);
         if (get_dwarf_file(exec) == file) {
@@ -1073,7 +1073,7 @@ static U8_T get_pheader_file_size(ELF_File * file, ELF_PHeader * p, MemoryRegion
 static U8_T get_pheader_address(ELF_File * file, ELF_PHeader * p) {
     ELF_File * debug = get_dwarf_file(file);
     assert(p >= file->pheaders && p < file->pheaders + file->pheader_cnt);
-    /* p->address is no valid if the file is exec file with split debug info */
+    /* p->address is not valid if the file is exec file with split debug info */
     if (file != debug) {
         unsigned i;
         for (i = 0; i < debug->pheader_cnt; i++) {
@@ -1353,11 +1353,40 @@ static int is_p_header_region(ELF_File * file, ELF_PHeader * p, MemoryRegion * r
         if ((p->flags & PF_W) && !(r->flags & MM_FLAG_W)) return 0;
         if ((p->flags & PF_X) && !(r->flags & MM_FLAG_X)) return 0;
     }
+    /*
+     * Note: "file_size" is not set in most cases. The field is set and used internally
+     * in tcf_elf.c, but it is not set in memory regions received from target or clients,
+     * and it is not part of memory map service public API.
+     * Nomally, ELF segment with file size < memory size is represented by 2 adjacent memory regions.
+     */
     if (r->file_size > 0) {
         if (r->file_offs + r->file_size <= p->offset) return 0;
     }
+    else if (r->bss) {
+        if (get_pheader_file_size(file, p, r) >= p->mem_size) return 0;
+        if (file->bss_segment_cnt == 0) {
+            unsigned i;
+            for (i = 0; i < file->pheader_cnt; i++) {
+                ELF_PHeader * x = file->pheaders + i;
+                if (x->type != PT_LOAD) continue;
+                if (get_pheader_file_size(file, x, r) >= x->mem_size) continue;
+                file->bss_segment_cnt++;
+            }
+        }
+        assert(file->bss_segment_cnt > 0);
+        if (file->bss_segment_cnt > 1) {
+            /*
+             * File has multiple BSS segments.
+             * BSS segment is not required to have a valid file offset,
+             * but we still use the offset to resolve ambiguity,
+             * because there is no other way to differentiate such segments.
+             */
+            if (r->file_offs != p->offset + p->file_size) return 0;
+        }
+        return 1;
+    }
     else {
-        if (r->bss && get_pheader_file_size(file, p, r) > 0) return 0;
+        /* If not BSS, file size is supposed to be same as memory size */
         if (r->file_offs + r->size <= p->offset) return 0;
     }
     if (r->file_offs >= p->offset + get_pheader_file_size(file, p, r)) return 0;
@@ -1437,11 +1466,14 @@ ContextAddress elf_run_time_address_in_region(Context * ctx, MemoryRegion * r, E
     unsigned i;
     errno = 0;
     if (r->sect_name == NULL) {
+        ContextAddress rt = 0;
         for (i = 0; i < file->pheader_cnt; i++) {
             ELF_PHeader * p = file->pheaders + i;
             if (!is_p_header_region(file, p, r)) continue;
             if (addr < p->address || addr >= p->address + p->mem_size) continue;
-            return (ContextAddress)(addr - p->address + p->offset - r->file_offs + r->addr);
+            rt = (ContextAddress)(addr - p->address + p->offset - r->file_offs + r->addr);
+            if (rt < r->addr || rt >= r->addr + r->size) continue;
+            return rt;
         }
     }
     else if (sec != NULL) {
