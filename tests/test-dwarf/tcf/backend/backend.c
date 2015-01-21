@@ -65,6 +65,7 @@ static ContextAddress frame_addr = 0x40000000u;
 
 static const char * elf_file_name = NULL;
 static ELF_File * elf_file = NULL;
+static ContextAddress file_addr_offs = 0;
 static int mem_region_pos = 0;
 static int file_has_line_info = 0;
 static unsigned line_info_cnt = 0;
@@ -1377,6 +1378,16 @@ static void loc_var_func(void * args, Symbol * sym) {
     }
 }
 
+static int is_in_segment(U8_T lt_addr) {
+    unsigned j;
+    for (j = 0; j < elf_file->pheader_cnt; j++) {
+        ELF_PHeader * p = elf_file->pheaders + j;
+        if (p->type != PT_LOAD) continue;
+        if (lt_addr >= p->address && lt_addr < p->address + p->mem_size) return 1;
+    }
+    return 0;
+}
+
 static void test_public_names(void) {
     DWARFCache * cache = get_dwarf_cache(get_dwarf_file(elf_file));
     unsigned n = 0;
@@ -1441,6 +1452,37 @@ static void test_public_names(void) {
                     if (elf_tcf_symbol(elf_ctx, &sym_info, &sym) < 0) {
                         error("elf_tcf_symbol");
                     }
+                    if (file_addr_offs) {
+                        switch (sym_info.type) {
+                        case STT_OBJECT:
+                        case STT_FUNC:
+                            if (sym_info.section != NULL) {
+                                U8_T value = sym_info.value;
+                                ContextAddress addr = 0;
+                                ContextAddress lt = 0;
+                                ELF_File * lt_file = NULL;
+                                ELF_Section * lt_sec = NULL;
+                                if (elf_file->type == ET_REL) {
+                                    value += sym_info.section->addr;
+                                }
+                                if (is_in_segment(value)) {
+                                    if (get_symbol_address(sym, &addr) < 0) {
+                                        error("get_symbol_address");
+                                    }
+                                    if (addr != value + file_addr_offs) {
+                                        set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
+                                        error("get_symbol_address");
+                                    }
+                                    lt = elf_map_to_link_time_address(elf_ctx, addr, 0, &lt_file, &lt_sec);
+                                    if (lt != value) {
+                                        set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
+                                        error("elf_map_to_link_time_address");
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
                     loc_var_func(NULL, sym);
                     if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, sym_info.name, &sym1) < 0) {
                         error("find_symbol_by_name");
@@ -1496,6 +1538,7 @@ static void next_pc(void) {
     Symbol * sym = NULL;
     CodeArea area;
     ContextAddress lt_addr;
+    ContextAddress rt_addr;
     ELF_File * lt_file;
     ELF_Section * lt_sec;
     ObjectInfo * func_object = NULL;
@@ -1755,7 +1798,11 @@ static void next_pc(void) {
         assert(lt_file != NULL);
         assert(lt_file == get_dwarf_file(elf_file));
         assert(lt_sec == NULL || lt_sec->file == lt_file);
-        assert(pc == elf_map_to_run_time_address(elf_ctx, lt_file, lt_sec, lt_addr));
+        rt_addr = elf_map_to_run_time_address(elf_ctx, lt_file, lt_sec, lt_addr);
+        if (pc != rt_addr) {
+            set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
+            error("elf_map_to_run_time_address");
+        }
         if (set_trap(&trap)) {
             get_dwarf_stack_frame_info(elf_ctx, lt_file, lt_sec, lt_addr);
             clear_trap(&trap);
@@ -1870,29 +1917,49 @@ static void next_file(void) {
         elf_ctx->ref_count++;
     }
 
+    file_addr_offs = 0;
     context_clear_memory_map(&mem_map);
     for (j = 0; j < f->pheader_cnt; j++) {
         MemoryRegion * r = NULL;
         ELF_PHeader * p = f->pheaders + j;
         if (p->type != PT_LOAD) continue;
-        if (mem_map.region_cnt >= mem_map.region_max) {
-            mem_map.region_max += 8;
-            mem_map.regions = (MemoryRegion *)loc_realloc(mem_map.regions, sizeof(MemoryRegion) * mem_map.region_max);
+        file_addr_offs = 0x10000;
+        if (p->file_size > 0) {
+            if (mem_map.region_cnt >= mem_map.region_max) {
+                mem_map.region_max += 8;
+                mem_map.regions = (MemoryRegion *)loc_realloc(mem_map.regions, sizeof(MemoryRegion) * mem_map.region_max);
+            }
+            r = mem_map.regions + mem_map.region_cnt++;
+            memset(r, 0, sizeof(MemoryRegion));
+            r->addr = (ContextAddress)p->address + file_addr_offs; /* Relocated */
+            r->file_name = loc_strdup(elf_file_name);
+            r->file_offs = p->offset;
+            r->size = (ContextAddress)p->file_size;
+            r->flags = MM_FLAG_R | MM_FLAG_W;
+            if (p->flags & PF_X) r->flags |= MM_FLAG_X;
+            r->dev = st.st_dev;
+            r->ino = st.st_ino;
         }
-        r = mem_map.regions + mem_map.region_cnt++;
-        memset(r, 0, sizeof(MemoryRegion));
-        r->addr = (ContextAddress)p->address;
-        r->file_name = loc_strdup(elf_file_name);
-        r->file_offs = p->offset;
-        r->file_size = p->file_size;
-        r->size = (ContextAddress)p->mem_size;
-        if ((p->flags & PF_X) == 0 && (r->addr + r->size) % p->align != 0) {
+        if (p->file_size < p->mem_size) {
+            if (mem_map.region_cnt >= mem_map.region_max) {
+                mem_map.region_max += 8;
+                mem_map.regions = (MemoryRegion *)loc_realloc(mem_map.regions, sizeof(MemoryRegion) * mem_map.region_max);
+            }
+            r = mem_map.regions + mem_map.region_cnt++;
+            memset(r, 0, sizeof(MemoryRegion));
+            r->bss = 1;
+            r->addr = (ContextAddress)(p->address + p->file_size) + file_addr_offs; /* Relocated */
+            r->file_name = loc_strdup(elf_file_name);
+            r->file_offs = p->offset + p->file_size;
+            r->size = (ContextAddress)(p->mem_size - p->file_size);
+            r->flags = MM_FLAG_R | MM_FLAG_W;
+            if (p->flags & PF_X) r->flags |= MM_FLAG_X;
+            r->dev = st.st_dev;
+            r->ino = st.st_ino;
+        }
+        if (r != NULL && (p->flags & PF_X) == 0 && (r->addr + r->size) % p->align != 0) {
             r->size = r->size + p->align - (r->addr + r->size) % p->align;
         }
-        r->flags = MM_FLAG_R | MM_FLAG_W;
-        if (p->flags & PF_X) r->flags |= MM_FLAG_X;
-        r->dev = st.st_dev;
-        r->ino = st.st_ino;
     }
     if (mem_map.region_cnt == 0) {
         ContextAddress addr = 0x10000;
@@ -1912,9 +1979,6 @@ static void next_file(void) {
                 r->file_offs = sec->offset;
                 if (sec->type == SHT_NOBITS) {
                     r->bss = 1;
-                }
-                else {
-                    r->file_size = sec->size;
                 }
                 r->dev = st.st_dev;
                 r->ino = st.st_ino;
