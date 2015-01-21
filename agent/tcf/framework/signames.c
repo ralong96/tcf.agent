@@ -136,10 +136,18 @@ static SignalInfo info[] = {
     SigDesc(SIGTTIN,   "Background process attempting to read from tty")
     SigDesc(SIGTTOU,   "Background process attempting to write to tty")
     SigDesc(SIGURG,    "Urgent data available on socket")
+#ifdef SIGXCPU
     SigDesc(SIGXCPU,   "CPU time limit exceeded")
+#endif
+#ifdef SIGXFSZ
     SigDesc(SIGXFSZ,   "File size limit exceeded")
+#endif
+#ifdef SIGVTALRM
     SigDesc(SIGVTALRM, "Virtual time timer expired")
+#endif
+#ifdef SIGPROF
     SigDesc(SIGPROF,   "Profiling timer expired")
+#endif
 #ifdef SIGWINCH
     SigDesc(SIGWINCH,  "Window resize signal")
 #endif
