@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -28,11 +28,13 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/cache.h>
 #include <tcf/services/dwarf.h>
-#include <tcf/services/dwarfreloc.h>
 #include <tcf/services/dwarfecomp.h>
+#include <tcf/services/dwarfreloc.h>
 #include <tcf/services/elf-loader.h>
 #include <tcf/services/elf-symbols.h>
 #include <tcf/services/stacktrace.h>
+
+#include <tcf/services/dwarfecomp-ext.h>
 
 typedef struct JumpInfo {
     U1_T op;
@@ -501,7 +503,6 @@ static void op_implicit_pointer(void) {
 }
 
 static void op_push_tls_address(void) {
-    U8_T addr = 0;
     expr_pos++;
     if (expr_pos == 1 && expr_pos < expr->expr_size) {
         /* This looks like a bug in GCC: offset sometimes is emitted after OP_GNU_push_tls_address */
@@ -514,12 +515,8 @@ static void op_push_tls_address(void) {
     }
     if (!context_has_state(expr_ctx)) str_exception(ERR_INV_CONTEXT,
         "Thread local variable, but context is not a thread");
-    addr = get_tls_address(expr_ctx, expr->object->mCompUnit->mFile);
-    if (addr != 0) {
-        add(OP_constu);
-        add_uleb128(addr);
-        add(OP_add);
-    }
+
+    COMPUTE_TLS_ADDRESS;
 }
 
 static void op_call(void) {
