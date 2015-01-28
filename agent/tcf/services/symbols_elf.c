@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1652,7 +1652,7 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
 }
 
 static int find_by_addr_in_unit(ObjectInfo * parent, int level, UnitAddress * addr, UnitAddress * ip, Symbol ** res) {
-    int in_range = check_in_range(parent, ip);
+    int in_range = ip != NULL && check_in_range(parent, ip);
     ObjectInfo * obj = get_dwarf_children(parent);
     while (obj != NULL) {
         switch (obj->mTag) {

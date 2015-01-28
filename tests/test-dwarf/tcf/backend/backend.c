@@ -209,15 +209,6 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
         errno = ERR_INV_CONTEXT;
         return -1;
     }
-    if (def->role != NULL && strcmp(def->role, "PC") == 0) {
-        unsigned i;
-        for (i = 0; i < def->size; i++) {
-            unsigned j = def->big_endian ? def->size - i - 1 : i;
-            if (j < offs || j >= offs + size) continue;
-            ((uint8_t *)buf)[j - offs] = (uint8_t)(pc >> (i * 8));
-        }
-        return 0;
-    }
     memcpy(buf, reg_vals + def->offset + offs, size);
     return 0;
 }
@@ -1840,6 +1831,14 @@ static void next_pc(void) {
             }
             else if (trap.error != ERR_SYM_NOT_FOUND) {
                 error("AT_frame_base");
+            }
+        }
+
+        if (func_object != NULL) {
+            set_regs_PC(elf_ctx, 0);
+            send_context_changed_event(elf_ctx);
+            if (find_symbol_by_addr(elf_ctx, STACK_TOP_FRAME, pc, &sym) < 0) {
+                error("find_symbol_by_addr");
             }
         }
 
