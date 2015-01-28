@@ -1161,7 +1161,7 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
             list[cnt] = NULL;
             /* Count variables. In C, variables eclipse composite types */
             for (i = 0; i < cnt; i++) {
-                if (get_symbol_class(list[i], &sym_class) < 0) error(errno, "Cannot read symbol data");
+                if (get_symbol_class(list[i], &sym_class) < 0) error(errno, "Cannot retrieve symbol class");
                 if (sym_class == SYM_CLASS_VALUE || sym_class == SYM_CLASS_REFERENCE) val_cnt++;
             }
             /* Search for best match */
