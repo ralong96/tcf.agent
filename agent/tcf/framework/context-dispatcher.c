@@ -205,10 +205,7 @@ int context_get_canonical_addr(Context * ctx, ContextAddress addr, Context ** ca
 
 int context_get_memory_map(Context * ctx, MemoryMap * map) {
     ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_memory_map == NULL) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
-    }
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_memory_map == NULL) return 0;
     return ext->ctx_iface->context_get_memory_map(ctx, map);
 }
 
