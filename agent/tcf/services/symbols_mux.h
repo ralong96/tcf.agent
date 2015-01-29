@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -48,6 +48,7 @@ typedef struct SymbolReader {
     int (*get_symbol_lower_bound)(const Symbol * sym, int64_t * value);
     int (*get_symbol_children)(const Symbol * sym, Symbol *** children, int * count);
     int (*get_symbol_flags)(const Symbol * sym, SYM_FLAGS * flags);
+    int (*get_symbol_props)(const Symbol * sym, SymbolProperties * props);
     int (*get_symbol_frame)(const Symbol * sym, Context ** ctx, int * frame);
     int (*get_array_symbol)(const Symbol * sym, ContextAddress length, Symbol ** ptr);
     ContextAddress (*is_plt_section)(Context * ctx, ContextAddress addr);
@@ -60,7 +61,7 @@ typedef struct SymbolReader {
         ContextAddress * range_addr, ContextAddress * range_size);
     int (*reader_is_valid)(Context * ctx, ContextAddress addr);
     unsigned reader_index;
-}SymbolReader;
+} SymbolReader;
 
 #ifdef SYM_READER_PREFIX
 
@@ -87,6 +88,7 @@ typedef struct SymbolReader {
 #define get_symbol_lower_bound READER_NAME(get_symbol_lower_bound)
 #define get_symbol_children READER_NAME(get_symbol_children)
 #define get_symbol_flags READER_NAME(get_symbol_flags)
+#define get_symbol_props READER_NAME(get_symbol_props)
 #define get_symbol_frame READER_NAME(get_symbol_frame)
 #define get_array_symbol READER_NAME(get_array_symbol)
 #define get_symbol_name READER_NAME(get_symbol_name)
@@ -120,6 +122,7 @@ extern int get_symbol_length(const Symbol * sym, ContextAddress * length);
 extern int get_symbol_lower_bound(const Symbol * sym, int64_t * value);
 extern int get_symbol_children(const Symbol * sym, Symbol *** children, int * count);
 extern int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags);
+extern int get_symbol_props(const Symbol * sym, SymbolProperties * props);
 extern int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame);
 extern ContextAddress is_plt_section(Context * ctx, ContextAddress addr);
 extern int get_location_info(const Symbol * sym, LocationInfo ** info);
@@ -138,7 +141,7 @@ static SymbolReader symbol_reader = { find_symbol_by_name, find_symbol_in_scope,
         get_symbol_class, get_symbol_type, get_symbol_type_class, get_symbol_update_policy,
         get_symbol_name, get_symbol_size, get_symbol_base_type, get_symbol_index_type,
         get_symbol_container, get_symbol_length, get_symbol_lower_bound, get_symbol_children,
-        get_symbol_flags, get_symbol_frame, get_array_symbol, is_plt_section, get_location_info,
+        get_symbol_flags, get_symbol_props, get_symbol_frame, get_array_symbol, is_plt_section, get_location_info,
         get_funccall_info, get_stack_tracing_info, get_symbol_file_name,
         get_context_isa, reader_is_valid};
 

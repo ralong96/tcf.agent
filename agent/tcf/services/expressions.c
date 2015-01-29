@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -983,6 +983,32 @@ static void check_hidden_redirection(Value * v) {
     }
 }
 
+static void set_value_scale(Value * v) {
+    if (v->type != NULL && (v->type_class == TYPE_CLASS_CARDINAL || v->type_class == TYPE_CLASS_INTEGER)) {
+        Symbol * type = v->type;
+        for (;;) {
+            SymbolProperties props;
+            Symbol * next = NULL;
+            if (get_symbol_props(type, &props) < 0) {
+                error(errno, "Cannot get symbol properties");
+            }
+            if (props.binary_scale) {
+                v->binary_scale = props.binary_scale;
+                break;
+            }
+            if (props.decimal_scale) {
+                v->decimal_scale = props.decimal_scale;
+                break;
+            }
+            if (get_symbol_type(type, &next) < 0) {
+                error(errno, "Cannot retrieve symbol type");
+            }
+            if (next == type) break;
+            type = next;
+        }
+    }
+}
+
 /* Note: sym2value() does NOT set v->size if v->sym != NULL */
 static int sym2value(int mode, Symbol * sym, Value * v) {
     int sym_class = 0;
@@ -1029,6 +1055,7 @@ static int sym2value(int mode, Symbol * sym, Value * v) {
             v->remote = 1;
         }
         v->constant = sym_class == SYM_CLASS_VALUE;
+        set_value_scale(v);
         break;
     case SYM_CLASS_FUNCTION:
         {
@@ -1984,6 +2011,7 @@ static void op_deref(int mode, Value * v) {
     if (get_symbol_size(v->type, &v->size) < 0) {
         error(errno, "Cannot retrieve symbol size");
     }
+    set_value_scale(v);
 #else
     error(ERR_UNSUPPORTED, "Symbols service not available");
 #endif
@@ -2134,6 +2162,7 @@ static void op_field(int mode, Value * v) {
         if (sym_class == SYM_CLASS_REFERENCE && mode == MODE_NORMAL) {
             check_hidden_redirection(v);
         }
+        set_value_scale(v);
 #else
         error(ERR_UNSUPPORTED, "Symbols service not available");
 #endif
@@ -2238,6 +2267,7 @@ static void op_index(int mode, Value * v) {
     if (get_symbol_type_class(type, &v->type_class) < 0) {
         error(errno, "Cannot retrieve symbol type class");
     }
+    set_value_scale(v);
 #else
     error(ERR_UNSUPPORTED, "Symbols service not available");
 #endif
@@ -4194,6 +4224,21 @@ static void command_evaluate_cache_client(void * x) {
             cnt++;
         }
 #endif
+        if (value.binary_scale != 0) {
+            if (cnt > 0) write_stream(&c->out, ',');
+            json_write_string(&c->out, "BinaryScale");
+            write_stream(&c->out, ':');
+            json_write_long(&c->out, value.binary_scale);
+            cnt++;
+        }
+
+        if (value.decimal_scale != 0) {
+            if (cnt > 0) write_stream(&c->out, ',');
+            json_write_string(&c->out, "DecimalScale");
+            write_stream(&c->out, ':');
+            json_write_long(&c->out, value.decimal_scale);
+            cnt++;
+        }
 
         if (implicit_pointer) {
             if (cnt > 0) write_stream(&c->out, ',');

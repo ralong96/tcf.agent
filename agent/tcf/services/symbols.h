@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -86,6 +86,12 @@ typedef uint32_t SYM_FLAGS;
 #define SYM_FLAG_BOOL_TYPE      0x04000000
 #define SYM_FLAG_INDIRECT       0x08000000
 #define SYM_FLAG_RVALUE         0x10000000
+
+/* Additional (uncommon) symbol properties */
+typedef struct SymbolProperties {
+    int binary_scale;   /* The exponent of the base two scale factor to be applied to an instance of the type */
+    int decimal_scale;  /* The exponent of the base ten scale factor to be applied to an instance of the type */
+} SymbolProperties;
 
 /* Symbol properties update policies */
 #define UPDATE_ON_MEMORY_MAP_CHANGES 0
@@ -264,6 +270,9 @@ extern int get_symbol_register(const Symbol * sym, Context ** ctx, int * frame, 
 
 /* Get symbol flags, see SYM_FLAG_* */
 extern int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags);
+
+/* Get additional symbol properties, see SymbolProperties */
+extern int get_symbol_props(const Symbol * sym, SymbolProperties * props);
 
 /* Get symbol stack frame */
 extern int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame);

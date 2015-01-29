@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -323,6 +323,11 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
 int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
     SymbolReader * reader = *(SymbolReader **)sym;
     return reader->get_symbol_flags(sym, flags);
+}
+
+int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
+    SymbolReader * reader = *(SymbolReader **)sym;
+    return reader->get_symbol_props(sym, props);
 }
 
 int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame) {

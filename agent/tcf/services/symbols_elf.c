@@ -2763,10 +2763,12 @@ static void get_object_type_class(ObjectInfo * obj, int * type_class) {
                 return;
             case ATE_signed:
             case ATE_signed_char:
+            case ATE_signed_fixed:
                 *type_class = TYPE_CLASS_INTEGER;
                 return;
             case ATE_unsigned:
             case ATE_unsigned_char:
+            case ATE_unsigned_fixed:
             case ATE_UTF:
                 *type_class = TYPE_CLASS_CARDINAL;
                 return;
@@ -4001,6 +4003,19 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
             *flags |= obj->mCompUnit->mFile->big_endian ? SYM_FLAG_BIG_ENDIAN : SYM_FLAG_LITTLE_ENDIAN;
             break;
         }
+    }
+    return 0;
+}
+
+int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
+    ObjectInfo * obj = sym->obj;
+    assert(sym->magic == SYMBOL_MAGIC);
+    memset(props, 0, sizeof(SymbolProperties));
+    if (unpack(sym) < 0) return -1;
+    if (obj != NULL && obj->mTag == TAG_base_type) {
+        U8_T n = 0;
+        if (get_num_prop(obj, AT_binary_scale, &n)) props->binary_scale = (int)n;
+        if (get_num_prop(obj, AT_decimal_scale, &n)) props->decimal_scale = (int)n;
     }
     return 0;
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -88,6 +88,7 @@ typedef struct SymInfoCache {
     int has_lower_bound;
     int frame;
     SYM_FLAGS flags;
+    SymbolProperties props;
     ContextAddress size;
     ContextAddress length;
     int64_t lower_bound;
@@ -648,6 +649,8 @@ static void read_context_data(InputStream * inp, const char * name, void * args)
     else if (strcmp(name, "Size") == 0) { s->size = json_read_long(inp); s->has_size = 1; }
     else if (strcmp(name, "Length") == 0) { s->length = json_read_long(inp); s->has_length = 1; }
     else if (strcmp(name, "LowerBound") == 0) { s->lower_bound = json_read_int64(inp); s->has_lower_bound = 1; }
+    else if (strcmp(name, "BinaryScale") == 0) s->props.binary_scale = (int)json_read_long(inp);
+    else if (strcmp(name, "DecimalScale") == 0) s->props.decimal_scale = (int)json_read_long(inp);
     else if (strcmp(name, "Flags") == 0) s->flags = json_read_ulong(inp);
     else if (strcmp(name, "Frame") == 0) s->frame = (int)json_read_long(inp);
     else json_skip_object(inp);
@@ -1225,6 +1228,15 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
     SymInfoCache * c = get_sym_info_cache(sym, ACC_OTHER);
     if (c == NULL) return -1;
     *flags = c->flags;
+    return 0;
+}
+
+int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
+    SymInfoCache * c;
+    memset(props, 0, sizeof(SymbolProperties));
+    c = get_sym_info_cache(sym, ACC_OTHER);
+    if (c == NULL) return -1;
+    *props = c->props;
     return 0;
 }
 

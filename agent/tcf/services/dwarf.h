@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 1996, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 1996, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -218,6 +218,8 @@
 #define AT_call_file                0x0058  /* v3 */
 #define AT_call_line                0x0059  /* v3 */
 #define AT_description              0x005a  /* v3 */
+#define AT_binary_scale             0x005b  /* v3 */
+#define AT_decimal_scale            0x005c  /* v3 */
 #define AT_object_pointer           0x0064  /* v3 */
 #define AT_endianity                0x0065  /* v3 */
 #define AT_elemental                0x0066  /* v3 */

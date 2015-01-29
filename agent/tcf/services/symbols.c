@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -94,6 +94,9 @@ static void command_get_context_cache_client(void * x) {
     size_t value_size = 0;
     Context * ctx = NULL;
     int frame = STACK_NO_FRAME;
+    SymbolProperties props;
+
+    memset(&props, 0, sizeof(props));
 
     if (id2symbol(args->id, &sym) < 0) err = errno;
 
@@ -152,6 +155,7 @@ static void command_get_context_cache_client(void * x) {
             }
         }
         get_symbol_flags(sym, &flags);
+        get_symbol_props(sym, &props);
     }
 
     cache_exit();
@@ -274,6 +278,20 @@ static void command_get_context_cache_client(void * x) {
             json_write_string(&c->out, "Flags");
             write_stream(&c->out, ':');
             json_write_long(&c->out, flags);
+            write_stream(&c->out, ',');
+        }
+
+        if (props.binary_scale != 0) {
+            json_write_string(&c->out, "BinaryScale");
+            write_stream(&c->out, ':');
+            json_write_long(&c->out, props.binary_scale);
+            write_stream(&c->out, ',');
+        }
+
+        if (props.decimal_scale != 0) {
+            json_write_string(&c->out, "DecimalScale");
+            write_stream(&c->out, ':');
+            json_write_long(&c->out, props.decimal_scale);
             write_stream(&c->out, ',');
         }
 

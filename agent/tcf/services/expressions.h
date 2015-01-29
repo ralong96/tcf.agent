@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -71,6 +71,8 @@ struct Value {
     int constant;               /* 1 if the value is not expected to change during execution of value context */
     int big_endian;             /* 1 if the value is big endian */
     int function;               /* 1 if the value represents a function */
+    int binary_scale;           /* The exponent of the base two scale factor to be applied to the value */
+    int decimal_scale;          /* The exponent of the base ten scale factor to be applied to the value */
     Symbol ** sym_list;         /* Symbol list, if applicable, NULL terminated */
     Context * ctx;              /* Debug context of the value */
 

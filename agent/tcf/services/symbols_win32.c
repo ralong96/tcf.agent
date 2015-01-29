@@ -761,6 +761,11 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
     return 0;
 }
 
+int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
+    memset(props, 0, sizeof(SymbolProperties));
+    return 0;
+}
+
 int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame) {
     int n = sym->frame + STACK_NO_FRAME;
     if (n == STACK_TOP_FRAME) {
