@@ -4011,6 +4011,7 @@ int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
     ObjectInfo * obj = sym->obj;
     assert(sym->magic == SYMBOL_MAGIC);
     memset(props, 0, sizeof(SymbolProperties));
+    if (sym->base || is_int_type_pseudo_symbol(sym)) return 0;
     if (unpack(sym) < 0) return -1;
     if (obj != NULL && obj->mTag == TAG_base_type) {
         U8_T n = 0;
