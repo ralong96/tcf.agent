@@ -257,8 +257,8 @@ int context_get_breakpoint_status(ContextBreakpoint * bp, const char *** names, 
 
 #if ENABLE_ContextBreakpointCapabilities
 int context_get_breakpoint_capabilities(Context * ctx, const char *** names, const char *** values, int * cnt) {
-    ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_breakpoint_capabilities == NULL) {
+    ContextExtensionMux * ext = ctx ? EXT(ctx) : NULL;
+    if (ext == NULL || ext->ctx_iface == NULL || ext->ctx_iface->context_get_breakpoint_capabilities == NULL) {
         errno = ERR_UNSUPPORTED;
         return -1;
     }
