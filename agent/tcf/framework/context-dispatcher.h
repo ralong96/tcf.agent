@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2013, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -75,6 +75,9 @@ typedef struct ContextIf {
 #if ENABLE_MemoryAccessModes
     int (*context_write_mem_ext)(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size);
     int (*context_read_mem_ext)(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size);
+#endif
+#if ENABLE_ContextBreakpointCapabilities
+    int (*context_get_breakpoint_capabilities)(Context * ctx, const char *** names, const char *** values, int * cnt);
 #endif
     CpuDefsIf cpudefs_if;
     ContextExtIf ctxext_if;

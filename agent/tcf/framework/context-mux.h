@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2013, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -55,6 +55,9 @@ static int sys_context_get_mem_error_info(MemoryErrorInfo * info);
 #if ENABLE_ExtendedBreakpointStatus
 static int sys_context_get_breakpoint_status(ContextBreakpoint * bp, const char *** names, const char *** values, int * cnt);
 #endif
+#if ENABLE_ContextBreakpointCapabilities
+static int sys_context_get_breakpoint_capabilities(Context * ctx, const char *** names, const char *** values, int * cnt);
+#endif
 #if ENABLE_ContextExtraProperties
 static int sys_context_get_extra_properties(Context * ctx, const char *** names, const char *** values, int * cnt);
 #endif
@@ -104,6 +107,9 @@ ContextIf sys_ctx_if = {
         sys_context_write_mem_ext,
         sys_context_read_mem_ext,
 #endif
+#if ENABLE_ContextBreakpointCapabilities
+        sys_context_get_breakpoint_capabilities,
+#endif
 };
 
 static void sys_send_context_created_event(Context * ctx) {
@@ -145,6 +151,9 @@ static void sys_send_context_created_event(Context * ctx) {
 #endif
 #if ENABLE_ExtendedBreakpointStatus
 #define context_get_breakpoint_status   sys_context_get_breakpoint_status
+#endif
+#if ENABLE_ContextBreakpointCapabilities
+#define context_get_breakpoint_capabilities sys_context_get_breakpoint_capabilities
 #endif
 #if ENABLE_ContextExtraProperties
 #define context_get_extra_properties    sys_context_get_extra_properties

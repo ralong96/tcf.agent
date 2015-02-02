@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2013, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -234,8 +234,7 @@ int context_get_supported_bp_access_types(Context * ctx) {
 }
 
 #if ENABLE_ContextStateProperties
-int context_get_state_properties(Context * ctx, const char *** names, const char *** values,
-        int * cnt) {
+int context_get_state_properties(Context * ctx, const char *** names, const char *** values, int * cnt) {
     ContextExtensionMux * ext = EXT(ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_state_properties == NULL) {
         errno = ERR_UNSUPPORTED;
@@ -246,13 +245,24 @@ int context_get_state_properties(Context * ctx, const char *** names, const char
 #endif
 
 #if ENABLE_ExtendedBreakpointStatus
-int context_get_breakpoint_status (ContextBreakpoint * bp, const char *** names, const char *** values, int * cnt) {
+int context_get_breakpoint_status(ContextBreakpoint * bp, const char *** names, const char *** values, int * cnt) {
     ContextExtensionMux * ext = EXT(bp->ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_breakpoint_status == NULL) {
         errno = ERR_UNSUPPORTED;
         return -1;
     }
     return ext->ctx_iface->context_get_breakpoint_status(bp, names, values, cnt);
+}
+#endif
+
+#if ENABLE_ContextBreakpointCapabilities
+int context_get_breakpoint_capabilities(Context * ctx, const char *** names, const char *** values, int * cnt) {
+    ContextExtensionMux * ext = EXT(ctx);
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_breakpoint_capabilities == NULL) {
+        errno = ERR_UNSUPPORTED;
+        return -1;
+    }
+    return ext->ctx_iface->context_get_breakpoint_capabilities(ctx, names, values, cnt);
 }
 #endif
 
