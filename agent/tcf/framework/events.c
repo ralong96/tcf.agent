@@ -137,6 +137,7 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
     event_node * prev;
     struct timespec runtime;
     struct timespec timenow;
+
     if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
     runtime = timenow;
     time_add_usec(&runtime, delay);
@@ -153,9 +154,7 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
     ev->handler = handler;
     ev->arg = arg;
 
-    if (time_cmp(&trigger_time, &timenow) <= 0) {
-        trigger_cnt = 1;
-    }
+    if (time_cmp(&trigger_time, &timenow) <= 0) trigger_cnt = 1;
 
     prev = NULL;
     next = timer_queue;
@@ -184,6 +183,7 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
         event_node * prev;
         struct timespec runtime;
         struct timespec timenow;
+
         if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
         runtime = timenow;
         time_add_usec(&runtime, delay);
@@ -195,9 +195,7 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
 
         check_error(pthread_mutex_lock(&event_lock));
 
-        if (time_cmp(&trigger_time, &timenow) <= 0) {
-            trigger_cnt = 1;
-        }
+        if (time_cmp(&trigger_time, &timenow) <= 0) trigger_cnt = 1;
 
         prev = NULL;
         next = timer_queue;
@@ -349,7 +347,7 @@ void run_event_loop(void) {
 
         if (event_queue == NULL || event_cnt >= trigger_cnt) {
             check_error(pthread_mutex_lock(&event_lock));
-            trigger_cnt = 8;
+            trigger_cnt = 64;
             event_cnt = 0;
 #if ENABLE_FastMemAlloc
             while (free_queue != NULL && (free_bg_queue == NULL || free_bg_queue->next == NULL)) {
@@ -361,9 +359,7 @@ void run_event_loop(void) {
 #endif
             for (;;) {
                 struct timespec timenow;
-                if (clock_gettime(CLOCK_REALTIME, &timenow)) {
-                    check_error(errno);
-                }
+                if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
                 trigger_time = timenow;
                 time_add_usec(&trigger_time, 1000);
                 if ((ev = timer_queue) != NULL) {
@@ -403,7 +399,6 @@ void run_event_loop(void) {
             check_error(pthread_mutex_unlock(&event_lock));
         }
 
-        assert(event_queue != NULL);
         ev = event_queue;
         event_queue = ev->next;
         if (event_queue == NULL) {
