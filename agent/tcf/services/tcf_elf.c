@@ -538,9 +538,13 @@ static void create_symbol_names_hash(ELF_Section * tbl);
 
 static void reopen_file(ELF_File * file) {
     int error = 0;
+    unsigned n = 0;
     if (file->fd >= 0) return;
     if (file->error != NULL) return;
     if ((file->fd = open(file->name, O_RDONLY | O_BINARY, 0)) < 0) error = errno;
+    for (n = 0; n < openlisteners_cnt; n++) {
+        openlisteners[n](file);
+    }
     if (!error) {
         struct stat st;
         if (fstat(file->fd, &st) < 0) error = errno;
