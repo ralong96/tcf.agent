@@ -455,6 +455,7 @@ struct ELF_File {
     ELF_File * dwz_file;
 
     int vxworks_got;
+    unsigned section_opd;    /* PPC64 opd section number */
 };
 
 struct ELF_SecSymbol {
@@ -513,6 +514,9 @@ struct ELF_Section {
     unsigned reloc_num_zones;
     unsigned * reloc_zones_bondaries;
 };
+
+#define IS_PPC64_FUNC_OPD(file, sym_info)   ((file)->machine == EM_PPC64 && (sym_info)->section_index == (file)->section_opd && ((sym_info)->type == STT_FUNC || (sym_info)->type == STT_NOTYPE))
+#define IS_PPC64_FUNC_DOT(file, sym_info)   ((file)->machine == EM_PPC64 && (sym_info)->type == STT_FUNC && (sym_info)->name != NULL && (sym_info)->name[0] == '.')
 
 struct ELF_PHeader {
     U4_T type;

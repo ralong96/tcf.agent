@@ -41,6 +41,7 @@
 #include <tcf/services/tcf_elf.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/dwarfcache.h>
+#include <tcf/services/dwarfreloc.h>
 #include <tcf/services/pathmap.h>
 
 #if defined(USE_MMAP)
@@ -910,12 +911,14 @@ static ELF_File * create_elf_cache(const char * file_name) {
         unsigned m = 0;
         for (m = 1; m < file->section_cnt; m++) {
             ELF_Section * tbl = file->sections + m;
+            if (file->machine == EM_PPC64 && strcmp (tbl->name, ".opd") == 0) file->section_opd = m;
             if (tbl->sym_count == 0) continue;
             create_symbol_names_hash(tbl);
         }
         file->debug_info_file = is_debug_info_file(file);
         if (!file->debug_info_file) file->debug_info_file_name = get_debug_info_file_name(file, &error);
         if (file->debug_info_file_name) trace(LOG_ELF, "Debug info file found %s", file->debug_info_file_name);
+        if (file->machine == EM_PPC64 && file->section_opd == 0) error = set_errno(ERR_INV_FORMAT, "PPC64 ELF file must contain an OPD section");
     }
     if (error == 0) {
         file->dwz_file_name = get_dwz_file_name(file, &error);
@@ -1712,6 +1715,7 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
             info->type = STT_FUNC;
         }
     }
+    else if (IS_PPC64_FUNC_OPD(file, info)) info->type = STT_FUNC;
 }
 
 static void create_symbol_names_hash(ELF_Section * tbl) {
@@ -1764,35 +1768,64 @@ static void create_symbol_addr_search_index(ELF_Section * sec) {
             int add = 0;
             U8_T addr = 0;
             U1_T type = 0;
-            if (elf64) {
-                Elf64_Sym s = ((Elf64_Sym *)tbl->data)[n];
-                if (swap) SWAP(s.st_shndx);
-                if (s.st_shndx == sec->index) {
-                    if (swap) SWAP(s.st_value);
-                    addr = s.st_value;
-                    type = ELF64_ST_TYPE(s.st_info);
-                    if (rel) addr += sec->addr;
-                    add = 1;
+            if (file->machine == EM_PPC64) {
+                ELF_SymbolInfo sym_info;
+                unpack_elf_symbol_info(tbl, n, &sym_info);
+                /* Don't register PPC64 dot function name */
+                add = IS_PPC64_FUNC_OPD(file, &sym_info)|| \
+                        (sym_info.section == sec && !IS_PPC64_FUNC_DOT(file, &sym_info) && sym_info.type != STT_GNU_IFUNC);
+                if (add) {
+                    addr = sym_info.value + (rel ? sec->addr : 0);
+                    if (add && IS_PPC64_FUNC_OPD(file, &sym_info)) {
+                        /*
+                         * For PPC64, an ELF function symbol address is not described by
+                         * the symbol value. In that case the symbol value points to a
+                         * function descriptor in the OPD section. The first entry of the
+                         * descriptor is the real function address. This value is
+                         * relocatable.
+                         */
+                        U8_T offset;
+                        ELF_Section * opd = file->sections + file->section_opd;
+                        if (elf_load(opd) < 0) exception(errno);
+                        offset = addr - opd->addr;
+                        addr = *(U8_T *)((U1_T *)opd->data + offset);
+                        if (swap) SWAP(addr);
+                        drl_relocate(opd, offset, &addr, sizeof(addr), NULL);
+                    }
                 }
             }
             else {
-                Elf32_Sym s = ((Elf32_Sym *)tbl->data)[n];
-                if (swap) SWAP(s.st_shndx);
-                if (s.st_shndx == sec->index) {
-                    if (swap) SWAP(s.st_value);
-                    addr = s.st_value;
-                    type = ELF32_ST_TYPE(s.st_info);
-                    if (rel) addr += sec->addr;
-                    add = 1;
-                }
-            }
-            if (add && type != STT_GNU_IFUNC) {
-                ELF_SecSymbol * s = NULL;
-                if (file->machine == EM_ARM) {
-                    if (type == STT_FUNC || type == STT_ARM_TFUNC) {
-                        addr = addr & ~(U8_T)1;
+                if (elf64) {
+                    Elf64_Sym s = ((Elf64_Sym *) tbl->data)[n];
+                    if (swap) SWAP(s.st_shndx);
+                    if (s.st_shndx == sec->index) {
+                        if (swap) SWAP(s.st_value);
+                        addr = s.st_value;
+                        type = ELF64_ST_TYPE(s.st_info);
+                        if (rel) addr += sec->addr;
+                        add = 1;
                     }
                 }
+                else {
+                    Elf32_Sym s = ((Elf32_Sym *)tbl->data)[n];
+                    if (swap) SWAP(s.st_shndx);
+                    if (s.st_shndx == sec->index) {
+                        if (swap) SWAP(s.st_value);
+                        addr = s.st_value;
+                        type = ELF32_ST_TYPE(s.st_info);
+                        if (rel) addr += sec->addr;
+                        add = 1;
+                    }
+                }
+                add = add && type != STT_GNU_IFUNC;
+                if (add && file->machine == EM_ARM) {
+                    if (type == STT_FUNC || type == STT_ARM_TFUNC) {
+                        addr = addr & ~(U8_T) 1;
+                    }
+                }
+            }
+            if (add) {
+                ELF_SecSymbol * s = NULL;
                 if (sec->sym_addr_cnt >= sec->sym_addr_max) {
                     if (sec->sym_addr_table == NULL) {
                         sec->sym_addr_max = (unsigned)(tbl->sym_count / 2) + 16;
@@ -1837,7 +1870,7 @@ void elf_find_symbol_by_address(ELF_Section * sec, ContextAddress addr, ELF_Symb
             }
             else {
                 unpack_elf_symbol_info(info->section, info->index, sym_info);
-                assert(sym_info->section == sec);
+                assert(IS_PPC64_FUNC_OPD(info->section->file, sym_info) || sym_info->section == sec);
                 sym_info->addr_index = k;
                 return;
             }
@@ -1996,6 +2029,10 @@ int elf_get_plt_entry_size(ELF_File * file, unsigned * first_size, unsigned * en
         }
         *first_size = 72;
         *entry_size = 12;
+        return 0;
+    case EM_PPC64:
+        *first_size = 24;
+        *entry_size = 24;
         return 0;
     case EM_ARM:
         *first_size = 20;

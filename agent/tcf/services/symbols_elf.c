@@ -42,6 +42,7 @@
 #include <tcf/services/dwarfexpr.h>
 #include <tcf/services/dwarfecomp.h>
 #include <tcf/services/dwarfframe.h>
+#include <tcf/services/dwarfreloc.h>
 #include <tcf/services/stacktrace.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/funccall.h>
@@ -269,6 +270,22 @@ int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * ad
                 *address += 1;
                 return 0;
             }
+        }
+        if (IS_PPC64_FUNC_OPD(file, info)) {
+            /*
+             * For PPC64, an ELF function symbol address is not described by
+             * the symbol value. In that case the symbol value points to a
+             * function descriptor in the OPD section. The first entry of the
+             * descriptor is the real function address. This value is
+             * relocatable.
+             */
+            U8_T offset;
+            ELF_Section * opd = file->sections + file->section_opd;
+            if (elf_load(opd) < 0) exception(errno);
+            offset = value - opd->addr;
+            value = *(U8_T *)((U1_T *)opd->data + offset);
+            if (file->byte_swap) SWAP(value);
+            drl_relocate(opd, offset, &value, sizeof(value), &sec);
         }
         *address = elf_map_to_run_time_address(ctx, file, sec, (ContextAddress)value);
         return errno ? -1 : 0;
@@ -1723,12 +1740,28 @@ static int find_by_addr_in_sym_tables(ContextAddress addr, Symbol ** res) {
     elf_find_symbol_by_address(section, lt_addr, &sym_info);
     while (sym_info.sym_section != NULL) {
         if (is_valid_elf_symbol(&sym_info)) {
-            ContextAddress sym_addr = (ContextAddress)sym_info.value;
-            if (file->type == ET_REL) sym_addr += (ContextAddress)section->addr;
-            assert(sym_addr <= lt_addr);
+            U8_T sym_addr = sym_info.value;
+            if (file->type == ET_REL) sym_addr += section->addr;
+            if (IS_PPC64_FUNC_OPD(file, &sym_info)) {
+                /*
+                 * For PPC64, an ELF function symbol address is not described by
+                 * the symbol value. In that case the symbol value points to a
+                 * function descriptor in the OPD section. The first entry of the
+                 * descriptor is the real function address. This value is
+                 * relocatable.
+                 */
+                U8_T offset;
+                ELF_Section * opd = file->sections + file->section_opd;
+                if (elf_load(opd) < 0) exception(errno);
+                offset = sym_addr - opd->addr;
+                sym_addr = *(U8_T *)((U1_T *)opd->data + offset);
+                if (file->byte_swap) SWAP(sym_addr);
+                drl_relocate(opd, offset, &sym_addr, sizeof(sym_addr), NULL);
+            }
+            assert(sym_addr <= (U8_T)lt_addr);
             /* Check if the searched address is part of symbol address range
              * or if symbol is a label (function + size of 0). */
-            if (sym_addr + sym_info.size > lt_addr || sym_info.size == 0) {
+            if (sym_addr + sym_info.size > (U8_T)lt_addr || sym_info.size == 0) {
                 elf_tcf_symbol(sym_ctx, &sym_info, res);
                 return 1;
             }
@@ -3014,6 +3047,18 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
         if (sym->dimension == 0) {
             ELF_SymbolInfo info;
             unpack_elf_symbol_info(sym->tbl, sym->index, &info);
+            if (IS_PPC64_FUNC_OPD(sym->tbl->file, &info)) {
+                /*
+                 * For PPC64, the size of an ELF symbol is either the size
+                 * described by the .<name> symbol or, if this symbol does not
+                 * exist, the size of the opd symbol.
+                 * So check if the symbol .<name> exists as a global.
+                 */
+                char * dotname = tmp_strdup2(".", info.name);
+                find_symbol_list = NULL;
+                find_by_name_in_sym_table(sym->tbl->file, dotname, 1);
+                if (find_symbol_list != NULL) return get_symbol_size(find_symbol_list, size);
+            }
             switch (info.type) {
             case STT_NOTYPE:
             case STT_OBJECT:
