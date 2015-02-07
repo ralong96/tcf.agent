@@ -52,21 +52,30 @@ int set_dispatcher_mem_error_info(MemoryErrorInfo * info) {
     return -1;
 }
 
+static int set_mem_error_info_unsupported(size_t size) {
+    get_err_info_errno = 0;
+    memset(&mem_err_info, 0, sizeof(mem_err_info));
+    mem_err_info.error = errno = ERR_UNSUPPORTED;
+    mem_err_info.size_error = size;
+    return -1;
+}
+
 static int set_mem_error_info(ContextExtensionMux * ext, int rc) {
+    int error = errno;
     get_err_info_errno = 0;
     memset(&mem_err_info, 0, sizeof(mem_err_info));
     if (rc < 0) {
-        int error = errno;
         if (ext->ctx_iface->context_get_mem_error_info != NULL &&
                 ext->ctx_iface->context_get_mem_error_info(&mem_err_info) < 0) {
             get_err_info_errno = errno;
         }
-        errno = error;
     }
+    errno = error;
     return rc;
 }
 #else
 #  define set_mem_error_info(ext, rc) rc
+#  define set_mem_error_info_unsupported(size) -1
 #endif
 
 const char * context_suspend_reason(Context * ctx) {
@@ -123,38 +132,26 @@ int context_single_step(Context * ctx) {
 
 int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
     ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_write_mem == NULL) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
-    }
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_write_mem == NULL) return set_mem_error_info_unsupported(size);
     return set_mem_error_info(ext, ext->ctx_iface->context_write_mem(ctx, address, buf, size));
 }
 
 int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
     ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_read_mem == NULL) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
-    }
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_read_mem == NULL) return set_mem_error_info_unsupported(size);
     return set_mem_error_info(ext, ext->ctx_iface->context_read_mem(ctx, address, buf, size));
 }
 
 #if ENABLE_MemoryAccessModes
 int context_write_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size) {
     ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_write_mem_ext == NULL) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
-    }
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_write_mem_ext == NULL) return set_mem_error_info_unsupported(size);
     return set_mem_error_info(ext, ext->ctx_iface->context_write_mem_ext(ctx, mode, address, buf, size));
 }
 
 int context_read_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size) {
     ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_read_mem_ext == NULL) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
-    }
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_read_mem_ext == NULL) return set_mem_error_info_unsupported(size);
     return set_mem_error_info(ext, ext->ctx_iface->context_read_mem_ext(ctx, mode, address, buf, size));
 }
 #endif
