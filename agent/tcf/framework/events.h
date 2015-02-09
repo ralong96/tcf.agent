@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -86,6 +86,15 @@ extern void run_event_loop(void);
  * The function causes run_event_loop() to stop event dispatching and return.
  */
 extern void cancel_event_loop(void);
+
+/*
+ * Time in milliseconds. Implementation is optional.
+ * If agent implements periodic updates of this variable,
+ * it improves fairness and accuracy of event dispatching.
+ * The time wraps around to zero after 49.7 days.
+ * Clients should check for an overflow condition when comparing times.
+ */
+extern uint32_t events_timer_ms;
 
 /*
  * Initialize event queue.

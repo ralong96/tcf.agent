@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -108,8 +108,8 @@ static event_node * timer_queue = NULL;
 static EventCallBack * cancel_handler = NULL;
 static void * cancel_arg = NULL;
 static int process_events = 0;
-static volatile unsigned trigger_cnt = 8;
-static struct timespec trigger_time;
+
+unsigned events_timer_ms = 0;
 
 static int time_cmp(const struct timespec * tv1, const struct timespec * tv2) {
     assert(tv1->tv_nsec < 1000000000);
@@ -136,10 +136,8 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
     event_node * next;
     event_node * prev;
     struct timespec runtime;
-    struct timespec timenow;
 
-    if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
-    runtime = timenow;
+    if (clock_gettime(CLOCK_REALTIME, &runtime)) check_error(errno);
     time_add_usec(&runtime, delay);
 
     check_error(pthread_mutex_lock(&event_lock));
@@ -153,8 +151,6 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
     ev->runtime = runtime;
     ev->handler = handler;
     ev->arg = arg;
-
-    if (time_cmp(&trigger_time, &timenow) <= 0) trigger_cnt = 1;
 
     prev = NULL;
     next = timer_queue;
@@ -182,10 +178,8 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
         event_node * next;
         event_node * prev;
         struct timespec runtime;
-        struct timespec timenow;
 
-        if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
-        runtime = timenow;
+        if (clock_gettime(CLOCK_REALTIME, &runtime)) check_error(errno);
         time_add_usec(&runtime, delay);
 
         alloc_event_node(ev);
@@ -194,8 +188,6 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
         ev->arg = arg;
 
         check_error(pthread_mutex_lock(&event_lock));
-
-        if (time_cmp(&trigger_time, &timenow) <= 0) trigger_cnt = 1;
 
         prev = NULL;
         next = timer_queue;
@@ -336,6 +328,8 @@ void cancel_event_loop(void) {
 
 void run_event_loop(void) {
     unsigned event_cnt = 0;
+    uint32_t last_tick_count_ms = events_timer_ms;
+
     /* Allow the event loop to run on a thread other than the initializing thread */
     event_thread = current_thread;
     assert(is_dispatch_thread());
@@ -345,9 +339,8 @@ void run_event_loop(void) {
 
         event_node * ev = NULL;
 
-        if (event_queue == NULL || event_cnt >= trigger_cnt) {
+        if (event_queue == NULL || event_cnt >= 100 || (event_cnt >= 1 && events_timer_ms - last_tick_count_ms >= 100)) {
             check_error(pthread_mutex_lock(&event_lock));
-            trigger_cnt = 64;
             event_cnt = 0;
 #if ENABLE_FastMemAlloc
             while (free_queue != NULL && (free_bg_queue == NULL || free_bg_queue->next == NULL)) {
@@ -358,12 +351,11 @@ void run_event_loop(void) {
             }
 #endif
             for (;;) {
-                struct timespec timenow;
-                if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
-                trigger_time = timenow;
-                time_add_usec(&trigger_time, 1000);
+                last_tick_count_ms = events_timer_ms;
                 if ((ev = timer_queue) != NULL) {
+                    struct timespec timenow;
                     event_node * evlast = NULL;
+                    if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
                     while (ev != NULL && time_cmp(&ev->runtime, &timenow) <= 0) {
                         evlast = ev;
                         ev = ev->next;

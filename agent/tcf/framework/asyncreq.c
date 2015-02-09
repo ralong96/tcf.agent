@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -23,6 +23,7 @@
 #include <stddef.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
@@ -44,6 +45,10 @@
 #define MAX_WORKER_THREADS 32
 #endif
 
+#ifndef EVENTS_TIMER_RESOLUTION
+#define EVENTS_TIMER_RESOLUTION 50
+#endif
+
 static LINK wtlist = TCF_LIST_INIT(wtlist);
 static int wtlist_size = 0;
 static int wtrunning_count = 0;
@@ -58,7 +63,10 @@ typedef struct WorkerThread {
 
 #define wtlink2wt(A)  ((WorkerThread *)((char *)(A) - offsetof(WorkerThread, wtlink)))
 
+#define AsyncReqTimer -1
+
 static AsyncReqInfo shutdown_req;
+static AsyncReqInfo timer_req;
 
 static void trigger_async_shutdown(ShutdownInfo * obj) {
     check_error(pthread_mutex_lock(&wtlock));
@@ -97,6 +105,21 @@ static void * worker_thread_handler(void * x) {
         assert(req != NULL);
         req->error = 0;
         switch(req->type) {
+        case AsyncReqTimer:
+#if defined(_WIN32) && !defined(__CYGWIN__)
+            Sleep(EVENTS_TIMER_RESOLUTION);
+            events_timer_ms = GetTickCount();
+#else
+            {
+                struct timespec timenow;
+                usleep(EVENTS_TIMER_RESOLUTION * 1000);
+                if (clock_gettime(CLOCK_REALTIME, &timenow) == 0) {
+                    events_timer_ms = (uint32_t)(timenow.tv_nsec / 1000000 + timenow.tv_sec * 1000);
+                }
+            }
+#endif
+            break;
+
         case AsyncReqRead:              /* File read */
             req->u.fio.rval = read(req->u.fio.fd, req->u.fio.bufp, req->u.fio.bufsz);
             if (req->u.fio.rval == -1) {
@@ -489,14 +512,16 @@ static void * worker_thread_handler(void * x) {
             req->error = ENOSYS;
             break;
         }
+        if (req->type == AsyncReqTimer) {
+            if (async_shutdown.state == SHUTDOWN_STATE_PENDING) break;
+            continue;
+        }
         trace(LOG_ASYNCREQ, "async_req_complete: req %p, type %d, error %d", req, req->type, req->error);
         check_error(pthread_mutex_lock(&wtlock));
-        /* Post event inside lock to make sure a new worker thread is
-         * not created unnecessarily */
+        /* Post event inside lock to make sure a new worker thread is not created unnecessarily */
         post_event(req->done, req);
         wt->req = NULL;
-        if (wtlist_size >= MAX_WORKER_THREADS ||
-            async_shutdown.state == SHUTDOWN_STATE_PENDING) {
+        if (wtlist_size >= MAX_WORKER_THREADS || async_shutdown.state == SHUTDOWN_STATE_PENDING) {
             check_error(pthread_mutex_unlock(&wtlock));
             break;
         }
@@ -546,7 +571,7 @@ void async_req_post(AsyncReqInfo * req) {
     WorkerThread * wt;
 
     trace(LOG_ASYNCREQ, "async_req_post: req %p, type %d", req, req->type);
-    assert(req->done != NULL);
+    assert(req->done != NULL || req->type == AsyncReqTimer);
 
 #if ENABLE_AIO
     {
@@ -595,6 +620,13 @@ void async_req_post(AsyncReqInfo * req) {
     check_error(pthread_mutex_unlock(&wtlock));
 }
 
+static void start_timer(void * args) {
+    memset(&timer_req, 0, sizeof(timer_req));
+    timer_req.type = AsyncReqTimer;
+    async_req_post(&timer_req);
+}
+
 void ini_asyncreq(void) {
     check_error(pthread_mutex_init(&wtlock, NULL));
+    post_event(start_timer, NULL);
 }
