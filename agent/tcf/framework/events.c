@@ -109,7 +109,7 @@ static EventCallBack * cancel_handler = NULL;
 static void * cancel_arg = NULL;
 static int process_events = 0;
 
-unsigned events_timer_ms = 0;
+uint32_t events_timer_ms = 0;
 
 static int time_cmp(const struct timespec * tv1, const struct timespec * tv2) {
     assert(tv1->tv_nsec < 1000000000);
