@@ -29,6 +29,8 @@
 #ifndef D_events
 #define D_events
 
+#include <tcf/config.h>
+
 typedef void EventCallBack(void *);
 
 /*
