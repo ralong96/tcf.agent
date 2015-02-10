@@ -199,6 +199,8 @@ static void set_int_value(Value * v, size_t size, uint64_t n) {
     case 8: buf.u64 = n; break;
     default: assert(0);
     }
+    v->binary_scale = 0;
+    v->decimal_scale = 0;
     set_value(v, &buf, size, big_endian);
 }
 
@@ -212,6 +214,8 @@ static void set_fp_value(Value * v, size_t size, double n) {
     case 8: buf.d = n; break;
     default: assert(0);
     }
+    v->binary_scale = 0;
+    v->decimal_scale = 0;
     set_value(v, &buf, size, big_endian);
 }
 
@@ -1519,10 +1523,26 @@ static int is_number(Value * v) {
     return 0;
 }
 
+static int is_real_number(Value * v) {
+    switch (v->type_class) {
+    case TYPE_CLASS_INTEGER:
+    case TYPE_CLASS_CARDINAL:
+        if (v->binary_scale != 0) return 1;
+        if (v->decimal_scale != 0) return 1;
+        break;
+    case TYPE_CLASS_REAL:
+        return 1;
+    }
+    return 0;
+}
+
 static int is_whole_number(Value * v) {
     switch (v->type_class) {
     case TYPE_CLASS_INTEGER:
     case TYPE_CLASS_CARDINAL:
+        if (v->binary_scale != 0) return 0;
+        if (v->decimal_scale != 0) return 0;
+        return 1;
     case TYPE_CLASS_ENUMERATION:
         return 1;
     }
@@ -1549,7 +1569,7 @@ static void to_host_endianness(Value * v) {
     }
 }
 
-static int64_t to_int(int mode, Value * v) {
+static int64_t to_int_fixed_point(int mode, Value * v) {
     if (mode != MODE_NORMAL) {
         if (v->remote) {
             v->value = tmp_alloc_zero((size_t)v->size);
@@ -1603,7 +1623,7 @@ static int64_t to_int(int mode, Value * v) {
     return 0;
 }
 
-static uint64_t to_uns(int mode, Value * v) {
+static uint64_t to_uns_fixed_point(int mode, Value * v) {
     if (mode != MODE_NORMAL) {
         if (v->remote) {
             v->value = tmp_alloc_zero((size_t)v->size);
@@ -1660,6 +1680,78 @@ static uint64_t to_uns(int mode, Value * v) {
     return 0;
 }
 
+static int64_t to_int(int mode, Value * v) {
+    if (v->type_class == TYPE_CLASS_INTEGER) {
+        int64_t n = to_int_fixed_point(mode, v);
+        int decimal_scale = v->decimal_scale;
+        while (decimal_scale > 0) {
+            decimal_scale--;
+            n = n * 10;
+        }
+        while (decimal_scale < 0) {
+            decimal_scale++;
+            n = n / 10;
+        }
+        if (v->binary_scale > 0) n = n << +v->binary_scale;
+        if (v->binary_scale < 0) n = n >> -v->binary_scale;
+        return n;
+    }
+    if (v->type_class == TYPE_CLASS_CARDINAL) {
+        uint64_t n = to_uns_fixed_point(mode, v);
+        int decimal_scale = v->decimal_scale;
+        while (decimal_scale > 0) {
+            decimal_scale--;
+            n = n * 10;
+        }
+        while (decimal_scale < 0) {
+            decimal_scale++;
+            n = n / 10;
+        }
+        if (v->binary_scale > 0) n = n << +v->binary_scale;
+        if (v->binary_scale < 0) n = n >> -v->binary_scale;
+        return n;
+    }
+    assert(v->binary_scale == 0);
+    assert(v->decimal_scale == 0);
+    return to_int_fixed_point(mode, v);
+}
+
+static uint64_t to_uns(int mode, Value * v) {
+    if (v->type_class == TYPE_CLASS_INTEGER) {
+        int64_t n = to_int_fixed_point(mode, v);
+        int decimal_scale = v->decimal_scale;
+        while (decimal_scale > 0) {
+            decimal_scale--;
+            n = n * 10;
+        }
+        while (decimal_scale < 0) {
+            decimal_scale++;
+            n = n / 10;
+        }
+        if (v->binary_scale > 0) n = n << +v->binary_scale;
+        if (v->binary_scale < 0) n = n >> -v->binary_scale;
+        return n;
+    }
+    if (v->type_class == TYPE_CLASS_CARDINAL) {
+        uint64_t n = to_uns_fixed_point(mode, v);
+        int decimal_scale = v->decimal_scale;
+        while (decimal_scale > 0) {
+            decimal_scale--;
+            n = n * 10;
+        }
+        while (decimal_scale < 0) {
+            decimal_scale++;
+            n = n / 10;
+        }
+        if (v->binary_scale > 0) n = n << +v->binary_scale;
+        if (v->binary_scale < 0) n = n >> -v->binary_scale;
+        return n;
+    }
+    assert(v->binary_scale == 0);
+    assert(v->decimal_scale == 0);
+    return to_uns_fixed_point(mode, v);
+}
+
 static double to_double(int mode, Value * v) {
     if (mode != MODE_NORMAL) {
         if (v->remote) {
@@ -1683,20 +1775,48 @@ static double to_double(int mode, Value * v) {
             /* Not supported */
         }
         else if (v->type_class == TYPE_CLASS_CARDINAL) {
-            switch (v->size)  {
-            case 1: return (double)*(uint8_t *)v->value;
-            case 2: return (double)*(uint16_t *)v->value;
-            case 4: return (double)*(uint32_t *)v->value;
-            case 8: return (double)*(uint64_t *)v->value;
+            double n = (double)to_uns_fixed_point(mode, v);
+            int binary_scale = v->binary_scale;
+            int decimal_scale = v->decimal_scale;
+            while (binary_scale > 0) {
+                binary_scale--;
+                n = n * 2;
             }
+            while (n != 0 && binary_scale < 0) {
+                binary_scale++;
+                n = n / 2;
+            }
+            while (decimal_scale > 0) {
+                decimal_scale--;
+                n = n * 10;
+            }
+            while (n != 0 && decimal_scale < 0) {
+                decimal_scale++;
+                n = n / 10;
+            }
+            return n;
         }
         else {
-            switch (v->size)  {
-            case 1: return (double)*(int8_t *)v->value;
-            case 2: return (double)*(int16_t *)v->value;
-            case 4: return (double)*(int32_t *)v->value;
-            case 8: return (double)*(int64_t *)v->value;
+            double n = (double)to_int_fixed_point(mode, v);
+            int binary_scale = v->binary_scale;
+            int decimal_scale = v->decimal_scale;
+            while (binary_scale > 0) {
+                binary_scale--;
+                n = n * 2;
             }
+            while (n != 0 && binary_scale < 0) {
+                binary_scale++;
+                n = n / 2;
+            }
+            while (decimal_scale > 0) {
+                decimal_scale--;
+                n = n * 10;
+            }
+            while (n != 0 && decimal_scale < 0) {
+                decimal_scale++;
+                n = n / 10;
+            }
+            return n;
         }
     }
 
@@ -1751,9 +1871,13 @@ static double to_r_double(int mode, Value * v) {
             case 16: return *(double *)v->value;
             }
         }
+        else {
+            return to_double(mode, v);
+        }
     }
 
-    return to_double(mode, v);
+    error(ERR_INV_EXPRESSION, "Operation is not applicable for the value type");
+    return 0;
 }
 
 static int to_boolean(int mode, Value * v) {
@@ -2786,6 +2910,13 @@ static void lazy_unary_expression(int mode, Value * v) {
             else if (v->type_class == TYPE_CLASS_REAL) {
                 set_fp_value(v, (size_t)v->size, -to_double(mode, v));
             }
+            else if (is_real_number(v)) {
+                double n = -to_double(mode, v);
+                v->type = NULL;
+                v->type_class = TYPE_CLASS_REAL;
+                set_fp_value(v, sizeof(double), n);
+                set_fp_type(v);
+            }
             else if (v->type_class == TYPE_CLASS_COMPLEX) {
                 set_complex_value(v, (size_t)v->size, -to_r_double(mode, v), -to_i_double(mode, v));
             }
@@ -3083,7 +3214,7 @@ static void multiplicative_expression(int mode, Value * v) {
                 set_complex_value(v, sizeof(double) * 2, r_value, i_value);
                 set_complex_type(v);
             }
-            else if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
+            else if (is_real_number(v) || is_real_number(&x)) {
                 double value = 0;
                 if (mode == MODE_NORMAL) {
                     switch (sy) {
@@ -3231,7 +3362,7 @@ static void additive_expression(int mode, Value * v) {
                 set_complex_value(v, sizeof(double) * 2, r_value, i_value);
                 set_complex_type(v);
             }
-            else if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
+            else if (is_real_number(v) || is_real_number(&x)) {
                 double value = 0;
                 switch (sy) {
                 case '+': value = to_double(mode, v) + to_double(mode, &x); break;
@@ -3337,7 +3468,7 @@ static void relational_expression(int mode, Value * v) {
                 case SY_GEQ: value = n >= 0; break;
                 }
             }
-            else if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
+            else if (is_real_number(v) || is_real_number(&x)) {
                 switch (sy) {
                 case '<': value = to_double(mode, v) < to_double(mode, &x); break;
                 case '>': value = to_double(mode, v) > to_double(mode, &x); break;
@@ -3387,7 +3518,7 @@ static void equality_expression(int mode, Value * v) {
                     to_r_double(mode, v) == to_r_double(mode, &x) &&
                     to_i_double(mode, v) == to_i_double(mode, &x);
             }
-            else if (v->type_class == TYPE_CLASS_REAL || x.type_class == TYPE_CLASS_REAL) {
+            else if (is_real_number(v) || is_real_number(&x)) {
                 value = to_double(mode, v) == to_double(mode, &x);
             }
             else {
