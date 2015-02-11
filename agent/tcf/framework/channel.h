@@ -156,6 +156,14 @@ typedef void (*ChannelConnectCallBack)(void * /* callback_args */, int /* error 
 extern void channel_connect(PeerServer * server, ChannelConnectCallBack callback, void * callback_args);
 
 /*
+ * Add a new channel transport
+ */
+
+typedef ChannelServer * (*ChannelServerCreate)(PeerServer * /* ps */);
+typedef void (*ChannelConnect)(PeerServer * /* ps */,  ChannelConnectCallBack /* callback */, void * /* callback_args */);
+extern void add_channel_transport(const char * transportname, ChannelServerCreate create, ChannelConnect connect);
+
+/*
  * Start communication of a newly created channel.
  */
 extern void channel_start(Channel *);

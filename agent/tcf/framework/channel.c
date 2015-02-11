@@ -54,6 +54,12 @@ typedef struct ChannelLock {
     unsigned timer;
 } ChannelLock;
 
+typedef struct ChannelTransport {
+    char * transportname;
+    ChannelServerCreate create;
+    ChannelConnect connect;
+} ChannelTransport;
+
 static void trigger_channel_shutdown(ShutdownInfo * obj);
 
 ShutdownInfo channel_shutdown = { trigger_channel_shutdown };
@@ -66,6 +72,9 @@ LINK channel_server_root = TCF_LIST_INIT(channel_server_root);
 #define bclink2channel(A) ((Channel *)((char *)(A) - offsetof(Channel, bclink)))
 #define susplink2channel(A) ((Channel *)((char *)(A) - offsetof(Channel, susplink)))
 #define chan2lock(A) ((ChannelLock *)((char *)(A) - offsetof(ChannelLock, link)))
+
+static ChannelTransport * channel_transport = NULL;
+static unsigned channel_transport_cnt = 0;
 
 static ChannelCreateListener * create_listeners = NULL;
 static unsigned create_listeners_cnt = 0;
@@ -448,6 +457,12 @@ ChannelServer * channel_server(PeerServer * ps) {
         return channel_unix_server(ps);
     }
     else {
+        unsigned i;
+        for (i = 0; i < channel_transport_cnt; i++) {
+            if (strcmp(transportname, channel_transport[i].transportname) == 0) {
+                return (channel_transport[i].create(ps));
+            }
+        }
         errno = ERR_INV_TRANSPORT;
         return NULL;
     }
@@ -469,8 +484,29 @@ void channel_connect(PeerServer * ps, ChannelConnectCallBack callback, void * ca
         channel_unix_connect(ps, callback, callback_args);
     }
     else {
+        unsigned i;
+        for (i = 0; i < channel_transport_cnt; i++) {
+            if (strcmp(transportname, channel_transport[i].transportname) == 0) {
+                return (channel_transport[i].connect(ps, callback, callback_args));
+            }
+        }
         callback(callback_args, ERR_INV_TRANSPORT, NULL);
     }
+}
+
+/*
+ * Add support for a new channel transport
+ */
+
+void add_channel_transport(const char * transportname, ChannelServerCreate create, ChannelConnect connect) {
+     assert(transportname != NULL);
+     assert(create != NULL);
+     assert(connect != NULL);
+     channel_transport_cnt++;
+     channel_transport = loc_realloc(channel_transport, channel_transport_cnt * sizeof(ChannelTransport));
+     channel_transport[channel_transport_cnt - 1].transportname = loc_strdup(transportname);
+     channel_transport[channel_transport_cnt - 1].create = create;
+     channel_transport[channel_transport_cnt - 1].connect = connect;
 }
 
 /*
