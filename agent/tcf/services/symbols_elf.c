@@ -84,7 +84,7 @@ struct Symbol {
 };
 
 #define is_array_type_pseudo_symbol(s) (s->sym_class == SYM_CLASS_TYPE && s->obj == NULL && s->base != NULL)
-#define is_int_type_pseudo_symbol(s) (s->sym_class == SYM_CLASS_TYPE && s->obj == NULL && s->base == NULL)
+#define is_std_type_pseudo_symbol(s) (s->sym_class == SYM_CLASS_TYPE && s->obj == NULL && s->base == NULL)
 #define is_constant_pseudo_symbol(s) (s->sym_class == SYM_CLASS_VALUE && s->obj == NULL && s->base != NULL)
 
 static Context * sym_ctx;
@@ -117,19 +117,21 @@ static struct ConstantPseudoSymbol {
 static struct TypePseudoSymbol {
     const char * name;
     unsigned size;
-    unsigned sign;
+    unsigned type_class;
 } type_pseudo_symbols[] = {
-    { "void",     0, 0 },
-    { "uint8_t",  1, 0 },
-    { "uint16_t", 2, 0 },
-    { "uint32_t", 4, 0 },
-    { "uint64_t", 8, 0 },
-    { "int8_t",   1, 1 },
-    { "int16_t",  2, 1 },
-    { "int32_t",  4, 1 },
-    { "int64_t",  8, 1 },
-    { "char16_t", 2, 0 },
-    { "char32_t", 4, 0 },
+    { "void",      0, TYPE_CLASS_CARDINAL },
+    { "uint8_t",   1, TYPE_CLASS_CARDINAL },
+    { "uint16_t",  2, TYPE_CLASS_CARDINAL },
+    { "uint32_t",  4, TYPE_CLASS_CARDINAL },
+    { "uint64_t",  8, TYPE_CLASS_CARDINAL },
+    { "int8_t",    1, TYPE_CLASS_INTEGER },
+    { "int16_t",   2, TYPE_CLASS_INTEGER },
+    { "int32_t",   4, TYPE_CLASS_INTEGER },
+    { "int64_t",   8, TYPE_CLASS_INTEGER },
+    { "char16_t",  2, TYPE_CLASS_CARDINAL },
+    { "char32_t",  4, TYPE_CLASS_CARDINAL },
+    { "float32_t", 4, TYPE_CLASS_REAL },
+    { "float64_t", 8, TYPE_CLASS_REAL },
     { NULL },
 };
 
@@ -635,14 +637,14 @@ static int is_modified_type(ObjectInfo * obj) {
     return 0;
 }
 
-static void alloc_int_type_pseudo_symbol(Context * ctx, unsigned size, unsigned sign, Symbol ** type) {
+static void alloc_std_type_pseudo_symbol(Context * ctx, unsigned size, unsigned type_class, Symbol ** type) {
     Symbol * sym = alloc_symbol();
     sym->ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
     sym->frame = STACK_NO_FRAME;
     sym->sym_class = SYM_CLASS_TYPE;
     sym->cardinal = size;
-    sym->dimension = sign;
-    assert(is_int_type_pseudo_symbol(sym));
+    sym->dimension = type_class;
+    assert(is_std_type_pseudo_symbol(sym));
     *type = sym;
 }
 
@@ -1534,9 +1536,9 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
         while (type_pseudo_symbols[i].name) {
             if (strcmp(name, type_pseudo_symbols[i].name) == 0) {
                 Symbol * type = NULL;
-                alloc_int_type_pseudo_symbol(
+                alloc_std_type_pseudo_symbol(
                     context_get_group(ctx, CONTEXT_GROUP_SYMBOLS),
-                    type_pseudo_symbols[i].size, type_pseudo_symbols[i].sign, &type);
+                    type_pseudo_symbols[i].size, type_pseudo_symbols[i].type_class, &type);
                 type->index = i + 1;
                 add_to_find_symbol_buf(type);
                 break;
@@ -2437,7 +2439,7 @@ static int reader_is_valid(Context * ctx, ContextAddress addr) {
 static int unpack(const Symbol * sym) {
     assert(sym->base == NULL);
     assert(!is_array_type_pseudo_symbol(sym));
-    assert(!is_int_type_pseudo_symbol(sym));
+    assert(!is_std_type_pseudo_symbol(sym));
     assert(!is_constant_pseudo_symbol(sym));
     assert(sym->obj == NULL || sym->obj->mTag != 0);
     assert(sym->obj == NULL || sym->obj->mCompUnit->mFile->dwarf_dt_cache != NULL);
@@ -2884,8 +2886,8 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
         else *type_class = TYPE_CLASS_POINTER;
         return 0;
     }
-    if (is_int_type_pseudo_symbol(sym)) {
-        *type_class = sym->dimension ? TYPE_CLASS_INTEGER : TYPE_CLASS_CARDINAL;
+    if (is_std_type_pseudo_symbol(sym)) {
+        *type_class = sym->dimension;
         return 0;
     }
     if (unpack(sym) < 0) return -1;
@@ -2922,7 +2924,7 @@ int get_symbol_name(const Symbol * sym, char ** name) {
     if (is_array_type_pseudo_symbol(sym)) {
         *name = NULL;
     }
-    else if (is_int_type_pseudo_symbol(sym)) {
+    else if (is_std_type_pseudo_symbol(sym)) {
         *name = sym->index > 0 ? (char *)type_pseudo_symbols[sym->index - 1].name : NULL;
     }
     else if (is_constant_pseudo_symbol(sym)) {
@@ -2997,7 +2999,7 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
         }
         return 0;
     }
-    if (is_int_type_pseudo_symbol(sym)) {
+    if (is_std_type_pseudo_symbol(sym)) {
         *size = sym->cardinal;
         return 0;
     }
@@ -3101,7 +3103,7 @@ int get_symbol_base_type(const Symbol * sym, Symbol ** base_type) {
         *base_type = sym->base;
         return 0;
     }
-    if (is_int_type_pseudo_symbol(sym) || is_constant_pseudo_symbol(sym)) {
+    if (is_std_type_pseudo_symbol(sym) || is_constant_pseudo_symbol(sym)) {
         return err_wrong_obj();
     }
     if (unpack(sym) < 0) return -1;
@@ -3143,10 +3145,10 @@ int get_symbol_index_type(const Symbol * sym, Symbol ** index_type) {
     assert(sym->magic == SYMBOL_MAGIC);
     if (is_array_type_pseudo_symbol(sym)) {
         if (sym->base->sym_class != SYM_CLASS_TYPE) return err_wrong_obj();
-        alloc_int_type_pseudo_symbol(sym->ctx, context_word_size(sym->ctx), 0, index_type);
+        alloc_std_type_pseudo_symbol(sym->ctx, context_word_size(sym->ctx), TYPE_CLASS_CARDINAL, index_type);
         return 0;
     }
-    if (is_int_type_pseudo_symbol(sym) ||
+    if (is_std_type_pseudo_symbol(sym) ||
             is_constant_pseudo_symbol(sym) ||
             sym->sym_class == SYM_CLASS_FUNCTION) {
         return err_wrong_obj();
@@ -3167,7 +3169,7 @@ int get_symbol_index_type(const Symbol * sym, Symbol ** index_type) {
             }
         }
         if (obj->mTag == TAG_string_type) {
-            alloc_int_type_pseudo_symbol(sym->ctx, obj->mCompUnit->mDesc.mAddressSize, 0, index_type);
+            alloc_std_type_pseudo_symbol(sym->ctx, obj->mCompUnit->mDesc.mAddressSize, TYPE_CLASS_CARDINAL, index_type);
             return 0;
         }
         return err_wrong_obj();
@@ -3232,7 +3234,7 @@ int get_symbol_length(const Symbol * sym, ContextAddress * length) {
         *length = sym->length == 0 ? 1 : sym->length;
         return 0;
     }
-    if (is_int_type_pseudo_symbol(sym) ||
+    if (is_std_type_pseudo_symbol(sym) ||
             is_constant_pseudo_symbol(sym) ||
             sym->sym_class == SYM_CLASS_FUNCTION) {
         return err_wrong_obj();
@@ -3275,7 +3277,7 @@ int get_symbol_lower_bound(const Symbol * sym, int64_t * value) {
         *value = 0;
         return 0;
     }
-    if (is_int_type_pseudo_symbol(sym) ||
+    if (is_std_type_pseudo_symbol(sym) ||
             is_constant_pseudo_symbol(sym) ||
             sym->sym_class == SYM_CLASS_FUNCTION) {
         return err_wrong_obj();
@@ -3381,7 +3383,7 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
         *count = 0;
         return 0;
     }
-    if (is_int_type_pseudo_symbol(sym) || is_constant_pseudo_symbol(sym)) {
+    if (is_std_type_pseudo_symbol(sym) || is_constant_pseudo_symbol(sym)) {
         *children = NULL;
         *count = 0;
         return 0;
@@ -3655,7 +3657,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
     }
 
     if (is_array_type_pseudo_symbol(sym) ||
-            is_int_type_pseudo_symbol(sym)) {
+            is_std_type_pseudo_symbol(sym)) {
         return err_wrong_obj();
     }
 
@@ -3939,7 +3941,7 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
     ObjectInfo * obj = sym->obj;
     *flags = 0;
     assert(sym->magic == SYMBOL_MAGIC);
-    if (sym->base || is_int_type_pseudo_symbol(sym)) {
+    if (sym->base || is_std_type_pseudo_symbol(sym)) {
         if (is_array_type_pseudo_symbol(sym) && sym->base->sym_class == SYM_CLASS_REFERENCE) {
             *flags |= SYM_FLAG_VARARG;
         }
@@ -4056,7 +4058,7 @@ int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
     ObjectInfo * obj = sym->obj;
     assert(sym->magic == SYMBOL_MAGIC);
     memset(props, 0, sizeof(SymbolProperties));
-    if (sym->base || is_int_type_pseudo_symbol(sym)) return 0;
+    if (sym->base || is_std_type_pseudo_symbol(sym)) return 0;
     if (unpack(sym) < 0) return -1;
     if (obj != NULL && obj->mTag == TAG_base_type) {
         U8_T n = 0;
