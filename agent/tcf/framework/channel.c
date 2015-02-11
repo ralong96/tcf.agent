@@ -503,7 +503,7 @@ void add_channel_transport(const char * transportname, ChannelServerCreate creat
      assert(create != NULL);
      assert(connect != NULL);
      channel_transport_cnt++;
-     channel_transport = loc_realloc(channel_transport, channel_transport_cnt * sizeof(ChannelTransport));
+     channel_transport = (ChannelTransport *)loc_realloc(channel_transport, channel_transport_cnt * sizeof(ChannelTransport));
      channel_transport[channel_transport_cnt - 1].transportname = loc_strdup(transportname);
      channel_transport[channel_transport_cnt - 1].create = create;
      channel_transport[channel_transport_cnt - 1].connect = connect;
