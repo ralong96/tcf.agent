@@ -487,7 +487,8 @@ void channel_connect(PeerServer * ps, ChannelConnectCallBack callback, void * ca
         unsigned i;
         for (i = 0; i < channel_transport_cnt; i++) {
             if (strcmp(transportname, channel_transport[i].transportname) == 0) {
-                return (channel_transport[i].connect(ps, callback, callback_args));
+                channel_transport[i].connect(ps, callback, callback_args);
+                return;
             }
         }
         callback(callback_args, ERR_INV_TRANSPORT, NULL);
