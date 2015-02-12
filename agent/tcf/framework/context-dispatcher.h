@@ -66,6 +66,9 @@ typedef struct ContextIf {
 #if ENABLE_ExtendedBreakpointStatus
     int (*context_get_breakpoint_status) (ContextBreakpoint * bp, const char *** names, const char *** values, int * cnt);
 #endif
+#if ENABLE_ContextMemoryProperties
+    int (*context_get_memory_properties) (Context * ctx, const char *** names, const char *** values, int * cnt);
+#endif
 #if ENABLE_ContextExtraProperties
     int (*context_get_extra_properties) (Context * ctx, const char *** names, const char *** values, int * cnt);
 #endif

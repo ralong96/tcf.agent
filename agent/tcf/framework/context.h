@@ -282,6 +282,16 @@ extern void context_unlock(Context * ctx);
 extern int context_has_state(Context * ctx);
 
 /*
+ * Get context memory properties.
+ * 'values' are JSON objects.
+ * Return -1 and set errno if cannot access the properties.
+ * Return 0 on success.
+ */
+#if ENABLE_ContextMemoryProperties
+extern int context_get_memory_properties(Context * ctx, const char *** names, const char *** values, int * cnt);
+#endif
+
+/*
  * Get additional context properties.
  * 'values' are JSON objects.
  * Return -1 and set errno if cannot access the properties.

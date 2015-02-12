@@ -263,13 +263,25 @@ int context_get_breakpoint_capabilities(Context * ctx, const char *** names, con
 }
 #endif
 
+#if ENABLE_ContextMemoryProperties
+int context_get_memory_properties(Context * ctx, const char *** names, const char *** values, int * cnt)
+{
+    ContextExtensionMux * ext = EXT(ctx);
+    if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_memory_properties == NULL) {
+        *cnt = 0;
+        return 0;
+    }
+    return ext->ctx_iface->context_get_memory_properties(ctx, names, values, cnt);
+}
+#endif
+
 #if ENABLE_ContextExtraProperties
 int context_get_extra_properties(Context * ctx, const char *** names, const char *** values, int * cnt)
 {
     ContextExtensionMux * ext = EXT(ctx);
     if (ext->ctx_iface == NULL || ext->ctx_iface->context_get_extra_properties == NULL) {
-        errno = ERR_UNSUPPORTED;
-        return -1;
+        *cnt = 0;
+        return 0;
     }
     return ext->ctx_iface->context_get_extra_properties(ctx, names, values, cnt);
 }

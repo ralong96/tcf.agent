@@ -1456,6 +1456,24 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
 }
 #endif
 
+#if ENABLE_ContextMemoryProperties
+int context_get_memory_properties(Context * ctx, const char *** names, const char *** values, int * cnt) {
+    static const char * prop_names[] = { "AddressableUnitSize", "DefaultWordSize" };
+    static const char * prop_values[] = { "1", "4" };
+    *names = prop_names;
+    *values = prop_values;
+    *cnt = 2;
+    return 0;
+}
+#endif
+
+#if ENABLE_ContextExtraProperties
+int context_get_extra_properties(Context * ctx, const char *** names, const char *** values, int * cnt) {
+    *cnt = 0;
+    return 0;
+}
+#endif
+
 HANDLE get_context_handle(Context * ctx) {
     ContextExtensionWin32 * ext = EXT(ctx);
     return ext->handle;

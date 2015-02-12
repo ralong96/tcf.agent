@@ -272,8 +272,12 @@
 #  define ENABLE_Unix_Domain    (TARGET_UNIX || TARGET_SYMBIAN)
 #endif
 
+#if !defined(ENABLE_ContextMemoryProperties)
+#  define ENABLE_ContextMemoryProperties (TARGET_WINDOWS)
+#endif
+
 #if !defined(ENABLE_ContextExtraProperties)
-#  define ENABLE_ContextExtraProperties 0
+#  define ENABLE_ContextExtraProperties (TARGET_WINDOWS)
 #endif
 
 #if !defined(ENABLE_ContextStateProperties)

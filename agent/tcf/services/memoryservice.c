@@ -149,6 +149,28 @@ static void write_context(OutputStream * out, Context * ctx) {
         write_stream(out, ']');
     }
 
+#if ENABLE_ContextMemoryProperties
+    {
+        /* Back-end context properties */
+        int cnt = 0;
+        const char ** names = NULL;
+        const char ** values = NULL;
+        if (context_get_memory_properties(ctx, &names, &values, &cnt) == 0) {
+            while (cnt > 0) {
+                if (*values != NULL) {
+                    write_stream(out, ',');
+                    json_write_string(out, *names);
+                    write_stream(out, ':');
+                    write_string(out, *values);
+                }
+                names++;
+                values++;
+                cnt--;
+            }
+        }
+    }
+#endif
+
     write_stream(out, '}');
 }
 

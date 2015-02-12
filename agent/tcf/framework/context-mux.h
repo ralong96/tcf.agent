@@ -58,6 +58,9 @@ static int sys_context_get_breakpoint_status(ContextBreakpoint * bp, const char 
 #if ENABLE_ContextBreakpointCapabilities
 static int sys_context_get_breakpoint_capabilities(Context * ctx, const char *** names, const char *** values, int * cnt);
 #endif
+#if ENABLE_ContextMemoryProperties
+static int sys_context_get_memory_properties(Context * ctx, const char *** names, const char *** values, int * cnt);
+#endif
 #if ENABLE_ContextExtraProperties
 static int sys_context_get_extra_properties(Context * ctx, const char *** names, const char *** values, int * cnt);
 #endif
@@ -96,6 +99,9 @@ ContextIf sys_ctx_if = {
 #endif
 #if ENABLE_ExtendedBreakpointStatus
         sys_context_get_breakpoint_status,
+#endif
+#if ENABLE_ContextMemoryProperties
+        sys_context_get_memory_properties,
 #endif
 #if ENABLE_ContextExtraProperties
         sys_context_get_extra_properties,
@@ -154,6 +160,9 @@ static void sys_send_context_created_event(Context * ctx) {
 #endif
 #if ENABLE_ContextBreakpointCapabilities
 #define context_get_breakpoint_capabilities sys_context_get_breakpoint_capabilities
+#endif
+#if ENABLE_ContextMemoryProperties
+#define context_get_memory_properties   sys_context_get_memory_properties
 #endif
 #if ENABLE_ContextExtraProperties
 #define context_get_extra_properties    sys_context_get_extra_properties
