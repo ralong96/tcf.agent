@@ -51,6 +51,11 @@ int ini_server(const char * url, Protocol * p, TCFBroadcastGroup * b) {
     ps = channel_peer_from_url(url);
     if (ps == NULL) str_exception(ERR_OTHER, "Invalid server URL");
     peer_server_addprop(ps, loc_strdup("ServiceManagerID"), loc_strdup(get_service_manager_id(p)));
+#if (ENABLE_SymbolsProxy && !SERVICE_Symbols) || (ENABLE_LineNumbersProxy && !SERVICE_LineNumbers)
+    if (peer_server_getprop(ps, "NeedSyms", NULL) == NULL) {
+        peer_server_addprop(ps, loc_strdup("NeedSyms"), loc_strdup("1"));
+    }
+#endif
     serv = channel_server(ps);
     if (serv == NULL) exception(errno);
     serv->new_conn = channel_new_connection;
