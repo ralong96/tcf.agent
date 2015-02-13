@@ -1945,6 +1945,10 @@ static FileInfoCache * get_file_info_cache(Context * ctx, ContextAddress addr) {
             if (c->pending != NULL) {
                 cache_wait(&c->cache);
             }
+            else if (c->addr == addr) {
+                f = c;
+                break;
+            }
             else if (c->range_addr <= addr && c->range_addr + c->range_size > addr) {
                 f = c;
                 break;
