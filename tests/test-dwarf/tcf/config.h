@@ -82,6 +82,7 @@
 #define ENABLE_Cmdline          0
 #define ENABLE_STREAM_MACROS    0
 
+#define ENABLE_ContextMemoryProperties          0
 #define ENABLE_ContextExtraProperties           0
 #define ENABLE_ContextStateProperties           0
 #define ENABLE_ContextBreakpointCapabilities    0

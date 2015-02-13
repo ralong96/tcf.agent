@@ -619,11 +619,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\agent\tcf\framework\context.c"
+				RelativePath="..\agent\tcf\framework\context-dispatcher.c"
 				>
 			</File>
 			<File
-				RelativePath="..\agent\tcf\framework\context-dispatcher.c"
+				RelativePath="..\agent\tcf\framework\context.c"
 				>
 			</File>
 			<File
