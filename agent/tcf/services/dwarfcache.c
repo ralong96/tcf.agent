@@ -2088,9 +2088,17 @@ static void load_line_numbers_v2(CompUnit * Unit, U8_T unit_size, int dwarf64) {
         add_file(Unit, &file);
     }
 
+    if (header_pos + header_size != dio_GetPos()) {
+        if (dwarf64 && header_pos + header_size == dio_GetPos() + 12) {
+            /* OK - bug in GCC for MIPS64. */
+            /* GCC generates prologue header_length field with a value which is exactly 12 too large. */
+        }
+        else {
+            str_exception(ERR_INV_DWARF, "Invalid line info header");
+        }
+    }
+
     /* Run the program */
-    if (header_pos + header_size != dio_GetPos())
-        str_exception(ERR_INV_DWARF, "Invalid line info header");
     memset(&state, 0, sizeof(state));
     state.mFile = 1;
     state.mLine = 1;
