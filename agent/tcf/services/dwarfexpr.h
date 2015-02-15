@@ -37,6 +37,8 @@ typedef struct DWARFExpressionInfo {
     ELF_Section * section;
     U1_T * expr_addr;
     size_t expr_size;
+    U2_T attr;
+    U2_T form;
     struct DWARFExpressionInfo * next;
 } DWARFExpressionInfo;
 

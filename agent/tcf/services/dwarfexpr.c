@@ -81,6 +81,8 @@ void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** Lis
                     Info->section = Cache->mDebugLoc;
                     Info->expr_addr = dio_GetDataPtr();
                     Info->expr_size = Size;
+                    Info->attr = Value->mAttr;
+                    Info->form = Value->mForm;
                     if (Last == NULL) *List = Info;
                     else Last->next = Info;
                     Last = Info;
@@ -97,6 +99,8 @@ void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** Lis
         Info->section = Unit->mDesc.mSection;
         Info->expr_addr = Value->mAddr;
         Info->expr_size = Value->mSize;
+        Info->attr = Value->mAttr;
+        Info->form = Value->mForm;
         *List = Info;
     }
 }

@@ -805,6 +805,10 @@ static void add_expression(DWARFExpressionInfo * info) {
             add(op);
             expr_pos++;
             copy_leb128();
+            if (op == OP_constu && op_src_pos == 0 && expr_pos == info->expr_size && info->attr == AT_data_member_location) {
+                /* GCC bug - missing OP_add */
+                add(OP_add);
+            }
             break;
         case OP_bra:
         case OP_skip:
