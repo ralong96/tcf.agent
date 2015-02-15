@@ -2431,6 +2431,14 @@ static void op_addr(int mode, Value * v) {
             v->loc->pieces->size = (size_t)v->size;
         }
     }
+    else if (v->loc != NULL && v->loc->pieces_cnt == 1 &&
+            v->loc->pieces->implicit_pointer == 0 && v->loc->pieces->reg == NULL &&
+            v->loc->pieces->value == NULL && v->loc->pieces->bit_offs == 0) {
+        set_ctx_word_value(v, v->loc->pieces->addr);
+        v->type_class = TYPE_CLASS_POINTER;
+        v->constant = 0;
+        v->type = NULL;
+    }
     else {
         error(ERR_INV_EXPRESSION, "Invalid '&': the value has no address");
     }

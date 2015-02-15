@@ -616,14 +616,15 @@ static void test_composite_type(Symbol * type) {
                     Value v;
                     uint64_t n = 0;
                     char * expr = (char *)tmp_alloc(512);
-                    sprintf(expr, "&(((${%s} *)0)->${%s})", tmp_strdup(symbol2id(type)), tmp_strdup(symbol2id(children[i])));
+                    unsigned base = (rand() & 0xffff) << 4;
+                    sprintf(expr, "&(((${%s} *)%u)->${%s})", tmp_strdup(symbol2id(type)), base, tmp_strdup(symbol2id(children[i])));
                     if (evaluate_expression(elf_ctx, STACK_TOP_FRAME, 0, expr, 0, &v) < 0) {
                         error("evaluate_expression");
                     }
                     if (value_to_unsigned(&v, &n) < 0) {
                         error("value_to_unsigned");
                     }
-                    if (n != offs) {
+                    if (n != base + offs) {
                         errno = ERR_OTHER;
                         error("invalid result of evaluate_expression");
                     }

@@ -54,11 +54,42 @@ static LocationExpressionState * evaluate_symbol_location(const Symbol * sym, un
 int get_symbol_address(const Symbol * sym, ContextAddress * address) {
     LocationExpressionState * state = evaluate_symbol_location(sym, 0);
     if (state == NULL) return -1;
+    if (state->pieces_cnt == 1 && state->pieces->implicit_pointer == 0 &&
+            state->pieces->reg == NULL && state->pieces->value == NULL &&
+            state->pieces->bit_offs == 0) {
+        *address = state->pieces->addr;
+        return 0;
+    }
+    if (state->pieces_cnt > 0) {
+        set_errno(ERR_OTHER, "Cannot get object address: the symbol is a bit field");
+        return -1;
+    }
     if (state->stk_pos == 1) {
         *address = (ContextAddress)state->stk[0];
         return 0;
     }
     set_errno(ERR_OTHER, "Object does not have memory address");
+    return -1;
+}
+
+int get_symbol_offset(const Symbol * sym, ContextAddress * offset) {
+    LocationExpressionState * state = evaluate_symbol_location(sym, 1);
+    if (state == NULL) return -1;
+    if (state->pieces_cnt == 1 && state->pieces->implicit_pointer == 0 &&
+            state->pieces->reg == NULL && state->pieces->value == NULL &&
+            state->pieces->bit_offs == 0) {
+        *offset = state->pieces->addr;
+        return 0;
+    }
+    if (state->pieces_cnt > 0) {
+        set_errno(ERR_OTHER, "Cannot get member offset: the symbol is a bit field");
+        return -1;
+    }
+    if (state->stk_pos == 1) {
+        *offset = (ContextAddress)state->stk[0];
+        return 0;
+    }
+    set_errno(ERR_OTHER, "Object does not have member offset");
     return -1;
 }
 
@@ -71,21 +102,6 @@ int get_symbol_register(const Symbol * sym, Context ** ctx, int * frame, Registe
         return 0;
     }
     set_errno(ERR_OTHER, "Symbol is not located in a register");
-    return -1;
-}
-
-int get_symbol_offset(const Symbol * sym, ContextAddress * offset) {
-    LocationExpressionState * state = evaluate_symbol_location(sym, 1);
-    if (state == NULL) return -1;
-    if (state->pieces_cnt > 0) {
-        set_errno(ERR_OTHER, "Cannot get member offset: the symbol is a bit field");
-        return -1;
-    }
-    if (state->stk_pos == 1) {
-        *offset = (ContextAddress)state->stk[0];
-        return 0;
-    }
-    set_errno(ERR_OTHER, "Object does not have member offset");
     return -1;
 }
 
