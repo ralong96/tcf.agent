@@ -30,6 +30,7 @@
 #include <tcf/services/symbols.h>
 #include <tcf/services/symbols_mux.h>
 #include <tcf/services/memorymap.h>
+#include <tcf/framework/cache.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/context.h>
 #include <tcf/services/stacktrace.h>
@@ -45,6 +46,7 @@ static int get_sym_addr(Context * ctx, int frame, ContextAddress addr, ContextAd
         *sym_addr = addr;
     }
     else if (is_top_frame(ctx, frame)) {
+        unsigned cnt = cache_miss_count();
         if (!ctx->stopped) {
             errno = ERR_IS_RUNNING;
             return -1;
@@ -54,6 +56,12 @@ static int get_sym_addr(Context * ctx, int frame, ContextAddress addr, ContextAd
             return -1;
         }
         *sym_addr = get_regs_PC(ctx);
+        if (cache_miss_count() > cnt) {
+            /* The value of the PC (0) is incorrect. */
+            /* errno should already be set to a value different from 0 */
+            assert(errno != 0);
+            return -1;
+        }
     }
     else {
         uint64_t ip = 0;

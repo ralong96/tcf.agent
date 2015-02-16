@@ -33,6 +33,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <tcf/framework/cache.h>
 #include <tcf/framework/errors.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
@@ -209,6 +210,7 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
         sym_ip = addr;
     }
     else if (is_top_frame(ctx, frame)) {
+        unsigned cnt = cache_miss_count();
         if (!ctx->stopped) {
             errno = ERR_IS_RUNNING;
             return -1;
@@ -218,6 +220,12 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
             return -1;
         }
         sym_ip = get_regs_PC(ctx);
+        if (cache_miss_count() > cnt) {
+            /* The value of the PC (0) is incorrect. */
+            /* errno should already be set to a value different from 0 */
+            assert(errno != 0);
+            return -1;
+        }
     }
     else {
         U8_T ip = 0;

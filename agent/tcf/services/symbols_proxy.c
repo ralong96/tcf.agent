@@ -615,6 +615,7 @@ static uint64_t get_symbol_ip(Context * ctx, int * frame, ContextAddress addr) {
         ip = addr;
     }
     else if (is_top_frame(ctx, *frame)) {
+        unsigned cnt = cache_miss_count();
         if (!ctx->stopped) {
             exception(ERR_IS_RUNNING);
         }
@@ -623,6 +624,12 @@ static uint64_t get_symbol_ip(Context * ctx, int * frame, ContextAddress addr) {
         }
         *frame = get_top_frame(ctx);
         ip = get_regs_PC(ctx);
+        if (cache_miss_count() > cnt) {
+            /* The value of the PC (0) is incorrect. */
+            /* errno should already be set to a value different from 0 */
+            assert(errno != 0);
+            exception(errno);
+        }
     }
     else {
         StackFrame * info = NULL;
