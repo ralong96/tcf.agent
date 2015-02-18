@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2015 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -48,7 +48,7 @@
 
 #define USE_MEM_CACHE        1
 #define MEM_HASH_SIZE       61
-#define BRANCH_LIST_SIZE    12
+#define BRANCH_LIST_SIZE    32
 
 #define REG_VAL_ADDR         1
 #define REG_VAL_STACK        2
