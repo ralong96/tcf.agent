@@ -27,12 +27,12 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include <tcf/services/symbols.h>
-#include <tcf/services/symbols_mux.h>
-#include <tcf/services/memorymap.h>
 #include <tcf/framework/cache.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/context.h>
+#include <tcf/services/symbols.h>
+#include <tcf/services/symbols_mux.h>
+#include <tcf/services/memorymap.h>
 #include <tcf/services/stacktrace.h>
 
 static SymbolReader ** readers = NULL;
@@ -85,7 +85,12 @@ static int get_symbol_reader(Context * ctx, int frame, ContextAddress addr, Symb
     }
     if (get_sym_addr(ctx, frame, addr, &sym_addr) < 0) return -1;
     for (i = 0; i < reader_cnt; i++) {
-        if (readers[i]->reader_is_valid(ctx, sym_addr)) {
+        int valid = readers[i]->reader_is_valid(ctx, sym_addr);
+        if (cache_miss_count() > 0) {
+            errno = ERR_CACHE_MISS;
+            return -1;
+        }
+        if (valid) {
             *sym_reader = readers[i];
             return 0;
         }
@@ -196,7 +201,7 @@ int find_next_symbol(Symbol ** sym) {
 
 int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * call_back, void * args) {
     SymbolReader * reader = NULL;
-    if (get_symbol_reader(ctx, frame, 0, &reader) < 0) return 0;
+    if (get_symbol_reader(ctx, frame, 0, &reader) < 0) return -1;
     if (reader) return reader->enumerate_symbols(ctx, frame, call_back, args);
     return 0;
 }
@@ -239,7 +244,7 @@ ContextAddress is_plt_section(Context * ctx, ContextAddress addr) {
 int get_stack_tracing_info(Context * ctx, ContextAddress addr, StackTracingInfo ** info) {
     SymbolReader * reader = NULL;
     *info  = NULL;
-    if (get_symbol_reader(ctx, STACK_NO_FRAME, addr, &reader) < 0) return 0;
+    if (get_symbol_reader(ctx, STACK_NO_FRAME, addr, &reader) < 0) return -1;
     if (reader) return reader->get_stack_tracing_info(ctx, addr, info);
     return 0;
 }
@@ -355,7 +360,7 @@ int get_context_isa(Context * ctx, ContextAddress addr, const char ** isa,
     *range_addr = addr;
     *range_size = 1;
 
-    if (get_symbol_reader(ctx, STACK_NO_FRAME, addr, &reader) < 0) return 0;
+    if (get_symbol_reader(ctx, STACK_NO_FRAME, addr, &reader) < 0) return -1;
     if (reader != NULL) return reader->get_context_isa(ctx, addr, isa, range_addr, range_size);
     return 0;
 }
