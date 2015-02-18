@@ -2435,10 +2435,9 @@ void ini_symbols_lib(void) {
 
 #if ENABLE_SymbolsMux
 static int reader_is_valid(Context * ctx, ContextAddress addr) {
-    ELF_File * file = NULL;
-    ELF_Section * sec = NULL;
-    elf_map_to_link_time_address(ctx, addr, 0, &file, &sec);
-    return file != NULL;
+    static MemoryMap map;
+    if (elf_get_map(ctx, addr, addr, &map) < 0) return 0;
+    return map.region_cnt > 0;
 }
 #endif
 
