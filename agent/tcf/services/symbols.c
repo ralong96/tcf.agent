@@ -976,6 +976,20 @@ static void command_get_sym_file_info_cache_client(void * x) {
             }
         }
 
+#if ENABLE_ELF
+        /* TODO: need a generic way to support ELF program headers in getSymFileInfo command */
+        if (region == NULL) {
+            static MemoryMap map;
+            extern int elf_get_map(Context * ctx, ContextAddress addr0, ContextAddress addr1, MemoryMap * map);
+            if (elf_get_map(ctx, args->addr, args->addr, &map) == 0) {
+                for (i = 0; i < map.region_cnt; i++) {
+                    MemoryRegion * r = map.regions + i;
+                    if (r->addr <= args->addr && r->addr + r->size > args->addr) region = r;
+                }
+            }
+        }
+#endif
+
         sym_file = get_symbol_file_name(ctx, region);
         sym_error = errno;
     }
