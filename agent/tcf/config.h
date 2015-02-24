@@ -313,8 +313,7 @@
 #endif
 
 #if !defined(ENABLE_ProfilerSST)
-#  define ENABLE_ProfilerSST (SERVICE_Profiler && SERVICE_RunControl && SERVICE_StackTrace && \
-      ENABLE_DebugContext && !ENABLE_ContextProxy)
+#  define ENABLE_ProfilerSST (SERVICE_Profiler && SERVICE_RunControl && SERVICE_StackTrace && ENABLE_DebugContext)
 #endif
 
 #if !defined(ENABLE_ContextIdHashTable)
