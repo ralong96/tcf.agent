@@ -347,8 +347,6 @@ void add_context_to_id_hash_table(Context * ctx) {
 #endif
 
 void ini_contexts(void) {
-    ini_cpudefs();
-    init_contexts_sys_dep();
 #if ENABLE_ContextIdHashTable
     {
         unsigned i;
@@ -356,6 +354,8 @@ void ini_contexts(void) {
         for (i = 0; i < CONTEXT_ID_HASH_SIZE; i++) list_init(context_id_hash + i);
     }
 #endif
+    ini_cpudefs();
+    init_contexts_sys_dep();
 }
 
 #endif  /* if ENABLE_DebugContext */
