@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -21,6 +21,10 @@
  */
 
 #include <tcf/config.h>
+
+/* This file is only used when native debugger back-end is enabled - ENABLE_ContextProxy=0 */
+#if !ENABLE_ContextProxy
+
 #if ENABLE_ContextMux
 #include <tcf/framework/cpudefs-mux.h>
 #endif
@@ -143,3 +147,5 @@ int write_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned o
     errno = ERR_INV_CONTEXT;
     return -1;
 }
+
+#endif /* !ENABLE_ContextProxy */
