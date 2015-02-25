@@ -10,6 +10,7 @@
 #  -D<name>  macro definition
 #  -I<dir>   include directory
 #  -p<file>  PDB file name
+#  -x<lang>  c or c++
 #  -m<machine> i386 or x86_64
 
 . `dirname $0`/mcc-env
