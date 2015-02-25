@@ -67,6 +67,8 @@ do
     esac
 done
 
+shift `expr $OPTIND - 1`
+
 if [ $cflag != 0 ] ; then
   if [ "$language" = "" -o "$language" = "c" ] ; then
     cmd[cmdpos]="/TC"
@@ -79,8 +81,6 @@ if [ $cflag != 0 ] ; then
     exit 1
   fi
 fi
-
-shift `expr $OPTIND - 1`
 
 if [ ! -z "$oval" ] ; then
     if [ $cflag = 0 ] ; then

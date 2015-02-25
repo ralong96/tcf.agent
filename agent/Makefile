@@ -39,6 +39,7 @@ $(LIBSSL): $(OpenSSL)/Makefile
 endif
 
 CCDEPS += $(EXTRA_CCDEPS)
+LIBS += $(EXTRA_LIBS)
 
 override CFLAGS += $(OPTS)
 
