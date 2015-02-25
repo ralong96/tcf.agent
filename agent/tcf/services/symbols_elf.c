@@ -2499,27 +2499,29 @@ static U8_T get_array_index_length(ObjectInfo * ref, ObjectInfo * obj) {
 }
 
 static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym) {
+    Trap trap;
+    Symbol * list = find_symbol_list;
     *sym = NULL;
-    if (obj->mFlags & DOIF_external) {
-        Trap trap;
-        Symbol * list = find_symbol_list;
-        if (set_trap(&trap)) {
-            ELF_File * file = obj->mCompUnit->mFile;
-            if (file->debug_info_file) {
-                size_t n = strlen(file->name);
-                if (n > 6 && strcmp(file->name + n - 6, ".debug") == 0) {
-                    char * fnm = (char *)tmp_alloc_zero(n);
-                    memcpy(fnm, file->name, n - 6);
-                    fnm = canonicalize_file_name(fnm);
-                    if (fnm != NULL) {
-                        file = elf_open(fnm);
-                        free(fnm);
-                    }
+    if (set_trap(&trap)) {
+        ELF_File * file = obj->mCompUnit->mFile;
+        if (file->debug_info_file) {
+            size_t n = strlen(file->name);
+            if (n > 6 && strcmp(file->name + n - 6, ".debug") == 0) {
+                char * fnm = (char *)tmp_alloc_zero(n);
+                memcpy(fnm, file->name, n - 6);
+                fnm = canonicalize_file_name(fnm);
+                if (fnm != NULL) {
+                    file = elf_open(fnm);
+                    free(fnm);
                 }
             }
-            if (file != NULL) {
+        }
+        if (file != NULL) {
+            const char * name = get_linkage_name(obj);
+            if (name != NULL) {
                 find_symbol_list = NULL;
-                find_by_name_in_sym_table(file, get_linkage_name(obj), 1);
+                /* AT_external means externally visible, so we can limit to global search */
+                find_by_name_in_sym_table(file, name, obj->mFlags & DOIF_external ? 1 : 0);
                 while (find_symbol_list != NULL) {
                     Symbol * s = find_symbol_list;
                     find_symbol_list = find_symbol_list->next;
@@ -2529,10 +2531,10 @@ static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym) {
                     }
                 }
             }
-            clear_trap(&trap);
         }
-        find_symbol_list = list;
+        clear_trap(&trap);
     }
+    find_symbol_list = list;
     return *sym != NULL;
 }
 
