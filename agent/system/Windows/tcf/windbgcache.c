@@ -122,16 +122,18 @@ static void event_module_unloaded(Context * ctx, void * client_data) {
     assert(handle != NULL);
     assert(ctx->mem == ctx);
     if (!SymUnloadModule64(handle, get_context_module_address(ctx))) {
+#if ENABLE_Trace
         DWORD err = GetLastError();
         /* Workaround:
          * On Windows 7 first few UNLOAD_DLL_DEBUG_EVENT come without matching LOAD_DLL_DEBUG_EVENT,
          * SymUnloadModule64() returns error 0x57 "The parameter is incorrect" for such events.
          * No proper fix is found for this issue. */
         if (err != 0 && err != 0x57) {
-            int n = set_win32_errno(err);
+            set_win32_errno(err);
             trace(LOG_ALWAYS, "SymUnloadModule64(0x%Ix,0x%I64x) (unload DLL) error: 0x%08I32x %s",
-                handle, get_context_module_address(ctx), err, errno_to_str(n));
+                handle, get_context_module_address(ctx), err, errno_to_str(errno));
         }
+#endif
     }
 }
 
@@ -157,8 +159,8 @@ static void CheckDLLVersion(void) {
     size = GetFileVersionInfoSizeW(fnm, &handle);
     version_info = (BYTE *)loc_alloc_zero(size);
     if (!GetFileVersionInfoW(fnm, handle, size, version_info)) {
-        trace(LOG_ALWAYS, "Cannot get DBGHELP.DLL version info: %s",
-            errno_to_str(set_win32_errno(GetLastError())));
+        set_win32_errno(GetLastError());
+        trace(LOG_ALWAYS, "Cannot get DBGHELP.DLL version info: %s", errno_to_str(errno));
     }
     else {
         UINT vsfi_len = 0;
