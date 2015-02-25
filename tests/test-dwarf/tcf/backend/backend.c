@@ -80,6 +80,11 @@ static unsigned files_cnt = 0;
 
 static int line_area_ok = 0;
 
+#define AREA_BUF_SIZE 0x100
+static CodeArea area_buf[AREA_BUF_SIZE];
+static unsigned area_cnt = 0;
+
+
 extern ObjectInfo * get_symbol_object(Symbol * sym);
 
 static RegisterDefinition * get_reg_by_dwarf_id(unsigned id) {
@@ -301,7 +306,6 @@ static void error_sym(const char * func, Symbol * sym) {
 }
 
 static void addr_to_line_callback(CodeArea * area, void * args) {
-    CodeArea * dst = (CodeArea *)args;
     if (area->start_address > pc || area->end_address <= pc) {
         errno = set_errno(ERR_OTHER, "Invalid line area address");
         error("address_to_line");
@@ -320,12 +324,11 @@ static void addr_to_line_callback(CodeArea * area, void * args) {
         errno = set_errno(ERR_OTHER, "Invalid line area end address");
         error("address_to_line");
     }
-    *dst = *area;
+    if (area_cnt < AREA_BUF_SIZE) area_buf[area_cnt++] = *area;
 }
 
 static void addr_to_line_callback_p1(CodeArea * area, void * args) {
-    CodeArea * dst = (CodeArea *)args;
-    *dst = *area;
+    if (area_cnt < AREA_BUF_SIZE) area_buf[area_cnt++] = *area;
 }
 
 static void line_to_addr_callback(CodeArea * area, void * args) {
@@ -1528,7 +1531,6 @@ static void check_addr_ranges(void) {
 
 static void next_pc(void) {
     Symbol * sym = NULL;
-    CodeArea area;
     ContextAddress lt_addr;
     ContextAddress rt_addr;
     ELF_File * lt_file;
@@ -1734,36 +1736,49 @@ static void next_pc(void) {
             }
         }
 
+        area_cnt = 0;
         line_area_ok = 0;
-        memset(&area, 0, sizeof(area));
-        if (address_to_line(elf_ctx, pc, pc + 1, addr_to_line_callback, &area) < 0) {
+        if (address_to_line(elf_ctx, pc, pc + 1, addr_to_line_callback, NULL) < 0) {
             error("address_to_line");
         }
-        next_pc = area.end_address;
-        if (next_pc >= pc) next_pc += test_cnt % 6;
-        else next_pc = pc + 8;
-        if (area.start_line > 0) {
-            char * elf_file_name = tmp_strdup(area.file);
-            if (area.start_address > pc || area.end_address <= pc) {
-                errno = set_errno(ERR_OTHER, "Invalid line area address");
-                error("address_to_line");
+        next_pc = pc + 8;
+        if (area_cnt > 0) {
+            unsigned i;
+            if (area_buf[0].end_address > pc) next_pc = area_buf[0].end_address + test_cnt % 6;
+            if (next_pc > pc + 12) next_pc = pc + 12;
+            if (area_cnt > 1) {
+                printf("Overlapping line info ranges: %08x %08x, %08x %08x\n",
+                    (unsigned)area_buf[0].start_address, (unsigned)area_buf[0].end_address,
+                    (unsigned)area_buf[1].start_address, (unsigned)area_buf[1].end_address);
             }
-            if (line_to_address(elf_ctx, elf_file_name, area.start_line, area.start_column, line_to_addr_callback, &area) < 0) {
-                error("line_to_address");
+            for (i = 0; i < area_cnt; i++) {
+                CodeArea area = area_buf[i];
+                char * elf_file_name = tmp_strdup(area.file);
+                if (area.start_address > pc || area.end_address <= pc) {
+                    errno = set_errno(ERR_OTHER, "Invalid line area address");
+                    error("address_to_line");
+                }
+                if (line_to_address(elf_ctx, elf_file_name, area.start_line, area.start_column, line_to_addr_callback, &area) < 0) {
+                    error("line_to_address");
+                }
+                if (!line_area_ok) {
+                    errno = set_errno(ERR_OTHER, "Invalid line area address");
+                    error("line_to_address");
+                }
+                line_info_cnt++;
             }
-            if (!line_area_ok) {
-                errno = set_errno(ERR_OTHER, "Invalid line area address");
-                error("line_to_address");
-            }
-            line_info_cnt++;
         }
         else {
-            if (address_to_line(elf_ctx, pc + 1, pc + 2, addr_to_line_callback_p1, &area) < 0) {
+            unsigned i;
+            if (address_to_line(elf_ctx, pc > 0 ? pc - 1: pc, pc + 2, addr_to_line_callback_p1, NULL) < 0) {
                 error("address_to_line");
             }
-            if (pc >= area.start_address && pc < area.end_address) {
-                errno = set_errno(ERR_OTHER, "Line info not found");
-                error("address_to_line");
+            for (i = 0; i < area_cnt; i++) {
+                CodeArea area = area_buf[i];
+                if (pc >= area.start_address && pc < area.end_address) {
+                    errno = set_errno(ERR_OTHER, "Line info not found");
+                    error("address_to_line");
+                }
             }
         }
 
