@@ -115,7 +115,10 @@ static LineNumbersState * get_next_in_code(CompUnit * unit, LineNumbersState * s
         if (next->mLine != state->mLine) break;
         if (next->mColumn != state->mColumn) break;
         if (next->mSection != state->mSection) return NULL;
-        if (next->mFlags & LINE_EndSequence) break;
+        if (next->mFlags != state->mFlags) break;
+        if (next->mISA != state->mISA) break;
+        if (next->mOpIndex != state->mOpIndex) break;
+        if (next->mDiscriminator != state->mDiscriminator) break;
         if (next + 1 >= unit->mStates + unit->mStatesCnt) break;
     }
     return next;
@@ -350,11 +353,18 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
                         }
                         for (;;) {
                             LineNumbersState * code_next = get_next_in_code(unit, state);
-                            if (code_next != NULL && state->mAddress < code_next->mAddress) {
-                                LineNumbersState * text_next = get_next_in_text(unit, state);
-                                call_client(ctx, unit, state, code_next, text_next, state->mAddress - range->mAddr + range_rt_addr, client, args);
+                            if (code_next != NULL) {
+                                if (state->mAddress < code_next->mAddress) {
+                                    LineNumbersState * text_next = get_next_in_text(unit, state);
+                                    call_client(ctx, unit, state, code_next, text_next, state->mAddress - range->mAddr + range_rt_addr, client, args);
+                                }
+                                assert(code_next > state);
+                                k = code_next - unit->mStates;
                             }
-                            if (++k >= unit->mStatesCnt) break;
+                            else {
+                                k++;
+                            }
+                            if (k >= unit->mStatesCnt) break;
                             state = unit->mStates + k;
                             if (state->mAddress >= addr_max) break;
                         }
