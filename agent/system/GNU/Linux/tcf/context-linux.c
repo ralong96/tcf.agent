@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1613,36 +1613,8 @@ static void eventpoint_at_main(Context * ctx, void * args) {
     send_context_changed_event(ctx->mem);
     memory_map_event_mapping_changed(ctx->mem);
     if ((EXT(ctx)->attach_mode & CONTEXT_ATTACH_NO_MAIN) == 0) {
-        suspend_debug_context(ctx);
+        suspend_by_breakpoint(ctx, ctx, NULL, 1);
     }
-}
-
-static BreakpointInfo * create_eventpoint_at_main(void) {
-    static const char * attr_list[] = { BREAKPOINT_ENABLED, BREAKPOINT_SKIP_PROLOGUE, BREAKPOINT_LOCATION };
-    BreakpointAttribute * attrs = NULL;
-    BreakpointAttribute ** ref = &attrs;
-    unsigned i;
-
-    for (i = 0; i < sizeof(attr_list) / sizeof(char *); i++) {
-        ByteArrayOutputStream buf;
-        BreakpointAttribute * attr = (BreakpointAttribute *)loc_alloc_zero(sizeof(BreakpointAttribute));
-        OutputStream * out = create_byte_array_output_stream(&buf);
-        attr->name = loc_strdup(attr_list[i]);
-        switch (i) {
-        case 0:
-        case 1:
-            json_write_boolean(out, 1);
-            break;
-        case 2:
-            json_write_string(out, "main");
-            break;
-        }
-        write_stream(out, 0);
-        get_byte_array_output_stream_data(&buf, &attr->value, NULL);
-        *ref = attr;
-        ref = &attr->next;
-    }
-    return create_eventpoint_ext(attrs, NULL, eventpoint_at_main, NULL);
 }
 
 static int cmp_linux_pid(Context * ctx, const char * v) {
@@ -1673,7 +1645,7 @@ void init_contexts_sys_dep(void) {
     add_context_query_comparator("pid", cmp_linux_pid);
     add_context_query_comparator("tid", cmp_linux_tid);
     add_context_query_comparator("KernelName", cmp_linux_kernel_name);
-    create_eventpoint_at_main();
+    create_eventpoint("main", NULL, eventpoint_at_main, NULL);
 }
 
 #endif  /* if ENABLE_DebugContext */

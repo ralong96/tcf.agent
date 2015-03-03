@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -69,7 +69,6 @@ static const char RUN_CONTROL[] = "RunControl";
 typedef struct ContextExtensionRC {
     int pending_safe_event; /* safe events are waiting for this context to be stopped */
     int intercepted;        /* context is reported to a host as suspended */
-    int intercepted_by_bp;  /* intercept counter - only first intercept should report "Breakpoint" reason */
     int intercept_group;
     int reverse_run;
     int step_mode;
@@ -92,6 +91,10 @@ typedef struct ContextExtensionRC {
     ContextAddress pc;
     int pc_error;
     char * state_name;
+    char ** bp_ids;
+    unsigned bp_cnt;
+    unsigned bp_max;
+    int skip_prologue;
     LINK link;
 } ContextExtensionRC;
 
@@ -370,7 +373,7 @@ static int is_json(const char * s) {
 static const char * get_suspend_reason(Context * ctx) {
     const char * reason = NULL;
     ContextExtensionRC * ext = EXT(ctx);
-    if (ext->intercepted_by_bp == 1 && get_context_breakpoint_ids(ctx) != NULL) return REASON_BREAKPOINT;
+    if (ext->bp_cnt > 0) return REASON_BREAKPOINT;
     if (ctx->exception_description != NULL) return ctx->exception_description;
     if (ext->step_error != NULL) return errno_to_str(set_error_report_errno(ext->step_error));
     if (ext->step_done != NULL) return ext->step_done;
@@ -381,7 +384,6 @@ static const char * get_suspend_reason(Context * ctx) {
 
 static void write_context_state(OutputStream * out, Context * ctx) {
     int fst = 1;
-    char ** bp_ids = NULL;
     ContextExtensionRC * ext = EXT(ctx);
 
     assert(!ctx->exited);
@@ -399,8 +401,6 @@ static void write_context_state(OutputStream * out, Context * ctx) {
         /* String: Reason */
         json_write_string(out, get_suspend_reason(ctx));
         write_stream(out, 0);
-
-        if (ext->intercepted_by_bp == 1) bp_ids = get_context_breakpoint_ids(ctx);
     }
 
     /* Object: Additional context state info */
@@ -426,15 +426,15 @@ static void write_context_state(OutputStream * out, Context * ctx) {
             }
             fst = 0;
         }
-        if (bp_ids != NULL) {
-            int i = 0;
+        if (ext->bp_cnt > 0) {
+            unsigned i = 0;
             if (!fst) write_stream(out, ',');
             json_write_string(out, "BPs");
             write_stream(out, ':');
             write_stream(out, '[');
-            while (bp_ids[i] != NULL) {
+            for (i = 0; i < ext->bp_cnt; i++) {
                 if (i > 0) write_stream(out, ',');
-                json_write_string(out, bp_ids[i++]);
+                json_write_string(out, ext->bp_ids[i]);
             }
             write_stream(out, ']');
             fst = 0;
@@ -913,6 +913,59 @@ int suspend_debug_context(Context * ctx) {
     return 0;
 }
 
+int suspend_by_breakpoint(Context * ctx, Context * trigger, const char * bp, int skip_prologue) {
+    ContextExtensionRC * ext = EXT(ctx);
+
+    if (ctx->exited) {
+        /* do nothing */
+    }
+    else if (context_has_state(ctx)) {
+        assert(!ctx->stopped || !ext->safe_single_step);
+        if (!ext->intercepted && bp != NULL && ctx == trigger) {
+            unsigned i = 0;
+            while (i < ext->bp_cnt && strcmp(ext->bp_ids[i], bp)) i++;
+            if (i >= ext->bp_cnt) {
+                if (ext->bp_cnt + 2 > ext->bp_max) {
+                    ext->bp_max += 8;
+                    ext->bp_ids = (char **)loc_realloc(ext->bp_ids, ext->bp_max * sizeof(char *));
+                }
+                ext->bp_ids[ext->bp_cnt++] = loc_strdup(bp);
+                ext->bp_ids[ext->bp_cnt] = NULL;
+            }
+        }
+        if (!ctx->stopped) {
+            assert(!ext->intercepted);
+            if (!ctx->exiting) {
+                if (skip_prologue) ext->skip_prologue = 1;
+                else ctx->pending_intercept = 1;
+                if (!ext->safe_single_step && context_stop(ctx) < 0) return -1;
+            }
+        }
+        else if (!ext->intercepted) {
+            if (skip_prologue) ext->skip_prologue = 1;
+            else ctx->pending_intercept = 1;
+            if (run_ctrl_lock_cnt == 0 && run_safe_events_posted < 4) {
+                run_safe_events_posted++;
+                post_event(run_safe_events, NULL);
+            }
+        }
+    }
+    else {
+        LINK * l;
+        for (l = ctx->children.next; l != &ctx->children; l = l->next) {
+            suspend_by_breakpoint(cldl2ctxp(l), trigger, bp, skip_prologue);
+        }
+    }
+    return 0;
+}
+
+char ** get_context_breakpoint_ids(Context * ctx) {
+    ContextExtensionRC * ext = EXT(ctx);
+    if (!ext->intercepted) return NULL;
+    if (ext->bp_cnt == 0) return NULL;
+    return ext->bp_ids;
+}
+
 typedef struct CommandSuspendArgs {
     char token[256];
     char id[256];
@@ -1085,6 +1138,8 @@ static void notify_context_released(Context * ctx) {
     ContextExtensionRC * ext = EXT(ctx);
     assert(ext->intercepted);
     ext->intercepted = 0;
+    ext->skip_prologue = 0;
+    while (ext->bp_cnt > 0) loc_free(ext->bp_ids[--ext->bp_cnt]);
     for (i = 0; i < listener_cnt; i++) {
         Listener * l = listeners + i;
         if (l->listener->context_released == NULL) continue;
@@ -1167,7 +1222,6 @@ static void send_event_context_suspended(void) {
             assert(!ext->intercepted);
             ext->intercepted = 1;
             ctx->pending_intercept = 0;
-            if (get_context_breakpoint_ids(ctx) != NULL) ext->intercepted_by_bp++;
             if (strcmp(get_suspend_reason(ctx), REASON_USER_REQUEST)) n = &p0;
             list_add_last(&ext->link, n);
         }
@@ -1345,6 +1399,7 @@ static int is_function_prologue(Context * ctx, ContextAddress ip, CodeArea * are
     int sym_class = SYM_CLASS_UNKNOWN;
     ContextAddress sym_addr = 0;
     ContextAddress sym_size = 0;
+    assert(ip >= area->start_address && ip < area->end_address);
     if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip, &sym) < 0) return 0;
     if (get_symbol_class(sym, &sym_class) < 0) return 0;
     if (sym_class != SYM_CLASS_FUNCTION) return 0;
@@ -1383,15 +1438,12 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
 
 #if EN_STEP_OVER
 
-#if ENABLE_Symbols
 static void get_machine_code_area(CodeArea * area, void * args) {
     *(CodeArea **)args = (CodeArea *)tmp_alloc(sizeof(CodeArea));
     memcpy(*(CodeArea **)args, area, sizeof(CodeArea));
 }
-#endif
 
 static int is_within_function_epilogue(Context * ctx, ContextAddress ip) {
-#if ENABLE_Symbols
     Symbol * sym = NULL;
     int sym_class = SYM_CLASS_UNKNOWN;
     ContextAddress sym_addr = 0;
@@ -1405,12 +1457,11 @@ static int is_within_function_epilogue(Context * ctx, ContextAddress ip) {
     if (get_symbol_address(sym, &sym_addr) < 0) return 0;
     if (address_to_line(ctx, sym_addr + sym_size - 1, sym_addr + sym_size, get_machine_code_area, &area) < 0) return 0;
     if (area != NULL && ip > area->start_address && ip < area->end_address) return 1;
-#endif
     return 0;
 }
 
-#endif
-#endif
+#endif /* EN_STEP_OVER */
+#endif /* EN_STEP_LINE */
 
 #if EN_STEP_OVER
 static void step_machine_breakpoint(Context * ctx, void * args) {
@@ -1507,6 +1558,7 @@ static int update_step_machine_state(Context * ctx) {
         case RM_REVERSE_STEP_OVER:
         case RM_REVERSE_STEP_OVER_RANGE:
         case RM_REVERSE_STEP_OVER_LINE:
+        case RM_SKIP_PROLOGUE:
             if (ext->step_cnt == 0) {
                 StackFrame * info = NULL;
                 ext->step_frame_fp = 0;
@@ -1761,7 +1813,20 @@ static int update_step_machine_state(Context * ctx) {
             }
         }
         break;
-#endif
+#if EN_STEP_OVER
+    case RM_SKIP_PROLOGUE:
+        {
+            CodeArea * area = NULL;
+            if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return 0;
+            if (area == NULL || !is_function_prologue(ctx, addr, area)) {
+                ctx->pending_intercept = 1;
+                ext->step_done = REASON_STEP;
+                return 0;
+            }
+        }
+        break;
+#endif /* EN_STEP_OVER */
+#endif /* EN_STEP_LINE */
     case RM_STEP_OUT:
     case RM_REVERSE_STEP_OUT:
         ctx->pending_intercept = 1;
@@ -1808,6 +1873,9 @@ static int update_step_machine_state(Context * ctx) {
         break;
     case RM_REVERSE_STEP_OVER_RANGE:
         if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_INTO_RANGE)) return 0;
+        break;
+    case RM_SKIP_PROLOGUE:
+        if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_INTO)) return 0;
         break;
     }
 
@@ -1887,6 +1955,27 @@ static int check_step_breakpoint(Context * ctx) {
     return -1;
 }
 
+#if EN_STEP_OVER
+static Channel * select_skip_prologue_channel(void) {
+    /* TODO: better logic to select symbols server channel for skipping function prologue */
+    Channel * def = NULL;
+    LINK * l = channel_root.next;
+    while (l != &channel_root) {
+        Channel * c = chanlink2channelp(l);
+        if (!is_channel_closed(c)) {
+            int i;
+            for (i = 0; i < c->peer_service_cnt; i++) {
+                char * nm = c->peer_service_list[i];
+                if (strcmp(nm, "Symbols") == 0) return c;
+            }
+            def = c;
+        }
+        l = l->next;
+    }
+    return def;
+}
+#endif
+
 static void sync_run_state(void) {
     int err_cnt = 0;
     LINK * l;
@@ -1915,28 +2004,35 @@ static void sync_run_state(void) {
             int md = ext->step_mode;
             assert(is_all_stopped(ctx));
             if (context_resume(ctx, md, 0, 0) < 0) {
-                int error = errno;
-                if (get_error_code(error) == ERR_CACHE_MISS) return;
-                resume_error(ctx, error);
+                if (cache_miss_count() > 0) return;
+                resume_error(ctx, errno);
             }
-            ext->step_mode = 0;
+            ext->step_mode = RM_RESUME;
         }
     }
 
     /* Set intercept group flags */
     l = context_root.next;
     while (l != &context_root) {
-        Context * grp = NULL;
         Context * ctx = ctxl2ctxp(l);
         ContextExtensionRC * ext = EXT(ctx);
         l = l->next;
         if (ctx->exited) continue;
         if (ctx->pending_intercept || ext->intercepted) {
-            grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
+            Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
             EXT(grp)->intercept_group = 1;
             continue;
         }
         if (!ctx->stopped) continue;
+        if (ext->step_mode == RM_RESUME && ext->skip_prologue) {
+#if EN_STEP_OVER
+            start_step_mode(ctx, select_skip_prologue_channel(), RM_SKIP_PROLOGUE, 0, 0);
+#else
+            Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
+            EXT(grp)->intercept_group = 1;
+            continue;
+#endif
+        }
         if (ext->step_mode == RM_RESUME || ext->step_mode == RM_REVERSE_RESUME ||
             ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) {
                 ext->step_continue_mode = ext->step_mode;
@@ -1948,16 +2044,15 @@ static void sync_run_state(void) {
             cache_set_def_channel(ext->step_channel);
             if (update_step_machine_state(ctx) < 0) {
                 int error = errno;
-                if (get_error_code(error) == ERR_CACHE_MISS) return;
+                Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
+                if (cache_miss_count() > 0) return;
                 release_error_report(ext->step_error);
                 ext->step_error = get_error_report(error);
                 cancel_step_mode(ctx);
-                ctx->pending_intercept = 1;
-                grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
                 EXT(grp)->intercept_group = 1;
             }
             else if (ctx->pending_intercept) {
-                grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
+                Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
                 EXT(grp)->intercept_group = 1;
             }
             cache_set_def_channel(NULL);
@@ -1988,6 +2083,7 @@ static void sync_run_state(void) {
         }
         else if (ctx->stopped && !ctx->pending_intercept && ext->run_ctrl_ctx_lock_cnt == 0) {
             if (check_step_breakpoint(ctx) < 0) {
+                if (cache_miss_count() > 0) return;
                 resume_error(ctx, errno);
                 err_cnt++;
             }
@@ -1995,9 +2091,8 @@ static void sync_run_state(void) {
                 list_add_last(&ext->link, &p);
             }
             else if (context_resume(ctx, EXT(grp)->reverse_run ? RM_REVERSE_RESUME : RM_RESUME, 0, 0) < 0) {
-                int error = errno;
-                if (get_error_code(error) == ERR_CACHE_MISS) return;
-                resume_error(ctx, error);
+                if (cache_miss_count() > 0) return;
+                resume_error(ctx, errno);
                 err_cnt++;
             }
         }
@@ -2011,9 +2106,8 @@ static void sync_run_state(void) {
         assert(!ext->intercepted);
         l = l->next;
         if (context_resume(ctx, ext->step_continue_mode, ext->step_range_start, ext->step_range_end) < 0) {
-            int error = errno;
-            if (get_error_code(error) == ERR_CACHE_MISS) return;
-            resume_error(ctx, error);
+            if (cache_miss_count() > 0) return;
+            resume_error(ctx, errno);
             err_cnt++;
         }
     }
@@ -2363,7 +2457,6 @@ static void event_context_started(Context * ctx, void * args) {
     assert(!ctx->stopped);
     assert(!ctx->exited);
     if (ext->intercepted) resume_context_tree(ctx);
-    ext->intercepted_by_bp = 0;
     stop_if_safe_events(ctx);
 }
 
@@ -2392,6 +2485,8 @@ static void event_context_disposed(Context * ctx, void * args) {
         ext->step_error = NULL;
     }
     loc_free(ext->state_name);
+    while (ext->bp_cnt > 0) loc_free(ext->bp_ids[--ext->bp_cnt]);
+    loc_free(ext->bp_ids);
 }
 
 static int cmp_has_state(Context * ctx, const char * v) {

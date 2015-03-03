@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -160,6 +160,18 @@ extern int continue_debug_context(Context * ctx, Channel * c,
  * Note: this function is asynchronous, it returns before contexts are suspended.
  */
 extern int suspend_debug_context(Context * ctx);
+
+/*
+ * Suspend (stop and intercept) debug context - thread or process.
+ * This function is intended to be used by the Breakpoints service.
+ */
+extern int suspend_by_breakpoint(Context * ctx, Context * trigger, const char * bp, int skip_prologue);
+
+/*
+ * Return NULL-terminated array of breakpoint IDs if the context is suspended by breakpoint.
+ * Otherwise return NULL.
+ */
+extern char ** get_context_breakpoint_ids(Context * ctx);
 
 /**
  * Set context state name if it is other than Running,
