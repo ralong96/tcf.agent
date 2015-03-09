@@ -283,7 +283,7 @@ int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * ad
         }
         if (IS_PPC64_FUNC_OPD(file, info)) {
             /*
-             * For PPC64, an ELF function symbol address is not described by
+             * For PPC64(v1), an ELF function symbol address is not described by
              * the symbol value. In that case the symbol value points to a
              * function descriptor in the OPD section. The first entry of the
              * descriptor is the real function address. This value is

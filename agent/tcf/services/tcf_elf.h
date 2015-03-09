@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -431,6 +431,7 @@ struct ELF_File {
     uint8_t elf64;
     uint16_t type;
     uint16_t machine;
+    uint32_t flags;     /* Contains ABI version for PPC64 */ 
     uint8_t os_abi;
 
     ContextAddress entry_address;
@@ -515,9 +516,6 @@ struct ELF_Section {
     unsigned * reloc_zones_bondaries;
 };
 
-#define IS_PPC64_FUNC_OPD(file, sym_info)   ((file)->machine == EM_PPC64 && (sym_info)->section_index == (file)->section_opd && ((sym_info)->type == STT_FUNC || (sym_info)->type == STT_NOTYPE))
-#define IS_PPC64_FUNC_DOT(file, sym_info)   ((file)->machine == EM_PPC64 && (sym_info)->type == STT_FUNC && (sym_info)->name != NULL && (sym_info)->name[0] == '.')
-
 struct ELF_PHeader {
     U4_T type;
     U8_T offset;
@@ -528,6 +526,13 @@ struct ELF_PHeader {
     U4_T flags;
     U4_T align;
 };
+
+#define IS_PPC64_FUNC_OPD(file, sym_info)   ((file)->machine == EM_PPC64 && ((file)->flags & 0x3) < 2 && \
+                                            (sym_info)->section_index == (file)->section_opd && \
+                                            ((sym_info)->type == STT_FUNC || (sym_info)->type == STT_NOTYPE))
+
+#define IS_PPC64_FUNC_DOT(file, sym_info)   ((file)->machine == EM_PPC64 && ((file)->flags & 0x3) < 2 && \
+                                            (sym_info)->type == STT_FUNC && (sym_info)->name != NULL && (sym_info)->name[0] == '.')
 
 /*
  * Open ELF file for reading.
