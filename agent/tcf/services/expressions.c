@@ -3023,12 +3023,14 @@ static void lazy_unary_expression(int mode, Value * v) {
             case TYPE_CLASS_POINTER:
             case TYPE_CLASS_INTEGER:
             case TYPE_CLASS_ENUMERATION:
+            case TYPE_CLASS_COMPOSITE:
                 switch (v->type_class) {
                 case TYPE_CLASS_CARDINAL:
                 case TYPE_CLASS_POINTER:
                 case TYPE_CLASS_INTEGER:
                 case TYPE_CLASS_ENUMERATION:
                 case TYPE_CLASS_UNKNOWN:
+                case TYPE_CLASS_COMPOSITE:
                     ok = 1;
                     break;
                 }
