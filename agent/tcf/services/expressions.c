@@ -2344,6 +2344,10 @@ static void op_index(int mode, Value * v) {
             v->loc->pieces->implicit_pointer--;
         }
         else {
+            /* Note: v->size is not set yet if v->sym != NULL */
+            if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
+                error(errno, "Cannot retrieve symbol size");
+            }
             v->address = (ContextAddress)to_uns(mode, v);
             v->remote = 1;
             v->sym_list = NULL;
