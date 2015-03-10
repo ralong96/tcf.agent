@@ -676,7 +676,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
             }
             file->type = hdr.e_type;
             file->machine = hdr.e_machine;
-            file->flags = hdr.e_flags; 
+            file->flags = hdr.e_flags;
             file->os_abi = hdr.e_ident[EI_OSABI];
             file->entry_address = (ContextAddress)hdr.e_entry;
             if (error == 0 && hdr.e_type != ET_EXEC && hdr.e_type != ET_DYN && hdr.e_type != ET_REL) {
@@ -796,7 +796,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
             }
             file->type = hdr.e_type;
             file->machine = hdr.e_machine;
-            file->flags = hdr.e_flags; 
+            file->flags = hdr.e_flags;
             file->os_abi = hdr.e_ident[EI_OSABI];
             file->entry_address = (ContextAddress)hdr.e_entry;
             if (error == 0 && hdr.e_type != ET_EXEC && hdr.e_type != ET_DYN && hdr.e_type != ET_REL) {
@@ -915,7 +915,7 @@ static ELF_File * create_elf_cache(const char * file_name) {
     }
     if (error == 0) {
         unsigned m = 0;
-        file->section_opd = 0; 
+        file->section_opd = 0;
         for (m = 1; m < file->section_cnt; m++) {
             ELF_Section * tbl = file->sections + m;
             if (file->machine == EM_PPC64 && strcmp (tbl->name, ".opd") == 0) file->section_opd = m;
@@ -926,9 +926,9 @@ static ELF_File * create_elf_cache(const char * file_name) {
         if (!file->debug_info_file) file->debug_info_file_name = get_debug_info_file_name(file, &error);
         if (file->debug_info_file_name) trace(LOG_ELF, "Debug info file found %s", file->debug_info_file_name);
         if (file->machine == EM_PPC64) {
-            if ((file->flags & 0x3) < 2 && file->section_opd == 0) 
+            if ((file->flags & 0x3) < 2 && file->section_opd == 0)
                 error = set_errno(ERR_INV_FORMAT, "PPC64 ELFv1 file must contain an OPD section");
-            if ((file->flags & 0x3) == 2 && file->section_opd != 0) 
+            if ((file->flags & 0x3) == 2 && file->section_opd != 0)
                 error = set_errno(ERR_INV_FORMAT, "PPC64 ELFv2 file should not contain an OPD section");
         }
     }

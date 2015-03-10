@@ -431,7 +431,7 @@ struct ELF_File {
     uint8_t elf64;
     uint16_t type;
     uint16_t machine;
-    uint32_t flags;     /* Contains ABI version for PPC64 */ 
+    uint32_t flags;     /* Contains ABI version for PPC64 */
     uint8_t os_abi;
 
     ContextAddress entry_address;
