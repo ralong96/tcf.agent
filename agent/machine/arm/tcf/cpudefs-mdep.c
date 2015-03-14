@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Stanislav Yakovlev and others.
+ * Copyright (c) 2013, 2015 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -19,10 +19,19 @@
 
 #if ENABLE_DebugContext && !ENABLE_ContextProxy
 
+#ifndef USE_getauxval
+#  include <features.h>
+#  define USE_getauxval (defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 16)))
+#endif
+
 #include <stddef.h>
 #include <assert.h>
 #include <stdio.h>
 #include <signal.h>
+#if USE_getauxval
+#  include <sys/auxv.h>
+#  include <asm/hwcap.h>
+#endif
 #include <tcf/framework/errors.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
@@ -827,6 +836,7 @@ static RegisterDefinition * alloc_reg(void) {
     return r;
 }
 
+#if !USE_getauxval
 #define read_fpsid(X) \
     __asm __volatile("mrc p10, 7, %0, c0, c0, 0" \
             : "=r" (*(X)) : : "memory")
@@ -834,6 +844,7 @@ static RegisterDefinition * alloc_reg(void) {
 #define read_mvfr0(X) \
     __asm __volatile("mrc p10, 7, %0, c7, c0, 0" \
             : "=r" (*(X)) : : "memory")
+#endif
 
 static void ini_reg_defs(void) {
     int i;
@@ -864,12 +875,23 @@ static void ini_reg_defs(void) {
         }
         if (strcmp(r->name, "vfp") == 0) {
             uint32_t fpsid = 0;
+#if USE_getauxval
+            unsigned long hwcap = getauxval(AT_HWCAP);
+            if ((hwcap & HWCAP_ARM_VFP) == 0) fpsid = 1 << 23;
+#else
             read_fpsid(&fpsid);
+#endif
             if ((fpsid & (1 << 23)) == 0) {
                 int n;
                 RegisterDefinition * x = NULL;
                 uint32_t mvfr0 = 0;
+#if USE_getauxval
+                if (hwcap & HWCAP_ARM_VFPv3D16) mvfr0 = 0x221;
+                else if (hwcap & HWCAP_ARM_VFPv3) mvfr0 = 0x222;
+                else mvfr0 = 0x110;
+#else
                 read_mvfr0(&mvfr0);
+#endif
                 for (n = 0; n < 3; n++) {
                     RegisterDefinition * w = NULL;
                     switch (n) {
