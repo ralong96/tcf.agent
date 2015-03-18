@@ -136,16 +136,20 @@ extern int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
 static int reader_is_valid(Context * ctx, ContextAddress addr);
 extern void ini_symbols_lib(void);
 
-static SymbolReader symbol_reader = { find_symbol_by_name, find_symbol_in_scope,
-        find_symbol_by_addr, find_next_symbol, enumerate_symbols, symbol2id, id2symbol,
-        get_symbol_class, get_symbol_type, get_symbol_type_class, get_symbol_update_policy,
-        get_symbol_name, get_symbol_size, get_symbol_base_type, get_symbol_index_type,
-        get_symbol_container, get_symbol_length, get_symbol_lower_bound, get_symbol_children,
-        get_symbol_flags, get_symbol_props, get_symbol_frame, get_array_symbol, is_plt_section, get_location_info,
-        get_funccall_info, get_stack_tracing_info, get_symbol_file_name,
-        get_context_isa, reader_is_valid};
+static SymbolReader symbol_reader = {
+    find_symbol_by_name, find_symbol_in_scope,
+    find_symbol_by_addr, find_next_symbol, enumerate_symbols, symbol2id, id2symbol,
+    get_symbol_class, get_symbol_type, get_symbol_type_class, get_symbol_update_policy,
+    get_symbol_name, get_symbol_size, get_symbol_base_type, get_symbol_index_type,
+    get_symbol_container, get_symbol_length, get_symbol_lower_bound, get_symbol_children,
+    get_symbol_flags, get_symbol_props, get_symbol_frame, get_array_symbol, is_plt_section, get_location_info,
+    get_funccall_info, get_stack_tracing_info, get_symbol_file_name,
+    get_context_isa, reader_is_valid
+};
 
 #endif  /* SYM_READER_PREFIX */
+
+extern int symbols_mux_id2symbol(const char * id, Symbol ** sym);
 
 extern int add_symbols_reader(SymbolReader * reader);
 

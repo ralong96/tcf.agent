@@ -1866,7 +1866,6 @@ static void enumerate_local_vars(ObjectInfo * parent, int level,
         case TAG_partial_unit:
         case TAG_module:
         case TAG_global_subroutine:
-        case TAG_inlined_subroutine:
         case TAG_lexical_block:
         case TAG_with_stmt:
         case TAG_try_block:
@@ -1896,13 +1895,27 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * call_
     if (get_sym_context(ctx, frame, 0) < 0) exception(errno);
     if (sym_ip != 0) {
         UnitAddress ip;
+        LocalVarsCallBack cb;
+        memset(&cb, 0, sizeof(LocalVarsCallBack));
+        cb.args = args;
+        cb.call_back = call_back;
         find_unit(sym_ctx, sym_ip, &ip);
         if (ip.unit != NULL) {
-            LocalVarsCallBack cb;
-            memset(&cb, 0, sizeof(LocalVarsCallBack));
-            cb.args = args;
-            cb.call_back = call_back;
-            enumerate_local_vars(ip.unit->mObject, 0, &ip, &cb);
+            StackFrame * info = NULL;
+            if (frame != STACK_NO_FRAME && get_frame_info(ctx, frame, &info) < 0) exception(errno);
+            if (info != NULL && info->func_id != NULL) {
+                Symbol * sym = NULL;
+#if ENABLE_SymbolsMux
+                if (symbols_mux_id2symbol(info->func_id, &sym) < 0) exception(errno);
+                if (sym->reader != &symbol_reader) exception(set_errno(ERR_OTHER, "Invalid stack framme info"));
+#else
+                if (id2symbol(info->func_id, &sym) < 0) exception(errno);
+#endif
+                enumerate_local_vars(sym->obj, 1, &ip, &cb);
+            }
+            else {
+                enumerate_local_vars(ip.unit->mObject, 0, &ip, &cb);
+            }
         }
     }
     clear_trap(&trap);
@@ -2259,7 +2272,64 @@ int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
 
 static int buf_sub_max = 0;
 
-static void search_inlined_subroutine(ObjectInfo * obj, UnitAddress * addr, StackTracingInfo * buf) {
+static void add_inlined_subroutine(ObjectInfo * o, CompUnit * unit, ContextAddress addr0, ContextAddress addr1, StackTracingInfo * buf) {
+    StackFrameInlinedSubroutine * sub = (StackFrameInlinedSubroutine *)tmp_alloc(sizeof(StackFrameInlinedSubroutine));
+    Symbol * sym = NULL;
+    U8_T call_file = 0;
+    CodeArea area;
+    memset(&area, 0, sizeof(area));
+    if (get_num_prop(o, AT_call_file, &call_file)) {
+        U8_T call_line = 0;
+        load_line_numbers(unit);
+        area.directory = unit->mDir;
+        if (call_file < unit->mFilesCnt) {
+            FileInfo * file_info = unit->mFiles + (int)call_file;
+            if (is_absolute_path(file_info->mName) || file_info->mDir == NULL) {
+                area.file = file_info->mName;
+            }
+            else if (is_absolute_path(file_info->mDir)) {
+                area.directory = file_info->mDir;
+                area.file = file_info->mName;
+            }
+            else {
+                char buf[FILE_PATH_SIZE];
+                snprintf(buf, sizeof(buf), "%s/%s", file_info->mDir, file_info->mName);
+                area.file = tmp_strdup(buf);
+            }
+            area.file_mtime = file_info->mModTime;
+            area.file_size = file_info->mSize;
+        }
+        else {
+            area.file = unit->mObject->mName;
+        }
+        if (get_num_prop(o, AT_call_line, &call_line)) {
+            area.start_line = (int)call_line;
+            area.end_line = (int)call_line + 1;
+        }
+    }
+    object2symbol(NULL, o, &sym);
+    sub->sym = sym;
+    sub->area = area;
+    sub->area.start_address = addr0;
+    sub->area.end_address = addr1;
+    if (buf->sub_cnt >= buf_sub_max) {
+        buf_sub_max += 16;
+        buf->subs = (StackFrameInlinedSubroutine **)tmp_realloc(
+            buf->subs, sizeof(StackFrameInlinedSubroutine *) * buf_sub_max);
+    }
+    buf->subs[buf->sub_cnt++] = sub;
+    if (buf->addr < addr0) {
+        assert(buf->addr + buf->size > addr0);
+        buf->size = buf->addr + buf->size - addr0;
+        buf->addr = addr0;
+    }
+    if (buf->addr + buf->size > addr1) {
+        assert(addr1 > buf->addr);
+        buf->size = addr1 - buf->addr;
+    }
+}
+
+static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddress * addr, StackTracingInfo * buf) {
     ObjectInfo * o = get_dwarf_children(obj);
     while (o != NULL) {
         switch (o->mTag) {
@@ -2274,7 +2344,7 @@ static void search_inlined_subroutine(ObjectInfo * obj, UnitAddress * addr, Stac
         case TAG_subroutine:
         case TAG_subprogram:
             if (!check_in_range(o, addr)) break;
-            search_inlined_subroutine(o, addr, buf);
+            search_inlined_subroutine(ctx, o, addr, buf);
             break;
         case TAG_inlined_subroutine:
             if (o->mFlags & DOIF_ranges) {
@@ -2283,40 +2353,6 @@ static void search_inlined_subroutine(ObjectInfo * obj, UnitAddress * addr, Stac
                 if (debug_ranges != NULL) {
                     CompUnit * unit = addr->unit;
                     ContextAddress base = unit->mObject->u.mCode.mLowPC;
-                    Symbol * sym = NULL;
-                    U8_T call_file = 0;
-                    CodeArea area;
-                    object2symbol(NULL, o, &sym);
-                    memset(&area, 0, sizeof(area));
-                    if (get_num_prop(o, AT_call_file, &call_file)) {
-                        U8_T call_line = 0;
-                        load_line_numbers(unit);
-                        area.directory = unit->mDir;
-                        if (call_file < unit->mFilesCnt) {
-                            FileInfo * file_info = unit->mFiles + (int)call_file;
-                            if (is_absolute_path(file_info->mName) || file_info->mDir == NULL) {
-                                area.file = file_info->mName;
-                            }
-                            else if (is_absolute_path(file_info->mDir)) {
-                                area.directory = file_info->mDir;
-                                area.file = file_info->mName;
-                            }
-                            else {
-                                char buf[FILE_PATH_SIZE];
-                                snprintf(buf, sizeof(buf), "%s/%s", file_info->mDir, file_info->mName);
-                                area.file = tmp_strdup(buf);
-                            }
-                            area.file_mtime = file_info->mModTime;
-                            area.file_size = file_info->mSize;
-                        }
-                        else {
-                            area.file = unit->mObject->mName;
-                        }
-                        if (get_num_prop(o, AT_call_line, &call_line)) {
-                            area.start_line = (int)call_line;
-                            area.end_line = (int)call_line + 1;
-                        }
-                    }
                     dio_EnterSection(&unit->mDesc, debug_ranges, o->u.mCode.mHighPC.mRanges);
                     for (;;) {
                         ELF_Section * x_sec = NULL;
@@ -2331,23 +2367,28 @@ static void search_inlined_subroutine(ObjectInfo * obj, UnitAddress * addr, Stac
                             if (x_sec == NULL) x_sec = unit->mTextSection;
                             if (y_sec == NULL) y_sec = unit->mTextSection;
                             if (x_sec == addr->section && y_sec == addr->section) {
-                                StackFrameInlinedSubroutine * sub = (StackFrameInlinedSubroutine *)tmp_alloc(
-                                        sizeof(StackFrameInlinedSubroutine));
-                                sub->sym = sym;
-                                sub->area = area;
-                                sub->area.start_address = base + x;
-                                sub->area.end_address = base + y;
-                                if (buf->sub_cnt >= buf_sub_max) {
-                                    buf_sub_max += 16;
-                                    buf->subs = (StackFrameInlinedSubroutine **)tmp_realloc(
-                                        buf->subs, sizeof(StackFrameInlinedSubroutine *) * buf_sub_max);
+                                ELF_File * file = unit->mFile;
+                                ContextAddress addr0 = elf_map_to_run_time_address(ctx, file, addr->section, base + x);
+                                ContextAddress addr1 = elf_map_to_run_time_address(ctx, file, addr->section, base + y);
+                                if (addr0 <= addr->rt_addr && addr1 > addr->rt_addr) {
+                                    add_inlined_subroutine(o, unit, base + x, base + y, buf);
+                                    search_inlined_subroutine(ctx, o, addr, buf);
+                                    break;
                                 }
-                                buf->subs[buf->sub_cnt++] = sub;
                             }
                         }
                     }
                     dio_ExitSection();
                 }
+            }
+            else if ((o->mFlags & DOIF_low_pc) && o->u.mCode.mHighPC.mAddr > o->u.mCode.mLowPC &&
+                    addr->lt_addr >= o->u.mCode.mLowPC && addr->lt_addr < o->u.mCode.mHighPC.mAddr &&
+                    o->u.mCode.mSection == addr->section) {
+                ELF_File * file = addr->unit->mFile;
+                ContextAddress addr0 = elf_map_to_run_time_address(ctx, file, addr->section, o->u.mCode.mLowPC);
+                ContextAddress addr1 = elf_map_to_run_time_address(ctx, file, addr->section, o->u.mCode.mHighPC.mAddr);
+                add_inlined_subroutine(o, addr->unit, addr0, addr1, buf);
+                search_inlined_subroutine(ctx, o, addr, buf);
             }
             break;
         }
@@ -2385,7 +2426,7 @@ int get_stack_tracing_info(Context * ctx, ContextAddress rt_addr, StackTracingIn
                     find_unit(ctx, rt_addr, &unit);
                     if (unit.unit != NULL) {
                         buf_sub_max = 0;
-                        search_inlined_subroutine(unit.unit->mObject, &unit, &buf);
+                        search_inlined_subroutine(ctx, unit.unit->mObject, &unit, &buf);
                     }
                 }
                 *info = &buf;

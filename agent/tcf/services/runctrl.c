@@ -81,6 +81,7 @@ typedef struct ContextExtensionRC {
     ContextAddress step_frame_fp;
     ContextAddress step_bp_addr;
     BreakpointInfo * step_bp_info;
+    int step_inlined;
     CodeArea * step_code_area;
     ErrorReport * step_error;
     const char * step_done;
@@ -782,6 +783,7 @@ static void cancel_step_mode(Context * ctx) {
     ext->step_range_end = 0;
     ext->step_frame_fp = 0;
     ext->step_bp_addr = 0;
+    ext->step_inlined = 0;
     ext->step_continue_mode = RM_RESUME;
     ext->step_mode = RM_RESUME;
 }
@@ -1563,6 +1565,7 @@ static int update_step_machine_state(Context * ctx) {
                 StackFrame * info = NULL;
                 ext->step_frame_fp = 0;
                 if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
+                ext->step_inlined = info->inlined;
                 ext->step_frame_fp = info->fp;
             }
             else if (addr < ext->step_range_start || addr >= ext->step_range_end) {
@@ -1607,6 +1610,21 @@ static int update_step_machine_state(Context * ctx) {
                         }
                     }
                 }
+                else if (ext->step_inlined < info->inlined) {
+                    if (ext->step_bp_info != NULL) {
+                        destroy_eventpoint(ext->step_bp_info);
+                        ext->step_bp_info = NULL;
+                    }
+                    if (!do_reverse || ext->step_line_cnt > 1) {
+                        if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_OVER)) return 0;
+                        ext->step_continue_mode = RM_STEP_INTO;
+                    }
+                    else {
+                        if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_OVER)) return 0;
+                        ext->step_continue_mode = RM_REVERSE_STEP_INTO;
+                    }
+                    return 0;
+                }
                 else if (do_reverse) {
                     /* Workaround for GCC debug information that contains
                      * invalid stack frame information for function epilogues */
@@ -1642,13 +1660,17 @@ static int update_step_machine_state(Context * ctx) {
                         return -1;
                     }
                     if (get_frame_info(ctx, p, &info) < 0) return -1;
-                    if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) return -1;
+                    ext->step_inlined = info->inlined;
                     ext->step_frame_fp = info->fp;
-                    step_bp_addr = (ContextAddress)ip;
-                    break;
+                    if (info->area == NULL) {
+                        if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) return -1;
+                        step_bp_addr = (ContextAddress)ip;
+                        break;
+                    }
                 }
                 if (get_frame_info(ctx, n, &info) < 0) return -1;
                 if (ext->step_frame_fp != info->fp) {
+                    unsigned frame_cnt;
                     if (ext->step_bp_info != NULL) {
                         if (!do_reverse || ext->step_line_cnt > 1) {
                             ext->step_continue_mode = RM_RESUME;
@@ -1658,6 +1680,35 @@ static int update_step_machine_state(Context * ctx) {
                         }
                         return 0;
                     }
+                    for (frame_cnt = 0; frame_cnt < RC_STEP_MAX_STACK_FRAMES; frame_cnt++) {
+                        n = get_prev_frame(ctx, n);
+                        if (n < 0) {
+                            if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
+                            break;
+                        }
+                        if (get_frame_info(ctx, n, &info) < 0) return -1;
+                        if (ext->step_frame_fp == info->fp) {
+                            uint64_t pc = 0;
+                            if (read_reg_value(info, get_PC_definition(ctx), &pc) < 0) return -1;
+                            step_bp_addr = (ContextAddress)pc;
+                            break;
+                        }
+                    }
+                }
+                else if (ext->step_inlined < info->inlined) {
+                    if (ext->step_bp_info != NULL) {
+                        destroy_eventpoint(ext->step_bp_info);
+                        ext->step_bp_info = NULL;
+                    }
+                    if (!do_reverse || ext->step_line_cnt > 1) {
+                        if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_OVER)) return 0;
+                        ext->step_continue_mode = RM_STEP_INTO;
+                    }
+                    else {
+                        if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_OVER)) return 0;
+                        ext->step_continue_mode = RM_REVERSE_STEP_INTO;
+                    }
+                    return 0;
                 }
             }
             break;
@@ -1807,8 +1858,8 @@ static int update_step_machine_state(Context * ctx) {
             /* When doing reverse step-into/over line, if we have already skipped the first line, we want to reach
              * the beginning of current line, fix step range to handle this.
              */
-            if ((ext->step_mode == RM_REVERSE_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_OVER_LINE)
-                    && ext->step_line_cnt > 0) {
+            if ((ext->step_mode == RM_REVERSE_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_OVER_LINE) &&
+                    ext->step_line_cnt > 0) {
                 ext->step_range_start += 1;
             }
         }
@@ -2101,13 +2152,27 @@ static void sync_run_state(void) {
     /* Resume contexts with resume mode other then RM_RESUME */
     l = p.next;
     while (err_cnt == 0 && run_ctrl_lock_cnt == 0 && l != &p) {
+        int error = 0;
         Context * ctx = link2ctx(l);
         ContextExtensionRC * ext = EXT(ctx);
         assert(!ext->intercepted);
         l = l->next;
-        if (context_resume(ctx, ext->step_continue_mode, ext->step_range_start, ext->step_range_end) < 0) {
+        if (ext->step_continue_mode == RM_STEP_INTO) {
+            int done = 0;
+            if (step_into_inlined_frame(ctx, &done) < 0) error = errno;
+            if (!error && done) {
+                ctx->pending_intercept = 1;
+                if (run_safe_events_posted < 4) {
+                    run_safe_events_posted++;
+                    post_event(run_safe_events, NULL);
+                }
+                continue;
+            }
+        }
+        if (!error && context_resume(ctx, ext->step_continue_mode, ext->step_range_start, ext->step_range_end) < 0) error = errno;
+        if (error) {
             if (cache_miss_count() > 0) return;
-            resume_error(ctx, errno);
+            resume_error(ctx, error);
             err_cnt++;
         }
     }

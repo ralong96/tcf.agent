@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -222,7 +222,9 @@ typedef struct StackFrame {
     int is_top_frame;
     int is_walked;          /* Data collected by: 0 - crawl, 1 - walk */
     int has_reg_data;
-    CodeArea * area;        /* if the frame is inlined */
+    int inlined;
+    CodeArea * area;        /* if the frame is call site of inlined function */
+    char * func_id;         /* function symbol ID - optional */
     Context * ctx;
     ContextAddress fp;      /* frame address */
     RegisterData * regs;    /* register values */

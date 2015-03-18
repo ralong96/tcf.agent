@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -43,6 +43,7 @@
 static const char * STACKTRACE = "StackTrace";
 
 typedef struct StackTrace {
+    int inlined;
     int complete;
     int frame_cnt;
     int frame_max;
@@ -69,26 +70,62 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
     else if (info != NULL) {
         Trap trap;
         if (set_trap(&trap)) {
-            int i;
             LocationExpressionState * state;
             state = evaluate_location_expression(ctx, frame, info->fp->cmds, info->fp->cmds_cnt, NULL, 0);
             if (state->stk_pos != 1) str_exception(ERR_OTHER, "Invalid stack trace expression");
             frame->fp = (ContextAddress)state->stk[0];
             frame->is_walked = 1;
-            for (i = 0; i < info->reg_cnt; i++) {
-                int ok = 0;
-                uint64_t v = 0;
-                Trap trap_reg;
-                if (set_trap(&trap_reg)) {
-                    /* If a saved register value cannot be evaluated - ignore it */
-                    state = evaluate_location_expression(ctx, frame, info->regs[i]->cmds, info->regs[i]->cmds_cnt, NULL, 0);
-                    if (state->stk_pos == 1) {
-                        v = state->stk[0];
-                        ok = 1;
+            if (info->sub_cnt > 0 && frame->area == NULL) {
+                frame->inlined = info->sub_cnt;
+                if (frame->is_top_frame) {
+                    while (frame->inlined > 0 && ip == info->subs[frame->inlined - 1]->area.start_address) {
+                        if (EXT(ctx)->inlined >= frame->inlined) break;
+                        frame->inlined--;
                     }
-                    clear_trap(&trap_reg);
+                    if (frame->inlined < info->sub_cnt) {
+                        frame->area = (CodeArea *)loc_alloc(sizeof(CodeArea));
+                        *frame->area = info->subs[frame->inlined]->area;
+                        if (frame->area->directory) frame->area->directory = loc_strdup(frame->area->directory);
+                        if (frame->area->file) frame->area->file = loc_strdup(frame->area->file);
+                    }
                 }
-                if (ok && write_reg_value(down, info->regs[i]->reg, v) < 0) exception(errno);
+            }
+            if (frame->inlined > 0 && frame->inlined <= info->sub_cnt) {
+                size_t buf_size = 8;
+                uint8_t * buf = (uint8_t *)tmp_alloc(buf_size);
+                RegisterDefinition * def = get_reg_definitions(ctx);
+                while (def->name != NULL) {
+                    if (buf_size < def->size) buf = (uint8_t *)tmp_realloc(buf, buf_size = def->size);
+                    if (read_reg_bytes(frame, def, 0, def->size, buf) == 0) {
+                        write_reg_bytes(down, def, 0, def->size, buf);
+                        down->has_reg_data = 1;
+                    }
+                    def++;
+                }
+                down->inlined = frame->inlined - 1;
+                down->area = (CodeArea *)loc_alloc(sizeof(CodeArea));
+                *down->area = info->subs[down->inlined]->area;
+                if (down->area->directory) down->area->directory = loc_strdup(down->area->directory);
+                if (down->area->file) down->area->file = loc_strdup(down->area->file);
+                frame->func_id = loc_strdup(symbol2id(info->subs[down->inlined]->sym));
+            }
+            else {
+                int i;
+                for (i = 0; i < info->reg_cnt; i++) {
+                    int ok = 0;
+                    uint64_t v = 0;
+                    Trap trap_reg;
+                    if (set_trap(&trap_reg)) {
+                        /* If a saved register value cannot be evaluated - ignore it */
+                        state = evaluate_location_expression(ctx, frame, info->regs[i]->cmds, info->regs[i]->cmds_cnt, NULL, 0);
+                        if (state->stk_pos == 1) {
+                            v = state->stk[0];
+                            ok = 1;
+                        }
+                        clear_trap(&trap_reg);
+                    }
+                    if (ok && write_reg_value(down, info->regs[i]->reg, v) < 0) exception(errno);
+                }
             }
             clear_trap(&trap);
         }
@@ -114,11 +151,23 @@ static void add_frame(StackTrace * stack, StackFrame * frame) {
     stack->frames[stack->frame_cnt++] = *frame;
 }
 
+static void free_frame(StackFrame * frame) {
+    if (frame->area != NULL) {
+        loc_free(frame->area->directory);
+        loc_free(frame->area->file);
+        loc_free(frame->area);
+        frame->area = NULL;
+    }
+    loc_free(frame->regs);
+    loc_free(frame->func_id);
+    frame->regs = NULL;
+    frame->func_id = NULL;
+}
+
 static void invalidate_stack_trace(StackTrace * stack) {
     int i;
     for (i = 0; i < stack->frame_cnt; i++) {
-        loc_free(stack->frames[i].regs);
-        stack->frames[i].regs = NULL;
+        free_frame(stack->frames + i);
     }
     stack->frame_cnt = 0;
     stack->complete = 0;
@@ -156,7 +205,7 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             trace(LOG_STACK, "  trace error: %s", errno_to_str(errno));
             if (get_error_code(errno) == ERR_CACHE_MISS) {
                 error = errno;
-                loc_free(down.regs);
+                free_frame(&down);
                 break;
             }
             /* Try with stackcrawl */
@@ -164,20 +213,20 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
         }
         if (frame->is_walked == 0) {
             trace(LOG_STACK, "  *** frame info not available ***");
-            loc_free(down.regs);
+            free_frame(&down);
             memset(&down, 0, sizeof(down));
             down.ctx = ctx;
             if (crawl_stack_frame(frame, &down) < 0) {
                 error = errno;
                 trace(LOG_STACK, "  crawl error: %s", errno_to_str(errno));
-                loc_free(down.regs);
+                free_frame(&down);
                 break;
             }
         }
         trace(LOG_STACK, "  cfa      %16"PRIX64, (uint64_t)frame->fp);
         if (!down.has_reg_data) {
             stack->complete = 1;
-            loc_free(down.regs);
+            free_frame(&down);
             break;
         }
         if (stack->frame_cnt > 1 && frame->fp == stack->frames[stack->frame_cnt - 2].fp) {
@@ -196,7 +245,7 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             if (equ) {
                 /* All registers are same - stop tracing */
                 stack->complete = 1;
-                loc_free(down.regs);
+                free_frame(&down);
                 break;
             }
         }
@@ -285,6 +334,74 @@ static void write_context(OutputStream * out, char * id, CommandGetContextData *
         json_write_string(out, "FP");
         write_stream(out, ':');
         json_write_uint64(out, d->info->fp);
+    }
+
+    if (d->info->inlined) {
+        write_stream(out, ',');
+        json_write_string(out, "Inlined");
+        write_stream(out, ':');
+        json_write_long(out, d->info->inlined);
+    }
+
+    if (d->info->func_id != NULL) {
+        write_stream(out, ',');
+        json_write_string(out, "FuncID");
+        write_stream(out, ':');
+        json_write_string(out, d->info->func_id);
+    }
+
+    if (d->info->area != NULL) {
+        CodeArea * area = d->info->area;
+        write_stream(out, ',');
+        json_write_string(out, "CodeArea");
+        write_stream(out, ':');
+        write_stream(out, '{');
+        json_write_string(out, "SAddr");
+        write_stream(out, ':');
+        json_write_uint64(out, area->start_address);
+        if (area->start_line > 0) {
+            write_stream(out, ',');
+            json_write_string(out, "SLine");
+            write_stream(out, ':');
+            json_write_ulong(out, area->start_line);
+            if (area->start_column > 0) {
+                write_stream(out, ',');
+                json_write_string(out, "SCol");
+                write_stream(out, ':');
+                json_write_ulong(out, area->start_column);
+            }
+        }
+        if (area->end_address != 0) {
+            write_stream(out, ',');
+            json_write_string(out, "EAddr");
+            write_stream(out, ':');
+            json_write_uint64(out, area->end_address);
+        }
+        if (area->end_line > 0) {
+            write_stream(out, ',');
+            json_write_string(out, "ELine");
+            write_stream(out, ':');
+            json_write_ulong(out, area->end_line);
+            if (area->end_column > 0) {
+                write_stream(out, ',');
+                json_write_string(out, "ECol");
+                write_stream(out, ':');
+                json_write_ulong(out, area->end_column);
+            }
+        }
+        if (area->file != NULL) {
+            write_stream(out, ',');
+            json_write_string(out, "File");
+            write_stream(out, ':');
+            json_write_string(out, area->file);
+        }
+        if (area->directory != NULL) {
+            write_stream(out, ',');
+            json_write_string(out, "Dir");
+            write_stream(out, ':');
+            json_write_string(out, area->directory);
+        }
+        write_stream(out, '}');
     }
 
     if (d->ip_error == 0) {
@@ -582,8 +699,20 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     return 0;
 }
 
+int step_into_inlined_frame(Context * ctx, int * done) {
+    StackFrame * info = NULL;
+    *done = 0;
+    if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
+    if (info->area == NULL) return 0;
+    invalidate_stack_trace(EXT(ctx));
+    EXT(ctx)->inlined++;
+    *done = 1;
+    return 0;
+}
+
 static void flush_stack_trace(Context * ctx, void * args) {
     invalidate_stack_trace(EXT(ctx));
+    EXT(ctx)->inlined = 0;
 }
 
 #if SERVICE_Registers

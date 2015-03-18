@@ -808,7 +808,6 @@ static void command_get_location_info_cache_client(void * x) {
 
     if (info == NULL) {
         write_stringz(&c->out, "null");
-        write_stringz(&c->out, "null");
     }
     else {
         write_stream(&c->out, '{');

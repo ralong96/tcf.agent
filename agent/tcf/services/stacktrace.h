@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -53,16 +53,19 @@ extern int get_next_frame(Context * ctx, int frame);
 
 /*
  * Get information about given stack frame.
+ * Return -1 and errno on error.
  */
 extern int get_frame_info(Context * ctx, int frame, StackFrame ** info);
 
 /*
- * For given context and its registers in a stack frame,
- * compute stack frame location and next frame register values.
- * If frame info is not available, do nothing.
- * Return -1 and set errno in case of an error.
- * Return 0 on success.
+ * Simulated step into fake stack frame of inlined function.
+ * Return -1 and errno on error.
+ * Return 0 and *done == 0 if top frame in not inlined frame.
+ * Return 0 and *done == 1 on success.
  */
+extern int step_into_inlined_frame(Context * ctx, int * done);
+
+/* Deprecated, use get_frame_info */
 extern int get_next_stack_frame(StackFrame * frame, StackFrame * down);
 
 /*
@@ -74,6 +77,7 @@ extern void ini_stack_trace_service(Protocol *, TCFBroadcastGroup *);
 
 #define get_top_frame(ctx) 0
 #define get_frame_info(ctx, frame, info) (errno = ERR_UNSUPPORTED, -1)
+#define step_into_inlined_frame(ctx, done) (*(done) = 0, 0)
 
 #endif /* SERVICE_StackTrace */
 #endif /* D_stacktrace */
