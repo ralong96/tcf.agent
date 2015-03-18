@@ -8,6 +8,9 @@ ifndef MACHINE
   ifeq ($(MACHINE),armv6l)
     MACHINE := arm
   endif
+  ifeq ($(MACHINE),armv7l)
+    MACHINE := arm
+  endif
   ifeq ($(MACHINE),ppc64)
     MACHINE := powerpc
   endif
@@ -73,6 +76,7 @@ ifeq ($(OPSYS),GNU/Linux)
   else
     OPTS += -DUSE_uuid_generate=0
   endif
+  OPTS += -DENABLE_arch_$(shell uname -m)
 endif
 
 ifneq ($(OPSYS),Windows)

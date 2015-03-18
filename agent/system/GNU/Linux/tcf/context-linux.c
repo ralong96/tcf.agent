@@ -451,7 +451,7 @@ static const char * get_ptrace_cmd_name(int cmd) {
 #endif
 
 static int do_single_step(Context * ctx) {
-    uint32_t is_cont;
+    uint32_t is_cont = 0;
     ContextExtensionLinux * ext = EXT(ctx);
     int cmd = PTRACE_SINGLESTEP;
 

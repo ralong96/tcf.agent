@@ -809,9 +809,13 @@ int cpu_enable_stepping_mode(Context * ctx, uint32_t * is_cont) {
     *is_cont = 1;
 #if ENABLE_HardwareBreakpoints
     {
+        int mode = 1;
         ContextExtensionARM * bps = EXT(context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
         if (get_bp_info(ctx) < 0) return -1;
-        if (bps->bp_cnt > 0) return enable_hw_stepping_mode(ctx, bps->arch > 2 ? 2 : 1);
+#if defined(ENABLE_MismatchBreakpoints) && ENABLE_MismatchBreakpoints
+        if (bps->arch > 2) mode = 2;
+#endif
+        if (bps->bp_cnt > 0) return enable_hw_stepping_mode(ctx, mode);
     }
 #endif /* ENABLE_HardwareBreakpoints */
     return enable_sw_stepping_mode(ctx);
@@ -837,13 +841,17 @@ static RegisterDefinition * alloc_reg(void) {
 }
 
 #if !USE_getauxval
-#define read_fpsid(X) \
-    __asm __volatile("mrc p10, 7, %0, c0, c0, 0" \
+#  if defined(ENABLE_arch_armv7l)
+#    define read_fpsid(X) *(X) = 0
+#    define read_mvfr0(X) *(X) = 0x222
+#  else
+#    define read_fpsid(X) \
+       __asm __volatile("mrc p10, 7, %0, c0, c0, 0" \
             : "=r" (*(X)) : : "memory")
-
-#define read_mvfr0(X) \
-    __asm __volatile("mrc p10, 7, %0, c7, c0, 0" \
+#    define read_mvfr0(X) \
+       __asm __volatile("mrc p10, 7, %0, c7, c0, 0" \
             : "=r" (*(X)) : : "memory")
+#  endif
 #endif
 
 static void ini_reg_defs(void) {
