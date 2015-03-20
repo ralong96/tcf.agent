@@ -232,7 +232,8 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
         StackFrame * info = NULL;
         if (get_frame_info(ctx, frame, &info) < 0) return -1;
         if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) return -1;
-        if (!info->is_top_frame && ip > 0) ip--;
+        assert(!info->is_top_frame);
+        if (ip > 0) ip--;
         sym_ip = (ContextAddress)ip;
     }
     sym_ctx = ctx;
@@ -978,7 +979,7 @@ static int symbol_has_location(Symbol * sym) {
         }
         return 1;
     }
-    if (sym->obj != NULL) {
+    if (sym->obj != NULL && sym->obj->mTag != TAG_dwarf_procedure) {
         if (sym->obj->mFlags & DOIF_location) {
 #ifdef ELF_SYMS_HAS_ADDR
             ELF_SYMS_HAS_ADDR;
@@ -1891,7 +1892,10 @@ static void enumerate_local_vars(ObjectInfo * parent, int level,
 
 int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * call_back, void * args) {
     Trap trap;
+    StackFrame * info = NULL;
     if (!set_trap(&trap)) return -1;
+    /* Note: get_frame_info() destroys sym context, so it must be called before get_sym_context() */
+    if (frame != STACK_NO_FRAME && get_frame_info(ctx, frame, &info) < 0) exception(errno);
     if (get_sym_context(ctx, frame, 0) < 0) exception(errno);
     if (sym_ip != 0) {
         UnitAddress ip;
@@ -1901,8 +1905,6 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * call_
         cb.call_back = call_back;
         find_unit(sym_ctx, sym_ip, &ip);
         if (ip.unit != NULL) {
-            StackFrame * info = NULL;
-            if (frame != STACK_NO_FRAME && get_frame_info(ctx, frame, &info) < 0) exception(errno);
             if (info != NULL && info->func_id != NULL) {
                 Symbol * sym = NULL;
 #if ENABLE_SymbolsMux
@@ -2366,12 +2368,12 @@ static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddre
                         else {
                             if (x_sec == NULL) x_sec = unit->mTextSection;
                             if (y_sec == NULL) y_sec = unit->mTextSection;
-                            if (x_sec == addr->section && y_sec == addr->section) {
+                            if (x_sec == addr->section && y_sec == addr->section && addr->lt_addr >= base + x && addr->lt_addr < base + y) {
                                 ELF_File * file = unit->mFile;
                                 ContextAddress addr0 = elf_map_to_run_time_address(ctx, file, addr->section, base + x);
                                 ContextAddress addr1 = elf_map_to_run_time_address(ctx, file, addr->section, base + y);
                                 if (addr0 <= addr->rt_addr && addr1 > addr->rt_addr) {
-                                    add_inlined_subroutine(o, unit, base + x, base + y, buf);
+                                    add_inlined_subroutine(o, unit, addr0, addr1, buf);
                                     search_inlined_subroutine(ctx, o, addr, buf);
                                     break;
                                 }
@@ -2387,8 +2389,10 @@ static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddre
                 ELF_File * file = addr->unit->mFile;
                 ContextAddress addr0 = elf_map_to_run_time_address(ctx, file, addr->section, o->u.mCode.mLowPC);
                 ContextAddress addr1 = elf_map_to_run_time_address(ctx, file, addr->section, o->u.mCode.mHighPC.mAddr);
-                add_inlined_subroutine(o, addr->unit, addr0, addr1, buf);
-                search_inlined_subroutine(ctx, o, addr, buf);
+                if (addr0 <= addr->rt_addr && addr1 > addr->rt_addr) {
+                    add_inlined_subroutine(o, addr->unit, addr0, addr1, buf);
+                    search_inlined_subroutine(ctx, o, addr, buf);
+                }
             }
             break;
         }
@@ -2426,6 +2430,8 @@ int get_stack_tracing_info(Context * ctx, ContextAddress rt_addr, StackTracingIn
                     find_unit(ctx, rt_addr, &unit);
                     if (unit.unit != NULL) {
                         buf_sub_max = 0;
+                        assert(buf.addr <= unit.rt_addr);
+                        assert(buf.addr + buf.size == 0 || buf.addr + buf.size > unit.rt_addr);
                         search_inlined_subroutine(ctx, unit.unit->mObject, &unit, &buf);
                     }
                 }
@@ -3862,6 +3868,8 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
 #endif
 #endif
         if (obj->mTag != TAG_dwarf_procedure) {
+            U8_T addr = 0;
+            Symbol * s = NULL;
             if (obj->mFlags & DOIF_location) {
                 if (!set_trap(&trap)) return -1;
                 read_dwarf_object_property(sym_ctx, sym_frame, obj, AT_location, &v);
@@ -3876,10 +3884,6 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                 clear_trap(&trap);
                 return 0;
             }
-        }
-        {
-            U8_T addr = 0;
-            Symbol * s = NULL;
             switch (sym->sym_class) {
             case SYM_CLASS_FUNCTION:
             case SYM_CLASS_COMP_UNIT:
