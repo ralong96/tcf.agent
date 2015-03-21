@@ -82,6 +82,7 @@ typedef struct ContextExtensionRC {
     ContextAddress step_bp_addr;
     BreakpointInfo * step_bp_info;
     int step_inlined;
+    int step_chk_inline_frame;
     CodeArea * step_code_area;
     ErrorReport * step_error;
     const char * step_done;
@@ -784,6 +785,7 @@ static void cancel_step_mode(Context * ctx) {
     ext->step_frame_fp = 0;
     ext->step_bp_addr = 0;
     ext->step_inlined = 0;
+    ext->step_chk_inline_frame = 0;
     ext->step_continue_mode = RM_RESUME;
     ext->step_mode = RM_RESUME;
 }
@@ -1563,7 +1565,6 @@ static int update_step_machine_state(Context * ctx) {
         case RM_SKIP_PROLOGUE:
             if (ext->step_cnt == 0) {
                 StackFrame * info = NULL;
-                ext->step_frame_fp = 0;
                 if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
                 ext->step_inlined = info->inlined;
                 ext->step_frame_fp = info->fp;
@@ -1776,9 +1777,14 @@ static int update_step_machine_state(Context * ctx) {
     case RM_REVERSE_STEP_INTO_LINE:
     case RM_REVERSE_STEP_OVER_LINE:
         if (ext->step_cnt == 0) {
-            if (ext->step_code_area == NULL) {
-                if (address_to_line(ctx, addr, addr + 1, update_step_machine_code_area, ext) < 0) return -1;
+            if (ext->step_mode == RM_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_INTO_LINE) {
+                StackFrame * info = NULL;
+                if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
+                ext->step_chk_inline_frame = info->inlined || info->area;
+                ext->step_inlined = info->inlined;
+                ext->step_frame_fp = info->fp;
             }
+            if (address_to_line(ctx, addr, addr + 1, update_step_machine_code_area, ext) < 0) return -1;
             if (ext->step_code_area != NULL) {
                 ext->step_range_start = ext->step_code_area->start_address;
                 ext->step_range_end = ext->step_code_area->end_address;
@@ -1861,6 +1867,15 @@ static int update_step_machine_state(Context * ctx) {
             if ((ext->step_mode == RM_REVERSE_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_OVER_LINE) &&
                     ext->step_line_cnt > 0) {
                 ext->step_range_start += 1;
+            }
+        }
+        else if (ext->step_chk_inline_frame) {
+            StackFrame * info = NULL;
+            if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
+            if (ext->step_inlined != info->inlined || ext->step_frame_fp != info->fp) {
+                ctx->pending_intercept = 1;
+                ext->step_done = REASON_STEP;
+                return 0;
             }
         }
         break;
@@ -2161,7 +2176,7 @@ static void sync_run_state(void) {
             int done = 0;
             if (step_into_inlined_frame(ctx, &done) < 0) error = errno;
             if (!error && done) {
-                ctx->pending_intercept = 1;
+                ext->step_cnt++;
                 if (run_safe_events_posted < 4) {
                     run_safe_events_posted++;
                     post_event(run_safe_events, NULL);
