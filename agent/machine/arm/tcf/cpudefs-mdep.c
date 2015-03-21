@@ -93,6 +93,13 @@ static RegisterDefinition * cpsr_def = NULL;
 #define PTRACE_SETHBPREGS 30
 #endif
 
+#define ARM_DEBUG_ARCH_V6       1
+#define ARM_DEBUG_ARCH_V6_1     2
+#define ARM_DEBUG_ARCH_V7_ECP14 3
+#define ARM_DEBUG_ARCH_V7_MM    4
+#define ARM_DEBUG_ARCH_V7_1     5
+#define ARM_DEBUG_ARCH_V8       6
+
 typedef struct ContextExtensionARM {
     int sw_stepping;
     char opcode[sizeof(BREAK_INST)];
@@ -235,7 +242,7 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                 /* Skipping the breakpoint */
                 *step_over_hw_bp = 1;
             }
-            else if (bps->arch > 2 && i >= bps->bp_cnt && is_triggered(ctx, cb)) {
+            else if (bps->arch >= ARM_DEBUG_ARCH_V7_ECP14 && i >= bps->bp_cnt && is_triggered(ctx, cb)) {
                 /* Skipping the watchpoint */
                 *step_over_hw_bp = 1;
             }
@@ -828,7 +835,7 @@ int cpu_enable_stepping_mode(Context * ctx, uint32_t * is_cont) {
         ContextExtensionARM * bps = EXT(context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
         if (get_bp_info(ctx) < 0) return -1;
 #if defined(ENABLE_MismatchBreakpoints) && ENABLE_MismatchBreakpoints
-        if (bps->arch > 2) mode = 2;
+        if (bps->arch >= ARM_DEBUG_ARCH_V7_ECP14) mode = 2;
 #endif
         if (bps->bp_cnt > 0) return enable_hw_stepping_mode(ctx, mode);
     }
