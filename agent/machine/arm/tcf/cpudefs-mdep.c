@@ -189,6 +189,17 @@ static int get_bp_info(Context * ctx) {
     return 0;
 }
 
+static int is_triggered(Context * ctx, ContextBreakpoint * cb) {
+    if (ctx->stopped_by_cb != NULL) {
+        unsigned i = 0;
+        while (ctx->stopped_by_cb[i] != NULL) {
+            if (ctx->stopped_by_cb[i] == cb) return 1;
+            i++;
+        }
+    }
+    return 0;
+}
+
 static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
     int i, j;
     ContextAddress pc = 0;
@@ -222,6 +233,10 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
         else if (cb != NULL) {
             if (i < bps->bp_cnt && cb->address == pc) {
                 /* Skipping the breakpoint */
+                *step_over_hw_bp = 1;
+            }
+            else if (bps->arch > 2 && i >= bps->bp_cnt && is_triggered(ctx, cb)) {
+                /* Skipping the watchpoint */
                 *step_over_hw_bp = 1;
             }
             else {
