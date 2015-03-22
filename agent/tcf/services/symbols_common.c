@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -51,6 +51,12 @@ static LocationExpressionState * evaluate_symbol_location(const Symbol * sym, un
     return state;
 }
 
+static const char * pieces_err_msg(LocationExpressionState * state) {
+    if (state->pieces[0].reg != NULL) return "is located in a register";
+    if (state->pieces[0].value != NULL) return "is a constant value";
+    return "is a bit field";
+}
+
 int get_symbol_address(const Symbol * sym, ContextAddress * address) {
     LocationExpressionState * state = evaluate_symbol_location(sym, 0);
     if (state == NULL) return -1;
@@ -61,7 +67,7 @@ int get_symbol_address(const Symbol * sym, ContextAddress * address) {
         return 0;
     }
     if (state->pieces_cnt > 0) {
-        set_errno(ERR_OTHER, "Cannot get object address: the symbol is a bit field");
+        set_fmt_errno(ERR_OTHER, "Cannot get object address: the object %s", pieces_err_msg(state));
         return -1;
     }
     if (state->stk_pos == 1) {
@@ -82,7 +88,7 @@ int get_symbol_offset(const Symbol * sym, ContextAddress * offset) {
         return 0;
     }
     if (state->pieces_cnt > 0) {
-        set_errno(ERR_OTHER, "Cannot get member offset: the symbol is a bit field");
+        set_fmt_errno(ERR_OTHER, "Cannot get member offset: the object %s", pieces_err_msg(state));
         return -1;
     }
     if (state->stk_pos == 1) {
