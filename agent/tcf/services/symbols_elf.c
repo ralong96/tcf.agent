@@ -670,6 +670,7 @@ typedef struct EvaluateRefObjectArgs {
     U2_T at;
     ObjectInfo * ref;
     ObjectInfo * obj;
+    PropertyValue * v;
     U8_T res;
 } EvaluateRefObjectArgs;
 
@@ -710,52 +711,67 @@ static void evaluate_variable_num_prop(void * x) {
     }
     arr[0] = addr;
     read_and_evaluate_dwarf_object_property_with_args(args->ctx, args->frame, args->obj, args->at, arr, 1, &v);
-    switch (v.mForm) {
-    case FORM_REF       :
-    case FORM_REF_ADDR  :
-    case FORM_REF1      :
-    case FORM_REF2      :
-    case FORM_REF4      :
-    case FORM_REF8      :
-    case FORM_REF_UDATA :
-        {
-            ObjectInfo * obj;
-            ELF_Section * sec = v.mSection;
-            LocationInfo * loc_info = NULL;
-            StackFrame * frame_info = NULL;
-            LocationExpressionState * state = NULL;
+    args->res = get_numeric_property_value(&v);
+}
 
-            if (sec == NULL) sec = args->obj->mCompUnit->mDesc.mSection;
-            obj = find_object(sec, (ContextAddress)v.mValue);
-            if (obj == NULL) exception(ERR_INV_DWARF);
-            object2symbol(args->ref, obj, &sym);
-            if (get_location_info(sym, &loc_info) < 0) exception(errno);
-            if (loc_info->args_cnt > 1) str_exception(ERR_OTHER, "Invalid location expression");
-            if (args->frame != STACK_NO_FRAME && get_frame_info(args->ctx, args->frame, &frame_info) < 0) exception(errno);
-            state = evaluate_location_expression(args->ctx, frame_info,
-                loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, arr, loc_info->args_cnt);
-            if (state->pieces_cnt > 0) {
-                read_location_pieces(state->ctx, state->stack_frame,
-                    state->pieces, state->pieces_cnt, loc_info->big_endian, &value, &size);
-            }
-            else {
-                ContextAddress sym_size = 0;
-                if (state->stk_pos != 1) str_exception(ERR_OTHER, "Invalid location expression");
-                if (get_symbol_size(sym, &sym_size) < 0) exception(errno);
-                size = (size_t)sym_size;
-                value = tmp_alloc(size);
-                if (context_read_mem(state->ctx, (ContextAddress)state->stk[0], value, size) < 0) exception(errno);
-            }
-            big_endian = loc_info->big_endian;
-            args->res = 0;
+static void evaluate_reference_num_prop(void * x) {
+    EvaluateRefObjectArgs * args = (EvaluateRefObjectArgs *)x;
+    ContextAddress addr = 0;
+    uint64_t arr[1];
+    PropertyValue * v = args->v;
+    void * value = NULL;
+    size_t size = 0;
+    int big_endian = 0;
+    ObjectInfo * obj = NULL;
+    Symbol * sym_obj = NULL;
+    Symbol * sym_ref = NULL;
+    ELF_Section * sec = v->mSection;
+    LocationInfo * loc_info = NULL;
+    StackFrame * frame_info = NULL;
+    LocationExpressionState * state = NULL;
+    unsigned i;
+
+    if (sec == NULL) sec = args->obj->mCompUnit->mDesc.mSection;
+    obj = find_object(sec, (ContextAddress)v->mValue);
+    if (obj == NULL) exception(ERR_INV_DWARF);
+    object2symbol(args->ref, obj, &sym_obj);
+    if (get_location_info(sym_obj, &loc_info) < 0) exception(errno);
+    if (loc_info->args_cnt > 0) {
+        if (loc_info->args_cnt > 1) str_exception(ERR_OTHER, "Invalid location expression");
+        object2symbol(NULL, args->ref, &sym_ref);
+        if (is_pointer_type(sym_ref)) {
+            if (get_symbol_value(sym_ref, &value, &size, &big_endian) < 0) exception(errno);
             for (i = 0; i < size; i++) {
-                U8_T b = *((uint8_t *)value + i);
-                args->res |= b << (big_endian ? (size - i - 1) * 8 : i * 8);
+                ContextAddress b = *((uint8_t *)value + i);
+                addr |= b << (big_endian ? (size - i - 1) * 8 : i * 8);
             }
         }
-        return;
+        else {
+            if (get_symbol_address(sym_ref, &addr) < 0) exception(errno);
+        }
     }
-    args->res = get_numeric_property_value(&v);
+    arr[0] = addr;
+    if (args->frame != STACK_NO_FRAME && get_frame_info(args->ctx, args->frame, &frame_info) < 0) exception(errno);
+    state = evaluate_location_expression(args->ctx, frame_info,
+        loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, arr, loc_info->args_cnt);
+    if (state->pieces_cnt > 0) {
+        read_location_pieces(state->ctx, state->stack_frame,
+            state->pieces, state->pieces_cnt, loc_info->big_endian, &value, &size);
+    }
+    else {
+        ContextAddress sym_size = 0;
+        if (state->stk_pos != 1) str_exception(ERR_OTHER, "Invalid location expression");
+        if (get_symbol_size(sym_obj, &sym_size) < 0) exception(errno);
+        size = (size_t)sym_size;
+        value = tmp_alloc(size);
+        if (context_read_mem(state->ctx, (ContextAddress)state->stk[0], value, size) < 0) exception(errno);
+    }
+    big_endian = loc_info->big_endian;
+    args->res = 0;
+    for (i = 0; i < size; i++) {
+        U8_T b = *((uint8_t *)value + i);
+        args->res |= b << (big_endian ? (size - i - 1) * 8 : i * 8);
+    }
 }
 
 static int get_num_prop(ObjectInfo * obj, U2_T at, U8_T * res) {
@@ -772,6 +788,14 @@ static int get_num_prop(ObjectInfo * obj, U2_T at, U8_T * res) {
 static int get_variable_num_prop(ObjectInfo * ref, ObjectInfo * obj, U2_T at, U8_T * res) {
     Trap trap;
     PropertyValue v;
+    EvaluateRefObjectArgs args;
+
+    memset(&args, 0, sizeof(args));
+    args.ctx = sym_ctx;
+    args.frame = sym_frame;
+    args.at = at;
+    args.ref = ref;
+    args.obj = obj;
 
     if (set_trap(&trap)) {
         read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, at, &v);
@@ -783,21 +807,18 @@ static int get_variable_num_prop(ObjectInfo * ref, ObjectInfo * obj, U2_T at, U8
         case FORM_REF4      :
         case FORM_REF8      :
         case FORM_REF_UDATA :
-            exception(ERR_INV_ADDRESS);
+            args.v = &v;
+            clear_trap(&trap);
+            if (elf_save_symbols_state(evaluate_reference_num_prop, &args) < 0) return 0;
+            *res = args.res;
+            return 1;
         }
         *res = get_numeric_property_value(&v);
         clear_trap(&trap);
         return 1;
     }
-    else if (ref != NULL && get_error_code(errno) == ERR_INV_ADDRESS) {
+    else if (ref != NULL && get_error_code(errno) == ERR_INV_CONT_OBJ) {
         /* Dynamic property - need object address */
-        EvaluateRefObjectArgs args;
-        memset(&args, 0, sizeof(args));
-        args.ctx = sym_ctx;
-        args.frame = sym_frame;
-        args.at = at;
-        args.ref = ref;
-        args.obj = obj;
         if (elf_save_symbols_state(evaluate_variable_num_prop, &args) < 0) return 0;
         *res = args.res;
         return 1;

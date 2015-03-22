@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -587,7 +587,7 @@ static void evaluate_expression(void) {
         case OP_nop:
             break;
         case OP_push_object_address:
-            if (state->args_cnt == 0) str_exception(ERR_INV_ADDRESS, "Invalid address of containing object");
+            if (state->args_cnt == 0) exception(ERR_INV_CONT_OBJ);
             state->stk[state->stk_pos++] = state->args[0];
             break;
         case OP_piece:

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2008, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -122,11 +122,11 @@ void dwarf_evaluate_expression(PropertyValue * Value, uint64_t * args, unsigned 
     State->args_cnt = args_cnt;
 
     if (Value->mAttr == AT_data_member_location) {
-        if (args_cnt < 1) str_exception(ERR_INV_ADDRESS, "Invalid address of containing object");
+        if (args_cnt < 1) exception(ERR_INV_CONT_OBJ);
         State->stk[State->stk_pos++] = args[0];
     }
     else if (Value->mAttr == AT_use_location) {
-        if (args_cnt < 2) str_exception(ERR_INV_ADDRESS, "Invalid address of containing object");
+        if (args_cnt < 2) exception(ERR_INV_CONT_OBJ);
         State->stk[State->stk_pos++] = args[1];
         State->stk[State->stk_pos++] = args[0];
     }

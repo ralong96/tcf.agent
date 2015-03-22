@@ -978,6 +978,12 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
             if (errcmp(err, "Object does not have memory address") == 0) ok = 1;
         }
+        if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+            if (errcmp(err, "Cannot get object address: the object is located in a register") == 0) ok = 1;
+        }
+        if (!ok && obj != NULL && obj->mTag == TAG_dwarf_procedure) {
+            ok = 1;
+        }
         if (!ok) {
             errno = err;
             error_sym("get_symbol_size", sym);
@@ -1303,6 +1309,9 @@ static void loc_var_func(void * args, Symbol * sym) {
                 if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
                     if (errcmp(err, "Object does not have memory address") == 0) ok = 1;
                 }
+                if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                    if (errcmp(err, "Cannot get object address: the object is located in a register") == 0) ok = 1;
+                }
                 if (!ok) {
                     errno = err;
                     error_sym("get_symbol_length", sym);
@@ -1336,6 +1345,9 @@ static void loc_var_func(void * args, Symbol * sym) {
                 }
                 if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
                     if (!ok && errcmp(err, "Object does not have memory address") == 0) ok = 1;
+                }
+                if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
+                    if (errcmp(err, "Cannot get object address: the object is located in a register") == 0) ok = 1;
                 }
                 if (!ok) {
                     errno = err;

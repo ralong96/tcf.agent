@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -52,6 +52,7 @@
 #define ERR_INV_TRANSPORT       (STD_ERR_BASE + 26)
 #define ERR_CACHE_MISS          (STD_ERR_BASE + 27)
 #define ERR_NOT_ACTIVE          (STD_ERR_BASE + 28)
+#define ERR_INV_CONT_OBJ        (STD_ERR_BASE + 29)
 
 typedef struct ErrorReportItem {
     char * name;

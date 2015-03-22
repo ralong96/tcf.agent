@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -350,6 +350,7 @@ const char * errno_to_str(int err) {
     case ERR_INV_TRANSPORT:     return "Invalid transport name";
     case ERR_CACHE_MISS:        return "Invalid data cache state";
     case ERR_NOT_ACTIVE:        return "Context is not active";
+    case ERR_INV_CONT_OBJ:      return "Invalid address of containing object";
     default:
         if (err == 0) return "Success";
         if (err >= ERR_MESSAGE_MIN && err <= ERR_MESSAGE_MAX) {

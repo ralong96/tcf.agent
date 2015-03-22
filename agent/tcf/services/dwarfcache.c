@@ -1774,7 +1774,7 @@ void read_and_evaluate_dwarf_object_property_with_args(
         case FORM_DATA8     :
         case FORM_SDATA     :
         case FORM_UDATA     :
-            if (ArgsCnt == 0) str_exception(ERR_INV_ADDRESS, "Invalid address of containing object");
+            if (ArgsCnt == 0) exception(ERR_INV_CONT_OBJ);
             Value->mValue = Args[0] + get_numeric_property_value(Value);
             Value->mForm = FORM_UDATA;
             Value->mAddr = NULL;
