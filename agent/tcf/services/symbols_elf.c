@@ -1658,7 +1658,7 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
         if (set_trap(&trap)) {
             if (sym_frame != STACK_NO_FRAME) {
                 int use_frame = 0;
-                if (scope->obj->mTag == TAG_subprogram) {
+                if (scope->obj->mTag == TAG_subprogram || scope->obj->mTag == TAG_lexical_block || scope->obj->mTag == TAG_inlined_subroutine) {
                     UnitAddress addr;
                     find_unit(sym_ctx, sym_ip, &addr);
                     if (addr.unit != NULL && check_in_range(scope->obj, &addr)) use_frame = 1;

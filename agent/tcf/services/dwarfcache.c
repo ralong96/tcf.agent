@@ -536,7 +536,13 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             else {
                 Info = add_object_info((ContextAddress)(sDebugSection->addr + dio_gEntryPos));
             }
-            if (sParentObject) Info->mParent = sParentObject;
+            if (sParentObject) {
+                Info->mParent = sParentObject;
+                if (sParentObject->mFlags & DOIF_need_frame) {
+                    /* Allow frame in get_symbol_container() */
+                    Info->mFlags |= DOIF_need_frame;
+                }
+            }
             HasChildren = Form == DWARF_ENTRY_HAS_CHILDREN;
             Sibling = 0;
             Skip = Info->mTag != 0;
