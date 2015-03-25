@@ -81,8 +81,10 @@ typedef struct ContextExtensionRC {
     ContextAddress step_frame_fp;
     ContextAddress step_bp_addr;
     BreakpointInfo * step_bp_info;
+    char * step_func_id;
+    char * step_func_id_out;
     int step_inlined;
-    int step_chk_inline_frame;
+    int step_set_frame_level;
     CodeArea * step_code_area;
     ErrorReport * step_error;
     const char * step_done;
@@ -778,6 +780,14 @@ static void cancel_step_mode(Context * ctx) {
         free_code_area(ext->step_code_area);
         ext->step_code_area = NULL;
     }
+    if (ext->step_func_id != NULL) {
+        loc_free(ext->step_func_id);
+        ext->step_func_id = NULL;
+    }
+    if (ext->step_func_id_out != NULL) {
+        loc_free(ext->step_func_id_out);
+        ext->step_func_id_out = NULL;
+    }
     ext->step_cnt = 0;
     ext->step_line_cnt = 0;
     ext->step_range_start = 0;
@@ -785,7 +795,7 @@ static void cancel_step_mode(Context * ctx) {
     ext->step_frame_fp = 0;
     ext->step_bp_addr = 0;
     ext->step_inlined = 0;
-    ext->step_chk_inline_frame = 0;
+    ext->step_set_frame_level = 0;
     ext->step_continue_mode = RM_RESUME;
     ext->step_mode = RM_RESUME;
 }
@@ -1507,35 +1517,33 @@ static BreakpointInfo * create_step_machine_breakpoint(ContextAddress addr, Cont
 static int update_step_machine_state(Context * ctx) {
     ContextExtensionRC * ext = EXT(ctx);
     ContextAddress addr = ext->pc;
+    int do_reverse = 0;
 
     if (!context_has_state(ctx) || ctx->exited || ctx->pending_intercept) {
         cancel_step_mode(ctx);
         return 0;
     }
 
+    switch (ext->step_mode) {
+    case RM_REVERSE_STEP_OVER:
+    case RM_REVERSE_STEP_INTO:
+    case RM_REVERSE_STEP_OVER_LINE:
+    case RM_REVERSE_STEP_INTO_LINE:
+    case RM_REVERSE_STEP_OUT:
+    case RM_REVERSE_STEP_OVER_RANGE:
+    case RM_REVERSE_STEP_INTO_RANGE:
+    case RM_REVERSE_UNTIL_ACTIVE:
+        do_reverse = 1;
+        break;
+    }
+
     if (ext->pc_error) {
         if (ctx->stopped && get_error_code(ext->pc_error) == ERR_NOT_ACTIVE) {
-            switch (ext->step_mode) {
-            case RM_STEP_OVER:
-            case RM_STEP_INTO:
-            case RM_STEP_OVER_LINE:
-            case RM_STEP_INTO_LINE:
-            case RM_STEP_OUT:
-            case RM_STEP_OVER_RANGE:
-            case RM_STEP_INTO_RANGE:
-            case RM_UNTIL_ACTIVE:
+            if (!do_reverse) {
                 if (context_can_resume(ctx, ext->step_continue_mode = RM_UNTIL_ACTIVE)) return 0;
-                break;
-            case RM_REVERSE_STEP_OVER:
-            case RM_REVERSE_STEP_INTO:
-            case RM_REVERSE_STEP_OVER_LINE:
-            case RM_REVERSE_STEP_INTO_LINE:
-            case RM_REVERSE_STEP_OUT:
-            case RM_REVERSE_STEP_OVER_RANGE:
-            case RM_REVERSE_STEP_INTO_RANGE:
-            case RM_REVERSE_UNTIL_ACTIVE:
+            }
+            else {
                 if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_UNTIL_ACTIVE)) return 0;
-                break;
             }
         }
         errno = ext->pc_error;
@@ -1548,14 +1556,25 @@ static int update_step_machine_state(Context * ctx) {
 
 #if EN_STEP_OVER
     {
+        StackFrame * info = NULL;
         ContextAddress step_bp_addr = 0;
-        int do_reverse =
-                ext->step_mode == RM_REVERSE_STEP_OVER ||
-                ext->step_mode == RM_REVERSE_STEP_OVER_RANGE ||
-                ext->step_mode == RM_REVERSE_STEP_OVER_LINE ||
-                ext->step_mode == RM_REVERSE_STEP_OUT;
+
+        int n = get_top_frame(ctx);
+        if (n < 0) return -1;
 
         switch (ext->step_mode) {
+        case RM_STEP_INTO_LINE:
+        case RM_REVERSE_STEP_INTO_LINE:
+            if (ext->step_cnt == 0) {
+                int m = n + get_inlined_frame_level(ctx);
+                if (get_frame_info(ctx, m, &info) < 0) return -1;
+                if (info->func_id != NULL) ext->step_func_id = loc_strdup(info->func_id);
+                if (info->area != NULL) update_step_machine_code_area(info->area, ext);
+                ext->step_inlined = info->inlined;
+                ext->step_frame_fp = info->fp;
+                ext->step_set_frame_level = 1;
+            }
+            break;
         case RM_STEP_OVER:
         case RM_STEP_OVER_RANGE:
         case RM_STEP_OVER_LINE:
@@ -1564,15 +1583,15 @@ static int update_step_machine_state(Context * ctx) {
         case RM_REVERSE_STEP_OVER_LINE:
         case RM_SKIP_PROLOGUE:
             if (ext->step_cnt == 0) {
-                StackFrame * info = NULL;
-                if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
+                int m = n + get_inlined_frame_level(ctx);
+                if (get_frame_info(ctx, m, &info) < 0) return -1;
+                if (info->func_id != NULL) ext->step_func_id = loc_strdup(info->func_id);
+                if (info->area != NULL) update_step_machine_code_area(info->area, ext);
                 ext->step_inlined = info->inlined;
                 ext->step_frame_fp = info->fp;
+                ext->step_set_frame_level = 1;
             }
             else if (addr < ext->step_range_start || addr >= ext->step_range_end) {
-                StackFrame * info = NULL;
-                int n = get_top_frame(ctx);
-                if (n < 0) return -1;
                 if (get_frame_info(ctx, n, &info) < 0) return -1;
                 if (ext->step_frame_fp != info->fp) {
                     unsigned frame_cnt;
@@ -1611,21 +1630,6 @@ static int update_step_machine_state(Context * ctx) {
                         }
                     }
                 }
-                else if (ext->step_inlined < info->inlined) {
-                    if (ext->step_bp_info != NULL) {
-                        destroy_eventpoint(ext->step_bp_info);
-                        ext->step_bp_info = NULL;
-                    }
-                    if (!do_reverse || ext->step_line_cnt > 1) {
-                        if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_OVER)) return 0;
-                        ext->step_continue_mode = RM_STEP_INTO;
-                    }
-                    else {
-                        if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_OVER)) return 0;
-                        ext->step_continue_mode = RM_REVERSE_STEP_INTO;
-                    }
-                    return 0;
-                }
                 else if (do_reverse) {
                     /* Workaround for GCC debug information that contains
                      * invalid stack frame information for function epilogues */
@@ -1649,67 +1653,53 @@ static int update_step_machine_state(Context * ctx) {
             break;
         case RM_STEP_OUT:
         case RM_REVERSE_STEP_OUT:
-            {
-                StackFrame * info = NULL;
-                int n = get_top_frame(ctx);
-                if (n < 0) return -1;
-                if (ext->step_cnt == 0) {
-                    uint64_t ip = 0;
-                    int p = get_prev_frame(ctx, n);
-                    if (p < 0) {
-                        set_errno(errno, "Cannot step out");
-                        return -1;
-                    }
-                    if (get_frame_info(ctx, p, &info) < 0) return -1;
-                    ext->step_inlined = info->inlined;
-                    ext->step_frame_fp = info->fp;
-                    if (info->area == NULL) {
-                        if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) return -1;
-                        step_bp_addr = (ContextAddress)ip;
-                        break;
-                    }
+            if (ext->step_cnt == 0) {
+                uint64_t ip = 0;
+                int m = n + get_inlined_frame_level(ctx);
+                int p = get_prev_frame(ctx, m);
+                if (p < 0) {
+                    set_errno(errno, "Cannot step out");
+                    return -1;
                 }
-                if (get_frame_info(ctx, n, &info) < 0) return -1;
-                if (ext->step_frame_fp != info->fp) {
-                    unsigned frame_cnt;
-                    if (ext->step_bp_info != NULL) {
-                        if (!do_reverse || ext->step_line_cnt > 1) {
-                            ext->step_continue_mode = RM_RESUME;
-                        }
-                        else {
-                            ext->step_continue_mode = RM_REVERSE_RESUME;
-                        }
-                        return 0;
-                    }
-                    for (frame_cnt = 0; frame_cnt < RC_STEP_MAX_STACK_FRAMES; frame_cnt++) {
-                        n = get_prev_frame(ctx, n);
-                        if (n < 0) {
-                            if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
-                            break;
-                        }
-                        if (get_frame_info(ctx, n, &info) < 0) return -1;
-                        if (ext->step_frame_fp == info->fp) {
-                            uint64_t pc = 0;
-                            if (read_reg_value(info, get_PC_definition(ctx), &pc) < 0) return -1;
-                            step_bp_addr = (ContextAddress)pc;
-                            break;
-                        }
-                    }
+                if (get_frame_info(ctx, m, &info) < 0) return -1;
+                if (info->func_id != NULL) ext->step_func_id_out = loc_strdup(info->func_id);
+                if (get_frame_info(ctx, p, &info) < 0) return -1;
+                if (info->func_id != NULL) ext->step_func_id = loc_strdup(info->func_id);
+                if (info->area != NULL) update_step_machine_code_area(info->area, ext);
+                ext->step_inlined = info->inlined;
+                ext->step_frame_fp = info->fp;
+                ext->step_set_frame_level = 1;
+                if (info->area == NULL) {
+                    if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) return -1;
+                    step_bp_addr = (ContextAddress)ip;
+                    break;
                 }
-                else if (ext->step_inlined < info->inlined) {
-                    if (ext->step_bp_info != NULL) {
-                        destroy_eventpoint(ext->step_bp_info);
-                        ext->step_bp_info = NULL;
-                    }
+            }
+            if (get_frame_info(ctx, n, &info) < 0) return -1;
+            if (ext->step_frame_fp != info->fp) {
+                unsigned frame_cnt;
+                if (ext->step_bp_info != NULL) {
                     if (!do_reverse || ext->step_line_cnt > 1) {
-                        if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_OVER)) return 0;
-                        ext->step_continue_mode = RM_STEP_INTO;
+                        ext->step_continue_mode = RM_RESUME;
                     }
                     else {
-                        if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_OVER)) return 0;
-                        ext->step_continue_mode = RM_REVERSE_STEP_INTO;
+                        ext->step_continue_mode = RM_REVERSE_RESUME;
                     }
                     return 0;
+                }
+                for (frame_cnt = 0; frame_cnt < RC_STEP_MAX_STACK_FRAMES; frame_cnt++) {
+                    n = get_prev_frame(ctx, n);
+                    if (n < 0) {
+                        if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
+                        break;
+                    }
+                    if (get_frame_info(ctx, n, &info) < 0) return -1;
+                    if (ext->step_frame_fp == info->fp) {
+                        uint64_t pc = 0;
+                        if (read_reg_value(info, get_PC_definition(ctx), &pc) < 0) return -1;
+                        step_bp_addr = (ContextAddress)pc;
+                        break;
+                    }
                 }
             }
             break;
@@ -1734,6 +1724,84 @@ static int update_step_machine_state(Context * ctx) {
         if (ext->step_bp_info != NULL) {
             destroy_eventpoint(ext->step_bp_info);
             ext->step_bp_info = NULL;
+        }
+
+        if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
+        if (ext->step_frame_fp == info->fp && ext->step_inlined <= info->inlined) {
+            StackFrame * tgt = info;
+            int same_line = 1;
+            int same_func = 1;
+            if (ext->step_inlined < info->inlined) {
+                if (get_frame_info(ctx, info->inlined - ext->step_inlined, &tgt) < 0) return -1;
+            }
+            if (ext->step_code_area != NULL && tgt->area != NULL) same_line = tgt->area->start_line == ext->step_code_area->start_line;
+            else if (ext->step_code_area != NULL || tgt->area != NULL) same_line = 0;
+            if (ext->step_func_id != NULL && tgt->func_id != NULL) same_func = strcmp(tgt->func_id, ext->step_func_id);
+            else if (ext->step_func_id != NULL || tgt->func_id != NULL) same_func = 0;
+            switch (ext->step_mode) {
+            case RM_STEP_INTO_LINE:
+            case RM_REVERSE_STEP_INTO_LINE:
+                if (ext->step_inlined < info->inlined) {
+                    if (same_line) ext->step_inlined++;
+                    ctx->pending_intercept = 1;
+                    ext->step_done = REASON_STEP;
+                    return 0;
+                }
+                if (!same_func) {
+                    if (ext->step_inlined > 0) ext->step_inlined--;
+                    ctx->pending_intercept = 1;
+                    ext->step_done = REASON_STEP;
+                    return 0;
+                }
+                break;
+            case RM_STEP_OVER_LINE:
+            case RM_REVERSE_STEP_OVER_LINE:
+                if (!same_func) {
+                    if (ext->step_inlined > 0) ext->step_inlined--;
+                    ctx->pending_intercept = 1;
+                    ext->step_done = REASON_STEP;
+                    return 0;
+                }
+                if (ext->step_inlined < info->inlined && !same_line) {
+                    ctx->pending_intercept = 1;
+                    ext->step_done = REASON_STEP;
+                    return 0;
+                }
+                break;
+            case RM_STEP_OUT:
+            case RM_REVERSE_STEP_OUT:
+                if (ext->step_inlined < info->inlined) {
+                    if (ext->step_inlined == info->inlined - 1 && ext->step_func_id_out != NULL &&
+                            (info->func_id == NULL || strcmp(info->func_id, ext->step_func_id_out))) {
+                        ctx->pending_intercept = 1;
+                        ext->step_done = REASON_STEP;
+                        return 0;
+                    }
+                }
+                if (!same_func) {
+                    if (ext->step_inlined > 0) ext->step_inlined--;
+                    ctx->pending_intercept = 1;
+                    ext->step_done = REASON_STEP;
+                    return 0;
+                }
+                if (ext->step_inlined < info->inlined && !same_line) {
+                    ctx->pending_intercept = 1;
+                    ext->step_done = REASON_STEP;
+                    return 0;
+                }
+                if (ext->step_inlined < info->inlined) {
+                    if (!do_reverse || ext->step_line_cnt > 1) {
+                        if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_OVER)) return 0;
+                        ext->step_continue_mode = RM_STEP_INTO;
+                    }
+                    else {
+                        if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_OVER)) return 0;
+                        ext->step_continue_mode = RM_REVERSE_STEP_INTO;
+                    }
+                    return 0;
+                }
+                break;
+            }
         }
     }
 #endif /* EN_STEP_OVER */
@@ -1777,14 +1845,9 @@ static int update_step_machine_state(Context * ctx) {
     case RM_REVERSE_STEP_INTO_LINE:
     case RM_REVERSE_STEP_OVER_LINE:
         if (ext->step_cnt == 0) {
-            if (ext->step_mode == RM_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_INTO_LINE) {
-                StackFrame * info = NULL;
-                if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
-                ext->step_chk_inline_frame = info->inlined || info->area;
-                ext->step_inlined = info->inlined;
-                ext->step_frame_fp = info->fp;
+            if (ext->step_code_area == NULL) {
+                if (address_to_line(ctx, addr, addr + 1, update_step_machine_code_area, ext) < 0) return -1;
             }
-            if (address_to_line(ctx, addr, addr + 1, update_step_machine_code_area, ext) < 0) return -1;
             if (ext->step_code_area != NULL) {
                 ext->step_range_start = ext->step_code_area->start_address;
                 ext->step_range_end = ext->step_code_area->end_address;
@@ -1869,15 +1932,6 @@ static int update_step_machine_state(Context * ctx) {
                 ext->step_range_start += 1;
             }
         }
-        else if (ext->step_chk_inline_frame) {
-            StackFrame * info = NULL;
-            if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
-            if (ext->step_inlined != info->inlined || ext->step_frame_fp != info->fp) {
-                ctx->pending_intercept = 1;
-                ext->step_done = REASON_STEP;
-                return 0;
-            }
-        }
         break;
 #if EN_STEP_OVER
     case RM_SKIP_PROLOGUE:
@@ -1956,6 +2010,22 @@ static int update_step_machine_state(Context * ctx) {
 
     errno = ERR_UNSUPPORTED;
     return -1;
+}
+
+static int update_step_machine_state_inlined(Context * ctx) {
+    ContextExtensionRC * ext = EXT(ctx);
+    if (update_step_machine_state(ctx) < 0) return -1;
+    if (ctx->pending_intercept && ext->step_set_frame_level) {
+        StackFrame * info = NULL;
+        if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
+        if (ext->step_frame_fp != info->fp) {
+            set_inlined_frame_level(ctx, info->inlined);
+        }
+        else if (info->inlined >= ext->step_inlined) {
+            set_inlined_frame_level(ctx, info->inlined - ext->step_inlined);
+        }
+    }
+    return 0;
 }
 
 static void stop_all_timer(void * args) {
@@ -2108,7 +2178,7 @@ static void sync_run_state(void) {
         }
         else {
             cache_set_def_channel(ext->step_channel);
-            if (update_step_machine_state(ctx) < 0) {
+            if (update_step_machine_state_inlined(ctx) < 0) {
                 int error = errno;
                 Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
                 if (cache_miss_count() > 0) return;
@@ -2167,27 +2237,13 @@ static void sync_run_state(void) {
     /* Resume contexts with resume mode other then RM_RESUME */
     l = p.next;
     while (err_cnt == 0 && run_ctrl_lock_cnt == 0 && l != &p) {
-        int error = 0;
         Context * ctx = link2ctx(l);
         ContextExtensionRC * ext = EXT(ctx);
         assert(!ext->intercepted);
         l = l->next;
-        if (ext->step_continue_mode == RM_STEP_INTO) {
-            int done = 0;
-            if (step_into_inlined_frame(ctx, &done) < 0) error = errno;
-            if (!error && done) {
-                ext->step_cnt++;
-                if (run_safe_events_posted < 4) {
-                    run_safe_events_posted++;
-                    post_event(run_safe_events, NULL);
-                }
-                continue;
-            }
-        }
-        if (!error && context_resume(ctx, ext->step_continue_mode, ext->step_range_start, ext->step_range_end) < 0) error = errno;
-        if (error) {
+        if (context_resume(ctx, ext->step_continue_mode, ext->step_range_start, ext->step_range_end) < 0) {
             if (cache_miss_count() > 0) return;
-            resume_error(ctx, error);
+            resume_error(ctx, errno);
             err_cnt++;
         }
     }

@@ -59,11 +59,13 @@ extern int get_frame_info(Context * ctx, int frame, StackFrame ** info);
 
 /*
  * Simulated step into fake stack frame of inlined function.
+ * 'cnt' step count.
  * Return -1 and errno on error.
  * Return 0 and *done == 0 if top frame in not inlined frame.
  * Return 0 and *done == 1 on success.
  */
-extern int step_into_inlined_frame(Context * ctx, int * done);
+extern void set_inlined_frame_level(Context * ctx, int level);
+extern int get_inlined_frame_level(Context * ctx);
 
 /* Deprecated, use get_frame_info */
 extern int get_next_stack_frame(StackFrame * frame, StackFrame * down);
@@ -77,7 +79,8 @@ extern void ini_stack_trace_service(Protocol *, TCFBroadcastGroup *);
 
 #define get_top_frame(ctx) 0
 #define get_frame_info(ctx, frame, info) (errno = ERR_UNSUPPORTED, -1)
-#define step_into_inlined_frame(ctx, done) (*(done) = 0, 0)
+#define set_inlined_frame_level(ctx, level)
+#define get_inlined_frame_level(ctx) 0
 
 #endif /* SERVICE_StackTrace */
 #endif /* D_stacktrace */

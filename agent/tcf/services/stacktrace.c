@@ -77,18 +77,6 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
             frame->is_walked = 1;
             if (info->sub_cnt > 0 && frame->area == NULL) {
                 frame->inlined = info->sub_cnt;
-                if (frame->is_top_frame) {
-                    while (frame->inlined > 0 && ip == info->subs[frame->inlined - 1]->area.start_address) {
-                        if (EXT(ctx)->inlined >= frame->inlined) break;
-                        frame->inlined--;
-                    }
-                    if (frame->inlined < info->sub_cnt) {
-                        frame->area = (CodeArea *)loc_alloc(sizeof(CodeArea));
-                        *frame->area = info->subs[frame->inlined]->area;
-                        if (frame->area->directory) frame->area->directory = loc_strdup(frame->area->directory);
-                        if (frame->area->file) frame->area->file = loc_strdup(frame->area->file);
-                    }
-                }
             }
             if (frame->inlined > 0 && frame->inlined <= info->sub_cnt) {
                 size_t buf_size = 8;
@@ -530,7 +518,7 @@ static void command_get_children_cache_client(void * x) {
         if (stack == NULL) err = errno;
     }
     else {
-        stack = create_stack_trace(ctx, args->max_frame + 1);
+        stack = create_stack_trace(ctx, EXT(ctx)->inlined + args->max_frame + 1);
         if (stack == NULL) err = errno;
     }
 
@@ -546,17 +534,21 @@ static void command_get_children_cache_client(void * x) {
     }
     else {
         int i;
+        int j = 0;
+        int inlined = EXT(ctx)->inlined;
         write_stream(&c->out, '[');
         if (args->all_frames) {
-            for (i = 0; i < stack->frame_cnt; i++) {
-                if (i > 0) write_stream(&c->out, ',');
+            for (i = inlined; i < stack->frame_cnt; i++) {
+                if (j > 0) write_stream(&c->out, ',');
                 json_write_string(&c->out, frame2id(ctx, stack->frame_cnt - i - 1));
+                j++;
             }
         }
         else {
-            for (i = args->min_frame; i <= args->max_frame && i < stack->frame_cnt; i++) {
-                if (i > args->min_frame) write_stream(&c->out, ',');
+            for (i = inlined + args->min_frame; i <= inlined + args->max_frame && i < stack->frame_cnt; i++) {
+                if (j > 0) write_stream(&c->out, ',');
                 json_write_string(&c->out, frame2id(ctx, i));
+                j++;
             }
         }
         write_stream(&c->out, ']');
@@ -699,15 +691,12 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     return 0;
 }
 
-int step_into_inlined_frame(Context * ctx, int * done) {
-    StackFrame * info = NULL;
-    *done = 0;
-    if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
-    if (info->area == NULL) return 0;
-    invalidate_stack_trace(EXT(ctx));
-    EXT(ctx)->inlined++;
-    *done = 1;
-    return 0;
+void set_inlined_frame_level(Context * ctx, int level) {
+    EXT(ctx)->inlined = level;
+}
+
+int get_inlined_frame_level(Context * ctx) {
+    return EXT(ctx)->inlined;
 }
 
 static void flush_stack_trace(Context * ctx, void * args) {
