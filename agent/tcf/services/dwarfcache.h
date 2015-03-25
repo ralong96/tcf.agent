@@ -259,6 +259,7 @@ struct DWARFCache {
     struct ObjectArray * mObjectList;
     unsigned mObjectArrayPos;
     UnitAddressRange * mAddrRanges;
+    ContextAddress mAddrRangesMaxSize;
     unsigned mAddrRangesCnt;
     unsigned mAddrRangesMax;
     int mAddrRangesRelocatable;

@@ -1782,14 +1782,19 @@ static void next_pc(void) {
         }
         else {
             unsigned i;
-            if (address_to_line(elf_ctx, pc > 0 ? pc - 1: pc, pc + 2, addr_to_line_callback_p1, NULL) < 0) {
+            if (address_to_line(elf_ctx, pc >= 2 ? pc - 2: pc, pc + 3, addr_to_line_callback_p1, NULL) < 0) {
                 error("address_to_line");
             }
             for (i = 0; i < area_cnt; i++) {
                 CodeArea area = area_buf[i];
                 if (pc >= area.start_address && pc < area.end_address) {
-                    errno = set_errno(ERR_OTHER, "Line info not found");
-                    error("address_to_line");
+                    if (unit_range == NULL) {
+                        printf("Incomplete or conflicting data in .debug_aranges section for %08x\n", (unsigned)pc);
+                    }
+                    else {
+                        errno = set_errno(ERR_OTHER, "Line info not found");
+                        error("address_to_line");
+                    }
                 }
             }
         }

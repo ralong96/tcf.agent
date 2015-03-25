@@ -945,10 +945,10 @@ static void read_object_refs(ELF_Section * Section) {
 static int addr_ranges_comparator(const void * x, const void * y) {
     UnitAddressRange * rx = (UnitAddressRange *)x;
     UnitAddressRange * ry = (UnitAddressRange *)y;
-    if (rx->mSection < ry->mSection) return -1;
-    if (rx->mSection > ry->mSection) return +1;
     if (rx->mAddr < ry->mAddr) return -1;
     if (rx->mAddr > ry->mAddr) return +1;
+    if (rx->mSection < ry->mSection) return -1;
+    if (rx->mSection > ry->mSection) return +1;
     if (rx->mUnit->mObject->mID < ry->mUnit->mObject->mID) return -1;
     if (rx->mUnit->mObject->mID > ry->mUnit->mObject->mID) return +1;
     return 0;
@@ -960,6 +960,7 @@ static void add_addr_range(ELF_Section * sec, CompUnit * unit, ContextAddress ad
         if (size == 0) return;
         size = 0 - addr;
     }
+    if (size > sCache->mAddrRangesMaxSize) sCache->mAddrRangesMaxSize = size;
     if (sCache->mAddrRangesCnt >= sCache->mAddrRangesMax) {
         sCache->mAddrRangesMax = sCache->mAddrRangesMax == 0 ? 64 : sCache->mAddrRangesMax * 2;
         sCache->mAddrRanges = (UnitAddressRange *)loc_realloc(sCache->mAddrRanges, sizeof(UnitAddressRange) * sCache->mAddrRangesMax);
@@ -1095,8 +1096,7 @@ static void load_addr_ranges(ELF_Section * debug_info) {
             UnitAddressRange * x = sCache->mAddrRanges + i;
             UnitAddressRange * y = x + 1;
             ContextAddress x_end = x->mAddr + x->mSize;
-            if (x->mSection == y->mSection && x->mUnit == y->mUnit &&
-                    (x_end == 0 || x_end >= y->mAddr)) {
+            if (x->mSection == y->mSection && x->mUnit == y->mUnit && (x_end == 0 || x_end >= y->mAddr)) {
                 /* Skip duplicate entry */
                 ContextAddress y_end = y->mAddr + y->mSize;
                 y->mAddr = x->mAddr;
@@ -1106,16 +1106,16 @@ static void load_addr_ranges(ELF_Section * debug_info) {
                 else {
                     y->mSize = y_end - x->mAddr;
                 }
+                if (y->mSize > sCache->mAddrRangesMaxSize) sCache->mAddrRangesMaxSize = y->mSize;
                 continue;
             }
             if (j < i) memcpy(sCache->mAddrRanges + j, x, sizeof(UnitAddressRange));
             j++;
         }
-        /* duplicate seen - adjust size and complete copy */
+        /* Duplicate seen - adjust size and complete copy */
         if (j < sCache->mAddrRangesCnt - 1) {
             UnitAddressRange * x = sCache->mAddrRanges + sCache->mAddrRangesCnt - 1;
-            memcpy(sCache->mAddrRanges + j, x, sizeof(UnitAddressRange));
-            j++;
+            memcpy(sCache->mAddrRanges + j++, x, sizeof(UnitAddressRange));
             sCache->mAddrRangesCnt = j;
         }
     }
@@ -2279,19 +2279,22 @@ UnitAddressRange * find_comp_unit_addr_range(DWARFCache * cache, ELF_Section * s
     while (l < h) {
         unsigned k = (h + l) / 2;
         UnitAddressRange * rk = cache->mAddrRanges + k;
-        if (rk->mSection > s) h = k;
-        else if (rk->mSection < s) l = k + 1;
-        else if (rk->mAddr <= addr_max && rk->mAddr + rk->mSize > addr_min) {
-            int first = 1;
-            if (k > 0) {
-                UnitAddressRange * rp = rk - 1;
-                first = rp->mSection != s || rp->mAddr + rp->mSize <= addr_min;
+        if (rk->mAddr > addr_max) h = k;
+        else if (rk->mAddr + cache->mAddrRangesMaxSize <= addr_min) l = k + 1;
+        else {
+            for (; k > 0; k--) {
+                rk = cache->mAddrRanges + k - 1;
+                if (rk->mAddr + cache->mAddrRangesMaxSize <= addr_min) break;
             }
-            if (first) return rk;
-            h = k;
+            for (; k < h; k++) {
+                rk = cache->mAddrRanges + k;
+                if (rk->mAddr > addr_max) break;
+                if (rk->mAddr + rk->mSize <= addr_min) continue;
+                if (rk->mSection && s && rk->mSection != s) continue;
+                return rk;
+            }
+            break;
         }
-        else if (rk->mAddr >= addr_min) h = k;
-        else l = k + 1;
     }
     return NULL;
 }
