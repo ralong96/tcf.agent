@@ -1017,13 +1017,14 @@ static int symbol_has_location(Symbol * sym) {
 }
 
 /* Return 1 if find list has no location info: either common or undef */
-static int has_symbol_list_no_location_info(void) {
+static int should_continue_pub_names_search(void) {
     Symbol * s = find_symbol_list;
     while (s != NULL) {
         if (s->has_location) return 0;
+        if (s->sym_class == SYM_CLASS_TYPE) return 0;
         s = s->next;
     }
-    /* If we are here, no symbols has location info */
+    /* Symbols have no location info, continue search */
     return 1;
 }
 
@@ -1435,7 +1436,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
 
         assert(sym_ctx == ctx);
 
-        if (error == 0 && has_symbol_list_no_location_info()) {
+        if (error == 0 && should_continue_pub_names_search()) {
             /* Search in pub names of the current file */
             ELF_File * file = elf_list_first(sym_ctx, sym_ip, sym_ip);
             if (file == NULL) error = errno;
@@ -1529,14 +1530,11 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
         }
     }
 
-    if (error == 0 && has_symbol_list_no_location_info()) {
+    if (error == 0 && should_continue_pub_names_search()) {
         /* Search in pub names of all other files */
         ELF_File * file = elf_list_first(sym_ctx, 0, ~(ContextAddress)0);
         if (file == NULL) error = errno;
-
         while (error == 0 && file != NULL) {
-            int no_loc_infos_in_list = 0;
-
             if (file != curr_file) {
                 Trap trap;
                 if (set_trap(&trap)) {
@@ -1549,11 +1547,6 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                     error = trap.error;
                     break;
                 }
-
-                no_loc_infos_in_list = has_symbol_list_no_location_info();
-
-                /* If we have no address, continue */
-                if (sym_ip != 0 && find_symbol_list != NULL && no_loc_infos_in_list == 0) break;
             }
             file = elf_list_next(sym_ctx);
             if (file == NULL) error = errno;
@@ -1561,7 +1554,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
         elf_list_done(sym_ctx);
     }
 
-    if (error == 0 && has_symbol_list_no_location_info()) {
+    if (error == 0 && find_symbol_list == NULL) {
         unsigned i = 0;
         while (type_pseudo_symbols[i].name) {
             if (strcmp(name, type_pseudo_symbols[i].name) == 0) {
@@ -1578,7 +1571,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
     }
 
 #if defined(_WRS_KERNEL)
-    if (error == 0 && has_symbol_list_no_location_info()) {
+    if (error == 0 && find_symbol_list == NULL) {
         char * ptr;
         SYM_TYPE type;
 
