@@ -196,6 +196,21 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
                 regs->regs[n].offset = 14; /* LR */
             }
             break;
+        case EM_TRICORE:
+            min_reg_cnt = 50;
+            if ((n >= 0 && n <= 7) ||   /* D[0] through D[7] */
+                (n >= 18 && n <= 23)) { /* A[2] through A[7] */
+                /* Must be saved across function calls. Callee-save */
+                regs->regs[n].rule = RULE_SAME_VALUE;
+            }
+            else if (n == 26) { /* Stack pointer */
+                regs->regs[n].rule = RULE_VAL_OFFSET;
+            }
+            else if (n == rules.return_address_register) {
+                regs->regs[n].rule = RULE_REGISTER;
+                regs->regs[n].offset = 27; /* RA */
+            }
+            break;
         case EM_V850:
             min_reg_cnt = 32;
             if (n == 0) { /* Always same - reads as zero */
@@ -856,7 +871,13 @@ static void generate_commands(void) {
     case RULE_OFFSET:
         reg_def = get_reg_by_id(rules.ctx, frame_regs.cfa_register, &rules.reg_id_scope);
         if (reg_def != NULL) {
-            add_command(SFT_CMD_RD_REG)->args.reg = reg_def;
+            /* TriCore : PCXI needs to be decyphered so it will point ot the CSA
+             * which is an area of the memory where registers were saved.
+             */
+            if ((rules.reg_id_scope.machine == EM_TRICORE) && (reg_def->dwarf_id == 41))
+                add_command(SFT_CMD_RD_REG_PCXI_TRICORE)->args.reg = reg_def;
+            else
+                add_command(SFT_CMD_RD_REG)->args.reg = reg_def;
             if (frame_regs.cfa_offset != 0) {
                 add_command(SFT_CMD_NUMBER)->args.num = frame_regs.cfa_offset;
                 add_command(SFT_CMD_ADD);

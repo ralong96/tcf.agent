@@ -72,6 +72,7 @@
 #define EM_ARM         40 /* ARM */
 #define EM_SH          42 /* Hitachi Super-H */
 #define EM_SPARCV9     43 /* SPARC Version 9 */
+#define EM_TRICORE     44 /* Siemens Tricore */
 #define EM_IA_64       50 /* HP/Intel IA-64 */
 #define EM_MIPS_X      51 /* Stanford MIPS-X */
 #define EM_COLDFIRE    52 /* Motorola Coldfire */

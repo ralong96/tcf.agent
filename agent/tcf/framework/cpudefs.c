@@ -241,6 +241,21 @@ LocationExpressionState * evaluate_location_expression(Context * ctx, StackFrame
             if (read_reg_value(frame, cmd->args.reg, stk + stk_pos) < 0) exception(errno);
             stk_pos++;
             break;
+        case SFT_CMD_RD_REG_PCXI_TRICORE:
+            {
+            uint64_t offset;
+            uint64_t segment;
+            uint64_t pcxi;
+            if (read_reg_value(frame, cmd->args.reg, &pcxi) < 0) exception(errno);
+            /* PCXI is used as CFA and needs to be decyphered into order to point
+             * to the CSA (area of memory where registered were saved when CALL is made) */
+            offset = (pcxi & 0xFFFF) << 6;
+            segment = (pcxi & 0xF0000) << 12;
+            pcxi = offset | segment;
+            *(stk + stk_pos) = pcxi;
+            stk_pos++;
+            }
+            break;
         case SFT_CMD_WR_REG:
             if (stk_pos < 1) location_expression_error();
             if (write_reg_value(frame, cmd->args.reg, *(stk + stk_pos - 1)) < 0) exception(errno);
