@@ -1554,6 +1554,25 @@ static int update_step_machine_state(Context * ctx) {
     assert(ctx->pending_intercept == 0);
     assert(ext->intercepted == 0);
 
+    if (ext->step_cnt == 0) {
+        /* In case of cache miss, clear stale data */
+        if (ext->step_code_area != NULL) {
+            free_code_area(ext->step_code_area);
+            ext->step_code_area = NULL;
+        }
+        if (ext->step_func_id != NULL) {
+            loc_free(ext->step_func_id);
+            ext->step_func_id = NULL;
+        }
+        if (ext->step_func_id_out != NULL) {
+            loc_free(ext->step_func_id_out);
+            ext->step_func_id_out = NULL;
+        }
+        ext->step_inlined = 0;
+        ext->step_frame_fp = 0;
+        ext->step_set_frame_level = 0;
+    }
+
 #if EN_STEP_OVER
     {
         StackFrame * info = NULL;
@@ -1937,7 +1956,7 @@ static int update_step_machine_state(Context * ctx) {
     case RM_SKIP_PROLOGUE:
         {
             CodeArea * area = NULL;
-            if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return 0;
+            if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return -1;
             if (area == NULL || !is_function_prologue(ctx, addr, area)) {
                 ctx->pending_intercept = 1;
                 ext->step_done = REASON_STEP;
