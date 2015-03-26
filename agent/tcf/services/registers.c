@@ -399,8 +399,10 @@ static void command_get_cache_client(void * x) {
 
         if (id2register(args->id, &ctx, &frame, &reg_def) < 0) exception(errno);
         if (ctx->exited) exception(ERR_ALREADY_EXITED);
-        if (context_has_state(ctx) && !ctx->stopped) exception(ERR_IS_RUNNING);
-
+        if ((ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0) {
+            if (!ctx->stopped && context_has_state(ctx))
+                str_exception(ERR_IS_RUNNING, "Cannot read register if not stopped");
+        }
         if (reg_def->size > bbf_len) {
             bbf_len += 0x100 + reg_def->size;
             bbf = (uint8_t *)loc_realloc(bbf, bbf_len);
@@ -461,7 +463,10 @@ static void command_set_cache_client(void * x) {
         if (id2register(args->id, &ctx, &frame, &reg_def) < 0) exception(errno);
         if (frame >= 0 && !is_top_frame(ctx, frame)) exception(ERR_INV_CONTEXT);
         if (ctx->exited) exception(ERR_ALREADY_EXITED);
-        if (context_has_state(ctx) && !ctx->stopped) exception(ERR_IS_RUNNING);
+        if ((ctx->reg_access & REG_ACCESS_WR_RUNNING) == 0) {
+            if (!ctx->stopped && context_has_state(ctx))
+                str_exception(ERR_IS_RUNNING, "Cannot write register if not stopped");
+        }
         if ((size_t)args->data_len > reg_def->size) exception(ERR_INV_DATA_SIZE);
         if (args->data_len > 0) {
             if (context_write_reg(ctx, reg_def, 0, args->data_len, args->data) < 0) exception(errno);
@@ -557,7 +562,10 @@ static void check_location_list(Location * locs, unsigned cnt, int setm) {
 
         if (id2register(loc->id, &loc->ctx, &loc->frame, &loc->reg_def) < 0) exception(errno);
         if (loc->ctx->exited) exception(ERR_ALREADY_EXITED);
-        if (context_has_state(loc->ctx) && !loc->ctx->stopped) exception(ERR_IS_RUNNING);
+        if ((loc->ctx->reg_access & setm ? REG_ACCESS_WR_RUNNING : REG_ACCESS_RD_RUNNING) == 0) {
+            if (!loc->ctx->stopped && context_has_state(loc->ctx))
+                str_fmt_exception(ERR_IS_RUNNING, "Cannot %s register if not stopped", setm ? "write" : "read");
+        }
         if (loc->offs + loc->size > loc->reg_def->size) exception(ERR_INV_DATA_SIZE);
 
         if (loc->frame < 0 || is_top_frame(loc->ctx, loc->frame)) continue;

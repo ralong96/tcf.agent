@@ -251,6 +251,23 @@ static void write_context(OutputStream * out, Context * ctx) {
     write_stream(out, ':');
     json_write_long(out, context_word_size(ctx));
 
+    if (ctx->reg_access) {
+        unsigned cnt = 0;
+        write_stream(out, ',');
+        json_write_string(out, "RegAccessTypes");
+        write_stream(out, ':');
+        write_stream(out, '[');
+        if (ctx->mem_access & REG_ACCESS_RD_RUNNING) {
+            if (cnt++) write_stream(out, ',');
+            json_write_string(out, "rd-running");
+        }
+        if (ctx->mem_access & REG_ACCESS_WR_RUNNING) {
+            if (cnt++) write_stream(out, ',');
+            json_write_string(out, "wr-running");
+        }
+        write_stream(out, ']');
+    }
+
     if (context_can_resume(ctx, RM_TERMINATE)) {
         write_stream(out, ',');
         json_write_string(out, "CanTerminate");
@@ -345,9 +362,8 @@ static void get_current_pc(Context * ctx) {
         ext->pc_error = set_errno(ERR_OTHER, "Program counter register not found");
         return;
     }
-    if (!ctx->stopped) {
-        ext->pc_error = ERR_IS_RUNNING;
-        return;
+    if ((ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0) {
+        if (!ctx->stopped && context_has_state(ctx)) exception(ERR_IS_RUNNING);
     }
     assert(def->size <= sizeof(buf));
     if (context_read_reg(ctx, def, 0, def->size, buf) < 0) {

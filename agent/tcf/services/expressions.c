@@ -837,7 +837,7 @@ static void reg2value(int mode, Context * ctx, int frame, RegisterDefinition * d
             }
             if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
         }
-        else if (!ctx->stopped) {
+        else if (!ctx->stopped && (ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0) {
             str_exception(ERR_IS_RUNNING, "Cannot read CPU register");
         }
         else if (frame == STACK_TOP_FRAME || frame == STACK_NO_FRAME) {

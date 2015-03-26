@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -57,6 +57,7 @@ struct Context {
     Context *           mem;                /* context memory space */
     int                 big_endian;         /* 0 - little endian, 1 -  big endian */
     unsigned int        mem_access;         /* bit set of memory access types represented by this context */
+    unsigned int        reg_access;         /* bit set of register access types represented by this context */
     unsigned int        ref_count;          /* reference count, see context_lock() and context_unlock() */
     int                 stopped;            /* OS kernel has stopped this context */
     int                 stopped_by_bp;      /* stopped by breakpoint instruction */
@@ -107,6 +108,12 @@ extern const char * REASON_ERROR;
 #define MEM_ACCESS_PHYSICAL     0x0080      /* Context uses physical addresses */
 #define MEM_ACCESS_CACHE        0x0100      /* Context is a cache */
 #define MEM_ACCESS_TLB          0x0200      /* Context is a TLB memory */
+
+/*
+ * Values of "reg_access".
+ */
+#define REG_ACCESS_RD_RUNNING   0x0001      /* Context supports reading registers while running */
+#define REG_ACCESS_WR_RUNNING   0x0002      /* Context supports writing registers while running */
 
 /*
  * MemoryErrorInfo is used to retrieve additional information about memory access error.
