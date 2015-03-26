@@ -131,7 +131,7 @@ typedef struct StackFrameRegisterLocation {
 } StackFrameRegisterLocation;
 
 typedef struct StackFrameInlinedSubroutine {
-    Symbol * sym;
+    const char * func_id;
     CodeArea area;
 } StackFrameInlinedSubroutine;
 

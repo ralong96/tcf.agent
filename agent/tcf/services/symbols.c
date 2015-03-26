@@ -26,6 +26,7 @@
 #include <tcf/framework/cache.h>
 #include <tcf/services/stacktrace.h>
 #include <tcf/services/memorymap.h>
+#include <tcf/services/linenumbers.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/vm.h>
 
@@ -782,6 +783,28 @@ static void write_commands(OutputStream * out, Context * ctx, LocationExpression
     }
 }
 
+static void write_inlined_subroutine_info(OutputStream * out, StackFrameInlinedSubroutine * info) {
+    unsigned cnt = 0;
+
+    write_stream(out, '{');
+
+    if (info->func_id != NULL) {
+        if (cnt++ > 0) write_stream(out, ',');
+        json_write_string(out, "ID");
+        write_stream(out, ':');
+        json_write_string(out, info->func_id);
+    }
+
+#if ENABLE_LineNumbers
+    if (cnt++ > 0) write_stream(out, ',');
+    json_write_string(out, "Area");
+    write_stream(out, ':');
+    write_code_area(out, &info->area, NULL);
+#endif /* ENABLE_LineNumbers */
+
+    write_stream(out, '}');
+}
+
 typedef struct CommandGetLocationInfo {
     char token[256];
     char id[256];
@@ -881,9 +904,10 @@ typedef struct CommandFindFrameInfo {
     char token[256];
     char id[256];
     ContextAddress addr;
+    int props;
 } CommandFindFrameInfo;
 
-static void command_find_frame_info_cache_client(void * x) {
+static void command_find_frame_props_cache_client(void * x) {
     CommandFindFrameInfo * args = (CommandFindFrameInfo *)x;
     Channel * c = cache_channel();
     Context * ctx = NULL;
@@ -900,30 +924,87 @@ static void command_find_frame_info_cache_client(void * x) {
     write_stringz(&c->out, args->token);
     write_errno(&c->out, err);
 
-    json_write_uint64(&c->out, info ? info->addr : 0);
-    write_stream(&c->out, 0);
-    json_write_uint64(&c->out, info ? info->size : 0);
-    write_stream(&c->out, 0);
-
-    if (info == NULL || info->fp == NULL) write_string(&c->out, "null");
-    else write_commands(&c->out, ctx, info->fp->cmds, info->fp->cmds_cnt);
-    write_stream(&c->out, 0);
-
-    if (info != NULL && info->regs != NULL) {
-        int i;
+    if (args->props) {
+        unsigned cnt = 0;
         write_stream(&c->out, '{');
-        for (i = 0; i < info->reg_cnt; i++) {
-            if (i > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, register2id(ctx, STACK_NO_FRAME, info->regs[i]->reg));
+
+        if (info != NULL && info->size) {
+            json_write_string(&c->out, "CodeAddr");
             write_stream(&c->out, ':');
-            write_commands(&c->out, ctx, info->regs[i]->cmds, info->regs[i]->cmds_cnt);
+            json_write_uint64(&c->out, info->addr);
+            write_stream(&c->out, ',');
+            json_write_string(&c->out, "CodeSize");
+            write_stream(&c->out, ':');
+            json_write_uint64(&c->out, info->size);
+            cnt++;
         }
+
+        if (info != NULL && info->fp != NULL) {
+            if (cnt++ > 0) write_stream(&c->out, ',');
+            json_write_string(&c->out, "FP");
+            write_stream(&c->out, ':');
+            write_commands(&c->out, ctx, info->fp->cmds, info->fp->cmds_cnt);
+        }
+
+        if (info != NULL && info->regs != NULL) {
+            int i;
+            if (cnt++ > 0) write_stream(&c->out, ',');
+            json_write_string(&c->out, "Regs");
+            write_stream(&c->out, ':');
+            write_stream(&c->out, '{');
+            for (i = 0; i < info->reg_cnt; i++) {
+                if (i > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, register2id(ctx, STACK_NO_FRAME, info->regs[i]->reg));
+                write_stream(&c->out, ':');
+                write_commands(&c->out, ctx, info->regs[i]->cmds, info->regs[i]->cmds_cnt);
+            }
+            write_stream(&c->out, '}');
+        }
+
+        if (info != NULL && info->subs != NULL) {
+            int i;
+            if (cnt++ > 0) write_stream(&c->out, ',');
+            json_write_string(&c->out, "Inlined");
+            write_stream(&c->out, ':');
+            write_stream(&c->out, '[');
+            for (i = 0; i < info->sub_cnt; i++) {
+                if (i > 0) write_stream(&c->out, ',');
+                write_inlined_subroutine_info(&c->out, info->subs[i]);
+            }
+            write_stream(&c->out, ']');
+        }
+
         write_stream(&c->out, '}');
+        write_stream(&c->out, 0);
     }
     else {
-        write_string(&c->out, "null");
+        /* Deprecated, use findFrameProps */
+
+        json_write_uint64(&c->out, info ? info->addr : 0);
+        write_stream(&c->out, 0);
+        json_write_uint64(&c->out, info ? info->size : 0);
+        write_stream(&c->out, 0);
+
+        if (info == NULL || info->fp == NULL) write_string(&c->out, "null");
+        else write_commands(&c->out, ctx, info->fp->cmds, info->fp->cmds_cnt);
+        write_stream(&c->out, 0);
+
+        if (info != NULL && info->regs != NULL) {
+            int i;
+            write_stream(&c->out, '{');
+            for (i = 0; i < info->reg_cnt; i++) {
+                if (i > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, register2id(ctx, STACK_NO_FRAME, info->regs[i]->reg));
+                write_stream(&c->out, ':');
+                write_commands(&c->out, ctx, info->regs[i]->cmds, info->regs[i]->cmds_cnt);
+            }
+            write_stream(&c->out, '}');
+        }
+        else {
+            write_string(&c->out, "null");
+        }
+        write_stream(&c->out, 0);
     }
-    write_stream(&c->out, 0);
 
     write_stream(&c->out, MARKER_EOM);
 }
@@ -936,9 +1017,24 @@ static void command_find_frame_info(char * token, Channel * c) {
     args.addr = (ContextAddress)json_read_uint64(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
+    args.props = 0;
 
     strlcpy(args.token, token, sizeof(args.token));
-    cache_enter(command_find_frame_info_cache_client, c, &args, sizeof(args));
+    cache_enter(command_find_frame_props_cache_client, c, &args, sizeof(args));
+}
+
+static void command_find_frame_props(char * token, Channel * c) {
+    CommandFindFrameInfo args;
+
+    json_read_string(&c->inp, args.id, sizeof(args.id));
+    json_test_char(&c->inp, MARKER_EOA);
+    args.addr = (ContextAddress)json_read_uint64(&c->inp);
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+    args.props = 1;
+
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(command_find_frame_props_cache_client, c, &args, sizeof(args));
 }
 
 typedef struct CommandSymFileInfo {
@@ -1126,7 +1222,8 @@ void ini_symbols_service(Protocol * proto) {
     add_command_handler(proto, SYMBOLS, "list", command_list);
     add_command_handler(proto, SYMBOLS, "getArrayType", command_get_array_type);
     add_command_handler(proto, SYMBOLS, "getLocationInfo", command_get_location_info);
-    add_command_handler(proto, SYMBOLS, "findFrameInfo", command_find_frame_info);
+    add_command_handler(proto, SYMBOLS, "findFrameInfo", command_find_frame_info); /* Deprecated, use findFrameProps */
+    add_command_handler(proto, SYMBOLS, "findFrameProps", command_find_frame_props);
     add_command_handler(proto, SYMBOLS, "getSymFileInfo", command_get_sym_file_info);
     add_command_handler(proto, SYMBOLS, "getAddressInfo", command_get_address_info);
 }

@@ -2324,7 +2324,7 @@ static void add_inlined_subroutine(ObjectInfo * o, CompUnit * unit, ContextAddre
         }
     }
     object2symbol(NULL, o, &sym);
-    sub->sym = sym;
+    sub->func_id = tmp_strdup(symbol2id(sym));
     sub->area = area;
     sub->area.start_address = addr0;
     sub->area.end_address = addr1;
@@ -2334,15 +2334,6 @@ static void add_inlined_subroutine(ObjectInfo * o, CompUnit * unit, ContextAddre
             buf->subs, sizeof(StackFrameInlinedSubroutine *) * buf_sub_max);
     }
     buf->subs[buf->sub_cnt++] = sub;
-    if (buf->addr < addr0) {
-        assert(buf->addr + buf->size > addr0);
-        buf->size = buf->addr + buf->size - addr0;
-        buf->addr = addr0;
-    }
-    if (buf->addr + buf->size > addr1) {
-        assert(addr1 > buf->addr);
-        buf->size = addr1 - buf->addr;
-    }
 }
 
 static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddress * addr, StackTracingInfo * buf) {
@@ -2359,9 +2350,6 @@ static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddre
         case TAG_catch_block:
         case TAG_subroutine:
         case TAG_subprogram:
-            if (!check_in_range(o, addr)) break;
-            search_inlined_subroutine(ctx, o, addr, buf);
-            break;
         case TAG_inlined_subroutine:
             if (o->mFlags & DOIF_ranges) {
                 DWARFCache * cache = get_dwarf_cache(addr->file);
@@ -2382,14 +2370,28 @@ static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddre
                         else {
                             if (x_sec == NULL) x_sec = unit->mTextSection;
                             if (y_sec == NULL) y_sec = unit->mTextSection;
-                            if (x_sec == addr->section && y_sec == addr->section && addr->lt_addr >= base + x && addr->lt_addr < base + y) {
-                                ELF_File * file = unit->mFile;
-                                ContextAddress addr0 = elf_map_to_run_time_address(ctx, file, addr->section, base + x);
-                                ContextAddress addr1 = elf_map_to_run_time_address(ctx, file, addr->section, base + y);
+                            if (x_sec == addr->section && y_sec == addr->section && x < y) {
+                                ContextAddress addr0 = base + x - addr->lt_addr + addr->rt_addr;
+                                ContextAddress addr1 = base + y - addr->lt_addr + addr->rt_addr;
                                 if (addr0 <= addr->rt_addr && addr1 > addr->rt_addr) {
-                                    add_inlined_subroutine(o, unit, addr0, addr1, buf);
+                                    if (buf->addr < addr0) {
+                                        assert(buf->addr + buf->size > addr0);
+                                        buf->size = buf->addr + buf->size - addr0;
+                                        buf->addr = addr0;
+                                    }
+                                    if (buf->addr + buf->size > addr1) {
+                                        assert(addr1 > buf->addr);
+                                        buf->size = addr1 - buf->addr;
+                                    }
+                                    if (o->mTag == TAG_inlined_subroutine) add_inlined_subroutine(o, unit, addr0, addr1, buf);
                                     search_inlined_subroutine(ctx, o, addr, buf);
-                                    break;
+                                }
+                                else if (addr1 <= addr->rt_addr && addr1 > buf->addr) {
+                                    buf->size = buf->addr + buf->size - addr1;
+                                    buf->addr = addr1;
+                                }
+                                else if (addr0 > addr->rt_addr && addr0 < buf->addr + buf->size) {
+                                    buf->size = addr0 - buf->addr;
                                 }
                             }
                         }
@@ -2397,15 +2399,28 @@ static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddre
                     dio_ExitSection();
                 }
             }
-            else if ((o->mFlags & DOIF_low_pc) && o->u.mCode.mHighPC.mAddr > o->u.mCode.mLowPC &&
-                    addr->lt_addr >= o->u.mCode.mLowPC && addr->lt_addr < o->u.mCode.mHighPC.mAddr &&
-                    o->u.mCode.mSection == addr->section) {
-                ELF_File * file = addr->unit->mFile;
-                ContextAddress addr0 = elf_map_to_run_time_address(ctx, file, addr->section, o->u.mCode.mLowPC);
-                ContextAddress addr1 = elf_map_to_run_time_address(ctx, file, addr->section, o->u.mCode.mHighPC.mAddr);
+            else if ((o->mFlags & DOIF_low_pc) && o->u.mCode.mHighPC.mAddr > o->u.mCode.mLowPC && o->u.mCode.mSection == addr->section) {
+                ContextAddress addr0 = o->u.mCode.mLowPC - addr->lt_addr + addr->rt_addr;
+                ContextAddress addr1 = o->u.mCode.mHighPC.mAddr - addr->lt_addr + addr->rt_addr;
                 if (addr0 <= addr->rt_addr && addr1 > addr->rt_addr) {
-                    add_inlined_subroutine(o, addr->unit, addr0, addr1, buf);
+                    if (buf->addr < addr0) {
+                        assert(buf->addr + buf->size > addr0);
+                        buf->size = buf->addr + buf->size - addr0;
+                        buf->addr = addr0;
+                    }
+                    if (buf->addr + buf->size > addr1) {
+                        assert(addr1 > buf->addr);
+                        buf->size = addr1 - buf->addr;
+                    }
+                    if (o->mTag == TAG_inlined_subroutine) add_inlined_subroutine(o, addr->unit, addr0, addr1, buf);
                     search_inlined_subroutine(ctx, o, addr, buf);
+                }
+                else if (addr1 <= addr->rt_addr && addr1 > buf->addr) {
+                    buf->size = buf->addr + buf->size - addr1;
+                    buf->addr = addr1;
+                }
+                else if (addr0 > addr->rt_addr && addr0 < buf->addr + buf->size) {
+                    buf->size = addr0 - buf->addr;
                 }
             }
             break;

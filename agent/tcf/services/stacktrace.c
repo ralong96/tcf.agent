@@ -34,9 +34,10 @@
 #include <tcf/framework/cache.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/registers.h>
-#include <tcf/services/stacktrace.h>
 #include <tcf/services/symbols.h>
+#include <tcf/services/linenumbers.h>
 #include <tcf/services/memorymap.h>
+#include <tcf/services/stacktrace.h>
 
 #define MAX_FRAMES  1000
 
@@ -95,7 +96,7 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
                 *down->area = info->subs[down->inlined]->area;
                 if (down->area->directory) down->area->directory = loc_strdup(down->area->directory);
                 if (down->area->file) down->area->file = loc_strdup(down->area->file);
-                frame->func_id = loc_strdup(symbol2id(info->subs[down->inlined]->sym));
+                frame->func_id = loc_strdup(info->subs[down->inlined]->func_id);
             }
             else {
                 int i;
@@ -339,57 +340,10 @@ static void write_context(OutputStream * out, char * id, CommandGetContextData *
     }
 
     if (d->info->area != NULL) {
-        CodeArea * area = d->info->area;
         write_stream(out, ',');
         json_write_string(out, "CodeArea");
         write_stream(out, ':');
-        write_stream(out, '{');
-        json_write_string(out, "SAddr");
-        write_stream(out, ':');
-        json_write_uint64(out, area->start_address);
-        if (area->start_line > 0) {
-            write_stream(out, ',');
-            json_write_string(out, "SLine");
-            write_stream(out, ':');
-            json_write_ulong(out, area->start_line);
-            if (area->start_column > 0) {
-                write_stream(out, ',');
-                json_write_string(out, "SCol");
-                write_stream(out, ':');
-                json_write_ulong(out, area->start_column);
-            }
-        }
-        if (area->end_address != 0) {
-            write_stream(out, ',');
-            json_write_string(out, "EAddr");
-            write_stream(out, ':');
-            json_write_uint64(out, area->end_address);
-        }
-        if (area->end_line > 0) {
-            write_stream(out, ',');
-            json_write_string(out, "ELine");
-            write_stream(out, ':');
-            json_write_ulong(out, area->end_line);
-            if (area->end_column > 0) {
-                write_stream(out, ',');
-                json_write_string(out, "ECol");
-                write_stream(out, ':');
-                json_write_ulong(out, area->end_column);
-            }
-        }
-        if (area->file != NULL) {
-            write_stream(out, ',');
-            json_write_string(out, "File");
-            write_stream(out, ':');
-            json_write_string(out, area->file);
-        }
-        if (area->directory != NULL) {
-            write_stream(out, ',');
-            json_write_string(out, "Dir");
-            write_stream(out, ':');
-            json_write_string(out, area->directory);
-        }
-        write_stream(out, '}');
+        write_code_area(out, d->info->area, NULL);
     }
 
     if (d->ip_error == 0) {

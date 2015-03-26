@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,7 +22,7 @@
 
 #include <tcf/config.h>
 
-#if SERVICE_LineNumbers
+#if ENABLE_DebugContext
 
 #include <errno.h>
 #include <assert.h>
@@ -36,33 +36,32 @@
 #include <tcf/framework/trace.h>
 #include <tcf/services/linenumbers.h>
 
-#define MAX_AREA_CNT 0x1000
+static void read_code_area_props(InputStream * inp, const char * name, void * args) {
+    CodeArea * area = (CodeArea *)args;
+    if (strcmp(name, "SLine") == 0) area->start_line = json_read_long(inp);
+    else if (strcmp(name, "SCol") == 0) area->start_column = json_read_long(inp);
+    else if (strcmp(name, "SAddr") == 0) area->start_address = (ContextAddress)json_read_uint64(inp);
+    else if (strcmp(name, "ELine") == 0) area->end_line = json_read_long(inp);
+    else if (strcmp(name, "ECol") == 0) area->end_column = json_read_long(inp);
+    else if (strcmp(name, "EAddr") == 0) area->end_address = (ContextAddress)json_read_uint64(inp);
+    else if (strcmp(name, "NAddr") == 0) area->next_address = (ContextAddress)json_read_uint64(inp);
+    else if (strcmp(name, "File") == 0) area->file = json_read_alloc_string(inp);
+    else if (strcmp(name, "Dir") == 0) area->directory = json_read_alloc_string(inp);
+    else if (strcmp(name, "ISA") == 0) area->isa = json_read_long(inp);
+    else if (strcmp(name, "IsStmt") == 0) area->is_statement = json_read_boolean(inp);
+    else if (strcmp(name, "BasicBlock") == 0) area->basic_block = json_read_boolean(inp);
+    else if (strcmp(name, "PrologueEnd") == 0) area->prologue_end = json_read_boolean(inp);
+    else if (strcmp(name, "EpilogueBegin") == 0) area->epilogue_begin = json_read_boolean(inp);
+    else if (strcmp(name, "OpIndex") == 0) area->op_index = json_read_long(inp);
+    else if (strcmp(name, "Discriminator") == 0) area->discriminator = json_read_long(inp);
+}
 
-typedef struct MapToSourceArgs {
-    char token[256];
-    char id[256];
-    ContextAddress addr0;
-    ContextAddress addr1;
-} MapToSourceArgs;
+void read_code_area(InputStream * inp, CodeArea * area) {
+    memset(area, 0, sizeof(CodeArea));
+    json_read_struct(inp, read_code_area_props, area);
+}
 
-typedef struct MapToMemoryArgs {
-    char token[256];
-    char id[256];
-    char * file;
-    int line;
-    int column;
-} MapToMemoryArgs;
-
-static int code_area_cnt = 0;
-static int code_area_max = 0;
-static CodeArea * code_area_buf = NULL;
-
-static const char * LINENUMBERS = "LineNumbers";
-
-static void write_line_info(OutputStream * out, int cnt) {
-    CodeArea * area = code_area_buf + cnt;
-    CodeArea * prev = cnt == 0 ? NULL : code_area_buf + cnt - 1;
-
+void write_code_area(OutputStream * out, CodeArea * area, CodeArea * prev) {
     write_stream(out, '{');
     json_write_string(out, "SAddr");
     write_stream(out, ':');
@@ -159,6 +158,38 @@ static void write_line_info(OutputStream * out, int cnt) {
     }
     write_stream(out, '}');
 }
+
+#if SERVICE_LineNumbers
+
+#define MAX_AREA_CNT 0x1000
+
+typedef struct MapToSourceArgs {
+    char token[256];
+    char id[256];
+    ContextAddress addr0;
+    ContextAddress addr1;
+} MapToSourceArgs;
+
+typedef struct MapToMemoryArgs {
+    char token[256];
+    char id[256];
+    char * file;
+    int line;
+    int column;
+} MapToMemoryArgs;
+
+static int code_area_cnt = 0;
+static int code_area_max = 0;
+static CodeArea * code_area_buf = NULL;
+
+static const char * LINENUMBERS = "LineNumbers";
+
+static void write_line_info(OutputStream * out, int cnt) {
+    CodeArea * area = code_area_buf + cnt;
+    CodeArea * prev = cnt == 0 ? NULL : code_area_buf + cnt - 1;
+    write_code_area(out, area, prev);
+}
+
 
 static void add_code_area(CodeArea * area, void * args) {
     if (code_area_cnt >= code_area_max) {
@@ -287,3 +318,4 @@ void ini_line_numbers_service(Protocol * proto) {
 }
 
 #endif /* SERVICE_LineNumbers */
+#endif /* ENABLE_DebugContext */

@@ -155,26 +155,6 @@ static unsigned calc_hash(Context * ctx, const char * file, int line, int column
     return (h + ((uintptr_t)ctx >> 4) + (unsigned)line + (unsigned)column) % HASH_SIZE;
 }
 
-static void read_code_area_props(InputStream * inp, const char * name, void * args) {
-    CodeArea * area = (CodeArea *)args;
-    if (strcmp(name, "SLine") == 0) area->start_line = json_read_long(inp);
-    else if (strcmp(name, "SCol") == 0) area->start_column = json_read_long(inp);
-    else if (strcmp(name, "SAddr") == 0) area->start_address = (ContextAddress)json_read_uint64(inp);
-    else if (strcmp(name, "ELine") == 0) area->end_line = json_read_long(inp);
-    else if (strcmp(name, "ECol") == 0) area->end_column = json_read_long(inp);
-    else if (strcmp(name, "EAddr") == 0) area->end_address = (ContextAddress)json_read_uint64(inp);
-    else if (strcmp(name, "NAddr") == 0) area->next_address = (ContextAddress)json_read_uint64(inp);
-    else if (strcmp(name, "File") == 0) area->file = json_read_alloc_string(inp);
-    else if (strcmp(name, "Dir") == 0) area->directory = json_read_alloc_string(inp);
-    else if (strcmp(name, "ISA") == 0) area->isa = json_read_long(inp);
-    else if (strcmp(name, "IsStmt") == 0) area->is_statement = json_read_boolean(inp);
-    else if (strcmp(name, "BasicBlock") == 0) area->basic_block = json_read_boolean(inp);
-    else if (strcmp(name, "PrologueEnd") == 0) area->prologue_end = json_read_boolean(inp);
-    else if (strcmp(name, "EpilogueBegin") == 0) area->epilogue_begin = json_read_boolean(inp);
-    else if (strcmp(name, "OpIndex") == 0) area->op_index = json_read_long(inp);
-    else if (strcmp(name, "Discriminator") == 0) area->discriminator = json_read_long(inp);
-}
-
 static void read_code_area_array(InputStream * inp, void * args) {
     CodeArea * area = NULL;
     if (code_area_cnt >= code_area_max) {
@@ -182,8 +162,7 @@ static void read_code_area_array(InputStream * inp, void * args) {
         code_area_buf = (CodeArea *)loc_realloc(code_area_buf, sizeof(CodeArea) * code_area_max);
     }
     area = code_area_buf + code_area_cnt++;
-    memset(area, 0, sizeof(CodeArea));
-    json_read_struct(inp, read_code_area_props, area);
+    read_code_area(inp, area);
 }
 
 static void validate_cache_entry(Channel * c, void * args, int error) {

@@ -31,6 +31,7 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/stacktrace.h>
 #include <tcf/services/memorymap.h>
+#include <tcf/services/linenumbers.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/vm.h>
 #if ENABLE_SymbolsMux
@@ -64,6 +65,8 @@ typedef struct SymbolsCache {
     LINK link_address[HASH_SIZE];
     LINK link_location[HASH_SIZE];
     int service_available;
+    int no_find_frame_info;
+    int no_find_frame_props;
 } SymbolsCache;
 
 /* Symbol properties cache */
@@ -146,6 +149,7 @@ typedef struct StackFrameCache {
     Context * ctx;
     uint64_t ip;
     StackTracingInfo sti;
+    int command_props;
     int disposed;
 } StackFrameCache;
 
@@ -477,6 +481,14 @@ static void free_stack_frame_cache(StackFrameCache * c) {
         context_unlock(c->ctx);
         for (i = 0; i < c->sti.reg_cnt; i++) free_sft_sequence(c->sti.regs[i]);
         free_sft_sequence(c->sti.fp);
+        for (i = 0; i < c->sti.sub_cnt; i++) {
+            StackFrameInlinedSubroutine * info = c->sti.subs[i];
+            loc_free(info->area.directory);
+            loc_free(info->area.file);
+            loc_free(info->func_id);
+            loc_free(info);
+        }
+        loc_free(c->sti.subs);
         loc_free(c->sti.regs);
         loc_free(c);
     }
@@ -1511,6 +1523,10 @@ static unsigned trace_regs_cnt = 0;
 static unsigned trace_regs_max = 0;
 static StackFrameRegisterLocation ** trace_regs = NULL;
 
+static unsigned trace_subs_cnt = 0;
+static unsigned trace_subs_max = 0;
+static StackFrameInlinedSubroutine ** trace_subs = NULL;
+
 static unsigned discriminant_cnt = 0;
 static unsigned discriminant_max = 0;
 static DiscriminantRange * discriminant_lst = NULL;
@@ -1768,6 +1784,62 @@ static void read_stack_trace_register(InputStream * inp, const char * id, void *
     }
 }
 
+static void read_inlined_subroutine_props(InputStream * inp, const char * name, void * args) {
+    StackFrameInlinedSubroutine * s = (StackFrameInlinedSubroutine *)args;
+    if (strcmp(name, "ID") == 0) s->func_id = json_read_alloc_string(inp);
+    else if (strcmp(name, "Area") == 0) read_code_area(inp, &s->area);
+    else json_skip_object(inp);
+}
+
+static void read_inlined_subroutine(InputStream * inp, void * args) {
+    if (trace_subs_cnt >= trace_subs_max) {
+        trace_subs_max += 16;
+        trace_subs = (StackFrameInlinedSubroutine **)loc_realloc(trace_subs, trace_subs_max * sizeof(StackFrameInlinedSubroutine *));
+    }
+    trace_subs[trace_subs_cnt] = (StackFrameInlinedSubroutine *)loc_alloc_zero(sizeof(StackFrameInlinedSubroutine));
+    json_read_struct(inp, read_inlined_subroutine_props, trace_subs[trace_subs_cnt++]);
+}
+
+static void read_stack_frame_fp(InputStream * inp, StackFrameCache * f) {
+    location_cmds.cnt = 0;
+    if (json_read_array(inp, read_location_command, NULL)) {
+        f->sti.fp = (StackFrameRegisterLocation *)loc_alloc(sizeof(StackFrameRegisterLocation) +
+            (location_cmds.cnt - 1) * sizeof(LocationExpressionCommand));
+        f->sti.fp->reg = NULL;
+        f->sti.fp->cmds_cnt = location_cmds.cnt;
+        f->sti.fp->cmds_max = location_cmds.cnt;
+        memcpy(f->sti.fp->cmds, location_cmds.cmds, location_cmds.cnt * sizeof(LocationExpressionCommand));
+    }
+}
+
+static void read_stack_frame_regs(InputStream * inp, StackFrameCache * f) {
+    trace_regs_cnt = 0;
+    if (json_read_struct(inp, read_stack_trace_register, NULL)) {
+        f->sti.reg_cnt = trace_regs_cnt;
+        f->sti.regs = (StackFrameRegisterLocation **)loc_alloc(trace_regs_cnt * sizeof(StackFrameRegisterLocation *));
+        memcpy(f->sti.regs, trace_regs, trace_regs_cnt * sizeof(StackFrameRegisterLocation *));
+    }
+}
+
+static void read_stack_frame_inlined(InputStream * inp, StackFrameCache * f) {
+    trace_subs_cnt = 0;
+    if (json_read_array(inp, read_inlined_subroutine, NULL)) {
+        f->sti.sub_cnt = trace_subs_cnt;
+        f->sti.subs = (StackFrameInlinedSubroutine **)loc_alloc(trace_subs_cnt * sizeof(StackFrameInlinedSubroutine *));
+        memcpy(f->sti.subs, trace_subs, trace_subs_cnt * sizeof(StackFrameInlinedSubroutine *));
+    }
+}
+
+static void read_stack_frame_props(InputStream * inp, const char * name, void * args) {
+    StackFrameCache * f = (StackFrameCache *)args;
+    if (strcmp(name, "CodeAddr") == 0) f->sti.addr = (ContextAddress)json_read_uint64(inp);
+    else if (strcmp(name, "CodeSize") == 0) f->sti.size = (ContextAddress)json_read_uint64(inp);
+    else if (strcmp(name, "FP") == 0) read_stack_frame_fp(inp, f);
+    else if (strcmp(name, "Regs") == 0) read_stack_frame_regs(inp, f);
+    else if (strcmp(name, "Inlined") == 0) read_stack_frame_inlined(inp, f);
+    else json_skip_object(inp);
+}
+
 static void validate_frame(Channel * c, void * args, int error) {
     Trap trap;
     StackFrameCache * f = (StackFrameCache *)args;
@@ -1777,49 +1849,38 @@ static void validate_frame(Channel * c, void * args, int error) {
     if (set_trap(&trap)) {
         f->pending = NULL;
         if (!error) {
-            uint64_t addr, size;
             id2register_error = 0;
             error = read_errno(&c->inp);
-            addr = json_read_uint64(&c->inp);
-            json_test_char(&c->inp, MARKER_EOA);
-            size = json_read_uint64(&c->inp);
-            json_test_char(&c->inp, MARKER_EOA);
-            if (error || size == 0) {
-                f->sti.addr = f->ip & ~(uint64_t)3;
-                f->sti.size = 4;
+            if (f->command_props) {
+                json_read_struct(&c->inp, read_stack_frame_props, f);
+                json_test_char(&c->inp, MARKER_EOA);
             }
             else {
-                assert(addr <= f->ip);
-                assert(addr + size > f->ip);
-                f->sti.addr = (ContextAddress)addr;
-                f->sti.size = (ContextAddress)size;
+                /* Deprecated, use findFrameProps */
+                f->sti.addr = (ContextAddress)json_read_uint64(&c->inp);
+                json_test_char(&c->inp, MARKER_EOA);
+                f->sti.size = (ContextAddress)json_read_uint64(&c->inp);
+                json_test_char(&c->inp, MARKER_EOA);
+                read_stack_frame_fp(&c->inp, f);
+                json_test_char(&c->inp, MARKER_EOA);
+                read_stack_frame_regs(&c->inp, f);
+                json_test_char(&c->inp, MARKER_EOA);
             }
-            location_cmds.cnt = 0;
-            if (json_read_array(&c->inp, read_location_command, NULL)) {
-                f->sti.fp = (StackFrameRegisterLocation *)loc_alloc(sizeof(StackFrameRegisterLocation) +
-                    (location_cmds.cnt - 1) * sizeof(LocationExpressionCommand));
-                f->sti.fp->reg = NULL;
-                f->sti.fp->cmds_cnt = location_cmds.cnt;
-                f->sti.fp->cmds_max = location_cmds.cnt;
-                memcpy(f->sti.fp->cmds, location_cmds.cmds, location_cmds.cnt * sizeof(LocationExpressionCommand));
-            }
-            json_test_char(&c->inp, MARKER_EOA);
-            trace_regs_cnt = 0;
-            if (json_read_struct(&c->inp, read_stack_trace_register, NULL)) {
-                f->sti.reg_cnt = trace_regs_cnt;
-                f->sti.regs = (StackFrameRegisterLocation **)loc_alloc(trace_regs_cnt * sizeof(StackFrameRegisterLocation *));
-                memcpy(f->sti.regs, trace_regs, trace_regs_cnt * sizeof(StackFrameRegisterLocation *));
-            }
-            json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
             if (!error && id2register_error) error = id2register_error;
         }
+        if (error || f->sti.size == 0) {
+            f->sti.addr = (ContextAddress)f->ip;
+            f->sti.size = 1;
+        }
+        assert(f->sti.addr <= f->ip);
+        assert(f->sti.addr + f->sti.size > f->ip);
         clear_trap(&trap);
     }
     else {
         error = trap.error;
     }
-    if (get_error_code(error) != ERR_INV_COMMAND) f->error = get_error_report(error);
+    f->error = get_error_report(error);
     cache_notify_later(&f->cache);
     if (f->disposed) free_stack_frame_cache(f);
 }
@@ -1853,7 +1914,21 @@ int get_stack_tracing_info(Context * ctx, ContextAddress ip, StackTracingInfo **
 
     assert(f == NULL || f->pending == NULL);
 
+    if (f != NULL && f->error != NULL && get_error_code(set_error_report_errno(f->error)) == ERR_INV_COMMAND) {
+        if (f->command_props) {
+            syms->no_find_frame_props = 1;
+        }
+        else {
+            syms->no_find_frame_info = 1;
+        }
+        free_stack_frame_cache(f);
+        f = NULL;
+    }
+
     if (f == NULL && !syms->service_available) {
+        /* nothing */
+    }
+    else if (f == NULL && syms->no_find_frame_info && syms->no_find_frame_props) {
         /* nothing */
     }
     else if (f == NULL) {
@@ -1864,7 +1939,15 @@ int get_stack_tracing_info(Context * ctx, ContextAddress ip, StackTracingInfo **
         context_lock(f->ctx = ctx);
         f->magic = MAGIC_FRAME;
         f->ip = ip;
-        f->pending = protocol_send_command(c, SYMBOLS, "findFrameInfo", validate_frame, f);
+        if (syms->no_find_frame_props) {
+            /* Deprecated, use findFrameProps */
+            f->pending = protocol_send_command(c, SYMBOLS, "findFrameInfo", validate_frame, f);
+            f->command_props = 0;
+        }
+        else {
+            f->pending = protocol_send_command(c, SYMBOLS, "findFrameProps", validate_frame, f);
+            f->command_props = 1;
+        }
         json_write_string(&c->out, f->ctx->id);
         write_stream(&c->out, 0);
         json_write_uint64(&c->out, ip);

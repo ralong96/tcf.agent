@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -24,6 +24,19 @@
 
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/context.h>
+#include <tcf/framework/cpudefs.h>
+
+#if ENABLE_DebugContext
+
+/*
+ * Utility function: read code area data from JSON stream.
+ */
+extern void read_code_area(InputStream * inp, CodeArea * area);
+
+/*
+ * Utility function: write code area data into JSON stream.
+ */
+extern void write_code_area(OutputStream * out, CodeArea * area, CodeArea * prev);
 
 #if ENABLE_LineNumbers
 
@@ -46,5 +59,6 @@ extern void ini_line_numbers_service(Protocol *);
 extern void ini_line_numbers_lib(void);
 
 #endif /* ENABLE_LineNumbers */
+#endif /* ENABLE_DebugContext */
 
 #endif /* D_linenumbers */
