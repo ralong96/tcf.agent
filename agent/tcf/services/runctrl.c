@@ -363,7 +363,10 @@ static void get_current_pc(Context * ctx) {
         return;
     }
     if ((ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0) {
-        if (!ctx->stopped && context_has_state(ctx)) exception(ERR_IS_RUNNING);
+        if (!ctx->stopped && context_has_state(ctx)) {
+            ext->pc_error = ERR_IS_RUNNING;
+            return;
+        }
     }
     assert(def->size <= sizeof(buf));
     if (context_read_reg(ctx, def, 0, def->size, buf) < 0) {
