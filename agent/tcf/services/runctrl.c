@@ -1774,7 +1774,7 @@ static int update_step_machine_state(Context * ctx) {
             }
             if (ext->step_code_area != NULL && tgt->area != NULL) same_line = tgt->area->start_line == ext->step_code_area->start_line;
             else if (ext->step_code_area != NULL || tgt->area != NULL) same_line = 0;
-            if (ext->step_func_id != NULL && tgt->func_id != NULL) same_func = strcmp(tgt->func_id, ext->step_func_id);
+            if (ext->step_func_id != NULL && tgt->func_id != NULL) same_func = strcmp(tgt->func_id, ext->step_func_id) == 0;
             else if (ext->step_func_id != NULL || tgt->func_id != NULL) same_func = 0;
             switch (ext->step_mode) {
             case RM_STEP_INTO_LINE:
