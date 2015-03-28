@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -23,7 +23,7 @@
 
 #include <tcf/config.h>
 
-#if SERVICE_LineNumbers && ENABLE_LineNumbersMux
+#if ENABLE_LineNumbers && ENABLE_LineNumbersMux
 
 #include <errno.h>
 #include <assert.h>
@@ -88,4 +88,4 @@ void ini_line_numbers_lib(void) {
 #endif
 }
 
-#endif /* ENABLE_LineNumbersMux && SERVICE_LineNumbers */
+#endif /* ENABLE_LineNumbers && ENABLE_LineNumbersMux */

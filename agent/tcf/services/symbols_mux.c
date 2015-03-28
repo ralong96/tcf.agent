@@ -23,7 +23,7 @@
 
 #include <tcf/config.h>
 
-#if SERVICE_Symbols && ENABLE_SymbolsMux
+#if ENABLE_Symbols && ENABLE_SymbolsMux
 
 #include <assert.h>
 #include <stdio.h>
@@ -402,4 +402,4 @@ void ini_symbols_lib(void) {
     proxy_reader_ini_symbols_lib();
 #endif
 }
-#endif /* Enable_SymbolsMux && SERVICE_Symbols */
+#endif /* ENABLE_Symbols && ENABLE_SymbolsMux */
