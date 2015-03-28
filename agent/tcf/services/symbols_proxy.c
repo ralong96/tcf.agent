@@ -1874,7 +1874,7 @@ static void validate_frame(Channel * c, void * args, int error) {
             f->sti.size = 1;
         }
         assert(f->sti.addr <= f->ip);
-        assert(f->sti.addr + f->sti.size > f->ip);
+        assert(f->sti.addr + f->sti.size == 0 || f->sti.addr + f->sti.size > f->ip);
         clear_trap(&trap);
     }
     else {
