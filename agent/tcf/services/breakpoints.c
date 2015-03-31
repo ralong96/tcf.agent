@@ -239,6 +239,7 @@ static uintptr_t generation_active = 0;
 static uintptr_t generation_done = 0;
 static int planting_instruction = 0;
 static int cache_enter_cnt = 0;
+static int planted_sw_bp_cnt = 0;
 
 static int bp_location_error = 0;
 #if ENABLE_LineNumbers
@@ -335,6 +336,7 @@ static void plant_instruction(BreakInstruction * bi) {
         release_error_report(rp);
     }
     bi->planted = bi->planting_error == NULL;
+    if (bi->planted && bi->saved_size > 0) planted_sw_bp_cnt++;
 }
 
 static int remove_instruction(BreakInstruction * bi) {
@@ -354,6 +356,7 @@ static int remove_instruction(BreakInstruction * bi) {
             planting_instruction = 0;
             if (r < 0) return -1;
         }
+        planted_sw_bp_cnt--;
     }
     else {
         if (context_unplant_breakpoint(&bi->cb) < 0) return -1;
@@ -677,6 +680,7 @@ void clone_breakpoints_on_process_fork(Context * parent, Context * child) {
         }
         ci->valid = 1;
         ci->planted = 1;
+        planted_sw_bp_cnt++;
     }
 }
 
@@ -1227,12 +1231,14 @@ static void notify_breakpoint_status(BreakpointInfo * bp) {
         LINK * m = NULL;
         int instruction_cnt = 0;
         int planted_as_sw_cnt = 0;
+        int planted_cnt = 0;
         for (m = instructions.next; m != &instructions; m = m->next) {
             unsigned i;
             BreakInstruction * bi = link_all2bi(m);
             assert(bi->valid);
             assert(bi->ref_cnt <= bi->ref_size);
             assert(bi->cb.ctx->ref_count > 0);
+            if (bi->planted && bi->saved_size > 0) planted_cnt++;
             for (i = 0; i < bi->ref_cnt; i++) {
                 assert(bi->refs[i].cnt > 0);
                 assert(bi->refs[i].ctx->ref_count > 0);
@@ -1255,6 +1261,7 @@ static void notify_breakpoint_status(BreakpointInfo * bp) {
         assert(bp->enabled || instruction_cnt == 0);
         assert(bp->instruction_cnt == instruction_cnt);
         assert(planted_as_sw_cnt == 0 || planted_as_sw_cnt < instruction_cnt);
+        assert(planted_sw_bp_cnt == planted_cnt);
         if (*bp->id) {
             int i;
             int client_cnt = 0;
@@ -2599,9 +2606,10 @@ int is_breakpoint_address(Context * ctx, ContextAddress address) {
     Context * mem = NULL;
     ContextAddress mem_addr = 0;
     BreakInstruction * bi = NULL;
+    if (planted_sw_bp_cnt == 0) return 0;
     if (context_get_canonical_addr(ctx, address, &mem, &mem_addr, NULL, NULL) < 0) return 0;
     bi = find_instruction(mem, 0, mem_addr, CTX_BP_ACCESS_INSTRUCTION, 1);
-    return bi != NULL && bi->planted;
+    return bi != NULL && bi->planted && bi->saved_size > 0;
 }
 
 void evaluate_breakpoint(Context * ctx) {
@@ -2914,13 +2922,15 @@ static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddre
             unsigned i;
             BreakInstruction * bi = link_all2bi(l);
             l = l->next;
-            if (bi->cb.ctx != mem) continue;
             if (!bi->planted) continue;
+            if (!bi->saved_size) continue;
+            if (bi->cb.ctx != mem) continue;
             if (bi->cb.address < mem_addr || bi->cb.address >= mem_addr + sz) continue;
             for (i = 0; i < bi->ref_cnt; i++) {
                 bi->refs[i].bp->status_changed = 1;
                 cnt++;
             }
+            planted_sw_bp_cnt--;
             bi->planted = 0;
         }
         addr += sz;
