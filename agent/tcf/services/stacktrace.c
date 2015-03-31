@@ -213,12 +213,12 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             }
         }
         trace(LOG_STACK, "  cfa      %16"PRIX64, (uint64_t)frame->fp);
-        if (!down.has_reg_data) {
+        if (down.area == NULL && !down.has_reg_data) {
             stack->complete = 1;
             free_frame(&down);
             break;
         }
-        if (stack->frame_cnt > 1 && frame->fp == stack->frames[stack->frame_cnt - 2].fp) {
+        if (stack->frame_cnt > 1 && frame->area == NULL && frame->fp == stack->frames[stack->frame_cnt - 2].fp) {
             /* Compare registers in current and next frame */
             int equ = 1;
             RegisterDefinition * r;
