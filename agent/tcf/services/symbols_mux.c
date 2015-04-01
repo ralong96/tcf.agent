@@ -383,6 +383,10 @@ int symbols_mux_id2symbol(const char * id, Symbol ** res) {
     return id2symbol(id, res);
 }
 
+const char * symbols_mux_symbol2id(Symbol * sym) {
+    return symbol2id(sym);
+}
+
 extern void elf_reader_ini_symbols_lib(void);
 extern void win32_reader_ini_symbols_lib(void);
 extern void proxy_reader_ini_symbols_lib(void);

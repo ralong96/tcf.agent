@@ -2325,7 +2325,11 @@ static void add_inlined_subroutine(ObjectInfo * o, CompUnit * unit, ContextAddre
         }
     }
     object2symbol(NULL, o, &sym);
+#if ENABLE_SymbolsMux
+    sub->func_id = tmp_strdup(symbols_mux_symbol2id(sym));
+#else
     sub->func_id = tmp_strdup(symbol2id(sym));
+#endif
     sub->area = area;
     sub->area.start_address = addr0;
     sub->area.end_address = addr1;
@@ -2375,6 +2379,8 @@ static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddre
                                 ContextAddress addr0 = base + x - addr->lt_addr + addr->rt_addr;
                                 ContextAddress addr1 = base + y - addr->lt_addr + addr->rt_addr;
                                 if (addr0 <= addr->rt_addr && addr1 > addr->rt_addr) {
+                                    U8_T pos = dio_GetPos();
+                                    dio_ExitSection();
                                     if (buf->addr < addr0) {
                                         assert(buf->addr + buf->size > addr0);
                                         buf->size = buf->addr + buf->size - addr0;
@@ -2386,6 +2392,7 @@ static void search_inlined_subroutine(Context * ctx, ObjectInfo * obj, UnitAddre
                                     }
                                     if (o->mTag == TAG_inlined_subroutine) add_inlined_subroutine(o, unit, addr0, addr1, buf);
                                     search_inlined_subroutine(ctx, o, addr, buf);
+                                    dio_EnterSection(&unit->mDesc, debug_ranges, pos);
                                 }
                                 else if (addr1 <= addr->rt_addr && addr1 > buf->addr) {
                                     buf->size = buf->addr + buf->size - addr1;

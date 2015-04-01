@@ -150,6 +150,7 @@ static SymbolReader symbol_reader = {
 #endif  /* SYM_READER_PREFIX */
 
 extern int symbols_mux_id2symbol(const char * id, Symbol ** sym);
+extern const char * symbols_mux_symbol2id(Symbol * sym);
 
 extern int add_symbols_reader(SymbolReader * reader);
 
