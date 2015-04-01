@@ -66,6 +66,7 @@ static void add_frame(StackTrace * stack, StackFrame * frame) {
 }
 
 static void free_frame(StackFrame * frame) {
+    int error = errno;
     if (frame->area != NULL) {
         loc_free(frame->area->directory);
         loc_free(frame->area->file);
@@ -76,6 +77,7 @@ static void free_frame(StackFrame * frame) {
     loc_free(frame->func_id);
     frame->regs = NULL;
     frame->func_id = NULL;
+    errno = error;
 }
 
 int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
@@ -215,10 +217,9 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             memset(&down, 0, sizeof(down));
             down.ctx = ctx;
             if (crawl_stack_frame(frame, &down) < 0) {
-                int error = errno;
                 free_frame(&down);
                 if (cache_miss_count() > 0) break;
-                trace(LOG_STACK, "  crawl error: %s", errno_to_str(error));
+                trace(LOG_STACK, "  crawl error: %s", errno_to_str(errno));
                 stack->complete = 1;
                 break;
             }
