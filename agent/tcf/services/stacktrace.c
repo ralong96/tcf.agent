@@ -55,81 +55,6 @@ static size_t context_extension_offset = 0;
 
 #define EXT(ctx) ((StackTrace *)((char *)(ctx) + context_extension_offset))
 
-int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
-#if ENABLE_Symbols
-    int error = 0;
-    uint64_t ip = 0;
-    Context * ctx = frame->ctx;
-    StackTracingInfo * info = NULL;
-
-    if (read_reg_value(frame, get_PC_definition(ctx), &ip) < 0) {
-        if (frame->is_top_frame) error = errno;
-    }
-    else if (get_stack_tracing_info(ctx, (ContextAddress)(frame->is_top_frame ? ip : ip - 1), &info) < 0) {
-        error = errno;
-    }
-    else if (info != NULL) {
-        Trap trap;
-        if (set_trap(&trap)) {
-            LocationExpressionState * state;
-            state = evaluate_location_expression(ctx, frame, info->fp->cmds, info->fp->cmds_cnt, NULL, 0);
-            if (state->stk_pos != 1) str_exception(ERR_OTHER, "Invalid stack trace expression");
-            frame->fp = (ContextAddress)state->stk[0];
-            frame->is_walked = 1;
-            if (info->sub_cnt > 0 && frame->area == NULL) {
-                frame->inlined = info->sub_cnt;
-            }
-            if (frame->inlined > 0 && frame->inlined <= info->sub_cnt) {
-                size_t buf_size = 8;
-                uint8_t * buf = (uint8_t *)tmp_alloc(buf_size);
-                RegisterDefinition * def = get_reg_definitions(ctx);
-                while (def->name != NULL) {
-                    if (buf_size < def->size) buf = (uint8_t *)tmp_realloc(buf, buf_size = def->size);
-                    if (read_reg_bytes(frame, def, 0, def->size, buf) == 0) {
-                        write_reg_bytes(down, def, 0, def->size, buf);
-                        down->has_reg_data = 1;
-                    }
-                    def++;
-                }
-                down->inlined = frame->inlined - 1;
-                down->area = (CodeArea *)loc_alloc(sizeof(CodeArea));
-                *down->area = info->subs[down->inlined]->area;
-                if (down->area->directory) down->area->directory = loc_strdup(down->area->directory);
-                if (down->area->file) down->area->file = loc_strdup(down->area->file);
-                frame->func_id = loc_strdup(info->subs[down->inlined]->func_id);
-            }
-            else {
-                int i;
-                for (i = 0; i < info->reg_cnt; i++) {
-                    int ok = 0;
-                    uint64_t v = 0;
-                    Trap trap_reg;
-                    if (set_trap(&trap_reg)) {
-                        /* If a saved register value cannot be evaluated - ignore it */
-                        state = evaluate_location_expression(ctx, frame, info->regs[i]->cmds, info->regs[i]->cmds_cnt, NULL, 0);
-                        if (state->stk_pos == 1) {
-                            v = state->stk[0];
-                            ok = 1;
-                        }
-                        clear_trap(&trap_reg);
-                    }
-                    if (ok && write_reg_value(down, info->regs[i]->reg, v) < 0) exception(errno);
-                }
-            }
-            clear_trap(&trap);
-        }
-        else {
-            frame->fp = 0;
-        }
-    }
-    if (error) {
-        errno = error;
-        return -1;
-    }
-#endif
-    return 0;
-}
-
 static void add_frame(StackTrace * stack, StackFrame * frame) {
     frame->frame = stack->frame_cnt;
     if (stack->frame_cnt >= stack->frame_max) {
@@ -153,6 +78,97 @@ static void free_frame(StackFrame * frame) {
     frame->func_id = NULL;
 }
 
+int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
+#if ENABLE_Symbols
+    int error = 0;
+    uint64_t ip = 0;
+    Context * ctx = frame->ctx;
+    StackTracingInfo * info = NULL;
+    int frame_idx = frame->frame;
+
+    memset(down, 0, sizeof(StackFrame));
+
+    if (read_reg_value(frame, get_PC_definition(ctx), &ip) < 0) {
+        if (frame->is_top_frame) error = errno;
+    }
+    else if (get_stack_tracing_info(ctx, (ContextAddress)(frame->is_top_frame ? ip : ip - 1), &info) < 0) {
+        error = errno;
+    }
+    else if (info != NULL) {
+        Trap trap;
+        if (set_trap(&trap)) {
+            int i;
+            LocationExpressionState * state;
+            state = evaluate_location_expression(ctx, frame, info->fp->cmds, info->fp->cmds_cnt, NULL, 0);
+            if (state->stk_pos != 1) str_exception(ERR_OTHER, "Invalid stack trace expression");
+            frame->fp = (ContextAddress)state->stk[0];
+            if (info->sub_cnt > 0) {
+                size_t buf_size = 8;
+                uint8_t * buf = (uint8_t *)tmp_alloc(buf_size);
+                StackTrace * stk = EXT(ctx);
+                frame->inlined = info->sub_cnt;
+                for (i = 0; i < info->sub_cnt; i++) {
+                    RegisterDefinition * def = get_reg_definitions(ctx);
+                    StackFrame * prev = stk->frames + stk->frame_cnt - 1;
+                    down->ctx = ctx;
+                    down->fp = frame->fp;
+                    while (def->name != NULL) {
+                        if (def->dwarf_id >= 0) {
+                            if (buf_size < def->size) buf = (uint8_t *)tmp_realloc(buf, buf_size = def->size);
+                            if (read_reg_bytes(prev, def, 0, def->size, buf) == 0) {
+                                write_reg_bytes(down, def, 0, def->size, buf);
+                                down->has_reg_data = 1;
+                            }
+                        }
+                        def++;
+                    }
+                    down->is_walked = 1;
+                    down->inlined = info->sub_cnt - i - 1;
+                    down->area = (CodeArea *)loc_alloc(sizeof(CodeArea));
+                    *down->area = info->subs[down->inlined]->area;
+                    if (down->area->directory) down->area->directory = loc_strdup(down->area->directory);
+                    if (down->area->file) down->area->file = loc_strdup(down->area->file);
+                    prev->func_id = loc_strdup(info->subs[down->inlined]->func_id);
+                    add_frame(stk, down);
+                    frame = stk->frames + frame_idx;
+                    memset(down, 0, sizeof(StackFrame));
+                }
+            }
+            down->ctx = ctx;
+            for (i = 0; i < info->reg_cnt; i++) {
+                int ok = 0;
+                uint64_t v = 0;
+                Trap trap_reg;
+                if (set_trap(&trap_reg)) {
+                    /* If a saved register value cannot be evaluated - ignore it */
+                    state = evaluate_location_expression(ctx, frame, info->regs[i]->cmds, info->regs[i]->cmds_cnt, NULL, 0);
+                    if (state->stk_pos == 1) {
+                        v = state->stk[0];
+                        ok = 1;
+                    }
+                    clear_trap(&trap_reg);
+                }
+                if (ok && write_reg_value(down, info->regs[i]->reg, v) < 0) exception(errno);
+            }
+            clear_trap(&trap);
+            frame->is_walked = 1;
+        }
+        else {
+            error = trap.error;
+            frame->fp = 0;
+        }
+    }
+    if (error) {
+        free_frame(down);
+        errno = error;
+        return -1;
+    }
+#else
+    memset(down, 0, sizeof(StackFrame));
+#endif
+    return 0;
+}
+
 static void invalidate_stack_trace(StackTrace * stack) {
     int i;
     for (i = 0; i < stack->frame_cnt; i++) {
@@ -162,8 +178,7 @@ static void invalidate_stack_trace(StackTrace * stack) {
     stack->complete = 0;
 }
 
-static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
-    int error = 0;
+static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
     StackFrame down;
 
     if (stack->frame_cnt == 0) {
@@ -175,58 +190,63 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
 
     trace(LOG_STACK, "Stack trace, ctx %s", ctx->id);
     while (stack->frame_cnt < max_frames) {
-        StackFrame * frame = stack->frames + (stack->frame_cnt - 1);
-        memset(&down, 0, sizeof(down));
-        down.ctx = ctx;
+        int frame_idx = stack->frame_cnt - 1;
+        StackFrame * frame = stack->frames + frame_idx;
         trace(LOG_STACK, "Frame %d", stack->frame_cnt);
 #if ENABLE_Trace
         if (LOG_STACK & log_mode) {
             uint64_t v;
-            RegisterDefinition * r;
-            for (r = get_reg_definitions(ctx); r->name != NULL; r++) {
-                if (read_reg_value(frame, r, &v) == 0) {
-                    trace(LOG_STACK, "  %-8s %16"PRIX64, r->name, v);
+            RegisterDefinition * def;
+            for (def = get_reg_definitions(ctx); def->name != NULL; def++) {
+                if (read_reg_value(frame, def, &v) == 0) {
+                    trace(LOG_STACK, "  %-8s %16"PRIX64, def->name, v);
                 }
             }
         }
 #endif
         if (get_next_stack_frame(frame, &down) < 0) {
-            trace(LOG_STACK, "  trace error: %s", errno_to_str(errno));
-            if (get_error_code(errno) == ERR_CACHE_MISS) {
-                error = errno;
-                free_frame(&down);
-                break;
-            }
-            /* Try with stackcrawl */
-            frame->is_walked = 0;
+            if (cache_miss_count() > 0) break;
+            trace(LOG_ALWAYS, "Stack trace error: %s", errno_to_str(errno));
         }
+        frame = stack->frames + frame_idx; /* stack->frames might be realloc-ed */
         if (frame->is_walked == 0) {
             trace(LOG_STACK, "  *** frame info not available ***");
             free_frame(&down);
             memset(&down, 0, sizeof(down));
             down.ctx = ctx;
             if (crawl_stack_frame(frame, &down) < 0) {
-                error = errno;
-                trace(LOG_STACK, "  crawl error: %s", errno_to_str(errno));
+                int error = errno;
                 free_frame(&down);
+                if (cache_miss_count() > 0) break;
+                trace(LOG_STACK, "  crawl error: %s", errno_to_str(error));
+                stack->complete = 1;
                 break;
             }
         }
+        assert(down.area == NULL);
         trace(LOG_STACK, "  cfa      %16"PRIX64, (uint64_t)frame->fp);
-        if (down.area == NULL && !down.has_reg_data) {
+        if (!down.has_reg_data) {
             stack->complete = 1;
             free_frame(&down);
             break;
         }
-        if (stack->frame_cnt > 1 && frame->area == NULL && frame->fp == stack->frames[stack->frame_cnt - 2].fp) {
+        if (stack->frame_cnt > 1 && frame->fp == stack->frames[stack->frame_cnt - 2].fp) {
             /* Compare registers in current and next frame */
             int equ = 1;
-            RegisterDefinition * r;
-            for (r = get_reg_definitions(ctx); r->name != NULL; r++) {
-                uint64_t v0 = 0, v1 = 0;
-                int f0 = read_reg_value(frame, r, &v0) == 0;
-                int f1 = read_reg_value(&down, r, &v1) == 0;
-                if (f0 != f1 || (f0 && v0 != v1)) {
+            size_t buf_size = 8;
+            uint8_t * buf0 = (uint8_t *)tmp_alloc(buf_size);
+            uint8_t * buf1 = (uint8_t *)tmp_alloc(buf_size);
+            RegisterDefinition * def;
+            for (def = get_reg_definitions(ctx); def->name != NULL; def++) {
+                int f0, f1;
+                if (buf_size < def->size) {
+                    buf_size = def->size;
+                    buf0 = (uint8_t *)tmp_realloc(buf0, buf_size);
+                    buf1 = (uint8_t *)tmp_realloc(buf1, buf_size);
+                }
+                f0 = read_reg_bytes(frame, def, 0, def->size, buf0) == 0;
+                f1 = read_reg_bytes(&down, def, 0, def->size, buf1) == 0;
+                if (f0 != f1 || (f0 && memcmp(buf0, buf1, def->size) != 0)) {
                     equ = 0;
                     break;
                 }
@@ -243,22 +263,17 @@ static int trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
 #endif
         add_frame(stack, &down);
     }
-
-    if (!error) return 0;
-    if (get_error_code(error) != ERR_CACHE_MISS) {
-        stack->complete = 1;
-        return 0;
-    }
-    assert(cache_miss_count() > 0);
-    errno = error;
-    return -1;
 }
 
 static StackTrace * create_stack_trace(Context * ctx, int max_frames) {
     StackTrace * stack = EXT(ctx);
     max_frames++; /* Frame pointer and return address calculation needs one more frame */
     if (!stack->complete && stack->frame_cnt < max_frames) {
-        if (trace_stack(ctx, stack, max_frames) < 0) return NULL;
+        trace_stack(ctx, stack, max_frames);
+        if (cache_miss_count() > 0) {
+            errno = ERR_CACHE_MISS;
+            return NULL;
+        }
     }
     return stack;
 }
