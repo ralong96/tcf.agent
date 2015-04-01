@@ -156,6 +156,7 @@ static LocationPiece * add_piece(void) {
     else if (state->stk_pos == 0) {
         /* An empty location description represents a piece or all of an object that is
          * present in the source but not in the object code (perhaps due to optimization). */
+        piece->optimized_away = 1;
     }
     else {
         state->stk_pos--;

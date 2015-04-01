@@ -120,6 +120,7 @@ typedef struct RegisterIdScope {
 typedef struct LocationExpressionCommand LocationExpressionCommand;
 
 typedef struct LocationPiece {
+    int optimized_away; /* present in the source but not in the object code (perhaps due to optimization) */
     ContextAddress addr;
     RegisterDefinition * reg;
     void * value;

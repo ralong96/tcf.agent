@@ -497,8 +497,12 @@ void read_location_pieces(Context * ctx, StackFrame * frame,
         unsigned piece_bits = piece->bit_size ? piece->bit_size : piece->size * 8;
         uint8_t * pbf = NULL;
         uint8_t * rbf = NULL;
+        if (piece->optimized_away) {
+            set_errno(ERR_OTHER, "Cannot get symbol value: optimized away");
+            exception(errno);
+        }
         if (piece->implicit_pointer) {
-            set_errno(ERR_OTHER, "Symbol value unknown: implicit pointer");
+            set_errno(ERR_OTHER, "Cannot get symbol value: implicit pointer");
             exception(errno);
         }
         if (piece->reg) {
@@ -555,6 +559,10 @@ void write_location_pieces(Context * ctx, StackFrame * frame,
         unsigned piece_bits = piece->bit_size ? piece->bit_size : piece->size * 8;
         uint8_t * pbf = NULL;
         uint8_t * rbf = NULL;
+        if (piece->optimized_away) {
+            set_errno(ERR_OTHER, "Cannot set symbol value: optimized away");
+            exception(errno);
+        }
         if (piece->implicit_pointer) {
             set_errno(ERR_OTHER, "Cannot set symbol value: implicit pointer");
             exception(errno);

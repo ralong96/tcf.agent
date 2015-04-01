@@ -52,8 +52,9 @@ static LocationExpressionState * evaluate_symbol_location(const Symbol * sym, un
 }
 
 static const char * pieces_err_msg(LocationExpressionState * state) {
-    if (state->pieces[0].reg != NULL) return "is located in a register";
-    if (state->pieces[0].value != NULL) return "is a constant value";
+    if (state->pieces->optimized_away) return "is optimized away";
+    if (state->pieces->reg != NULL) return "is located in a register";
+    if (state->pieces->value != NULL) return "is a constant value";
     return "is a bit field";
 }
 
@@ -81,7 +82,8 @@ int get_symbol_address(const Symbol * sym, ContextAddress * address) {
 int get_symbol_offset(const Symbol * sym, ContextAddress * offset) {
     LocationExpressionState * state = evaluate_symbol_location(sym, 1);
     if (state == NULL) return -1;
-    if (state->pieces_cnt == 1 && state->pieces->implicit_pointer == 0 &&
+    if (state->pieces_cnt == 1 &&
+            state->pieces->implicit_pointer == 0 && state->pieces->optimized_away == 0 &&
             state->pieces->reg == NULL && state->pieces->value == NULL &&
             state->pieces->bit_offs == 0) {
         *offset = state->pieces->addr;

@@ -2436,8 +2436,8 @@ static void op_addr(int mode, Value * v) {
         }
     }
     else if (v->loc != NULL && v->loc->pieces_cnt == 1 &&
-            v->loc->pieces->implicit_pointer == 0 && v->loc->pieces->reg == NULL &&
-            v->loc->pieces->value == NULL && v->loc->pieces->bit_offs == 0) {
+            v->loc->pieces->implicit_pointer == 0 && v->loc->pieces->optimized_away == 0 &&
+            v->loc->pieces->reg == NULL && v->loc->pieces->value == NULL && v->loc->pieces->bit_offs == 0) {
         set_ctx_word_value(v, v->loc->pieces->addr);
         v->type_class = TYPE_CLASS_POINTER;
         v->constant = 0;
@@ -4436,23 +4436,25 @@ static void command_evaluate_cache_client(void * x) {
                         write_stream(&c->out, ':');
                         json_write_ulong(&c->out, piece->bit_offs);
                     }
-                    write_stream(&c->out, ',');
-                    if (piece->reg) {
-                        Context * reg_ctx = value.loc->ctx;
-                        int reg_frame = get_info_frame(value.loc->ctx, value.loc->stack_frame);
-                        json_write_string(&c->out, "Register");
-                        write_stream(&c->out, ':');
-                        json_write_string(&c->out, register2id(reg_ctx, reg_frame, piece->reg));
-                    }
-                    else if (piece->value) {
-                        json_write_string(&c->out, "Value");
-                        write_stream(&c->out, ':');
-                        json_write_binary(&c->out, piece->value, piece->size);
-                    }
-                    else {
-                        json_write_string(&c->out, "Address");
-                        write_stream(&c->out, ':');
-                        json_write_uint64(&c->out, piece->addr);
+                    if (!piece->optimized_away) {
+                        write_stream(&c->out, ',');
+                        if (piece->reg) {
+                            Context * reg_ctx = value.loc->ctx;
+                            int reg_frame = get_info_frame(value.loc->ctx, value.loc->stack_frame);
+                            json_write_string(&c->out, "Register");
+                            write_stream(&c->out, ':');
+                            json_write_string(&c->out, register2id(reg_ctx, reg_frame, piece->reg));
+                        }
+                        else if (piece->value) {
+                            json_write_string(&c->out, "Value");
+                            write_stream(&c->out, ':');
+                            json_write_binary(&c->out, piece->value, piece->size);
+                        }
+                        else {
+                            json_write_string(&c->out, "Address");
+                            write_stream(&c->out, ':');
+                            json_write_uint64(&c->out, piece->addr);
+                        }
                     }
                     write_stream(&c->out, '}');
                 }
@@ -4523,6 +4525,7 @@ static void command_assign_cache_client(void * x) {
                     unsigned i;
                     for (i = 0; i < value.loc->pieces_cnt; i++) {
                         LocationPiece * piece = value.loc->pieces + i;
+                        assert(piece->optimized_away == 0);
 #if SERVICE_Registers
                         if (piece->reg != NULL) {
                             send_event_register_changed(register2id(value.loc->ctx,
