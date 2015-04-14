@@ -1301,6 +1301,8 @@ static int type_expression(int mode, int * buf) {
     int pos = 0;
     int expr_buf[TYPE_EXPR_LENGTH];
     int expr_len = 0;
+    int arr_buf[TYPE_EXPR_LENGTH];
+    int arr_len = 0;
     while (text_sy == '*') {
         next_sy();
         if (pos >= TYPE_EXPR_LENGTH) error(ERR_BUFFER_OVERFLOW, "Type expression is too long");
@@ -1315,13 +1317,17 @@ static int type_expression(int mode, int * buf) {
     while (text_sy == '[') {
         next_sy();
         if (text_sy != SY_VAL) error(ERR_INV_EXPRESSION, "Number expected");
-        if (pos >= TYPE_EXPR_LENGTH) error(ERR_BUFFER_OVERFLOW, "Type expression is too long");
-        buf[pos] = (int)to_int(mode, &text_val);
-        if (mode == MODE_NORMAL && buf[pos] < 1) error(ERR_INV_EXPRESSION, "Positive number expected");
-        pos++;
+        if (arr_len >= TYPE_EXPR_LENGTH) error(ERR_BUFFER_OVERFLOW, "Type expression is too long");
+        arr_buf[arr_len] = (int)to_int(mode, &text_val);
+        if (mode == MODE_NORMAL && arr_buf[arr_len] < 1) error(ERR_INV_EXPRESSION, "Positive number expected");
+        arr_len++;
         next_sy();
         if (text_sy != ']') error(ERR_INV_EXPRESSION, "']' expected");
         next_sy();
+    }
+    for (i = 0; i < arr_len; i++) {
+        if (pos >= TYPE_EXPR_LENGTH) error(ERR_BUFFER_OVERFLOW, "Type expression is too long");
+        buf[pos++] = arr_buf[arr_len - i - 1];
     }
     for (i = 0; i < expr_len; i++) {
         if (pos >= TYPE_EXPR_LENGTH) error(ERR_BUFFER_OVERFLOW, "Type expression is too long");
