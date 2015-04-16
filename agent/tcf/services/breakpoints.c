@@ -47,6 +47,15 @@
 #include <tcf/services/memorymap.h>
 #include <tcf/services/pathmap.h>
 
+
+/* ENABLE_SkipPrologueWhenPlanting: select how "skip prologue" is implemented:
+ * 0 - plant breakpoint at function entry, then step until after prologue;
+ * 1 - when planting, adjust breakpoint address to a location right after prologue;
+ */
+#if !defined(ENABLE_SkipPrologueWhenPlanting)
+#  define ENABLE_SkipPrologueWhenPlanting 0
+#endif
+
 typedef struct BreakpointRef BreakpointRef;
 typedef struct InstructionRef InstructionRef;
 typedef struct BreakInstruction BreakInstruction;
@@ -223,6 +232,12 @@ static unsigned listener_max = 0;
 
 #define link_bp2hcnt(A)  ((BreakpointHitCount *)((char *)(A) - offsetof(BreakpointHitCount, link_bp)))
 #define link_ctx2hcnt(A)  ((BreakpointHitCount *)((char *)(A) - offsetof(BreakpointHitCount, link_ctx)))
+
+#if ENABLE_SkipPrologueWhenPlanting
+#  define suspend_by_bp(ctx, trigger, bp, skip_prologue) suspend_by_breakpoint(ctx, trigger, bp, 0)
+#else
+#  define suspend_by_bp(ctx, trigger, bp, skip_prologue) suspend_by_breakpoint(ctx, trigger, bp, skip_prologue)
+#endif
 
 static LINK breakpoints = TCF_LIST_INIT(breakpoints);
 static LINK id2bp[ID2BP_HASH_SIZE];
@@ -1318,7 +1333,7 @@ static void done_condition_evaluation(EvaluationRequest * req) {
         else {
             assert(bp->id[0] != 0);
             req->bp_arr[i].triggered = 1;
-            if (bp->stop_group == NULL) suspend_by_breakpoint(ctx, ctx, bp->id, bp->skip_prologue);
+            if (bp->stop_group == NULL) suspend_by_bp(ctx, ctx, bp->id, bp->skip_prologue);
         }
     }
 }
@@ -1350,7 +1365,7 @@ static void done_all_evaluations(void) {
                     while (*ids) {
                         Context * c = id2ctx(*ids++);
                         if (c == NULL) continue;
-                        suspend_by_breakpoint(c, ctx, bp->id, bp->skip_prologue);
+                        suspend_by_bp(c, ctx, bp->id, bp->skip_prologue);
                     }
                 }
                 if (bp->temporary) {
@@ -1372,6 +1387,35 @@ static void done_all_evaluations(void) {
     }
 }
 
+#if ENABLE_SkipPrologueWhenPlanting
+
+static void function_prolog_line_info(CodeArea * area, void * args) {
+    CodeArea * res = (CodeArea *)args;
+    if (res->file != NULL) return;
+    *res = *area;
+}
+
+static int skip_function_prologue(Context * ctx, Symbol * sym, ContextAddress * addr) {
+#if ENABLE_Symbols
+    int sym_class = SYM_CLASS_UNKNOWN;
+    ContextAddress sym_size = 0;
+    CodeArea area;
+
+    if (get_symbol_class(sym, &sym_class) < 0) return -1;
+    if (sym_class != SYM_CLASS_FUNCTION) return 0;
+    if (get_symbol_size(sym, &sym_size) < 0) return -1;
+    if (sym_size == 0) return 0;
+    memset(&area, 0, sizeof(area));
+    if (address_to_line(ctx, *addr, *addr + 1, function_prolog_line_info, &area) < 0) return -1;
+    if (area.start_address > *addr || area.end_address <= *addr) return 0;
+    if (*addr + sym_size <= area.end_address) return 0;
+    *addr = area.end_address;
+#endif
+    return 0;
+}
+
+#endif /* ENABLE_SkipPrologueWhenPlanting */
+
 static void plant_at_address_expression(Context * ctx, ContextAddress ip, BreakpointInfo * bp) {
     ContextAddress addr = 0;
     ContextAddress size = 1;
@@ -1380,6 +1424,9 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
 
     if (evaluate_expression(ctx, STACK_NO_FRAME, ip, bp->location, 1, &v) < 0) error = errno;
     if (!error && value_to_address(&v, &addr) < 0) error = errno;
+#if ENABLE_SkipPrologueWhenPlanting
+    if (!error && bp->skip_prologue && v.sym != NULL && skip_function_prologue(ctx, v.sym, &addr) < 0) error = errno;
+#endif
     if (bp->access_size > 0) {
         size = bp->access_size;
     }
@@ -1410,6 +1457,9 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
             while (v.sym_list[n] != NULL) {
                 Symbol * sym = v.sym_list[n++];
                 if (get_symbol_address(sym, &addr) == 0) {
+#if ENABLE_SkipPrologueWhenPlanting
+                    if (bp->skip_prologue) skip_function_prologue(ctx, sym, &addr);
+#endif
                     plant_breakpoint(ctx, bp, addr, size);
                 }
             }

@@ -1978,7 +1978,7 @@ static int update_step_machine_state(Context * ctx) {
             if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return -1;
             if (area == NULL || !is_function_prologue(ctx, addr, area)) {
                 ctx->pending_intercept = 1;
-                ext->step_done = REASON_STEP;
+                ext->step_done = REASON_USER_REQUEST;
                 return 0;
             }
         }
