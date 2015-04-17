@@ -670,6 +670,7 @@ static void read_context_data(InputStream * inp, const char * name, void * args)
     else if (strcmp(name, "LowerBound") == 0) { s->lower_bound = json_read_int64(inp); s->has_lower_bound = 1; }
     else if (strcmp(name, "BinaryScale") == 0) s->props.binary_scale = (int)json_read_long(inp);
     else if (strcmp(name, "DecimalScale") == 0) s->props.decimal_scale = (int)json_read_long(inp);
+    else if (strcmp(name, "BitStride") == 0) s->props.bit_stride = (unsigned)json_read_ulong(inp);
     else if (strcmp(name, "Flags") == 0) s->flags = json_read_ulong(inp);
     else if (strcmp(name, "Frame") == 0) s->frame = (int)json_read_long(inp);
     else json_skip_object(inp);

@@ -91,6 +91,7 @@ typedef uint32_t SYM_FLAGS;
 typedef struct SymbolProperties {
     int binary_scale;   /* The exponent of the base two scale factor to be applied to an instance of the type */
     int decimal_scale;  /* The exponent of the base ten scale factor to be applied to an instance of the type */
+    unsigned bit_stride;
 } SymbolProperties;
 
 /* Symbol properties update policies */

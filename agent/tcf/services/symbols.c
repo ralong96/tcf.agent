@@ -296,6 +296,13 @@ static void command_get_context_cache_client(void * x) {
             write_stream(&c->out, ',');
         }
 
+        if (props.bit_stride != 0) {
+            json_write_string(&c->out, "BitStride");
+            write_stream(&c->out, ':');
+            json_write_ulong(&c->out, props.bit_stride);
+            write_stream(&c->out, ',');
+        }
+
         if (value != NULL) {
             json_write_string(&c->out, "Value");
             write_stream(&c->out, ':');

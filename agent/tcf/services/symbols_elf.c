@@ -4151,10 +4151,15 @@ int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
     memset(props, 0, sizeof(SymbolProperties));
     if (sym->base || is_std_type_pseudo_symbol(sym)) return 0;
     if (unpack(sym) < 0) return -1;
-    if (obj != NULL && obj->mTag == TAG_base_type) {
+    if (obj != NULL) {
         U8_T n = 0;
-        if (get_num_prop(obj, AT_binary_scale, &n)) props->binary_scale = (int)n;
-        if (get_num_prop(obj, AT_decimal_scale, &n)) props->decimal_scale = (int)n;
+        if (obj->mTag == TAG_base_type) {
+            if (get_num_prop(obj, AT_binary_scale, &n)) props->binary_scale = (int)n;
+            if (get_num_prop(obj, AT_decimal_scale, &n)) props->decimal_scale = (int)n;
+        }
+        if (obj->mTag == TAG_array_type) {
+            if (get_num_prop(obj, AT_stride_size, &n)) props->bit_stride = (unsigned)n;
+        }
     }
     return 0;
 }
