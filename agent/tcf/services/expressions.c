@@ -2370,26 +2370,49 @@ static void op_index(int mode, Value * v) {
     }
 
     if (mode == MODE_NORMAL) {
-        int64_t index = 0;
+        int64_t index = to_int(mode, &i);
+        SymbolProperties props;
+        ContextAddress byte_offs = 0;
+        ContextAddress bit_offs = 0;
         int64_t lower_bound = 0;
-        ContextAddress offs = 0;
-        if (v->type_class == TYPE_CLASS_ARRAY && get_symbol_lower_bound(v->type, &lower_bound) < 0) {
-            error(errno, "Cannot get array lower bound");
+        memset(&props, 0, sizeof(props));
+        if (v->type_class == TYPE_CLASS_ARRAY) {
+            if (get_symbol_lower_bound(v->type, &lower_bound) < 0) {
+                error(errno, "Cannot get array lower bound");
+            }
+            if (index < lower_bound) {
+                error(ERR_INV_EXPRESSION, "Invalid index");
+            }
+            if (get_symbol_props(v->type, &props) < 0) {
+                error(errno, "Cannot get array type properties");
+            }
         }
-        index = to_int(mode, &i);
-        if (v->type_class == TYPE_CLASS_ARRAY && index < lower_bound) {
-            error(ERR_INV_EXPRESSION, "Invalid index");
-        }
-        offs = (ContextAddress)(index - lower_bound) * size;
-        if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
-            error(errno, "Cannot retrieve symbol size");
-        }
-        if (v->remote) {
-            v->address += offs;
+        if (props.bit_stride > 0) {
+            bit_offs = (ContextAddress)(index - lower_bound) * props.bit_stride;
         }
         else {
+            byte_offs = (ContextAddress)(index - lower_bound) * size;
+        }
+        if (v->remote && props.bit_stride == 0) {
+            assert(bit_offs == 0);
+            v->address += byte_offs;
+        }
+        else {
+            if (v->sym != NULL && v->size == 0 && get_symbol_size(v->sym, &v->size) < 0) {
+                error(errno, "Cannot retrieve symbol size");
+            }
             load_value(v);
-            v->value = (char *)v->value + offs;
+            v->value = (char *)v->value + byte_offs;
+            if (props.bit_stride != 0) {
+                unsigned x;
+                uint8_t * buf = (uint8_t *)tmp_alloc_zero(size);
+                uint8_t * val = (uint8_t *)v->value;
+                v->value = buf;
+                for (x = 0; x < props.bit_stride; x++) {
+                    unsigned y = (unsigned)(x + bit_offs);
+                    if (val[y / 8] & (1 << (y % 8))) buf[x / 8] |= 1 << (x % 8);
+                }
+            }
         }
     }
     v->sym_list = NULL;
