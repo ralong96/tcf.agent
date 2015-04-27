@@ -2332,6 +2332,7 @@ static void op_index(int mode, Value * v) {
     Value i;
     ContextAddress size = 0;
     Symbol * type = NULL;
+    int type_class = 0;
 
     expression(mode, &i);
     if (mode == MODE_SKIP) return;
@@ -2344,6 +2345,12 @@ static void op_index(int mode, Value * v) {
     }
     if (get_symbol_base_type(v->type, &type) < 0) {
         error(errno, "Cannot get array element type");
+    }
+    if (type == NULL) {
+        error(ERR_INV_EXPRESSION, "Array element type is unknown");
+    }
+    if (get_symbol_type_class(type, &type_class) < 0) {
+        error(errno, "Cannot get type class of the array element");
     }
     if (v->type_class == TYPE_CLASS_POINTER) {
         if (v->loc && v->loc->pieces_cnt == 1 && v->loc->pieces->implicit_pointer) {
@@ -2412,6 +2419,16 @@ static void op_index(int mode, Value * v) {
                     unsigned y = (unsigned)(x + bit_offs);
                     if (val[y / 8] & (1 << (y % 8))) buf[x / 8] |= 1 << (x % 8);
                 }
+                if (type_class == TYPE_CLASS_INTEGER) {
+                    /* Sign extension */
+                    unsigned sign_offs = props.bit_stride - 1;
+                    int sign = (buf[sign_offs / 8] & (1 << (sign_offs % 8))) != 0;
+                    if (sign) {
+                        for (x = props.bit_stride; x < size * 8; x++) {
+                            buf[x / 8] |= 1 << (x % 8);
+                        }
+                    }
+                }
             }
         }
     }
@@ -2421,9 +2438,7 @@ static void op_index(int mode, Value * v) {
     v->loc = NULL;
     v->size = size;
     v->type = type;
-    if (get_symbol_type_class(type, &v->type_class) < 0) {
-        error(errno, "Cannot retrieve symbol type class");
-    }
+    v->type_class = type_class;
     set_value_scale(v);
 #else
     error(ERR_UNSUPPORTED, "Symbols service not available");
