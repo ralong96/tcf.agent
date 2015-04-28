@@ -2412,7 +2412,7 @@ static void op_index(int mode, Value * v) {
             v->value = (char *)v->value + byte_offs;
             if (props.bit_stride != 0) {
                 unsigned x;
-                uint8_t * buf = (uint8_t *)tmp_alloc_zero(size);
+                uint8_t * buf = (uint8_t *)tmp_alloc_zero((size_t)size);
                 uint8_t * val = (uint8_t *)v->value;
                 v->value = buf;
                 for (x = 0; x < props.bit_stride; x++) {
