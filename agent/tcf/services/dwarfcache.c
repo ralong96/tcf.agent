@@ -38,9 +38,9 @@
 #define OBJECT_ARRAY_SIZE 128
 
 /* Pseudo object IDs for fundamental types */
-#define OBJECT_ID_VOID ((ContextAddress)-1)
-#define OBJECT_ID_CHAR ((ContextAddress)-2)
-#define OBJECT_ID_LAST ((ContextAddress)-8)
+#define OBJECT_ID_VOID(CompUnit) (~(CompUnit)->mFundTypeID - 0)
+#define OBJECT_ID_CHAR(CompUnit) (~(CompUnit)->mFundTypeID - 1)
+#define OBJECT_ID_LAST(Cache) (~(Cache)->mFundTypeID)
 
 typedef struct ObjectArray {
     struct ObjectArray * mNext;
@@ -89,7 +89,7 @@ static ObjectInfo * add_object_info(ContextAddress ID) {
         if (Info->mID == ID) return Info;
         Info = Info->mHashNext;
     }
-    if (ID < OBJECT_ID_LAST) {
+    if (ID < OBJECT_ID_LAST(sCache)) {
         if (ID < sDebugSection->addr) str_exception(ERR_INV_DWARF, "Invalid entry reference");
         if (ID > sDebugSection->addr + sDebugSection->size) str_exception(ERR_INV_DWARF, "Invalid entry reference");
     }
@@ -111,6 +111,7 @@ static CompUnit * add_comp_unit(ContextAddress ID) {
     if (Info->mCompUnit == NULL) {
         CompUnit * Unit = (CompUnit *)loc_alloc_zero(sizeof(CompUnit));
         Unit->mFile = sCache->mFile;
+        Unit->mFundTypeID = sCache->mFundTypeID;
         Unit->mRegIdScope.big_endian = sCache->mFile->big_endian;
         Unit->mRegIdScope.machine = sCache->mFile->machine;
         Unit->mRegIdScope.os_abi = sCache->mFile->os_abi;
@@ -118,6 +119,7 @@ static CompUnit * add_comp_unit(ContextAddress ID) {
         Unit->mRegIdScope.id_type = REGNUM_DWARF;
         Unit->mObject = Info;
         Info->mCompUnit = Unit;
+        sCache->mFundTypeID += 2;
     }
     return Info->mCompUnit;
 }
@@ -578,6 +580,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             case TAG_subprogram:
             case TAG_global_subroutine:
             case TAG_inlined_subroutine:
+            case TAG_subroutine_type:
             case TAG_subroutine:
             case TAG_entry_point:
             case TAG_pointer_type:
@@ -589,22 +592,38 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                 }
                 if (Info->mType == NULL) {
                     /* NULL here means "void" */
-                    Info->mType = add_object_info(OBJECT_ID_VOID);
+                    Info->mType = add_object_info(OBJECT_ID_VOID(sCompUnit));
                     if (Info->mType->mTag == 0) {
                         Info->mType->mTag = TAG_fund_type;
                         Info->mType->mCompUnit = sCompUnit;
                         Info->mType->u.mFundType = FT_void;
+                        switch (Info->mCompUnit->mLanguage) {
+                        case LANG_C:
+                        case LANG_C89:
+                        case LANG_C99:
+                        case LANG_C_PLUS_PLUS:
+                            Info->mType->mName = "void";
+                            break;
+                        }
                     }
                 }
                 break;
             case TAG_string_type:
                 if (Info->mType == NULL) {
                     /* NULL here means "char" */
-                    Info->mType = add_object_info(OBJECT_ID_CHAR);
+                    Info->mType = add_object_info(OBJECT_ID_CHAR(sCompUnit));
                     if (Info->mType->mTag == 0) {
                         Info->mType->mTag = TAG_fund_type;
                         Info->mType->mCompUnit = sCompUnit;
                         Info->mType->u.mFundType = FT_char;
+                        switch (Info->mCompUnit->mLanguage) {
+                        case LANG_C:
+                        case LANG_C89:
+                        case LANG_C99:
+                        case LANG_C_PLUS_PLUS:
+                            Info->mType->mName = "char";
+                            break;
+                        }
                     }
                 }
                 break;
@@ -914,7 +933,7 @@ static void read_object_refs(ELF_Section * Section) {
             if (ref.org->mFlags & DOIF_load_mark) str_fmt_exception(ERR_INV_DWARF,
                 "Invalid forward reference at %x", (unsigned)ref.obj->mID);
             if (ref.obj->mName == NULL) ref.obj->mName = ref.org->mName;
-            if (ref.obj->mType == NULL || ref.obj->mType->mID == OBJECT_ID_VOID) ref.obj->mType = ref.org->mType;
+            if (ref.obj->mType == NULL || ref.obj->mType->mID == OBJECT_ID_VOID(ref.obj->mCompUnit)) ref.obj->mType = ref.org->mType;
             ref.obj->mFlags |= ref.org->mFlags & ~(DOIF_children_loaded | DOIF_declaration | DOIF_specification);
             if (ref.obj->mFlags & DOIF_specification) {
                 ref.org->mDefinition = ref.obj;

@@ -96,6 +96,7 @@ struct ObjectInfo {
 
     /* 'mID' is link-time debug information entry address:
      * address of .debug_info section + offset in the section */
+    /* TODO: adding section address is not necessary, object ID is valid per section only */
     ContextAddress mID;
 
     ObjectInfo * mHashNext;
@@ -218,6 +219,8 @@ struct CompUnit {
 
     CompUnit * mBaseTypes;
     CompUnit * mNextTypeUnit;
+
+    ContextAddress mFundTypeID;
 };
 
 /* Address range of a compilation unit. A unit can occupy multiple address ranges. */
@@ -258,6 +261,7 @@ struct DWARFCache {
     ObjectHashTable * mObjectHashTable; /* per ELF section */
     struct ObjectArray * mObjectList;
     unsigned mObjectArrayPos;
+    ContextAddress mFundTypeID;
     UnitAddressRange * mAddrRanges;
     ContextAddress mAddrRangesMaxSize;
     unsigned mAddrRangesCnt;

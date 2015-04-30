@@ -417,6 +417,7 @@ static int is_frame_based_object(Symbol * sym) {
                 case TAG_reference_type:
                 case TAG_rvalue_reference_type:
                 case TAG_structure_type:
+                    if (obj->mCompUnit->mLanguage == LANG_C89) return 0;
                     if (obj->mCompUnit->mLanguage == LANG_C) return 0;
                     break;
                 }
