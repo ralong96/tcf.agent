@@ -1679,6 +1679,7 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
             SWAP(s.st_shndx);
             SWAP(s.st_size);
             SWAP(s.st_value);
+            SWAP(s.st_other);
         }
         st_name = (size_t)s.st_name;
         info->section_index = s.st_shndx;
@@ -1686,6 +1687,7 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
         info->type = ELF64_ST_TYPE(s.st_info);
         info->value = s.st_value;
         info->size = s.st_size;
+        info->other = s.st_other;
     }
     else {
         Elf32_Sym s = *(Elf32_Sym *)((U1_T *)sym_sec->data + sym_sec->entsize * index);
@@ -1694,6 +1696,7 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
             SWAP(s.st_shndx);
             SWAP(s.st_size);
             SWAP(s.st_value);
+            SWAP(s.st_other);
         }
         st_name = (size_t)s.st_name;
         info->section_index = s.st_shndx;
@@ -1701,6 +1704,7 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
         info->type = ELF32_ST_TYPE(s.st_info);
         info->value = s.st_value;
         info->size = s.st_size;
+        info->other = s.st_other;
     }
 
     if (info->section_index > 0 && info->section_index < file->section_cnt) {

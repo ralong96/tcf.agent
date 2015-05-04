@@ -1421,10 +1421,18 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
     ContextAddress size = 1;
     int error = 0;
     Value v;
-
+    SymbolProperties props;
+        
     if (evaluate_expression(ctx, STACK_NO_FRAME, ip, bp->location, 1, &v) < 0) error = errno;
     if (!error && value_to_address(&v, &addr) < 0) error = errno;
+    if (v.sym != NULL) {
+        /* We want to add the LocalEntryOffset */
+        get_symbol_props(v.sym, &props);     
+        /* If the symbol is not a PPC64 function, offset should be 0, so it is safe to add */
+        addr += props.local_entry_offset;
+    }
 #if ENABLE_SkipPrologueWhenPlanting
+    /* Even if addr is incremented by local_entry_offset, we still should be on right code area */
     if (!error && bp->skip_prologue && v.sym != NULL && skip_function_prologue(ctx, v.sym, &addr) < 0) error = errno;
 #endif
     if (bp->access_size > 0) {
@@ -1456,8 +1464,13 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
             unsigned n = 0;
             while (v.sym_list[n] != NULL) {
                 Symbol * sym = v.sym_list[n++];
-                if (get_symbol_address(sym, &addr) == 0) {
+                if (get_symbol_address(sym, &addr) == 0) {     
+                    /* We want to add the LocalEntryOffset */
+                    get_symbol_props(sym, &props);     
+                    /* If the symbol is not a PPC64 function, offset should be 0, so it is safe to add */
+                    addr += props.local_entry_offset;
 #if ENABLE_SkipPrologueWhenPlanting
+                    /* Even if addr is incremented by local_entry_offset, we still should be on right code area */
                     if (bp->skip_prologue) skip_function_prologue(ctx, sym, &addr);
 #endif
                     plant_breakpoint(ctx, bp, addr, size);

@@ -303,6 +303,13 @@ static void command_get_context_cache_client(void * x) {
             write_stream(&c->out, ',');
         }
 
+        if (props.local_entry_offset != 0) {
+            json_write_string(&c->out, "LocalEntryOffset");
+            write_stream(&c->out, ':');
+            json_write_ulong(&c->out, props.local_entry_offset);
+            write_stream(&c->out, ',');
+        }
+        
         if (value != NULL) {
             json_write_string(&c->out, "Value");
             write_stream(&c->out, ':');

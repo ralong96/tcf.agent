@@ -477,6 +477,7 @@ struct ELF_SymbolInfo {
     U1_T type;
     U8_T value;
     U8_T size;
+    U8_T other;
 };
 
 struct ELF_Section {
