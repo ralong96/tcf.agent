@@ -4147,11 +4147,11 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
 }
 
 int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
-#define STO_PPC64_LOCAL_BIT	5
-#define STO_PPC64_LOCAL_MASK	(7 << STO_PPC64_LOCAL_BIT)
+#define STO_PPC64_LOCAL_BIT 5
+#define STO_PPC64_LOCAL_MASK    (7 << STO_PPC64_LOCAL_BIT)
 #define IS_PPC64_V2(elfsym) ((elfsym->file->machine == EM_PPC64) && (elfsym->file->flags & 0x3) == 2)
-	
-	ELF_SymbolInfo elf_sym_info;
+
+    ELF_SymbolInfo elf_sym_info;
     ObjectInfo * obj = sym->obj;
     assert(sym->magic == SYMBOL_MAGIC);
     memset(props, 0, sizeof(SymbolProperties));
@@ -4167,25 +4167,23 @@ int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
             if (get_num_prop(obj, AT_stride_size, &n)) props->bit_stride = (unsigned)n;
         }
     }
-    
+
     /* PowerPC64 ABIv2 computes local offset from st_other */
     if (sym->tbl != NULL) {
-    	/* Only do that on PPC64 v2 */
-    	if (!IS_PPC64_V2(sym->tbl))
-    		return 0;
-    	unpack_elf_symbol_info(sym->tbl, sym->index, &elf_sym_info);
-    } else {
-    	Symbol *elf_symbol;
-    	/* From Dwarf object to Elf symbol */
-    	map_to_sym_table(sym->obj, &elf_symbol);
-    	if (elf_symbol == NULL)
-    		return 0;
-    	if (!IS_PPC64_V2(elf_symbol->tbl))
-    		return 0;
-    	unpack_elf_symbol_info(elf_symbol->tbl, elf_symbol->index, &elf_sym_info);
+        /* Only do that on PPC64 v2 */
+        if (!IS_PPC64_V2(sym->tbl)) return 0;
+        unpack_elf_symbol_info(sym->tbl, sym->index, &elf_sym_info);
     }
-	/* We can compute the offset now */
-	props->local_entry_offset = (((1 << (((elf_sym_info.other) & STO_PPC64_LOCAL_MASK) >> STO_PPC64_LOCAL_BIT)) >> 2) << 2);
+    else {
+        Symbol * elf_symbol = NULL;
+        /* From Dwarf object to Elf symbol */
+        map_to_sym_table(sym->obj, &elf_symbol);
+        if (elf_symbol == NULL) return 0;
+        if (!IS_PPC64_V2(elf_symbol->tbl)) return 0;
+        unpack_elf_symbol_info(elf_symbol->tbl, elf_symbol->index, &elf_sym_info);
+    }
+    /* We can compute the offset now */
+    props->local_entry_offset = (((1 << (((elf_sym_info.other) & STO_PPC64_LOCAL_MASK) >> STO_PPC64_LOCAL_BIT)) >> 2) << 2);
     return 0;
 }
 

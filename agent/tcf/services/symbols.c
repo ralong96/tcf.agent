@@ -309,7 +309,7 @@ static void command_get_context_cache_client(void * x) {
             json_write_ulong(&c->out, props.local_entry_offset);
             write_stream(&c->out, ',');
         }
-        
+
         if (value != NULL) {
             json_write_string(&c->out, "Value");
             write_stream(&c->out, ':');
