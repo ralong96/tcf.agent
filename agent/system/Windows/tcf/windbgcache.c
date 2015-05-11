@@ -395,11 +395,11 @@ BOOL SymUnloadModule64(HANDLE hProcess, DWORD64 BaseOfDll) {
     return proc(hProcess, BaseOfDll);
 }
 
-BOOL SymGetModuleInfo64(HANDLE hProcess, DWORD64 Addr, PIMAGEHLP_MODULE64 ModuleInfo) {
-    typedef BOOL (FAR WINAPI * ProcType)(HANDLE, DWORD64, PIMAGEHLP_MODULE64);
+BOOL SymGetModuleInfoW64(HANDLE hProcess, DWORD64 Addr, PIMAGEHLP_MODULEW64 ModuleInfo) {
+    typedef BOOL (FAR WINAPI * ProcType)(HANDLE, DWORD64, PIMAGEHLP_MODULEW64);
     static ProcType proc = NULL;
     if (proc == NULL) {
-        proc = (ProcType)GetProc("SymGetModuleInfo64");
+        proc = (ProcType)GetProc("SymGetModuleInfoW64");
         if (proc == NULL) return 0;
     }
     return proc(hProcess, Addr, ModuleInfo);

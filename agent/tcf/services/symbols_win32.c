@@ -188,6 +188,29 @@ static int get_type_info(const Symbol * sym, IMAGEHLP_SYMBOL_TYPE_INFO info_tag,
     return 0;
 }
 
+static int wchar_to_utf8(WCHAR * str, char ** utf) {
+    int len = 0;
+    int err = 0;
+    if (tmp_buf == NULL) {
+        tmp_buf_size = 256;
+        tmp_buf = (char *)loc_alloc(tmp_buf_size);
+    }
+    for (;;) {
+        len = WideCharToMultiByte(CP_UTF8, 0, str, -1, tmp_buf, tmp_buf_size - 1, NULL, NULL);
+        if (len != 0) break;
+        err = GetLastError();
+        if (err != ERROR_INSUFFICIENT_BUFFER) {
+            set_win32_errno(err);
+            return -1;
+        }
+        tmp_buf_size *= 2;
+        tmp_buf = (char *)loc_realloc(tmp_buf, tmp_buf_size);
+    }
+    tmp_buf[len] = 0;
+    *utf = tmp_buf;
+    return 0;
+}
+
 static void tag2symclass(Symbol * sym, int tag) {
     DWORD dword;
     sym->sym_class = SYM_CLASS_UNKNOWN;
@@ -468,26 +491,8 @@ int get_symbol_name(const Symbol * sym, char ** name) {
     if (get_type_info(sym, TI_GET_SYMNAME, &ptr) < 0) ptr = NULL;
     if (ptr != NULL && wcscmp(ptr, L"<unnamed-tag>") == 0) ptr = NULL;
     if (ptr != NULL) {
-        int len = 0;
-        int err = 0;
-        if (tmp_buf == NULL) {
-            tmp_buf_size = 256;
-            tmp_buf = (char *)loc_alloc(tmp_buf_size);
-        }
-        for (;;) {
-            len = WideCharToMultiByte(CP_UTF8, 0, ptr, -1, tmp_buf, tmp_buf_size - 1, NULL, NULL);
-            if (len != 0) break;
-            err = GetLastError();
-            if (err != ERROR_INSUFFICIENT_BUFFER) {
-                set_win32_errno(err);
-                return -1;
-            }
-            tmp_buf_size *= 2;
-            tmp_buf = (char *)loc_realloc(tmp_buf, tmp_buf_size);
-        }
+        if (wchar_to_utf8(ptr, name) < 0) return -1;
         HeapFree(GetProcessHeap(), 0, ptr);
-        tmp_buf[len] = 0;
-        *name = tmp_buf;
     }
     else {
         DWORD tag = 0;
@@ -1327,7 +1332,8 @@ int get_funccall_info(const Symbol * func,
 }
 
 const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
-    IMAGEHLP_MODULE64 info;
+    char * name = NULL;
+    IMAGEHLP_MODULEW64 info;
     HANDLE process = get_context_handle(context_get_group(ctx, CONTEXT_GROUP_PROCESS));
     if (module == NULL) {
         errno = 0;
@@ -1335,13 +1341,14 @@ const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
     }
     memset(&info, 0, sizeof(info));
     info.SizeOfStruct = sizeof(info);
-    if (!SymGetModuleInfo64(process, module->addr, &info)) {
+    if (!SymGetModuleInfoW64(process, module->addr, &info)) {
         set_win32_errno(GetLastError());
         return NULL;
     }
+    if (wchar_to_utf8(info.LoadedImageName, &name) < 0) return NULL;
     errno = 0;
     if (info.LoadedImageName[0] == 0) return NULL;
-    return tmp_strdup(info.LoadedImageName);
+    return tmp_strdup(name);
 }
 
 static void event_context_exited(Context * ctx, void * client_data) {
@@ -1400,11 +1407,11 @@ static void event_module_unloaded(Context * ctx, void * client_data) {
 
 #if ENABLE_SymbolsMux
 static int reader_is_valid(Context * ctx, ContextAddress addr) {
-    IMAGEHLP_MODULE64 info;
+    IMAGEHLP_MODULEW64 info;
     HANDLE process = get_context_handle(context_get_group(ctx, CONTEXT_GROUP_PROCESS));
     memset(&info, 0, sizeof(info));
     info.SizeOfStruct = sizeof(info);
-    if (!SymGetModuleInfo64(process, addr, &info)) return 0;
+    if (!SymGetModuleInfoW64(process, addr, &info)) return 0;
     return info.LoadedImageName[0] != 0;
 }
 #endif
