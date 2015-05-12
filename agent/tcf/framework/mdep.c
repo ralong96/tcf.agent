@@ -34,8 +34,14 @@
 #include <tcf/framework/errors.h>
 #include <tcf/framework/myalloc.h>
 
+#if !defined(USE_locale)
+#  define USE_locale 1
+#endif
+
 pthread_attr_t pthread_create_attr;
+#if USE_locale
 int utf8_locale = 0;
+#endif
 
 #if defined(_WIN32) || defined(__CYGWIN__)
 
@@ -578,7 +584,9 @@ void swap_bytes(void * buf, size_t size) {
 
 #if defined(_WIN32) || defined(__CYGWIN__)
 
-#include <locale.h>
+#if USE_locale
+#  include <locale.h>
+#endif
 #include <shlobj.h>
 
 const char * get_os_name(void) {
@@ -652,7 +660,9 @@ void ini_mdep(void) {
     WSADATA wsaData;
     int err;
 
+#if USE_locale
     setlocale(LC_ALL, "");
+#endif
     SetErrorMode(SEM_FAILCRITICALERRORS);
     err = WSAStartup(wVersionRequested, &wsaData);
     if (err != 0) {
@@ -806,7 +816,9 @@ ip_ifc_info* get_ip_ifc(void) {
 #else
 
 #include <pwd.h>
+#if USE_locale
 #include <locale.h>
+#endif
 #include <langinfo.h>
 #include <sys/utsname.h>
 #if defined(__linux__)
@@ -888,9 +900,11 @@ int tkill(pid_t pid, int signal) {
 }
 
 void ini_mdep(void) {
+#if USE_locale
     setlocale(LC_ALL, "");
-#ifdef CODESET
+#  ifdef CODESET
     utf8_locale = (strcmp(nl_langinfo(CODESET), "UTF-8") == 0);
+#  endif
 #endif
     signal(SIGPIPE, SIG_IGN);
     pthread_attr_init(&pthread_create_attr);
