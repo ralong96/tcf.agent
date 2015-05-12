@@ -1128,6 +1128,8 @@ int cpu_bp_plant(ContextBreakpoint * bp) {
             for (i = 0; i < MAX_HW_BPS && n > 0; i++) {
                 if (bps->hw_bps[i] == bp) bps->hw_bps[i] = NULL;
             }
+            set_errno(ERR_UNSUPPORTED, "All hardware breakpoints are already in use");
+            return -1;
         }
     }
     errno = ERR_UNSUPPORTED;
