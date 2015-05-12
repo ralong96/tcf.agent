@@ -351,7 +351,7 @@ static void plant_instruction(BreakInstruction * bi) {
         release_error_report(rp);
     }
     bi->planted = bi->planting_error == NULL;
-    if (bi->planted && bi->saved_size > 0) planted_sw_bp_cnt++;
+    if (bi->planted && !bi->virtual_addr) planted_sw_bp_cnt++;
 }
 
 static int remove_instruction(BreakInstruction * bi) {
@@ -371,7 +371,6 @@ static int remove_instruction(BreakInstruction * bi) {
             planting_instruction = 0;
             if (r < 0) return -1;
         }
-        planted_sw_bp_cnt--;
     }
     else {
         if (context_unplant_breakpoint(&bi->cb) < 0) return -1;
@@ -381,6 +380,7 @@ static int remove_instruction(BreakInstruction * bi) {
             while (*p != NULL && (*p = *(p + 1)) != NULL) p++;
         }
     }
+    if (!bi->virtual_addr) planted_sw_bp_cnt--;
     bi->planted = 0;
     bi->dirty = 0;
     return 0;
@@ -695,7 +695,7 @@ void clone_breakpoints_on_process_fork(Context * parent, Context * child) {
         }
         ci->valid = 1;
         ci->planted = 1;
-        planted_sw_bp_cnt++;
+        if (!bi->virtual_addr) planted_sw_bp_cnt++;
     }
 }
 
@@ -1253,7 +1253,7 @@ static void notify_breakpoint_status(BreakpointInfo * bp) {
             assert(bi->valid);
             assert(bi->ref_cnt <= bi->ref_size);
             assert(bi->cb.ctx->ref_count > 0);
-            if (bi->planted && bi->saved_size > 0) planted_cnt++;
+            if (bi->planted && !bi->virtual_addr) planted_cnt++;
             for (i = 0; i < bi->ref_cnt; i++) {
                 assert(bi->refs[i].cnt > 0);
                 assert(bi->refs[i].ctx->ref_count > 0);
@@ -2672,7 +2672,8 @@ int is_breakpoint_address(Context * ctx, ContextAddress address) {
     if (planted_sw_bp_cnt == 0) return 0;
     if (context_get_canonical_addr(ctx, address, &mem, &mem_addr, NULL, NULL) < 0) return 0;
     bi = find_instruction(mem, 0, mem_addr, CTX_BP_ACCESS_INSTRUCTION, 1);
-    return bi != NULL && bi->planted && bi->saved_size > 0;
+    assert(bi == NULL || !bi->virtual_addr);
+    return bi != NULL && bi->planted;
 }
 
 void evaluate_breakpoint(Context * ctx) {
@@ -2993,7 +2994,7 @@ static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddre
                 bi->refs[i].bp->status_changed = 1;
                 cnt++;
             }
-            planted_sw_bp_cnt--;
+            if (!bi->virtual_addr) planted_sw_bp_cnt--;
             bi->planted = 0;
         }
         addr += sz;
