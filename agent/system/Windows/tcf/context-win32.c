@@ -209,11 +209,10 @@ static int log_error(const char * fn, int ok) {
 static void get_registers(Context * ctx) {
     ContextExtensionWin32 * ext = EXT(ctx);
 
-    if (ext->regs->ContextFlags) return;
+    if (ctx->stopped && ext->regs->ContextFlags) return;
 
     assert(!ctx->exited);
     assert(context_has_state(ctx));
-    assert(ctx->stopped);
 
     ext->regs->ContextFlags = CONTEXT_ALL;
     if (GetThreadContext(ext->handle, ext->regs) == 0) {
@@ -632,6 +631,7 @@ static Context * add_thread(Context * prs, pid_t pid, DWORD thread, DebugState *
     ext->debug_state = state;
     ctx->mem = prs;
     ctx->big_endian = prs->big_endian;
+    ctx->reg_access |= REG_ACCESS_RD_RUNNING;
     (ctx->parent = prs)->ref_count++;
     list_add_last(&ctx->cldl, &prs->children);
     link_context(ctx);
@@ -721,6 +721,7 @@ static void debug_event_handler(DebugEvent * debug_event) {
             ext->debug_state = debug_state;
             ctx->mem = prs;
             ctx->big_endian = prs->big_endian;
+            ctx->reg_access |= REG_ACCESS_RD_RUNNING;
             (ctx->parent = prs)->ref_count++;
             list_add_last(&ctx->cldl, &prs->children);
             link_context(ctx);

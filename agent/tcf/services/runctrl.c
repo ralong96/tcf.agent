@@ -257,11 +257,11 @@ static void write_context(OutputStream * out, Context * ctx) {
         json_write_string(out, "RegAccessTypes");
         write_stream(out, ':');
         write_stream(out, '[');
-        if (ctx->mem_access & REG_ACCESS_RD_RUNNING) {
+        if (ctx->reg_access & REG_ACCESS_RD_RUNNING) {
             if (cnt++) write_stream(out, ',');
             json_write_string(out, "rd-running");
         }
-        if (ctx->mem_access & REG_ACCESS_WR_RUNNING) {
+        if (ctx->reg_access & REG_ACCESS_WR_RUNNING) {
             if (cnt++) write_stream(out, ',');
             json_write_string(out, "wr-running");
         }
