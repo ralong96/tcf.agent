@@ -524,7 +524,7 @@ static void flush_instructions(void) {
             }
             list_add_last(&bi->link_lst, &lst);
         }
-        else if (bi->hardware && !bi->planted && bi->cb.ctx->stopped) {
+        else if (bi->hardware && !bi->planted && is_all_stopped(bi->cb.ctx)) {
             /* Hardware resource might be available now, try to re-plant */
             list_add_last(&bi->link_lst, &lst);
         }
