@@ -508,7 +508,7 @@ static void command_get_children_cache_client(void * x) {
         int inlined = EXT(ctx)->inlined;
         write_stream(&c->out, '[');
         if (args->all_frames) {
-            for (i = inlined; i < stack->frame_cnt; i++) {
+            for (i = 0; i < stack->frame_cnt - inlined; i++) {
                 if (j > 0) write_stream(&c->out, ',');
                 json_write_string(&c->out, frame2id(ctx, stack->frame_cnt - i - 1));
                 j++;
