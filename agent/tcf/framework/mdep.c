@@ -250,19 +250,41 @@ static __int64 file_time_to_unix_time(const FILETIME * ft) {
 }
 
 int clock_gettime(clockid_t clock_id, struct timespec * tp) {
-    FILETIME ft;
-    __int64 tim;
-
-    assert(clock_id == CLOCK_REALTIME);
     if (!tp) {
         errno = EINVAL;
         return -1;
     }
-    GetSystemTimeAsFileTime(&ft);
-    tim = file_time_to_unix_time(&ft);
-    tp->tv_sec  = (long)(tim / 1000000L);
-    tp->tv_nsec = (long)(tim % 1000000L) * 1000;
-    return 0;
+    memset(tp, 0, sizeof(struct timespec));
+    if (clock_id == CLOCK_REALTIME) {
+        FILETIME ft;
+        __int64 tim;
+        GetSystemTimeAsFileTime(&ft);
+        tim = file_time_to_unix_time(&ft);
+        tp->tv_sec  = (time_t)(tim / 1000000L);
+        tp->tv_nsec = (long)(tim % 1000000L) * 1000;
+        return 0;
+    }
+    if (clock_id == CLOCK_MONOTONIC) {
+        typedef ULONGLONG (FAR WINAPI * ProcType)(void);
+        static ProcType proc = NULL;
+        static int chk_done = 0;
+        ULONGLONG time_ms = 0;
+        /* GetTickCount() is valid only first 49 days */
+        /* GetTickCount64 not available before Windows Vista */
+        if (!chk_done) {
+            HMODULE kernel_dll = LoadLibraryA("Kernel32.dll");
+            if (kernel_dll != NULL) {
+                proc = (ProcType)GetProcAddress(kernel_dll, "GetTickCount64");
+            }
+            chk_done = 1;
+        }
+        time_ms = proc != NULL ? proc() : (ULONGLONG)GetTickCount();
+        tp->tv_sec = (time_t)(time_ms / 1000);
+        tp->tv_nsec = (long)(time_ms % 1000) * 1000000;
+        return 0;
+    }
+    errno = ENOSYS;
+    return -1;
 }
 
 void usleep(useconds_t useconds) {

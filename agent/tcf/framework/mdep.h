@@ -142,7 +142,8 @@ typedef unsigned long pid_t;
 typedef unsigned long useconds_t;
 #endif
 
-#define CLOCK_REALTIME 1
+#define CLOCK_REALTIME  1
+#define CLOCK_MONOTONIC 2
 typedef int clockid_t;
 extern int clock_gettime(clockid_t clock_id, struct timespec * tp);
 extern void usleep(useconds_t useconds);
