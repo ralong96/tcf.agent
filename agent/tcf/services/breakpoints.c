@@ -1427,9 +1427,11 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
     Value v;
     SymbolProperties props;
 
+    memset (&v, 0, sizeof (Value));
+
     if (evaluate_expression(ctx, STACK_NO_FRAME, ip, bp->location, 1, &v) < 0) error = errno;
     if (!error && value_to_address(&v, &addr) < 0) error = errno;
-    if (v.sym != NULL) {
+    if (!error && v.sym != NULL) {
         /* We want to add the LocalEntryOffset */
         get_symbol_props(v.sym, &props);
         /* If the symbol is not a PPC64 function, offset should be 0, so it is safe to add */
