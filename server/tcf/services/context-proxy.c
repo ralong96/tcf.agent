@@ -37,6 +37,7 @@
 #include <tcf/services/pathmap.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/stacktrace.h>
+#include <tcf/services/linenumbers.h>
 #include <tcf/services/context-proxy.h>
 #if ENABLE_ContextMux
 #include <tcf/framework/context-mux.h>
@@ -397,6 +398,12 @@ static void free_stack_frame_cache(StackFrameCache * s) {
             }
             loc_free(s->reg_cache);
         }
+        if (s->info.area != NULL) {
+            loc_free(s->info.area->directory);
+            loc_free(s->info.area->file);
+            loc_free(s->info.area);
+        }
+        loc_free(s->info.func_id);
         loc_free(s->reg_data.data);
         loc_free(s->reg_data.mask);
         loc_free(s->reg_defs);
@@ -1739,6 +1746,10 @@ static void read_stack_frame_property(InputStream * inp, const char * name, void
     else if (strcmp(name, "IP") == 0) s->ip = (ContextAddress)json_read_uint64(inp);
     else if (strcmp(name, "RP") == 0) s->rp = (ContextAddress)json_read_uint64(inp);
     else if (strcmp(name, "TopFrame") == 0) s->info.is_top_frame = json_read_boolean(inp);
+    else if (strcmp(name, "Walk") == 0) s->info.is_walked = json_read_boolean(inp);
+    else if (strcmp(name, "Inlined") == 0) s->info.inlined = (int)json_read_long(inp);
+    else if (strcmp(name, "FuncID") == 0) s->info.func_id = json_read_alloc_string(inp);
+    else if (strcmp(name, "CodeArea") == 0) read_code_area(inp, s->info.area = (CodeArea *)loc_alloc(sizeof(CodeArea)));
     else json_skip_object(inp);
 }
 
