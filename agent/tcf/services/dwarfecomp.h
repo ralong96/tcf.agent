@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -26,6 +26,9 @@
 #if ENABLE_ELF && ENABLE_DebugContext
 
 #include <tcf/services/dwarfexpr.h>
+
+/* Check link-time address 'addr' belongs to an object address range(s) */
+extern int dwarf_check_in_range(ObjectInfo * obj, ELF_Section * sec, U8_T addr);
 
 extern void dwarf_transform_expression(Context * ctx, int frame, DWARFExpressionInfo * info);
 

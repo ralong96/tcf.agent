@@ -230,7 +230,82 @@ static ObjectInfo * get_parent_function(ObjectInfo * info) {
     return NULL;
 }
 
+int dwarf_check_in_range(ObjectInfo * obj, ELF_Section * sec, U8_T addr) {
+    if (obj->mFlags & DOIF_ranges) {
+        Trap trap;
+        if (set_trap(&trap)) {
+            CompUnit * unit = obj->mCompUnit;
+            DWARFCache * cache = get_dwarf_cache(unit->mFile);
+            ELF_Section * debug_ranges = cache->mDebugRanges;
+            if (debug_ranges != NULL) {
+                ContextAddress base = unit->mObject->u.mCode.mLowPC;
+                int res = 0;
+
+#if 0
+                U8_T entry_pc = 0;
+                if (obj->mTag == TAG_inlined_subroutine &&
+                    get_num_prop(obj, AT_entry_pc, &entry_pc))
+                    base = (ContextAddress)entry_pc;
+#endif
+
+                dio_EnterSection(&unit->mDesc, debug_ranges, obj->u.mCode.mHighPC.mRanges);
+                for (;;) {
+                    U8_T AddrMax = ~(U8_T)0;
+                    ELF_Section * x_sec = NULL;
+                    ELF_Section * y_sec = NULL;
+                    U8_T x = dio_ReadAddress(&x_sec);
+                    U8_T y = dio_ReadAddress(&y_sec);
+                    if (x == 0 && y == 0) break;
+                    if (unit->mDesc.mAddressSize < 8) AddrMax = ((U8_T)1 << unit->mDesc.mAddressSize * 8) - 1;
+                    if (x == AddrMax) {
+                        base = (ContextAddress)y;
+                    }
+                    else {
+                        if (x_sec == NULL) x_sec = unit->mTextSection;
+                        if (y_sec == NULL) y_sec = unit->mTextSection;
+                        if (x_sec == sec && y_sec == sec) {
+                            x = base + x;
+                            y = base + y;
+                            if (x <= addr && addr < y) {
+                                res = 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+                dio_ExitSection();
+                clear_trap(&trap);
+                return res;
+            }
+            clear_trap(&trap);
+        }
+        return 0;
+    }
+
+    if (obj->u.mCode.mHighPC.mAddr > obj->u.mCode.mLowPC && obj->u.mCode.mSection == sec) {
+        return addr >= obj->u.mCode.mLowPC && addr < obj->u.mCode.mHighPC.mAddr;
+    }
+
+    return 0;
+}
+
+static ObjectInfo * get_function_by_addr(ObjectInfo * parent, ELF_Section * sec, U8_T addr) {
+    ObjectInfo * obj = get_dwarf_children(parent);
+    while (obj != NULL) {
+        switch (obj->mTag) {
+        case TAG_global_subroutine:
+        case TAG_subroutine:
+        case TAG_subprogram:
+            if (dwarf_check_in_range(obj, sec, addr)) return obj;
+            break;
+        }
+        obj = obj->mSibling;
+    }
+    return NULL;
+}
+
 static void add_fbreg_expression(DWARFExpressionInfo * info, I8_T offs) {
+    size_t pos = buf_pos;
     switch (*info->expr_addr) {
     case OP_reg:
         add(OP_basereg);
@@ -239,6 +314,7 @@ static void add_fbreg_expression(DWARFExpressionInfo * info, I8_T offs) {
             while (i < info->object->mCompUnit->mDesc.mAddressSize + 1u) {
                 add(info->expr_addr[i++]);
             }
+            if (info->expr_size != i) break;
         }
         add_sleb128(offs);
         return;
@@ -251,6 +327,7 @@ static void add_fbreg_expression(DWARFExpressionInfo * info, I8_T offs) {
                 add(n);
                 if ((n & 0x80) == 0) break;
             }
+            if (info->expr_size != i) break;
         }
         add_sleb128(offs);
         return;
@@ -286,10 +363,12 @@ static void add_fbreg_expression(DWARFExpressionInfo * info, I8_T offs) {
     case OP_reg29:
     case OP_reg30:
     case OP_reg31:
+        if (info->expr_size != 1) break;
         add(OP_breg0 + (*info->expr_addr - OP_reg0));
         add_sleb128(offs);
         return;
     }
+    buf_pos = pos;
     add_expression(info);
     if (offs == 0) return;
     add(OP_consts);
@@ -319,6 +398,15 @@ static void add_code_range(DWARFExpressionInfo * info) {
     }
 }
 
+static U8_T get_frame_pc(void) {
+    uint64_t pc = 0;
+    StackFrame * frame = NULL;
+    if (expr_frame == STACK_NO_FRAME) str_exception(ERR_INV_CONTEXT, "Need stack frame");
+    if (get_frame_info(expr_ctx, expr_frame, &frame) < 0) exception(errno);
+    if (read_reg_value(frame, get_PC_definition(expr_ctx), &pc) < 0) exception(errno);
+    return pc;
+}
+
 static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs) {
     int peer_version = 1;
     Channel * c = cache_channel();
@@ -333,11 +421,7 @@ static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs
 
     if (info->code_size > 0 && peer_version == 0) {
         /* The peer does not support OP_TCF_switch */
-        uint64_t pc = 0;
-        StackFrame * frame = NULL;
-        if (expr_frame == STACK_NO_FRAME) str_exception(ERR_INV_CONTEXT, "Need stack frame");
-        if (get_frame_info(expr_ctx, expr_frame, &frame) < 0) exception(errno);
-        if (read_reg_value(frame, get_PC_definition(expr_ctx), &pc) < 0) exception(errno);
+        U8_T pc = get_frame_pc();
         while (info != NULL && info->code_size > 0 && (info->code_addr > pc || pc - info->code_addr >= info->code_size)) {
             info = info->next;
         }
@@ -428,12 +512,39 @@ static void op_fbreg(void) {
     if (set_trap(&trap)) {
         read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, parent, AT_frame_base, &fp);
         clear_trap(&trap);
+        dwarf_get_expression_list(&fp, &info);
+        add_expression_list(info, 1, offs);
     }
-    else {
+    else if (trap.error != ERR_SYM_NOT_FOUND) {
         str_exception(trap.error, "OP_fbreg: cannot read AT_frame_base");
     }
-    dwarf_get_expression_list(&fp, &info);
-    add_expression_list(info, 1, offs);
+    else {
+        U8_T pc = get_frame_pc();
+        ELF_File * file = NULL;
+        ELF_Section * sec = NULL;
+        ObjectInfo * func = NULL;
+        U8_T lt = elf_map_to_link_time_address(expr_ctx, pc, 1, &file, &sec);
+        if (file == NULL) str_exception(ERR_INV_CONTEXT, "Cannot get link-time address of the stack frame");
+        func = get_function_by_addr(expr->object->mCompUnit->mObject, expr->object->mCompUnit->mTextSection, lt);
+        if (func == NULL) {
+            str_exception(ERR_INV_DWARF, "OP_fbreg: no parent function");
+        }
+        else if (set_trap(&trap)) {
+            read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, func, AT_frame_base, &fp);
+            clear_trap(&trap);
+            dwarf_get_expression_list(&fp, &info);
+            while (info != NULL && info->code_size > 0 && (info->code_addr > pc || pc - info->code_addr >= info->code_size)) {
+                info = info->next;
+            }
+            if (info == NULL) {
+                str_exception(ERR_OTHER, "Object is not available at this location in the code");
+            }
+            add_fbreg_expression(info, offs);
+        }
+        else {
+            str_exception(trap.error, "OP_fbreg: cannot read AT_frame_base");
+        }
+    }
 }
 
 static void op_implicit_pointer(void) {

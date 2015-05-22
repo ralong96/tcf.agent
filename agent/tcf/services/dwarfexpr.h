@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2008, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -31,7 +31,7 @@
 #define FORM_EXPR_VALUE 0x00ff
 
 typedef struct DWARFExpressionInfo {
-    U8_T code_addr;
+    U8_T code_addr; /* Run-time address */
     U8_T code_size;
     ObjectInfo * object;
     ELF_Section * section;

@@ -164,6 +164,7 @@ static struct BaseTypeAlias {
 #define SYMBOL_MAGIC 0x34875234
 
 #define equ_symbol_names(x, y) (*x == *y && cmp_symbol_names(x, y) == 0)
+#define check_in_range(obj, addr) dwarf_check_in_range(obj, (addr)->section, (addr)->lt_addr)
 
 static const char * get_linkage_name(ObjectInfo * obj);
 static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym);
@@ -841,66 +842,6 @@ static ObjectInfo * get_object_ref_prop(ObjectInfo * obj, U2_T at) {
     if (res == NULL) str_exception(ERR_INV_DWARF, "Invalid debug info entry reference");
     clear_trap(&trap);
     return res;
-}
-
-/* Check link-time address 'addr' belongs to an object address range(s) */
-static int check_in_range(ObjectInfo * obj, UnitAddress * addr) {
-    if (obj->mFlags & DOIF_ranges) {
-        Trap trap;
-        if (set_trap(&trap)) {
-            CompUnit * unit = obj->mCompUnit;
-            DWARFCache * cache = get_dwarf_cache(unit->mFile);
-            ELF_Section * debug_ranges = cache->mDebugRanges;
-            if (debug_ranges != NULL) {
-                ContextAddress base = unit->mObject->u.mCode.mLowPC;
-                int res = 0;
-
-#if 0
-                U8_T entry_pc = 0;
-                if (obj->mTag == TAG_inlined_subroutine &&
-                    get_num_prop(obj, AT_entry_pc, &entry_pc))
-                    base = (ContextAddress)entry_pc;
-#endif
-
-                dio_EnterSection(&unit->mDesc, debug_ranges, obj->u.mCode.mHighPC.mRanges);
-                for (;;) {
-                    U8_T AddrMax = ~(U8_T)0;
-                    ELF_Section * x_sec = NULL;
-                    ELF_Section * y_sec = NULL;
-                    U8_T x = dio_ReadAddress(&x_sec);
-                    U8_T y = dio_ReadAddress(&y_sec);
-                    if (x == 0 && y == 0) break;
-                    if (unit->mDesc.mAddressSize < 8) AddrMax = ((U8_T)1 << unit->mDesc.mAddressSize * 8) - 1;
-                    if (x == AddrMax) {
-                        base = (ContextAddress)y;
-                    }
-                    else {
-                        if (x_sec == NULL) x_sec = unit->mTextSection;
-                        if (y_sec == NULL) y_sec = unit->mTextSection;
-                        if (x_sec == addr->section && y_sec == addr->section) {
-                            x = base + x;
-                            y = base + y;
-                            if (x <= addr->lt_addr && addr->lt_addr < y) {
-                                res = 1;
-                                break;
-                            }
-                        }
-                    }
-                }
-                dio_ExitSection();
-                clear_trap(&trap);
-                return res;
-            }
-            clear_trap(&trap);
-        }
-        return 0;
-    }
-
-    if (obj->u.mCode.mHighPC.mAddr > obj->u.mCode.mLowPC && obj->u.mCode.mSection == addr->section) {
-        return addr->lt_addr >= obj->u.mCode.mLowPC && addr->lt_addr < obj->u.mCode.mHighPC.mAddr;
-    }
-
-    return 0;
 }
 
 static int cmp_object_profiles(ObjectInfo * x, ObjectInfo * y) {

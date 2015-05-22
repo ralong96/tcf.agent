@@ -897,7 +897,8 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (errcmp(err, "Unsupported type in OP_GNU_convert") == 0) return;
         if (errcmp(err, "Invalid size of implicit value") == 0) return;
         if (errcmp(err, "Invalid implicit pointer") == 0) return;
-        if (errcmp(err, "Symbol value unknown: implicit pointer") == 0) {
+        if (errcmp(err, "Cannot get symbol value: optimized away") == 0) return;
+        if (errcmp(err, "Cannot get symbol value: implicit pointer") == 0) {
             test_implicit_pointer(sym);
             return;
         }
