@@ -241,6 +241,9 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
             else if (n == 13) { /* Read-write small data area anchor */
                 regs->regs[n].rule = RULE_SAME_VALUE;
             }
+            else if (n == 14) { /* Used to store return addresses for interrupts */
+                regs->regs[n].rule = RULE_SAME_VALUE;
+            }
             else if (n == 1) { /* Stack pointer */
                 regs->regs[n].rule = RULE_VAL_OFFSET;
             }
