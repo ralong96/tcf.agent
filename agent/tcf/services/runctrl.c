@@ -45,8 +45,12 @@
 #include <tcf/services/symbols.h>
 #include <tcf/main/cmdline.h>
 
-#define EN_STEP_OVER (SERVICE_Breakpoints && SERVICE_StackTrace && ENABLE_Symbols)
-#define EN_STEP_LINE (ENABLE_LineNumbers)
+#ifndef EN_STEP_OVER
+#  define EN_STEP_OVER (SERVICE_Breakpoints && SERVICE_StackTrace && ENABLE_Symbols)
+#endif
+#ifndef EN_STEP_LINE
+#  define EN_STEP_LINE (ENABLE_LineNumbers)
+#endif
 
 #define STOP_ALL_TIMEOUT 1000000
 #define STOP_ALL_MAX_CNT 20
