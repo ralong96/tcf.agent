@@ -2491,7 +2491,7 @@ static void command_get_capabilities(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOM);
 
     ctx = id2ctx(id);
-    if ((strlen(id)>0) && !ctx) err = ERR_INV_CONTEXT;
+    if (ctx == NULL && strlen(id) > 0) err = ERR_INV_CONTEXT;
 
     write_stringz(out, "R");
     write_stringz(out, token);
