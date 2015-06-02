@@ -844,6 +844,11 @@ static void start_step_mode(Context * ctx, Channel * c, int mode, ContextAddress
     ext->step_range_end = range_end;
 }
 
+int get_stepping_mode(Context * ctx) {
+    ContextExtensionRC * ext = EXT(ctx);
+    return ext->step_mode;
+}
+
 int continue_debug_context(Context * ctx, Channel * c,
         int mode, int count, ContextAddress range_start, ContextAddress range_end) {
     ContextExtensionRC * ext = EXT(ctx);

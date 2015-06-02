@@ -173,6 +173,12 @@ extern int suspend_by_breakpoint(Context * ctx, Context * trigger, const char * 
  */
 extern char ** get_context_breakpoint_ids(Context * ctx);
 
+/*
+ * Return current stepping mode of a debug context.
+ * Return RM_RESUME if the context in not being stepped.
+ */
+extern int get_stepping_mode(Context * ctx);
+
 /**
  * Set context state name if it is other than Running,
  * for example: "Sleeping", "Reset", "No Clock"
