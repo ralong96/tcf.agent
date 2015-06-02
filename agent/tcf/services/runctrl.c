@@ -78,6 +78,7 @@ typedef struct ContextExtensionRC {
     int step_mode;
     int step_cnt;
     int step_line_cnt;
+    int step_repeat_cnt;
     int stop_group_mark;
     int run_ctrl_ctx_lock_cnt;
     ContextAddress step_range_start;
@@ -813,6 +814,7 @@ static void cancel_step_mode(Context * ctx) {
     }
     ext->step_cnt = 0;
     ext->step_line_cnt = 0;
+    ext->step_repeat_cnt = 0;
     ext->step_range_start = 0;
     ext->step_range_end = 0;
     ext->step_frame_fp = 0;
@@ -823,7 +825,7 @@ static void cancel_step_mode(Context * ctx) {
     ext->step_mode = RM_RESUME;
 }
 
-static void start_step_mode(Context * ctx, Channel * c, int mode, ContextAddress range_start, ContextAddress range_end) {
+static void start_step_mode(Context * ctx, Channel * c, int mode, int cnt, ContextAddress range_start, ContextAddress range_end) {
     ContextExtensionRC * ext = EXT(ctx);
 
     cancel_step_mode(ctx);
@@ -842,6 +844,7 @@ static void start_step_mode(Context * ctx, Channel * c, int mode, ContextAddress
     ext->step_mode = mode;
     ext->step_range_start = range_start;
     ext->step_range_end = range_end;
+    ext->step_repeat_cnt = cnt;
 }
 
 int get_stepping_mode(Context * ctx) {
@@ -870,7 +873,7 @@ int continue_debug_context(Context * ctx, Channel * c,
         break;
     }
 
-    if (context_has_state(ctx)) start_step_mode(ctx, c, mode, range_start, range_end);
+    if (context_has_state(ctx)) start_step_mode(ctx, c, mode, count, range_start, range_end);
 
     if (ctx->exited) {
         err = ERR_ALREADY_EXITED;
@@ -878,7 +881,7 @@ int continue_debug_context(Context * ctx, Channel * c,
     else if (context_has_state(ctx) && !ext->intercepted) {
         err = ERR_ALREADY_RUNNING;
     }
-    else if (count != 1) {
+    else if (count < 1) {
         err = EINVAL;
     }
     else if (resume_context_tree(ctx) < 0) {
@@ -1581,6 +1584,8 @@ static int update_step_machine_state(Context * ctx) {
     assert(ctx->stopped);
     assert(ctx->pending_intercept == 0);
     assert(ext->intercepted == 0);
+    assert(ext->step_repeat_cnt > 0);
+    assert(ext->step_done == NULL);
 
     if (ext->step_cnt == 0) {
         /* In case of cache miss, clear stale data */
@@ -1790,13 +1795,11 @@ static int update_step_machine_state(Context * ctx) {
             case RM_REVERSE_STEP_INTO_LINE:
                 if (ext->step_inlined < info->inlined) {
                     if (same_line) ext->step_inlined++;
-                    ctx->pending_intercept = 1;
                     ext->step_done = REASON_STEP;
                     return 0;
                 }
                 if (!same_func) {
                     if (ext->step_inlined > 0) ext->step_inlined--;
-                    ctx->pending_intercept = 1;
                     ext->step_done = REASON_STEP;
                     return 0;
                 }
@@ -1805,12 +1808,10 @@ static int update_step_machine_state(Context * ctx) {
             case RM_REVERSE_STEP_OVER_LINE:
                 if (!same_func) {
                     if (ext->step_inlined > 0) ext->step_inlined--;
-                    ctx->pending_intercept = 1;
                     ext->step_done = REASON_STEP;
                     return 0;
                 }
                 if (ext->step_inlined < info->inlined && !same_line) {
-                    ctx->pending_intercept = 1;
                     ext->step_done = REASON_STEP;
                     return 0;
                 }
@@ -1820,19 +1821,16 @@ static int update_step_machine_state(Context * ctx) {
                 if (ext->step_inlined < info->inlined) {
                     if (ext->step_inlined == info->inlined - 1 && ext->step_func_id_out != NULL &&
                             (info->func_id == NULL || strcmp(info->func_id, ext->step_func_id_out))) {
-                        ctx->pending_intercept = 1;
                         ext->step_done = REASON_STEP;
                         return 0;
                     }
                 }
                 if (!same_func) {
                     if (ext->step_inlined > 0) ext->step_inlined--;
-                    ctx->pending_intercept = 1;
                     ext->step_done = REASON_STEP;
                     return 0;
                 }
                 if (ext->step_inlined < info->inlined && !same_line) {
-                    ctx->pending_intercept = 1;
                     ext->step_done = REASON_STEP;
                     return 0;
                 }
@@ -1864,7 +1862,6 @@ static int update_step_machine_state(Context * ctx) {
         return 0;
     case RM_UNTIL_ACTIVE:
     case RM_REVERSE_UNTIL_ACTIVE:
-        ctx->pending_intercept = 1;
         ext->step_done = REASON_ACTIVE;
         return 0;
     case RM_STEP_INTO:
@@ -1881,7 +1878,6 @@ static int update_step_machine_state(Context * ctx) {
     case RM_REVERSE_STEP_INTO_RANGE:
     case RM_REVERSE_STEP_OVER_RANGE:
         if (ext->step_cnt > 0 && (addr < ext->step_range_start || addr >= ext->step_range_end)) {
-            ctx->pending_intercept = 1;
             ext->step_done = REASON_STEP;
             return 0;
         }
@@ -1908,7 +1904,6 @@ static int update_step_machine_state(Context * ctx) {
             int same_line = 0;
             CodeArea * area = ext->step_code_area;
             if (area == NULL) {
-                ctx->pending_intercept = 1;
                 ext->step_done = REASON_STEP;
                 return 0;
             }
@@ -1938,7 +1933,6 @@ static int update_step_machine_state(Context * ctx) {
                 }
 #endif
                 free_code_area(area);
-                ctx->pending_intercept = 1;
                 ext->step_done = REASON_STEP;
                 return 0;
             }
@@ -1952,7 +1946,6 @@ static int update_step_machine_state(Context * ctx) {
             if (same_line &&
                     (ext->step_mode == RM_REVERSE_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_OVER_LINE) &&
                     ext->step_line_cnt > 0 && addr == ext->step_code_area->start_address) {
-                ctx->pending_intercept = 1;
                 ext->step_done = REASON_STEP;
                 return 0;
             }
@@ -1960,7 +1953,6 @@ static int update_step_machine_state(Context * ctx) {
                 if ((ext->step_mode != RM_REVERSE_STEP_INTO_LINE && ext->step_mode != RM_REVERSE_STEP_OVER_LINE) ||
                         (ext->step_line_cnt == 0 && addr == ext->step_code_area->start_address) ||
                         ext->step_line_cnt >= 2) {
-                    ctx->pending_intercept = 1;
                     ext->step_done = REASON_STEP;
                     return 0;
                 }
@@ -1986,7 +1978,6 @@ static int update_step_machine_state(Context * ctx) {
             CodeArea * area = NULL;
             if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return -1;
             if (area == NULL || !is_function_prologue(ctx, addr, area)) {
-                ctx->pending_intercept = 1;
                 ext->step_done = REASON_USER_REQUEST;
                 return 0;
             }
@@ -1996,7 +1987,6 @@ static int update_step_machine_state(Context * ctx) {
 #endif /* EN_STEP_LINE */
     case RM_STEP_OUT:
     case RM_REVERSE_STEP_OUT:
-        ctx->pending_intercept = 1;
         ext->step_done = REASON_STEP;
         return 0;
     default:
@@ -2061,7 +2051,20 @@ static int update_step_machine_state(Context * ctx) {
 
 static int update_step_machine_state_inlined(Context * ctx) {
     ContextExtensionRC * ext = EXT(ctx);
-    if (update_step_machine_state(ctx) < 0) return -1;
+    for (;;) {
+        if (update_step_machine_state(ctx) < 0) return -1;
+        if (ext->step_done == NULL) break;
+        ext->step_repeat_cnt--;
+        if (ext->step_repeat_cnt > 0) {
+            ext->step_cnt = 0;
+            ext->step_line_cnt = 0;
+            ext->step_done = NULL;
+        }
+        else {
+            ctx->pending_intercept = 1;
+            break;
+        }
+    }
     if (ctx->pending_intercept && ext->step_set_frame_level) {
         StackFrame * info = NULL;
         if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
@@ -2209,7 +2212,7 @@ static void sync_run_state(void) {
         if (!ctx->stopped) continue;
         if (ext->step_mode == RM_RESUME && ext->skip_prologue) {
 #if EN_STEP_OVER
-            start_step_mode(ctx, select_skip_prologue_channel(), RM_SKIP_PROLOGUE, 0, 0);
+            start_step_mode(ctx, select_skip_prologue_channel(), RM_SKIP_PROLOGUE, 1, 0, 0);
 #else
             Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
             EXT(grp)->intercept_group = 1;
