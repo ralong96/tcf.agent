@@ -105,7 +105,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
             uint8_t * m_addr = (uint8_t *)&frame->regs->mask + reg_def->offset;
             for (i = 0; i < size; i++) {
                 if (m_addr[offs + i] != 0xff) {
-                    errno = ERR_INV_CONTEXT;
+                    set_fmt_errno(ERR_INV_CONTEXT, "Value of register %s is unknown in the selected frame", reg_def->name);
                     return -1;
                 }
             }
