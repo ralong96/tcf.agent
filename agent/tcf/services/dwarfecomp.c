@@ -410,6 +410,8 @@ static U8_T get_frame_pc(void) {
 static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs) {
     int peer_version = 1;
     Channel * c = cache_channel();
+    RegisterDefinition * pc = get_PC_definition(expr_ctx);
+
     if (c != NULL) {
         int i;
         peer_version = 0;
@@ -419,7 +421,7 @@ static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs
         }
     }
 
-    if (info->code_size > 0 && peer_version == 0) {
+    if (info->code_size > 0 && (peer_version == 0 || pc == NULL || pc->dwarf_id < 0)) {
         /* The peer does not support OP_TCF_switch */
         U8_T pc = get_frame_pc();
         while (info != NULL && info->code_size > 0 && (info->code_addr > pc || pc - info->code_addr >= info->code_size)) {
@@ -434,10 +436,6 @@ static void add_expression_list(DWARFExpressionInfo * info, int fbreg, I8_T offs
     }
     else if (info->code_size > 0) {
         size_t switch_pos;
-        RegisterDefinition * pc = get_PC_definition(expr_ctx);
-
-        if (pc == NULL || pc->dwarf_id < 0)
-            str_exception(ERR_INV_DWARF, "Invalid PC register definition");
 
         add(OP_bregx);
         add_uleb128(pc->dwarf_id);

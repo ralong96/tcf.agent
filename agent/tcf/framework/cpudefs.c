@@ -478,6 +478,7 @@ LocationExpressionState * evaluate_location_expression(Context * ctx, StackFrame
 void read_location_pieces(Context * ctx, StackFrame * frame,
             LocationPiece * pieces, unsigned pieces_cnt, int big_endian,
             void ** value, size_t * size) {
+    /* Note: 'big_endian' should match endianness of LocationPiece.value in 'pieces' */
     uint8_t * bf = NULL;
     size_t bf_size = 0;
     unsigned bf_bits = 0;
@@ -529,7 +530,7 @@ void read_location_pieces(Context * ctx, StackFrame * frame,
             if (context_read_mem(ctx, piece->addr, pbf, piece_size) < 0) exception(errno);
         }
         for (i = piece->bit_offs; i < piece->bit_offs + piece_bits;  i++) {
-            if (pbf[i / 8] & bit_mask(i)) bf[bf_offs / 8] |=  bit_mask(bf_offs);
+            if (pbf[i / 8] & bit_mask(i)) bf[bf_offs / 8] |= bit_mask(bf_offs);
             bf_offs++;
         }
     }

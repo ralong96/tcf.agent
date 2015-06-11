@@ -1218,7 +1218,7 @@ static void validate_mid_frame_reg_values_cache(Channel * c, void * args, int er
             json_read_binary_start(&state, &c->inp);
             for (r = 0; r < n; r++) {
                 RegisterDefinition * reg = fc->reg_defs[r];
-                if (reg->size > 0 && reg->dwarf_id >= 0) {
+                if (reg->size > 0 && (reg->dwarf_id >= 0 || reg->role != NULL)) {
                     size_t pos = 0;
                     uint8_t * data = fc->reg_data.data + reg->offset;
                     uint8_t * mask = fc->reg_data.mask + reg->offset;
@@ -1291,7 +1291,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
             write_stream(&c->out, '[');
             for (n = 0; n < fc->reg_cnt; n++) {
                 RegisterDefinition * reg = fc->reg_defs[n];
-                if (reg->size > 0 && reg->dwarf_id >= 0) {
+                if (reg->size > 0 && (reg->dwarf_id >= 0 || reg->role != NULL)) {
                     const char * id = register2id(fc->ctx->ctx, frame->frame, reg);
                     if (n > 0) write_stream(&c->out, ',');
                     write_stream(&c->out, '[');
@@ -1320,7 +1320,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
             uint8_t * m_addr = frame->regs->mask + reg_def->offset;
             for (i = 0; i < size; i++) {
                 if (m_addr[offs + i] != 0xff) {
-                    errno = ERR_INV_CONTEXT;
+                    set_fmt_errno(ERR_INV_CONTEXT, "Value of register %s is unknown in the selected frame", reg_def->name);
                     return -1;
                 }
             }
