@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014-2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -170,7 +170,6 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
             }
             break;
         case EM_PPC:
-        case EM_PPC64:
             min_reg_cnt = 64;
             if (n == 1) {
                 regs->regs[n].rule = RULE_VAL_OFFSET;
@@ -181,6 +180,19 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
             else if (n == rules.return_address_register) {
                 regs->regs[n].rule = RULE_REGISTER;
                 regs->regs[n].offset = 108; /* LR */
+            }
+            break;
+        case EM_PPC64:
+            min_reg_cnt = 64;
+            if (n == 1) {
+                regs->regs[n].rule = RULE_VAL_OFFSET;
+            }
+            else if ((n >= 14 && n <= 31) || (n >= 46 && n <= 63)) {
+                regs->regs[n].rule = RULE_SAME_VALUE;
+            }
+            else if (n == rules.return_address_register) {
+                regs->regs[n].rule = RULE_REGISTER;
+                regs->regs[n].offset = 65; /* LR */
             }
             break;
         case EM_ARM:
@@ -955,8 +967,13 @@ static void generate_plt_section_commands(Context * ctx, ELF_File * file, U8_T o
         generate_commands();
         break;
     case EM_PPC:
-    case EM_PPC64:
         rules.return_address_register = 108; /* LR */
+        frame_regs.cfa_rule = RULE_OFFSET;
+        frame_regs.cfa_register = 1; /* R1 */
+        generate_commands();
+        break;
+    case EM_PPC64:
+        rules.return_address_register = 65; /* LR */
         frame_regs.cfa_rule = RULE_OFFSET;
         frame_regs.cfa_register = 1; /* R1 */
         generate_commands();
