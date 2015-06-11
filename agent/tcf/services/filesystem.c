@@ -1440,23 +1440,27 @@ static void command_rename(char * token, Channel * c) {
 static void command_readlink(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
     char link[FILE_PATH_SIZE];
-    int err;
+    ssize_t len = 0;
+    int err = 0;
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    link[0] = 0;
 #if defined(_WIN32) || defined(_WRS_KERNEL)
     err = ENOSYS;
 #else
-    err = (readlink(path, link, sizeof(link)) < 0) ? errno : 0;
+    len = readlink(path, link, sizeof(link));
+    if (len < 0) {
+        err = errno;
+        len = 0;
+    }
 #endif
 
     write_stringz(&c->out, "R");
     write_stringz(&c->out, token);
     write_fs_errno(&c->out, err);
-    json_write_string(&c->out, link);
+    json_write_string_len(&c->out, link, (size_t)len);
     write_stream(&c->out, 0);
     write_stream(&c->out, MARKER_EOM);
 }
