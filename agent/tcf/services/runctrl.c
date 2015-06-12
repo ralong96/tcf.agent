@@ -2332,6 +2332,16 @@ static void mark_stop_groups(void) {
     }
 }
 
+static void mark_cannot_stop(Context * ctx, const char * err_msg) {
+    ContextExtensionRC * ext = EXT(ctx);
+    const char * name = ctx->name;
+    if (name == NULL) name = ctx->id;
+    trace(LOG_ALWAYS, "Cannot stop '%s': %s", name, err_msg);
+    cancel_step_mode(ctx);
+    ext->safe_single_step = 0;
+    ext->cannot_stop = 1;
+}
+
 static void run_safe_events(void * arg) {
     LINK * l;
 
@@ -2358,25 +2368,22 @@ static void run_safe_events(void * arg) {
         if (ctx->stopped || !context_has_state(ctx)) continue;
         if (!ext->safe_single_step && !EXT(context_get_group(ctx, CONTEXT_GROUP_STOP))->stop_group_mark) continue;
         if (stop_all_timer_cnt >= STOP_ALL_MAX_CNT) {
-            trace(LOG_ALWAYS, "can't stop %s: timeout", ctx->id);
-            ext->cannot_stop = 1;
+            mark_cannot_stop(ctx, "timeout");
             continue;
         }
         if (stop_all_timer_cnt >= 2 && ext->state_name != NULL) {
-            trace(LOG_ALWAYS, "can't stop %s: %s", ctx->id, ext->state_name);
-            ext->cannot_stop = 1;
+            mark_cannot_stop(ctx, ext->state_name);
             continue;
         }
 #if ENABLE_Trace
         if (stop_all_timer_cnt == STOP_ALL_MAX_CNT / 2) {
             const char * msg = ext->safe_single_step ? "finish single step" : "stop";
-            trace(LOG_ALWAYS, "warning: waiting too long for context %s to %s", ctx->id, msg);
+            trace(LOG_ALWAYS, "Warning: waiting too long for context %s to %s", ctx->id, msg);
         }
 #endif
         if (!ext->safe_single_step || stop_all_timer_cnt >= STOP_ALL_MAX_CNT / 2) {
             if (context_stop(ctx) < 0) {
-                trace(LOG_ALWAYS, "can't stop %s: %s", ctx->id, errno_to_str(errno));
-                ext->cannot_stop = 1;
+                mark_cannot_stop(ctx, errno_to_str(errno));
                 continue;
             }
             assert(!ctx->stopped);
