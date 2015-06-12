@@ -97,6 +97,8 @@ struct BreakpointInfo {
     int access_mode;
     int access_size;
     int line;
+    int line_offs_limit;
+    int line_offs_check;
     int column;
     unsigned ignore_count;
     BreakpointAttribute * attrs;
@@ -121,6 +123,7 @@ struct InstructionRef {
     Context * ctx; /* "breakpoint" group context, see CONTEXT_GROUP_BREAKPOINT */
     ContextAddress addr;
     unsigned cnt;
+    int line_offs_error;
 };
 
 #define MAX_BI_SIZE 16
@@ -309,9 +312,27 @@ static void plant_instruction(BreakInstruction * bi) {
     assert(print_not_stopped_contexts(bi->cb.ctx));
 
     bi->saved_size = 0;
+    bi->unsupported = 0;
 
-    if (context_plant_breakpoint(&bi->cb) < 0) error = errno;
-    bi->unsupported = error && get_error_code(error) == ERR_UNSUPPORTED;
+    if (bi->virtual_addr && (bi->cb.access_types & CTX_BP_ACCESS_INSTRUCTION) != 0) {
+        unsigned i;
+        int line_offs_ok = 0;
+        for (i = 0; i < bi->ref_cnt; i++) {
+            InstructionRef * ref = bi->refs + i;
+            if (ref->cnt > 0 && !ref->line_offs_error) {
+                line_offs_ok = 1;
+                break;
+            }
+        }
+        if (!line_offs_ok) {
+            error = set_errno(ERR_OTHER, "No code at requested breakpoint position");
+        }
+    }
+
+    if (error == 0) {
+        if (context_plant_breakpoint(&bi->cb) < 0) error = errno;
+        bi->unsupported = error && get_error_code(error) == ERR_UNSUPPORTED;
+    }
 
     if (bi->unsupported && !bi->virtual_addr && !bi->hardware) {
         uint8_t * break_inst = get_break_instruction(bi->cb.ctx, &bi->saved_size);
@@ -942,6 +963,54 @@ static void send_event_breakpoint_status(Channel * channel, BreakpointInfo * bp)
     }
 }
 
+typedef struct LineOffsCheckArgs {
+    BreakpointInfo * bp;
+    BreakInstruction * bi;
+    unsigned line_offs_ok;
+    char * file;
+} LineOffsCheckArgs;
+
+static void line_offs_check(CodeArea * area, void * x) {
+    LineOffsCheckArgs * args = (LineOffsCheckArgs *)x;
+    assert(area->start_address <= args->bi->cb.address);
+    assert(area->end_address > args->bi->cb.address);
+    if (area->file != NULL &&
+            area->start_line >= args->bp->line - args->bp->line_offs_limit &&
+            area->start_line <= args->bp->line + args->bp->line_offs_limit) {
+        char buf[FILE_PATH_SIZE];
+        char * file = NULL;
+        if (area->directory == NULL || is_absolute_path(area->file)) {
+            file = (char *)area->file;
+        }
+        else {
+            snprintf(file = buf, sizeof(buf), "%s/%s", area->directory, area->file);
+        }
+        file = canonic_path_map_file_name(file);
+        args->line_offs_ok = strcmp(args->file, file) == 0;
+    }
+}
+
+static void verify_line_offset(BreakInstruction * bi, InstructionRef * ref) {
+    ref->line_offs_error = 0;
+    if (bi->virtual_addr && (bi->cb.access_types & CTX_BP_ACCESS_INSTRUCTION) != 0) {
+        LineOffsCheckArgs args;
+        assert(ref->ctx == bi->cb.ctx);
+        assert(ref->addr == bi->cb.address);
+        memset(&args, 0, sizeof(args));
+        if (ref->bp->file != NULL && ref->bp->line_offs_check) {
+            args.bi = bi;
+            args.bp = ref->bp;
+            args.file = canonic_path_map_file_name(ref->bp->file);
+            if (address_to_line(ref->ctx, ref->addr, ref->addr + 1, line_offs_check, &args) < 0) {
+                ref->line_offs_error = 1;
+            }
+            else if (!args.line_offs_ok) {
+                ref->line_offs_error = 1;
+            }
+        }
+    }
+}
+
 static BreakInstruction * link_breakpoint_instruction(
         BreakpointInfo * bp, Context * ctx,
         ContextAddress ctx_addr, ContextAddress size,
@@ -992,6 +1061,7 @@ static BreakInstruction * link_breakpoint_instruction(
                     assert(!bi->valid || !bi->virtual_addr);
                     ref->addr = ctx_addr;
                     ref->cnt++;
+                    verify_line_offset(bi, ref);
                     return bi;
                 }
                 i++;
@@ -1013,6 +1083,7 @@ static BreakInstruction * link_breakpoint_instruction(
     EXT(ctx)->instruction_cnt++;
     bp->instruction_cnt++;
     bp->status_changed = 1;
+    verify_line_offset(bi, ref);
     return bi;
 }
 
@@ -2032,6 +2103,10 @@ static int set_breakpoint_attributes(BreakpointInfo * bp, BreakpointAttribute * 
         else if (strcmp(name, BREAKPOINT_SKIP_PROLOGUE) == 0) {
             bp->skip_prologue = json_read_boolean(buf_inp);
         }
+        else if (strcmp(name, BREAKPOINT_LINE_OFFSET) == 0) {
+            bp->line_offs_limit = json_read_long(buf_inp);
+            bp->line_offs_check = 1;
+        }
         else if (strcmp(name, BREAKPOINT_FILE) == 0) {
             loc_free(bp->file);
             bp->file = json_read_alloc_string(buf_inp);
@@ -2102,6 +2177,10 @@ static int set_breakpoint_attributes(BreakpointInfo * bp, BreakpointAttribute * 
         }
         else if (strcmp(name, BREAKPOINT_SKIP_PROLOGUE) == 0) {
             bp->skip_prologue = 0;
+        }
+        else if (strcmp(name, BREAKPOINT_LINE_OFFSET) == 0) {
+            bp->line_offs_limit = 0;
+            bp->line_offs_check = 0;
         }
         else if (strcmp(name, BREAKPOINT_FILE) == 0) {
             loc_free(bp->file);
@@ -2565,6 +2644,10 @@ static void command_get_capabilities(char * token, Channel * c) {
         json_write_boolean(out, 1);
         write_stream(out, ',');
         json_write_string(out, "SkipPrologue");
+        write_stream(out, ':');
+        json_write_boolean(out, 1);
+        write_stream(out, ',');
+        json_write_string(out, "LineOffset");
         write_stream(out, ':');
         json_write_boolean(out, 1);
 #if ENABLE_ContextBreakpointCapabilities

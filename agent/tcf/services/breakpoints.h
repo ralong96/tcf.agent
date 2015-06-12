@@ -68,6 +68,7 @@ struct BreakpointAttribute {
 #define BREAKPOINT_CONTEXT_QUERY    "ContextQuery"
 #define BREAKPOINT_SERVICE          "Service"
 #define BREAKPOINT_SKIP_PROLOGUE    "SkipPrologue"
+#define BREAKPOINT_LINE_OFFSET      "LineOffset"
 
 
 /* Breakpoints event listener */
