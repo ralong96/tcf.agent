@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1077,6 +1077,30 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
             json_write_string(out, "Root");
             write_stream(out, ':');
             json_write_string(out, fnm);
+            write_stream(out, ',');
+        }
+
+        if ((sz = readlink("exe", fnm, FILE_PATH_SIZE)) > 0) {
+            fnm[sz] = 0;
+            json_write_string(out, "Exe");
+            write_stream(out, ':');
+            json_write_string(out, fnm);
+            write_stream(out, ',');
+            json_write_string(out, "ExeType");
+            write_stream(out, ':');
+            json_write_long(out, EXETYPE_USER);
+            write_stream(out, ',');
+        }
+        else if (errno == ENOENT) {
+            json_write_string(out, "ExeType");
+            write_stream(out, ':');
+            json_write_long(out, EXETYPE_KERNEL);
+            write_stream(out, ',');
+        }
+        else if (errno == EACCES) {
+            json_write_string(out, "ExeType");
+            write_stream(out, ':');
+            json_write_long(out, EXETYPE_ACCESS_DENIED);
             write_stream(out, ',');
         }
 
