@@ -1,5 +1,5 @@
 %define name tcf-agent
-%define version 1.3.0
+%define version 1.4.0
 %define release 1.%(bin/get-os-tag)
 %define make_options CONF=Release PATH_Plugins=/etc/tcf/plugins
 
@@ -8,7 +8,7 @@ Summary: Target Communication Framework agent
 Version: %{version}
 Release: %{release}
 Vendor: eclipse.org
-Source: http://dev.eclipse.org/svnroot/dsdp/org.eclipse.tm.tcf/trunk/srpms/%{name}-%{version}.tar.bz2
+Source: http://git.eclipse.org/c/tcf/org.eclipse.tcf.agent.git
 URL: http://wiki.eclipse.org/TCF
 Group: Development/Tools/Other
 BuildRoot: %{_tmppath}/%{name}-buildroot
@@ -62,7 +62,9 @@ fi
 %{_includedir}/tcf
 
 %changelog
-* Mon Feb 17 2017 Eugene Tarassov <eugene.tarassov@xilinx.com> 1.2.0
+* Wed Jun 24 2015 Eugene Tarassov <eugene.tarassov@xilinx.com> 1.3.0
+- Eclipse 4.5.0 Mars release
+* Wed Jun 25 2014 Eugene Tarassov <eugene.tarassov@xilinx.com> 1.2.0
 - Eclipse 4.4.0 Luna release
 * Wed Jun 12 2013 Eugene Tarassov <eugene.tarassov@xilinx.com> 1.1.0
 - Eclipse 4.3.0 Kepler release
