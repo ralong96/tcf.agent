@@ -629,7 +629,7 @@ static void udp_refresh_timer(void * arg) {
     }
 
     if (udp_server_port != DISCOVERY_TCF_PORT && last_master_packet_time + PEER_DATA_RETENTION_PERIOD / 2 <= timenow) {
-        /* No master reponces, try to become a master */
+        /* No master responses, try to become a master */
         create_server_socket();
     }
 
