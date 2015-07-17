@@ -1179,6 +1179,11 @@ static void trace_arm_ldr_str(uint32_t instr) {
         /* Found the return instruction */
         trace_return = 1;
     }
+    else if (rd == 15) {
+        chk_loaded(15);
+        add_branch(reg_data[15].v);
+        trace_branch = 1;
+    }
 }
 
 static void trace_arm_extra_ldr_str(uint32_t instr) {
@@ -1879,6 +1884,7 @@ static int trace_arm(void) {
 
     if (!trace_return && !trace_branch) {
         /* Check next address */
+        if (chk_loaded(15) < 0) return -1;
         reg_data[15].v += 4;
     }
     return 0;
@@ -1889,8 +1895,10 @@ static int trace_instructions(void) {
     RegData org_sp = reg_data[13];
     RegData org_lr = reg_data[14];
     RegData org_pc = reg_data[15];
+    RegData org_4to11[8];
     RegData org_cpsr = cpsr_data;
     RegData org_spsr = spsr_data;
+    memcpy(org_4to11, reg_data + 4, sizeof(org_4to11));
     for (;;) {
         unsigned t = 0;
         BranchData * b = NULL;
@@ -1954,7 +1962,14 @@ static int trace_instructions(void) {
         memcpy(reg_data, b->reg_data, sizeof(reg_data));
     }
     trace(LOG_STACK, "Stack crawl: Function epilogue not found");
-    for (i = 0; i < 16; i++) reg_data[i].o = 0;
+    for (i = 0; i < 16; i++) {
+        if (i >= 4 && i <= 11) { /* Local variables */
+            reg_data[i] = org_4to11[i - 4];
+        }
+        else {
+            reg_data[i].o = 0;
+        }
+    }
     cpsr_data.o = 0;
     spsr_data.o = 0;
     if (org_cpsr.o && org_spsr.o && org_lr.o) {
