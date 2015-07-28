@@ -1510,7 +1510,6 @@ static void load_value(Value * v) {
         LocationExpressionState * loc = v->loc;
         read_location_pieces(expression_context, loc->stack_frame,
             loc->pieces, loc->pieces_cnt, v->big_endian, &value, &size);
-        if (size > v->size) size = (size_t)v->size;
         v->value = value;
         v->size = (ContextAddress)size;
         sign_extend(v, loc);
