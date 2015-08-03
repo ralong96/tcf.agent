@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -351,14 +351,18 @@ static void write_map_region(OutputStream * out, MemoryRegion * m) {
     MemoryRegionAttribute * x = m->attrs;
 
     write_stream(out, '{');
-    json_write_string(out, "Addr");
-    write_stream(out, ':');
-    json_write_uint64(out, m->addr);
-    write_stream(out, ',');
-    json_write_string(out, "Size");
-    write_stream(out, ':');
-    json_write_uint64(out, m->size);
-    write_stream(out, ',');
+    if (m->addr != 0) {
+        json_write_string(out, "Addr");
+        write_stream(out, ':');
+        json_write_uint64(out, m->addr);
+        write_stream(out, ',');
+    }
+    if (m->size != 0) {
+        json_write_string(out, "Size");
+        write_stream(out, ':');
+        json_write_uint64(out, m->size);
+        write_stream(out, ',');
+    }
     json_write_string(out, "Flags");
     write_stream(out, ':');
     json_write_ulong(out, m->flags);
@@ -367,13 +371,14 @@ static void write_map_region(OutputStream * out, MemoryRegion * m) {
         json_write_string(out, "FileName");
         write_stream(out, ':');
         json_write_string(out, m->file_name);
-        write_stream(out, ',');
         if (m->sect_name != NULL) {
+            write_stream(out, ',');
             json_write_string(out, "SectionName");
             write_stream(out, ':');
             json_write_string(out, m->sect_name);
         }
-        else {
+        else if (m->file_offs != 0) {
+            write_stream(out, ',');
             json_write_string(out, "Offs");
             write_stream(out, ':');
             json_write_uint64(out, m->file_offs);

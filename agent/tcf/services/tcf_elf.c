@@ -38,6 +38,7 @@
 #include <tcf/framework/events.h>
 #include <tcf/framework/cache.h>
 #include <tcf/framework/trace.h>
+#include <tcf/framework/json.h>
 #include <tcf/services/tcf_elf.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/dwarfcache.h>
@@ -61,11 +62,33 @@
 #define MAX_FILE_AGE 60
 #define MAX_FILE_CNT 100
 
+#ifndef ARCH_SHF_SMALL
+#define ARCH_SHF_SMALL 0
+#endif
+
 typedef struct FileINode {
     struct FileINode * next;
     char * name;
     ino_t ino;
 } FileINode;
+
+typedef struct ElfListState {
+    Context * ctx;
+    unsigned pos;
+    MemoryMap map;
+    struct ElfListState * next;
+} ElfListState;
+
+typedef struct KernelModuleAddress {
+    U8_T module_init;
+    U8_T module_core;
+    U8_T init_size;
+    U8_T core_size;
+    U8_T init_text_size;
+    U8_T core_text_size;
+    U8_T init_ro_size;
+    U8_T core_ro_size;
+} KernelModuleAddress;
 
 static ELF_File * files = NULL;
 static FileINode * inodes = NULL;
@@ -77,13 +100,6 @@ static unsigned closelisteners_cnt = 0;
 static unsigned closelisteners_max = 0;
 static int elf_cleanup_posted = 0;
 static ino_t elf_ino_cnt = 0;
-typedef struct ElfListState {
-    Context * ctx;
-    unsigned pos;
-    MemoryMap map;
-    struct ElfListState * next;
-} ElfListState;
-
 static ElfListState * elf_list_state = NULL;
 
 #if ENABLE_DebugContext
@@ -1125,12 +1141,144 @@ ELF_File * elf_open_memory_region_file(MemoryRegion * r, int * error) {
     return NULL;
 }
 
-static void add_region(MemoryMap * map, MemoryRegion * r) {
+static MemoryRegion * add_region(MemoryMap * map) {
+    MemoryRegion * r = NULL;
     if (map->region_cnt >= map->region_max) {
         map->region_max += 8;
-        map->regions = (MemoryRegion *)loc_realloc(map->regions, sizeof(MemoryRegion ) * map->region_max);
+        map->regions = (MemoryRegion *)loc_realloc(map->regions, sizeof(MemoryRegion) * map->region_max);
     }
-    map->regions[map->region_cnt++] = *r;
+    r = map->regions + map->region_cnt++;
+    memset(r, 0, sizeof(MemoryRegion));
+    return r;
+}
+
+static void program_headers_ranges(ELF_File * file, ContextAddress addr0, ContextAddress addr1, MemoryMap * res) {
+    unsigned j;
+    for (j = 0; j < file->pheader_cnt; j++) {
+        ELF_PHeader * p = file->pheaders + j;
+        if (p->mem_size == 0) continue;
+        if (p->type != PT_LOAD) continue;
+        if (p->address <= addr1 && p->address + p->mem_size - 1 >= addr0) {
+            MemoryRegion * x = add_region(res);
+            x->addr = (ContextAddress)p->address;
+            x->size = (ContextAddress)p->mem_size;
+            x->dev = file->dev;
+            x->ino = file->ino;
+            x->file_name = file->name;
+            x->file_offs = p->offset;
+            x->file_size = p->file_size;
+            x->bss = p->file_size == 0 && p->mem_size != 0;
+            if (p->flags & PF_R) x->flags |= MM_FLAG_R;
+            if (p->flags & PF_W) x->flags |= MM_FLAG_W;
+            if (p->flags & PF_X) x->flags |= MM_FLAG_X;
+        }
+    }
+}
+
+static void read_module_struct(InputStream * inp, const char * name, void * args) {
+    KernelModuleAddress * module = (KernelModuleAddress *)args;
+    if (strcmp(name, "Init") == 0) module->module_init = json_read_uint64(inp);
+    else if (strcmp(name, "Core") == 0) module->module_core = json_read_uint64(inp);
+    else if (strcmp(name, "InitSize") == 0) module->init_size = json_read_uint64(inp);
+    else if (strcmp(name, "CoreSize") == 0) module->core_size = json_read_uint64(inp);
+    else if (strcmp(name, "InitTextSize") == 0) module->init_text_size = json_read_uint64(inp);
+    else if (strcmp(name, "CoreTextSize") == 0) module->core_text_size = json_read_uint64(inp);
+    else if (strcmp(name, "InitROSize") == 0) module->init_ro_size = json_read_uint64(inp);
+    else if (strcmp(name, "CoreROSize") == 0) module->core_ro_size = json_read_uint64(inp);
+    else json_skip_object(inp);
+}
+
+static void linux_kernel_module_ranges(ELF_File * file, KernelModuleAddress * module, ContextAddress addr0, ContextAddress addr1, MemoryMap * res) {
+    unsigned i, m;
+    U8_T * sec_addr = (U8_T *)tmp_alloc_zero(file->section_cnt * 8);
+    static const U4_T masks[][2] = {
+            { SHF_EXECINSTR | SHF_ALLOC, ARCH_SHF_SMALL },
+            { SHF_ALLOC, SHF_WRITE | ARCH_SHF_SMALL },
+            { SHF_WRITE | SHF_ALLOC, ARCH_SHF_SMALL },
+            { ARCH_SHF_SMALL | SHF_ALLOC, 0 }
+    };
+
+    if (module->module_core != 0) {
+        /* Core section allocation */
+        U8_T addr = module->module_core;
+        for (m = 0; m < 4; ++m) {
+            for (i = 0; i < file->section_cnt; i++) {
+                ELF_Section * s = file->sections + i;
+                if (sec_addr[i] != 0) continue;
+                if (s->flags & masks[m][1]) continue;
+                if ((s->flags & masks[m][0]) != masks[m][0]) continue;
+                if (strcmp(s->name, ".data..percpu") == 0) continue;
+                if (strcmp(s->name, ".modinfo") == 0) continue;
+                if (strncmp(s->name, ".init", 5) == 0) continue;
+                if (s->alignment > 1) {
+                    U8_T alignment = s->alignment - 1;
+                    if (addr & alignment) addr = (addr | alignment) + 1;
+                }
+                sec_addr[i] = addr;
+                addr += s->size;
+            }
+            switch (m) {
+            case 0: /* text */
+                addr = module->module_core + module->core_text_size;
+                break;
+            case 1: /* read only */
+                addr = module->module_core + module->core_ro_size;
+                break;
+            }
+        }
+    }
+
+    if (module->module_init != 0) {
+        /* Init section allocation */
+        U8_T addr = module->module_init;
+        for (m = 0; m < 4; ++m) {
+            for (i = 0; i < file->section_cnt; i++) {
+                ELF_Section * s = file->sections + i;
+                if (sec_addr[i] != 0) continue;
+                if (s->flags & masks[m][1]) continue;
+                if ((s->flags & masks[m][0]) != masks[m][0]) continue;
+                if (strcmp(s->name, ".data..percpu") == 0) continue;
+                if (strcmp(s->name, ".modinfo") == 0) continue;
+                if (strncmp(s->name, ".init", 5) != 0) continue;
+                if (s->alignment > 1) {
+                    U8_T alignment = s->alignment - 1;
+                    if (addr & alignment) addr = (addr | alignment) + 1;
+                }
+                sec_addr[i] = addr;
+                addr += s->size;
+            }
+            switch (m) {
+            case 0: /* text */
+                addr = module->module_init + module->init_text_size;
+                break;
+            case 1: /* read only */
+                addr = module->module_init + module->init_ro_size;
+                break;
+            }
+        }
+    }
+
+    for (i = 0; i < file->section_cnt; i++) {
+        if (sec_addr[i] != 0) {
+            ELF_Section * s = file->sections + i;
+            if (s->size > 0) {
+                ContextAddress s_addr0 = (ContextAddress)sec_addr[i];
+                ContextAddress s_addr1 = (ContextAddress)(sec_addr[i] + s->size - 1);
+                if (s_addr0 <= addr1 && s_addr1 >= addr0) {
+                    MemoryRegion * r = add_region(res);
+                    r->addr = s_addr0;
+                    r->size = (ContextAddress)s->size;
+                    r->sect_name = s->name;
+                    r->file_name = file->name;
+                    r->dev = file->dev;
+                    r->ino = file->ino;
+                    r->flags |= MM_FLAG_R;
+                    if (s->flags & SHF_WRITE) r->flags |= MM_FLAG_W;
+                    if (s->flags & SHF_EXECINSTR) r->flags |= MM_FLAG_X;
+                }
+            }
+        }
+    }
 }
 
 static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress addr1, MemoryMap * res) {
@@ -1141,26 +1289,25 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
         if (r->addr == 0 && r->size == 0 && r->file_offs == 0 && r->file_size == 0 && r->sect_name == NULL) {
             ELF_File * file = elf_open_memory_region_file(r, NULL);
             if (file != NULL) {
-                unsigned j;
-                for (j = 0; j < file->pheader_cnt; j++) {
-                    ELF_PHeader * p = file->pheaders + j;
-                    if (p->type != PT_LOAD) continue;
-                    if (p->address <= addr1 && p->address + p->mem_size > addr0) {
-                        MemoryRegion x;
-                        memset(&x, 0, sizeof(x));
-                        x.addr = (ContextAddress)p->address;
-                        x.size = (ContextAddress)p->mem_size;
-                        x.dev = file->dev;
-                        x.ino = file->ino;
-                        x.file_name = file->name;
-                        x.file_offs = p->offset;
-                        x.file_size = p->file_size;
-                        x.bss = p->file_size == 0 && p->mem_size != 0;
-                        if (p->flags & PF_R) x.flags |= MM_FLAG_R;
-                        if (p->flags & PF_W) x.flags |= MM_FLAG_W;
-                        if (p->flags & PF_X) x.flags |= MM_FLAG_X;
-                        add_region(res, &x);
+                KernelModuleAddress * module = NULL;
+                if (r->attrs != NULL) {
+                    MemoryRegionAttribute * a = r->attrs;
+                    while (a != NULL) {
+                        if (strcmp(a->name, "KernelModule") == 0) {
+                            ByteArrayInputStream buf;
+                            InputStream * inp = create_byte_array_input_stream(&buf, a->value, strlen(a->value));
+                            module = (KernelModuleAddress *)tmp_alloc_zero(sizeof(KernelModuleAddress));
+                            json_read_struct(inp, read_module_struct, module);
+                            break;
+                        }
+                        a = a->next;
                     }
+                }
+                if (module != NULL) {
+                    linux_kernel_module_ranges(file, module, addr0, addr1, res);
+                }
+                else {
+                    program_headers_ranges(file, addr0, addr1, res);
                 }
             }
         }
@@ -1186,17 +1333,15 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                             ContextAddress p_addr0 = (ContextAddress)p->address + base_addr;
                             ContextAddress p_addr1 = (ContextAddress)(p->address + p->mem_size - 1) + base_addr;
                             if (p_addr0 <= addr1 && p_addr1 >= addr0) {
-                                MemoryRegion x;
-                                memset(&x, 0, sizeof(x));
-                                x.addr = p_addr0;
-                                x.size = (ContextAddress)p->mem_size;
-                                x.dev = file->dev;
-                                x.ino = file->ino;
-                                x.file_name = file->name;
-                                x.file_offs = p->offset;
-                                x.file_size = p->file_size;
-                                x.flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
-                                add_region(res, &x);
+                                MemoryRegion * x = add_region(res);
+                                x->addr = p_addr0;
+                                x->size = (ContextAddress)p->mem_size;
+                                x->dev = file->dev;
+                                x->ino = file->ino;
+                                x->file_name = file->name;
+                                x->file_offs = p->offset;
+                                x->file_size = p->file_size;
+                                x->flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
                             }
                         }
                     }
@@ -1209,26 +1354,24 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                 unsigned j;
                 for (j = 0; j < file->section_cnt; j++) {
                     ELF_Section * s = file->sections + j;
-                    if (s == NULL || s->name == NULL) continue;
+                    if (s == NULL || s->name == NULL || s->size == 0) continue;
                     if (strcmp(s->name, r->sect_name)) continue;
-                    if (r->addr + s->size > addr0) {
-                        MemoryRegion x;
-                        memset(&x, 0, sizeof(x));
-                        x.addr = r->addr;
-                        x.size = (ContextAddress)s->size;
-                        x.dev = file->dev;
-                        x.ino = file->ino;
-                        x.file_name = file->name;
-                        x.sect_name = r->sect_name;
-                        x.flags = r->flags;
-                        if (x.flags == 0) x.flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
-                        add_region(res, &x);
+                    if (r->addr + s->size - 1 >= addr0) {
+                        MemoryRegion * x = add_region(res);
+                        x->addr = r->addr;
+                        x->size = (ContextAddress)s->size;
+                        x->dev = file->dev;
+                        x->ino = file->ino;
+                        x->file_name = file->name;
+                        x->sect_name = r->sect_name;
+                        x->flags = r->flags;
+                        if (x->flags == 0) x->flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
                     }
                 }
             }
         }
         else if (r->addr <= addr1 && r->addr + r->size > addr0) {
-            add_region(res, r);
+            *add_region(res) = *r;
         }
     }
 }
