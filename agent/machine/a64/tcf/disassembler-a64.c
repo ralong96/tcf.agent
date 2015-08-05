@@ -467,7 +467,7 @@ static void data_processing_immediate(void) {
                 imms = imms + 1;
             }
             else if (bfx_preferred(sf, opc != 0, imms, immr)) {
-                add_str(opc ? "ubfx " : "sbfx ");
+                add_str(opc ? "ubfx" : "sbfx");
                 imms = imms - immr + 1;
             }
             else if (immr == 0 && imms == 7) {
