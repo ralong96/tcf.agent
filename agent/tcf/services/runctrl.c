@@ -59,6 +59,10 @@
 #define RC_STEP_MAX_STACK_FRAMES 10000
 #endif
 
+#ifndef SKIP_PROLOGUE_MAX_STEPS
+#define SKIP_PROLOGUE_MAX_STEPS 50
+#endif
+
 typedef struct Listener {
     RunControlEventListener * listener;
     void * args;
@@ -1976,6 +1980,11 @@ static int update_step_machine_state(Context * ctx) {
     case RM_SKIP_PROLOGUE:
         {
             CodeArea * area = NULL;
+            if (ext->step_cnt >= SKIP_PROLOGUE_MAX_STEPS) {
+                /* Infinite loop in the prologue? */
+                ext->step_done = REASON_USER_REQUEST;
+                return 0;
+            }
             if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return -1;
             if (area == NULL || !is_function_prologue(ctx, addr, area)) {
                 ext->step_done = REASON_USER_REQUEST;
