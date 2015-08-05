@@ -302,6 +302,7 @@ void send_context_started_event(Context * ctx) {
     unsigned i;
     assert(ctx->ref_count > 0);
     assert(context_has_state(ctx));
+    ctx->advanced = 0;
     ctx->stopped = 0;
     ctx->stopped_by_bp = 0;
     ctx->stopped_by_cb = NULL;

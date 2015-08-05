@@ -2854,7 +2854,7 @@ static void safe_restore_breakpoint(void * arg) {
     assert(!bi->virtual_addr);
     assert(bi->stepping_over_bp > 0);
     assert(find_instruction(bi->cb.ctx, 0, bi->cb.address, bi->cb.access_types, bi->cb.length) == bi);
-    if (!ctx->exiting && ctx->stopped && !ctx->stopped_by_exception) {
+    if (!ctx->exiting && ctx->stopped && !ctx->stopped_by_exception && !ctx->advanced) {
         Context * mem = NULL;
         ContextAddress mem_addr = 0;
         ContextAddress pc = get_regs_PC(ctx);

@@ -65,6 +65,7 @@ struct Context {
     int                 stopped_by_exception;/* stopped by runtime exception (like SIGSEGV, etc.) */
     int                 stopped_by_funccall;/* stopped by return from injected function call */
     char *              exception_description;/* description of exception if stopped by runtime exception */
+    int                 advanced;           /* when context is stopped, set to 1 if software execution has progressed */
     int                 exiting;            /* context is about to exit */
     int                 exited;             /* context exited */
     int                 event_notification; /* set to 1 when calling one of ContextEventListener call-backs for this context */
