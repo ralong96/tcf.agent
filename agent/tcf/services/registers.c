@@ -356,20 +356,18 @@ void send_event_register_changed(const char * id) {
         l->func->register_changed(ctx, frame, def, l->args);
     }
 
-    if (!context_has_state(ctx) || is_intercepted(ctx)) {
-        if (frame >= 0 && frame == get_top_frame(ctx)) {
-            id = register2id(ctx, STACK_TOP_FRAME, def);
-        }
-
-        write_stringz(out, "E");
-        write_stringz(out, REGISTERS);
-        write_stringz(out, "registerChanged");
-
-        json_write_string(out, id);
-        write_stream(out, 0);
-
-        write_stream(out, MARKER_EOM);
+    if (frame >= 0 && frame == get_top_frame(ctx)) {
+        id = register2id(ctx, STACK_TOP_FRAME, def);
     }
+
+    write_stringz(out, "E");
+    write_stringz(out, REGISTERS);
+    write_stringz(out, "registerChanged");
+
+    json_write_string(out, id);
+    write_stream(out, 0);
+
+    write_stream(out, MARKER_EOM);
 }
 
 void send_event_register_definitions_changed(void) {
@@ -399,6 +397,9 @@ static void command_get_cache_client(void * x) {
 
         if (id2register(args->id, &ctx, &frame, &reg_def) < 0) exception(errno);
         if (ctx->exited) exception(ERR_ALREADY_EXITED);
+        if ((ctx->reg_access & REG_ACCESS_RD_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
         if ((ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0) {
             if (!ctx->stopped && context_has_state(ctx))
                 str_exception(ERR_IS_RUNNING, "Cannot read register if not stopped");
@@ -453,6 +454,7 @@ typedef struct SetArgs {
 static void command_set_cache_client(void * x) {
     SetArgs * args = (SetArgs *)x;
     Channel * c  = cache_channel();
+    int notify = 0;
     Trap trap;
 
     if (set_trap(&trap)) {
@@ -463,6 +465,9 @@ static void command_set_cache_client(void * x) {
         if (id2register(args->id, &ctx, &frame, &reg_def) < 0) exception(errno);
         if (frame >= 0 && !is_top_frame(ctx, frame)) exception(ERR_INV_CONTEXT);
         if (ctx->exited) exception(ERR_ALREADY_EXITED);
+        if ((ctx->reg_access & REG_ACCESS_WR_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
         if ((ctx->reg_access & REG_ACCESS_WR_RUNNING) == 0) {
             if (!ctx->stopped && context_has_state(ctx))
                 str_exception(ERR_IS_RUNNING, "Cannot write register if not stopped");
@@ -470,12 +475,14 @@ static void command_set_cache_client(void * x) {
         if ((size_t)args->data_len > reg_def->size) exception(ERR_INV_DATA_SIZE);
         if (args->data_len > 0) {
             if (context_write_reg(ctx, reg_def, 0, args->data_len, args->data) < 0) exception(errno);
-            send_event_register_changed(args->id);
+            notify = 1;
         }
         clear_trap(&trap);
     }
 
     cache_exit();
+
+    if (notify) send_event_register_changed(args->id);
 
     write_stringz(&c->out, "R");
     write_stringz(&c->out, args->token);
@@ -506,6 +513,7 @@ typedef struct Location {
     RegisterDefinition * reg_def;
     unsigned offs;
     unsigned size;
+    int notify;
 } Location;
 
 static Location * buf = NULL;
@@ -562,6 +570,9 @@ static void check_location_list(Location * locs, unsigned cnt, int setm) {
 
         if (id2register(loc->id, &loc->ctx, &loc->frame, &loc->reg_def) < 0) exception(errno);
         if (loc->ctx->exited) exception(ERR_ALREADY_EXITED);
+        if ((loc->ctx->reg_access & setm ? REG_ACCESS_WR_STOP : REG_ACCESS_RD_STOP) != 0) {
+            check_all_stopped(loc->ctx);
+        }
         if ((loc->ctx->reg_access & setm ? REG_ACCESS_WR_RUNNING : REG_ACCESS_RD_RUNNING) == 0) {
             if (!loc->ctx->stopped && context_has_state(loc->ctx))
                 str_fmt_exception(ERR_IS_RUNNING, "Cannot %s register if not stopped", setm ? "write" : "read");
@@ -643,6 +654,7 @@ typedef struct SetmArgs {
 static void command_setm_cache_client(void * x) {
     SetmArgs * args = (SetmArgs *)x;
     Channel * c  = cache_channel();
+    int notify = 0;
     Trap trap;
 
     if (set_trap(&trap)) {
@@ -655,13 +667,22 @@ static void command_setm_cache_client(void * x) {
             if (l->size > 0) {
                 if (context_write_reg(l->ctx, l->reg_def, l->offs, l->size, args->data + data_pos) < 0) exception(errno);
                 data_pos += l->size;
-                send_event_register_changed(l->id);
+                l->notify = 1;
+                notify = 1;
             }
         }
         clear_trap(&trap);
     }
 
     cache_exit();
+
+    if (notify) {
+        unsigned locs_pos = 0;
+        while (locs_pos < args->locs_cnt) {
+            Location * l = args->locs + locs_pos++;
+            if (l->notify) send_event_register_changed(l->id);
+        }
+    }
 
     write_stringz(&c->out, "R");
     write_stringz(&c->out, args->token);

@@ -115,6 +115,8 @@ extern const char * REASON_ERROR;
  */
 #define REG_ACCESS_RD_RUNNING   0x0001      /* Context supports reading registers while running */
 #define REG_ACCESS_WR_RUNNING   0x0002      /* Context supports writing registers while running */
+#define REG_ACCESS_RD_STOP      0x0004      /* Debugger should stop the context to read registers */
+#define REG_ACCESS_WR_STOP      0x0008      /* Debugger should stop the context to write registers */
 
 /*
  * MemoryErrorInfo is used to retrieve additional information about memory access error.

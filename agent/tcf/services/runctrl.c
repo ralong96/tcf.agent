@@ -274,6 +274,14 @@ static void write_context(OutputStream * out, Context * ctx) {
             if (cnt++) write_stream(out, ',');
             json_write_string(out, "wr-running");
         }
+        if (ctx->reg_access & REG_ACCESS_RD_STOP) {
+            if (cnt++) write_stream(out, ',');
+            json_write_string(out, "rd-stop");
+        }
+        if (ctx->reg_access & REG_ACCESS_WR_STOP) {
+            if (cnt++) write_stream(out, ',');
+            json_write_string(out, "wr-stop");
+        }
         write_stream(out, ']');
     }
 
