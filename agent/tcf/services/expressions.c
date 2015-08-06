@@ -832,9 +832,7 @@ static void reg2value(int mode, Context * ctx, int frame, RegisterDefinition * d
             if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
         }
         else if (!context_has_state(ctx)) {
-            if (frame != STACK_NO_FRAME) {
-                str_exception(ERR_INV_CONTEXT, "Invalid stack frame ID");
-            }
+            if (frame != STACK_NO_FRAME) str_exception(ERR_INV_CONTEXT, "Invalid stack frame ID");
             if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
         }
         else if (!ctx->stopped && (ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0) {
@@ -2232,9 +2230,18 @@ static void op_field(int mode, Value * v) {
         int sym_class = 0;
         LocationExpressionState * loc = NULL;
         int big_endian = 0;
+        void * struct_value = NULL;
+        ContextAddress struct_size = 0;
 
-        if (!v->remote) error(ERR_INV_EXPRESSION, "L-value expected");
-        find_field(mode, v->type, v->address, name, id, &sym, &loc, &big_endian);
+        if (v->remote) {
+            find_field(mode, v->type, v->address, name, id, &sym, &loc, &big_endian);
+        }
+        else {
+            load_value(v);
+            struct_value = v->value;
+            struct_size = v->size;
+            find_field(mode, v->type, 0, name, id, &sym, &loc, &big_endian);
+        }
         if (sym == NULL) {
             error(ERR_SYM_NOT_FOUND, "Invalid field name or ID");
         }
@@ -2267,7 +2274,7 @@ static void op_field(int mode, Value * v) {
                 error(errno, "Cannot retrieve field size");
             }
             if (mode == MODE_NORMAL) {
-                if (loc->pieces_cnt > 0) {
+                if (struct_value == NULL && loc->pieces_cnt > 0) {
                     size_t size = 0;
                     void * value = NULL;
                     StackFrame * frame_info = NULL;
@@ -2282,7 +2289,15 @@ static void op_field(int mode, Value * v) {
                 }
                 else {
                     if (loc->stk_pos != 1) error(ERR_OTHER, "Invalid location expression");
-                    v->address = (ContextAddress)loc->stk[0];
+                    if (struct_value != NULL) {
+                        if (loc->stk[0] + v->size > struct_size) error(ERR_OTHER, "Invalid location expression");
+                        v->value = (uint8_t *)struct_value + (size_t)loc->stk[0];
+                        assert(!v->remote);
+                    }
+                    else {
+                        v->address = (ContextAddress)loc->stk[0];
+                        assert(v->remote);
+                    }
                     set_value_endianness(v, sym, v->type);
                 }
             }
