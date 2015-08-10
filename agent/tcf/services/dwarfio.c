@@ -372,8 +372,14 @@ static void dio_ReadFormAltRef(void) {
     dio_gFormData += sSection->addr;
 }
 
-static void dio_ReadFormRelRef(U8_T Offset) {
-    if (sUnit->mUnitSize > 0 && Offset >= sUnit->mUnitSize) {
+static void dio_ReadFormRelRef(U2_T Attr, U8_T Offset) {
+    if (sUnit->mUnitSize == 0) {
+        /* OK. This occurs in DWARF 1, where unit header does not provide unit size */
+    }
+    else if (Attr == AT_sibling && Offset == sUnit->mUnitSize) {
+        /* OK. This occurs in DWARF 2 for AT_sibling attribute of TAG_compile_unit */
+    }
+    else if (Offset >= sUnit->mUnitSize) {
         str_exception(ERR_INV_DWARF, "Invalid REF attribute value");
     }
     dio_gFormData = sSection->addr + sUnit->mUnitOffs + Offset;
@@ -460,11 +466,11 @@ void dio_ReadAttribute(U2_T Attr, U2_T Form) {
     case FORM_STRP          : dio_ReadFormStringRef(); break;
     case FORM_GNU_STRP_ALT  : dio_ReadFormAltStringRef(); break;
     case FORM_REF_ADDR      : dio_ReadFormRefAddr(); break;
-    case FORM_REF1          : dio_ReadFormRelRef(dio_ReadU1()); break;
-    case FORM_REF2          : dio_ReadFormRelRef(dio_ReadU2()); break;
-    case FORM_REF4          : dio_ReadFormRelRef(dio_ReadU4()); break;
-    case FORM_REF8          : dio_ReadFormRelRef(dio_ReadU8()); break;
-    case FORM_REF_UDATA     : dio_ReadFormRelRef(dio_ReadULEB128()); break;
+    case FORM_REF1          : dio_ReadFormRelRef(Attr, dio_ReadU1()); break;
+    case FORM_REF2          : dio_ReadFormRelRef(Attr, dio_ReadU2()); break;
+    case FORM_REF4          : dio_ReadFormRelRef(Attr, dio_ReadU4()); break;
+    case FORM_REF8          : dio_ReadFormRelRef(Attr, dio_ReadU8()); break;
+    case FORM_REF_UDATA     : dio_ReadFormRelRef(Attr, dio_ReadULEB128()); break;
     case FORM_SEC_OFFSET:   if (sUnit->m64bit) dio_ReadFormData(8, dio_ReadAddressX(&dio_gFormSection,8));
                             else dio_ReadFormData(4, dio_ReadAddressX(&dio_gFormSection,4));
                             break;
