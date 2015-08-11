@@ -1529,11 +1529,12 @@ static void waitpid_listener(int pid, int exited, int exit_code, int signal, int
 #if SERVICE_Expressions && ENABLE_ELF
 
 static void get_debug_structure_address(Context * ctx, Value * v) {
-    v->address = elf_get_debug_structure_address(ctx, NULL);
+    ELF_File * file = NULL;
+    v->address = elf_get_debug_structure_address(ctx, &file);
     if (v->address == 0) str_exception(ERR_OTHER, "Cannot access loader data");
     v->type_class = TYPE_CLASS_POINTER;
     v->big_endian = ctx->big_endian;
-    v->size = context_word_size(ctx);
+    v->size = file && file->elf64 ? 8 : 4;
 }
 
 static int expression_identifier_callback(Context * ctx, int frame, char * name, Value * v) {
@@ -1565,7 +1566,7 @@ static void eventpoint_at_loader(Context * ctx, void * args) {
     enum r_state { RT_CONSISTENT, RT_ADD, RT_DELETE };
     ELF_File * file = NULL;
     ContextAddress addr = elf_get_debug_structure_address(ctx, &file);
-    unsigned size = context_word_size(ctx);
+    unsigned size = file && file->elf64 ? 8 : 4;
     ContextAddress state = 0;
     ContextExtensionLinux * ext = NULL;
 
