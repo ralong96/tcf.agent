@@ -1455,7 +1455,9 @@ static int get_address_info(Context * ctx, ContextAddress addr, AddressInfoCache
             if (c->pending != NULL) {
                 cache_wait(&c->cache);
             }
-            else if (c->range_addr <= addr && c->range_addr + c->range_size > addr) {
+            else if (c->range_addr <= addr &&
+                        (c->range_addr + c->range_size < c->range_addr ||
+                            c->range_addr + c->range_size > addr)) {
                 f = c;
                 break;
             }
