@@ -1399,6 +1399,20 @@ static void read_memory_map_item(InputStream * inp, void * args) {
             mem_buf_pos++;
         }
     }
+    if (m == mem_buf + mem_buf_pos) {
+        /* Unused entry, need to free memory */
+        loc_free(m->file_name);
+        loc_free(m->sect_name);
+        loc_free(m->query);
+        loc_free(m->id);
+        while (m->attrs != NULL) {
+            MemoryRegionAttribute * x = m->attrs;
+            m->attrs = x->next;
+            loc_free(x->name);
+            loc_free(x->value);
+            loc_free(x);
+        }
+    }
 }
 
 static void validate_memory_map_cache(Channel * c, void * args, int error) {
