@@ -48,7 +48,7 @@ typedef struct StackTrace {
     int complete;
     int frame_cnt;
     int frame_max;
-    StackFrame * frames; /* ordered bottom to top */
+    StackFrame * frames; /* ordered top (current) to bottom */
 } StackTrace;
 
 static size_t context_extension_offset = 0;
