@@ -242,13 +242,13 @@ static int mem_hash_write(uint32_t addr, uint32_t value, int valid) {
 static int load_reg(uint32_t addr, int r) {
     int tracked = 0;
 
+    reg_data[r].o = 0;
     /* Check if the value can be found in the hash */
     if (mem_hash_read(addr, &reg_data[r].v, &tracked) == 0) {
-        reg_data[r].o = tracked ? REG_VAL_OTHER : 0;
+        if (tracked) reg_data[r].o = REG_VAL_OTHER;
     }
     else {
         /* Not in the hash, so read from real memory */
-        reg_data[r].o = 0;
         if (read_word(addr, &reg_data[r].v) < 0) return -1;
         reg_data[r].o = REG_VAL_OTHER;
     }
@@ -262,7 +262,9 @@ static int load_reg_lazy(uint32_t addr, int r) {
 }
 
 static int chk_loaded(int r) {
-    if (reg_data[r].o != REG_VAL_ADDR && reg_data[r].o != REG_VAL_STACK) return 0;
+    /* Make sure register origin is either 0 or REG_VAL_OTHER */
+    if (reg_data[r].o == 0) return 0;
+    if (reg_data[r].o == REG_VAL_OTHER) return 0;
     return load_reg(reg_data[r].v, r);
 }
 
@@ -441,7 +443,7 @@ static void trace_bx(unsigned rn) {
         trace_return = 1;
     }
     else {
-        add_branch(reg_data[15].v);
+        if (reg_data[15].o) add_branch(reg_data[15].v);
         trace_branch = 1;
     }
 }
@@ -489,6 +491,142 @@ static int trace_thumb_branches_and_misc_32(uint16_t instr, uint16_t suffix) {
     return 0;
 }
 
+static int trace_thumb_data_processing_shifted_register(uint16_t instr, uint16_t suffix) {
+    uint16_t op = (instr >> 5) & 0xf;
+    uint16_t rn = instr & 0xf;
+    uint16_t rd = (suffix >> 8) & 0xf;
+    uint16_t rm = suffix & 0xf;
+    int S = (instr & (1 << 4)) != 0;
+    int tb = (instr & (1 << 5)) != 0;
+    uint32_t shift_type = (suffix >> 4) & 0x3;
+    uint32_t shift_imm = ((suffix >> 10) & 0x1c) | ((suffix >> 6) & 0x3);
+    uint32_t val = 0;
+    int rn_ok = 0;
+    int rm_ok = 0;
+
+    chk_loaded(rn);
+    chk_loaded(rm);
+    rn_ok = reg_data[rn].o == REG_VAL_OTHER;
+    rm_ok = reg_data[rm].o == REG_VAL_OTHER;
+    val = calc_shift(shift_type, shift_imm, reg_data[rm].v);
+
+    switch (op) {
+    case 0:
+        if (rd != 15) {
+            /* AND (register) */
+            reg_data[rd].v = reg_data[rn].v & val;
+            reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        }
+        else if (!S) {
+            /* UNPREDICTABLE */
+            reg_data[rd].o = 0;
+        }
+        else {
+            /* TST (register) */
+        }
+        break;
+    case 1:
+        /* BIC (register) */
+        reg_data[rd].v = reg_data[rn].v & ~val;
+        reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        break;
+    case 2:
+        if (rn != 15) {
+            /* ORR (register) */
+            reg_data[rd].v = reg_data[rn].v | val;
+            reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        }
+        else {
+            /* MOV (register) or shift */
+            reg_data[rd].v = val;
+            reg_data[rd].o = rm_ok ? REG_VAL_OTHER : 0;
+        }
+        break;
+    case 3:
+        if (rn != 15) {
+            /* ORN (register) */
+            reg_data[rd].v = reg_data[rn].v | ~val;
+            reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        }
+        else {
+            /* MVN (register) */
+            reg_data[rd].v = ~val;
+            reg_data[rd].o = rm_ok ? REG_VAL_OTHER : 0;
+        }
+        break;
+    case 4:
+        if (rd != 15) {
+            /* EOR (register) */
+            reg_data[rd].v = reg_data[rn].v ^ val;
+            reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        }
+        else if (!S) {
+            /* UNPREDICTABLE */
+            reg_data[rd].o = 0;
+        }
+        else {
+            /* TEQ (register) */
+        }
+        break;
+    case 6:
+        /* PKH */
+        if (tb) {
+            reg_data[rd].v = (reg_data[rn].v & 0xffff0000) | (val & 0x0000ffff);
+            reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        }
+        else {
+            reg_data[rd].v = (reg_data[rn].v & 0x0000ffff) | (val & 0xffff0000);
+            reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        }
+        break;
+    case 8:
+        if (rd != 15) {
+            /* ADD (register) */
+            reg_data[rd].v = reg_data[rn].v + val;
+            reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        }
+        else if (!S) {
+            /* UNPREDICTABLE */
+            reg_data[rd].o = 0;
+        }
+        else {
+            /* CMN (register) */
+        }
+        break;
+    case 10:
+        /* ADC (register) */
+        reg_data[rd].o = 0;
+        break;
+    case 11:
+        /* SBC (register) */
+        reg_data[rd].o = 0;
+        break;
+    case 13:
+        if (rd != 15) {
+            /* SUB (register) */
+            reg_data[rd].v = reg_data[rn].v - val;
+            reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        }
+        else if (!S) {
+            /* UNPREDICTABLE */
+            reg_data[rd].o = 0;
+        }
+        else {
+            /* CMP (register) */
+        }
+        break;
+    case 14:
+        /* RSB (register) */
+        reg_data[rd].v = val - reg_data[rn].v;
+        reg_data[rd].o = rn_ok && rm_ok ? REG_VAL_OTHER : 0;
+        break;
+    default:
+        reg_data[rd].o = 0;
+        break;
+    }
+    return 0;
+}
+
 static int trace_thumb(void) {
     uint16_t instr;
 
@@ -517,24 +655,26 @@ static int trace_thumb(void) {
         uint32_t rd      = (instr & 0x0007);
 
         chk_loaded(rs);
+        reg_data[rd].o = 0;
+        if (reg_data[rs].o) {
+            switch(op) {
+            case 0: /* LSL */
+                reg_data[rd].v = reg_data[rs].v << offset5;
+                reg_data[rd].o = REG_VAL_OTHER;
+                break;
 
-        switch(op) {
-        case 0: /* LSL */
-            reg_data[rd].v = reg_data[rs].v << offset5;
-            reg_data[rd].o = reg_data[rs].o ? REG_VAL_OTHER : 0;
-            break;
+            case 1: /* LSR */
+                reg_data[rd].v = reg_data[rs].v >> offset5;
+                reg_data[rd].o = REG_VAL_OTHER;
+                break;
 
-        case 1: /* LSR */
-            reg_data[rd].v = reg_data[rs].v >> offset5;
-            reg_data[rd].o = reg_data[rs].o ? REG_VAL_OTHER : 0;
-            break;
-
-        case 2: /* ASR */
-            signExtend = (reg_data[rs].v & 0x8000) != 0;
-            reg_data[rd].v = reg_data[rs].v >> offset5;
-            if (signExtend) reg_data[rd].v |= 0xffffffff << (32 - offset5);
-            reg_data[rd].o = reg_data[rs].o ? REG_VAL_OTHER : 0;
-            break;
+            case 2: /* ASR */
+                signExtend = (reg_data[rs].v & 0x8000) != 0;
+                reg_data[rd].v = reg_data[rs].v >> offset5;
+                if (signExtend) reg_data[rd].v |= 0xffffffff << (32 - offset5);
+                reg_data[rd].o = REG_VAL_OTHER;
+                break;
+            }
         }
     }
     /* Format 2: add/subtract
@@ -553,34 +693,19 @@ static int trace_thumb(void) {
         if (!I) {
             chk_loaded(rs);
             chk_loaded(rn);
-            /* Perform calculation */
-            if (op) {
-                reg_data[rd].v = reg_data[rs].v - reg_data[rn].v;
-            }
-            else {
-                reg_data[rd].v = reg_data[rs].v + reg_data[rn].v;
-            }
-
-            /* Propagate the origin */
+            reg_data[rd].o = 0;
             if (reg_data[rs].o && reg_data[rn].o) {
+                reg_data[rd].v = op ? reg_data[rs].v - reg_data[rn].v : reg_data[rs].v + reg_data[rn].v;
                 reg_data[rd].o = REG_VAL_OTHER;
-            }
-            else {
-                reg_data[rd].o = 0;
             }
         }
         else {
             chk_loaded(rs);
-            /* Perform calculation */
-            if (op) {
-                reg_data[rd].v = reg_data[rs].v - rn;
+            reg_data[rd].o = 0;
+            if (reg_data[rs].o) {
+                reg_data[rd].v = op ? reg_data[rs].v - rn : reg_data[rs].v + rn;
+                reg_data[rd].o = REG_VAL_OTHER;
             }
-            else {
-                reg_data[rd].v = reg_data[rs].v + rn;
-            }
-
-            /* Propagate the origin */
-            reg_data[rd].o = reg_data[rs].o ? REG_VAL_OTHER : 0;
         }
     }
     /* Format 3: move/compare/add/subtract immediate
@@ -607,13 +732,11 @@ static int trace_thumb(void) {
         case 2: /* ADD */
             chk_loaded(rd);
             reg_data[rd].v += offset8;
-            reg_data[rd].o = reg_data[rd].o ? REG_VAL_OTHER : 0;
             break;
 
         case 3: /* SUB */
             chk_loaded(rd);
             reg_data[rd].v -= offset8;
-            reg_data[rd].o = reg_data[rd].o ? REG_VAL_OTHER : 0;
             break;
         }
     }
@@ -653,12 +776,7 @@ static int trace_thumb(void) {
         case 14: /* BIC */
             chk_loaded(rd);
             chk_loaded(rs);
-            if (reg_data[rd].o && reg_data[rs].o) {
-                reg_data[rd].o = REG_VAL_OTHER;
-            }
-            else {
-                reg_data[rd].o = 0;
-            }
+            reg_data[rd].o = reg_data[rd].o && reg_data[rs].o ? REG_VAL_OTHER : 0;
             break;
 
         case 5: /* ADC */
@@ -775,17 +893,12 @@ static int trace_thumb(void) {
             break;
 
         case 2: /* MOV */
-            chk_loaded(rhs);
-            reg_data[rhd].v = reg_data[rhs].v;
-            reg_data[rhd].o = reg_data[rhs].o;
+            reg_data[rhd] = reg_data[rhs];
             break;
 
         case 3: /* BX */
-            if (!reg_data[rhs].o) {
-                set_errno(ERR_OTHER, "BX to untracked register");
-                return -1;
-            }
             trace_bx(rhs);
+            break;
         }
     }
     /* Format 9: PC-relative load
@@ -797,6 +910,21 @@ static int trace_thumb(void) {
 
         /* Compute load address, adding a word to account for prefetch */
         load_reg_lazy((reg_data[15].v & (~0x3)) + 4 + (word8 << 2), rd);
+    }
+    /* Load Register Byte (immediate)
+     */
+    else if ((instr & 0xf800) == 0x7800) {
+        uint16_t rn  = (instr >> 3) & 0x7;
+        uint16_t rt  = instr & 0x7;
+        chk_loaded(rn);
+        reg_data[rt].o = 0;
+        if (reg_data[rn].o) {
+            uint16_t imm = (instr >> 6) & 0x1f;
+            uint32_t addr = reg_data[rn].v + imm;
+            if (load_reg(addr & ~3, rt) == 0) {
+                reg_data[rt].v = (reg_data[rt].v >> (addr & 3) * 8) & 0xff;
+            }
+        }
     }
     /* Format 13: add offset to Stack Pointer
      *  ADD sp,#+imm
@@ -823,7 +951,7 @@ static int trace_thumb(void) {
     else if ((instr & 0xf600) == 0xb400) {
         int  L = (instr & 0x0800) != 0;
         int  R = (instr & 0x0100) != 0;
-        uint8_t rList = (instr & 0x00ff);
+        uint8_t list = (instr & 0x00ff);
 
         chk_loaded(13);
 
@@ -832,7 +960,7 @@ static int trace_thumb(void) {
 
             /* Load from memory: POP */
             for (r = 0; r < 8; r++) {
-                if (rList & (0x1 << r)) {
+                if (list & (0x1 << r)) {
                     /* Read the word */
                     if (reg_data[13].o) {
                         reg_data[r].o = REG_VAL_STACK;
@@ -885,22 +1013,36 @@ static int trace_thumb(void) {
             }
 
             for (r = 7; r >= 0; r--) {
-                if (rList & (0x1 << r)) {
+                if (list & (0x1 << r)) {
                     reg_data[13].v -= 4;
                     if (store_reg(reg_data[13].v, r) < 0) return -1;
                 }
             }
         }
     }
+    /* If-Then, and hints
+     */
+    else if ((instr & 0xff00) == 0xbf00) {
+        /* Does not change registers */
+    }
     /* Format 17: conditional branch
      *  B<c> label
      */
     else if ((instr & 0xf000) == 0xd000) {
         uint16_t cond = (instr >> 8) & 0xf;
-        int32_t offset = instr & 0xff;
-        if (offset & 0x0080) offset |= ~0xff;
-        add_branch(reg_data[15].v + offset * 2 + 2);
-        if (cond == 14) trace_branch = 1;
+        if (cond == 15) {
+            /* Supervisor Call */
+        }
+        else if (cond == 14) {
+            /* Permanently UNDEFINED */
+            set_errno(ERR_OTHER, "Undefined instruction");
+            return -1;
+        }
+        else {
+            int32_t offset = instr & 0xff;
+            if (offset & 0x0080) offset |= ~0xff;
+            add_branch(reg_data[15].v + offset * 2 + 4);
+        }
     }
     /* Format 18: unconditional branch
      *  B label
@@ -908,7 +1050,7 @@ static int trace_thumb(void) {
     else if ((instr & 0xf800) == 0xe000) {
         int32_t offset = instr & 0x07ff;
         if (offset & 0x400) offset |= ~0x7ff;
-        add_branch(reg_data[15].v + offset * 2 + 2);
+        add_branch(reg_data[15].v + offset * 2 + 4);
         trace_branch = 1;
     }
     else if ((instr & 0xf800) == 0xf000) {
@@ -953,6 +1095,12 @@ static int trace_thumb(void) {
         /* Advanced SIMD element or structure load/store instructions */
         uint16_t rn = instr & 0xf;
         reg_data[rn].o = 0;
+    }
+    else if ((instr & 0xfe00) == 0xea00) {
+        /* Data-processing (shifted register) */
+        uint16_t suffix = 0;
+        if (read_half(reg_data[15].v + 2, &suffix) < 0) return -1;
+        if (trace_thumb_data_processing_shifted_register(instr, suffix) < 0) return -1;
     }
     else {
         /* Unknown/undecoded.  May alter some register, so invalidate file */
