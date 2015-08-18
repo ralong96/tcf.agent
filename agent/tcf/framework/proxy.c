@@ -84,10 +84,12 @@ static void command_redirect_done(Channel * c, void * client_data, int error) {
         write_errno(&info->host->out, err);
         write_stream(&info->host->out, MARKER_EOM);
 
+#if ENABLE_Trace
         if (log_mode & LOG_TCFLOG) {
             Proxy * proxy = (Proxy *)info->host->client_data;
             trace(LOG_TCFLOG, "%d: R %s %s", proxy->instance, info->token, errno_to_str(err));
         }
+#endif
     }
 
     channel_unlock_with_msg(info->host, channel_lock_msg);
@@ -115,6 +117,7 @@ static void command_locator_redirect(char * token, Channel * c, void * args) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+#if ENABLE_Trace
     if (log_mode & LOG_TCFLOG) {
         Proxy * proxy = (Proxy *)c->client_data;
         if (ps != NULL) {
@@ -125,6 +128,7 @@ static void command_locator_redirect(char * token, Channel * c, void * args) {
             trace(LOG_TCFLOG, "%d: C %s Locator redirect %s", proxy->instance, token, id);
         }
     }
+#endif
 
     channel_lock_with_msg(c, channel_lock_msg);
     info->host = c;
