@@ -108,6 +108,11 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
                 size_t buf_size = 8;
                 uint8_t * buf = (uint8_t *)tmp_alloc(buf_size);
                 StackTrace * stk = EXT(ctx);
+#if ENABLE_StackRegisterLocations
+                LocationExpressionCommand cmd;
+                memset(&cmd, 0, sizeof(cmd));
+                cmd.cmd = SFT_CMD_RD_REG;
+#endif
                 frame->inlined = info->sub_cnt;
                 for (i = 0; i < info->sub_cnt; i++) {
                     RegisterDefinition * def = get_reg_definitions(ctx);
@@ -116,6 +121,14 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
                     down->fp = frame->fp;
                     while (def->name != NULL) {
                         if (def->dwarf_id >= 0) {
+#if ENABLE_StackRegisterLocations
+                            cmd.args.reg = def;
+                            if (write_reg_location(down, def, &cmd, 1) == 0) {
+                                down->has_reg_data = 1;
+                                def++;
+                                continue;
+                            }
+#endif
                             if (buf_size < def->size) buf = (uint8_t *)tmp_realloc(buf, buf_size = def->size);
                             if (read_reg_bytes(prev, def, 0, def->size, buf) == 0) {
                                 write_reg_bytes(down, def, 0, def->size, buf);
@@ -141,6 +154,12 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
                 int ok = 0;
                 uint64_t v = 0;
                 Trap trap_reg;
+#if ENABLE_StackRegisterLocations
+                if (write_reg_location(down, info->regs[i]->reg, info->regs[i]->cmds, info->regs[i]->cmds_cnt) == 0) {
+                    down->has_reg_data = 1;
+                    continue;
+                }
+#endif
                 if (set_trap(&trap_reg)) {
                     /* If a saved register value cannot be evaluated - ignore it */
                     state = evaluate_location_expression(ctx, frame, info->regs[i]->cmds, info->regs[i]->cmds_cnt, NULL, 0);

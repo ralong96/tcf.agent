@@ -34,6 +34,10 @@ typedef uintptr_t ContextAddress;
 
 #if ENABLE_DebugContext
 
+#ifndef ENABLE_StackRegisterLocations
+#define ENABLE_StackRegisterLocations 0
+#endif
+
 #define REGNUM_DWARF    1
 #define REGNUM_EH_FRAME 2
 
@@ -253,6 +257,11 @@ extern int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsi
 
 /* Write register bytes into stack frame data, return 0 on success, return -1 and set errno if register is not available  */
 extern int write_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs, unsigned size, uint8_t * buf);
+
+#if ENABLE_StackRegisterLocations
+/* Write register location into stack frame data, return 0 on success, return -1 and set errno if register is not available  */
+extern int write_reg_location(StackFrame * frame, RegisterDefinition * reg_def, LocationExpressionCommand * cmds, unsigned cmds_cnt);
+#endif
 
 /* Get instruction pointer (PC) value */
 extern ContextAddress get_regs_PC(Context * ctx);

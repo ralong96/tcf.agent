@@ -363,6 +363,17 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
 }
 #endif
 
+#if ENABLE_StackRegisterLocations
+int write_reg_location(StackFrame * frame, RegisterDefinition * reg_def, LocationExpressionCommand * cmds, unsigned cmds_cnt) {
+    ContextExtensionMux * ext = EXT(frame->ctx);
+    if (ext->ctx_iface == NULL || ext->ctx_iface->cpudefs_if.write_reg_location == NULL) {
+        errno = ERR_UNSUPPORTED;
+        return -1;
+    }
+    return ext->ctx_iface->cpudefs_if.write_reg_location(frame, reg_def, cmds, cmds_cnt);
+}
+#endif
+
 ContextIf * context_get_interface(Context * ctx) {
     return EXT(ctx)->ctx_iface;
 }

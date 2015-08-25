@@ -32,6 +32,9 @@ typedef struct CpuDefsIf {
 #if ENABLE_StackCrawlMux
     int (*crawl_stack_frame)(StackFrame * frame, StackFrame * down);
 #endif
+#if ENABLE_StackRegisterLocations
+    int (*write_reg_location)(StackFrame * frame, RegisterDefinition * reg_def, LocationExpressionCommand * cmds, unsigned cmds_cnt);
+#endif
 } CpuDefsIf;
 
 typedef struct ContextIf {
