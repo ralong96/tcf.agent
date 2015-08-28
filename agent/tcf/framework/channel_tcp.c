@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -974,7 +974,7 @@ static void refresh_peer_server(int sock, PeerServer * ps) {
 #else
         socklen_t sinlen;
 #endif
-        const char *str_port = peer_server_getprop(ps, "Port", NULL);
+        const char * str_port = peer_server_getprop(ps, "Port", NULL);
         int ifcind;
         struct in_addr src_addr;
         ip_ifc_info ifclist[MAX_IFC];
@@ -1448,6 +1448,12 @@ void channel_unix_connect(PeerServer * ps, ChannelConnectCallBack callback, void
     callback(callback_args, ERR_INV_TRANSPORT, NULL);
 }
 #endif
+
+void channel_tcp_network_changed(void) {
+    if (list_is_empty(&server_list)) return;
+    cancel_event(refresh_all_peer_servers, NULL, 0);
+    post_event(refresh_all_peer_servers, NULL);
+}
 
 void generate_ssl_certificate(void) {
 #if ENABLE_SSL

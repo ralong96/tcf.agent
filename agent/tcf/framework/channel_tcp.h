@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -46,6 +46,13 @@ extern void channel_tcp_connect(PeerServer * server, ChannelConnectCallBack call
  * On error returns NULL and sets errno.
  */
 extern void channel_unix_connect(PeerServer * server, ChannelConnectCallBack callback, void * callback_args);
+
+/*
+ * Re-scan network interfaces for any changes in IP address, mask, etc.
+ * Normally, network interfaces are scanned periodically few times a minute.
+ * Calling this function requests immediate scan.
+ */
+extern void channel_tcp_network_changed(void);
 
 /*
  * Generate SSL certificate to be used with SSL channels.
