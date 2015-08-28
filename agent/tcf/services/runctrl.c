@@ -1668,21 +1668,28 @@ static int update_step_machine_state(Context * ctx) {
                         }
                         return 0;
                     }
-                    if (do_reverse && is_within_function_epilogue(ctx, addr)) {
-                        /* With some compilers, the stack walking code based on debug information does not work
-                         * correctly if we are in the middle of the function epilogue. In this case, an invalid
-                         * return address is provided but no error is raised. To avoid this issue, do not try to
-                         * get the stack trace of a function while it is in the midle of the epilogue but instead
-                         * skip the epilogue. This code is done only in reverse stepping mode because it is very
-                         * unlikely to meet this condition while doing forward stepping.
-                         */
-                        ext->step_continue_mode = RM_REVERSE_STEP_INTO;
-                        return 0;
+                    if (do_reverse) {
+                        int function_epilogue = is_within_function_epilogue(ctx, addr);
+                        if (cache_miss_count() > 0) {
+                            errno = ERR_CACHE_MISS;
+                            return -1;
+                        }
+                        if (function_epilogue) {
+                            /* With some compilers, the stack walking code based on debug information does not work
+                             * correctly if we are in the middle of the function epilogue. In this case, an invalid
+                             * return address is provided but no error is raised. To avoid this issue, do not try to
+                             * get the stack trace of a function while it is in the midle of the epilogue but instead
+                             * skip the epilogue. This code is done only in reverse stepping mode because it is very
+                             * unlikely to meet this condition while doing forward stepping.
+                             */
+                            ext->step_continue_mode = RM_REVERSE_STEP_INTO;
+                            return 0;
+                        }
                     }
                     for (frame_cnt = 0; frame_cnt < RC_STEP_MAX_STACK_FRAMES; frame_cnt++) {
                         n = get_prev_frame(ctx, n);
                         if (n < 0) {
-                            if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
+                            if (cache_miss_count() > 0) return -1;
                             break;
                         }
                         if (get_frame_info(ctx, n, &info) < 0) return -1;
@@ -1754,7 +1761,7 @@ static int update_step_machine_state(Context * ctx) {
                 for (frame_cnt = 0; frame_cnt < RC_STEP_MAX_STACK_FRAMES; frame_cnt++) {
                     n = get_prev_frame(ctx, n);
                     if (n < 0) {
-                        if (get_error_code(errno) == ERR_CACHE_MISS) return -1;
+                        if (cache_miss_count() > 0) return -1;
                         break;
                     }
                     if (get_frame_info(ctx, n, &info) < 0) return -1;
@@ -1914,12 +1921,19 @@ static int update_step_machine_state(Context * ctx) {
         }
         else if (addr < ext->step_range_start || addr >= ext->step_range_end) {
             int same_line = 0;
+            int hidden_function = 0;
+            int function_prologue = 0;
             CodeArea * area = ext->step_code_area;
             if (area == NULL) {
                 ext->step_done = REASON_STEP;
                 return 0;
             }
-            if (is_hidden_function(ctx, addr, &ext->step_range_start, &ext->step_range_end)) {
+            hidden_function = is_hidden_function(ctx, addr, &ext->step_range_start, &ext->step_range_end);
+            if (cache_miss_count() > 0) {
+                errno = ERR_CACHE_MISS;
+                return -1;
+            }
+            if (hidden_function) {
                 /* Don't stop in a function that should be hidden during source level stepping */
                 break;
             }
@@ -1948,21 +1962,29 @@ static int update_step_machine_state(Context * ctx) {
                 ext->step_done = REASON_STEP;
                 return 0;
             }
+
             same_line = is_same_line(ext->step_code_area, area);
+            if (!same_line) {
+                function_prologue = is_function_prologue(ctx, addr, ext->step_code_area);
+                if (cache_miss_count() > 0) {
+                    free_code_area(ext->step_code_area);
+                    ext->step_code_area = area;
+                    errno = ERR_CACHE_MISS;
+                    return -1;
+                }
+            }
             free_code_area(area);
 
             /* We are doing reverse step-over/into line. The first line has already been skipped, we are now trying to reach
              * the beginning of previous line. If we are still on same line but have reached the beginning of the line, then we
              * are done.
              */
-            if (same_line &&
-                    (ext->step_mode == RM_REVERSE_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_OVER_LINE) &&
-                    ext->step_line_cnt > 0 && addr == ext->step_code_area->start_address) {
+            if (same_line && do_reverse && ext->step_line_cnt > 0 && addr == ext->step_code_area->start_address) {
                 ext->step_done = REASON_STEP;
                 return 0;
             }
-            if (!same_line && !is_function_prologue(ctx, addr, ext->step_code_area)) {
-                if ((ext->step_mode != RM_REVERSE_STEP_INTO_LINE && ext->step_mode != RM_REVERSE_STEP_OVER_LINE) ||
+            if (!same_line && !function_prologue) {
+                if (!do_reverse ||
                         (ext->step_line_cnt == 0 && addr == ext->step_code_area->start_address) ||
                         ext->step_line_cnt >= 2) {
                     ext->step_done = REASON_STEP;
@@ -1978,10 +2000,7 @@ static int update_step_machine_state(Context * ctx) {
             /* When doing reverse step-into/over line, if we have already skipped the first line, we want to reach
              * the beginning of current line, fix step range to handle this.
              */
-            if ((ext->step_mode == RM_REVERSE_STEP_INTO_LINE || ext->step_mode == RM_REVERSE_STEP_OVER_LINE) &&
-                    ext->step_line_cnt > 0) {
-                ext->step_range_start += 1;
-            }
+            if (do_reverse && ext->step_line_cnt > 0) ext->step_range_start += 1;
         }
         break;
 #if EN_STEP_OVER
@@ -1995,6 +2014,10 @@ static int update_step_machine_state(Context * ctx) {
             }
             if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return -1;
             if (area == NULL || !is_function_prologue(ctx, addr, area)) {
+                if (cache_miss_count() > 0) {
+                    errno = ERR_CACHE_MISS;
+                    return -1;
+                }
                 ext->step_done = REASON_USER_REQUEST;
                 return 0;
             }
