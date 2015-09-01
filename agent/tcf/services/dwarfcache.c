@@ -575,6 +575,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                     if (Sibling == 0) Sibling = sUnitDesc.mUnitOffs + sUnitDesc.mUnitSize;
                     sCompUnit->mDesc = sUnitDesc;
                     HashTable->mCompUnitsIndexSize++;
+                    if (Info->mFlags & DOIF_low_pc) sCompUnit->mTextSection = Info->u.mCode.mSection;
                 }
                 break;
             case TAG_subprogram:
@@ -855,9 +856,6 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     if (Tag == TAG_compile_unit || Tag == TAG_partial_unit || Tag == TAG_type_unit) {
         CompUnit * Unit = Info->mCompUnit;
         switch (Attr) {
-        case AT_low_pc:
-            Unit->mTextSection = dio_gFormSection;
-            break;
         case AT_comp_dir:
             dio_ChkString(Form);
             Unit->mDir = (char *)dio_gFormDataAddr;

@@ -230,6 +230,13 @@ static ObjectInfo * get_parent_function(ObjectInfo * info) {
     return NULL;
 }
 
+static int check_section(CompUnit * unit, ELF_Section * sec_obj, ELF_Section * sec_addr) {
+    if (sec_obj == NULL) sec_obj = unit->mTextSection;
+    if (sec_obj == NULL) return 1;
+    if (sec_addr == NULL) return 1;
+    return sec_obj == sec_addr;
+}
+
 int dwarf_check_in_range(ObjectInfo * obj, ELF_Section * sec, U8_T addr) {
     if (obj->mFlags & DOIF_ranges) {
         Trap trap;
@@ -260,16 +267,12 @@ int dwarf_check_in_range(ObjectInfo * obj, ELF_Section * sec, U8_T addr) {
                     if (x == AddrMax) {
                         base = (ContextAddress)y;
                     }
-                    else {
-                        if (x_sec == NULL) x_sec = unit->mTextSection;
-                        if (y_sec == NULL) y_sec = unit->mTextSection;
-                        if (x_sec == sec && y_sec == sec) {
-                            x = base + x;
-                            y = base + y;
-                            if (x <= addr && addr < y) {
-                                res = 1;
-                                break;
-                            }
+                    else if (check_section(unit, x_sec, sec) && check_section(unit, y_sec, sec)) {
+                        x = base + x;
+                        y = base + y;
+                        if (x <= addr && addr < y) {
+                            res = 1;
+                            break;
                         }
                     }
                 }
@@ -282,7 +285,7 @@ int dwarf_check_in_range(ObjectInfo * obj, ELF_Section * sec, U8_T addr) {
         return 0;
     }
 
-    if (obj->u.mCode.mHighPC.mAddr > obj->u.mCode.mLowPC && obj->u.mCode.mSection == sec) {
+    if (obj->u.mCode.mHighPC.mAddr > obj->u.mCode.mLowPC && check_section(obj->mCompUnit, obj->u.mCode.mSection, sec)) {
         return addr >= obj->u.mCode.mLowPC && addr < obj->u.mCode.mHighPC.mAddr;
     }
 
@@ -523,7 +526,7 @@ static void op_fbreg(void) {
         ObjectInfo * func = NULL;
         U8_T lt = elf_map_to_link_time_address(expr_ctx, pc, 1, &file, &sec);
         if (file == NULL) str_exception(ERR_INV_CONTEXT, "Cannot get link-time address of the stack frame");
-        func = get_function_by_addr(expr->object->mCompUnit->mObject, expr->object->mCompUnit->mTextSection, lt);
+        func = get_function_by_addr(expr->object->mCompUnit->mObject, sec, lt);
         if (func == NULL) {
             str_exception(ERR_INV_DWARF, "OP_fbreg: no parent function");
         }
