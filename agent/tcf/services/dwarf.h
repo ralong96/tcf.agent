@@ -557,9 +557,9 @@
 #define DW_LNE_lo_user              0x80  /* v3 */
 #define DW_LNE_hi_user              0xff  /* v3 */
 
-#define ACCESS_public               1
-#define ACCESS_protected            2
-#define ACCESS_private              3
+#define DW_ACCESS_public            1
+#define DW_ACCESS_protected         2
+#define DW_ACCESS_private           3
 
 #define VIS_local                   1
 #define VIS_exported                2

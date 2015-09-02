@@ -4074,6 +4074,40 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
             *flags |= SYM_FLAG_INHERITANCE;
             break;
         }
+
+        /* Handle accessibility */
+        switch (obj->mTag) {
+        case TAG_access_declaration:
+        case TAG_array_type:
+        case TAG_member:
+        case TAG_subprogram:
+        case TAG_class_type:
+        case TAG_constant:
+        case TAG_enumeration_type:
+        case TAG_imported_declaration:
+        case TAG_inheritance:
+        case TAG_interface_type:
+        case TAG_module:
+        case TAG_namelist:
+        case TAG_set_type:
+        case TAG_string_type:
+        case TAG_structure_type:
+        case TAG_subrange_type:
+        case TAG_subroutine_type:
+        case TAG_template_alias:
+        case TAG_typedef:
+        case TAG_union_type:
+        case TAG_variable:
+        case TAG_variant:
+        case TAG_variant_part:
+        case TAG_with_stmt:
+            if (get_num_prop(obj, AT_accessibility, &v)) {
+                if (v == DW_ACCESS_private ) *flags |= SYM_FLAG_PRIVATE;
+                if (v == DW_ACCESS_protected ) *flags |= SYM_FLAG_PROTECTED;
+                if (v == DW_ACCESS_public) *flags |= SYM_FLAG_PUBLIC;
+            }
+            break;
+        }
     }
     if (obj != NULL && !(*flags & (SYM_FLAG_BIG_ENDIAN|SYM_FLAG_LITTLE_ENDIAN))) {
         switch (sym->sym_class) {
