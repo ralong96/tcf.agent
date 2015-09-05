@@ -1355,9 +1355,22 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
 
 static void read_memory_region_property(InputStream * inp, const char * name, void * args) {
     MemoryRegion * m = (MemoryRegion *)args;
-    if (strcmp(name, "Addr") == 0) m->addr = (ContextAddress)json_read_uint64(inp);
-    else if (strcmp(name, "Size") == 0) m->size = json_read_ulong(inp);
-    else if (strcmp(name, "Offs") == 0) m->file_offs = json_read_ulong(inp);
+    if (strcmp(name, "Addr") == 0) {
+        m->addr = (ContextAddress)json_read_uint64(inp);
+        m->valid |= MM_VALID_ADDR;
+    }
+    else if (strcmp(name, "Size") == 0) {
+        m->size = json_read_ulong(inp);
+        m->valid |= MM_VALID_SIZE;
+    }
+    else if (strcmp(name, "Offs") == 0) {
+        m->file_offs = json_read_ulong(inp);
+        m->valid |= MM_VALID_FILE_OFFS;
+    }
+    else if (strcmp(name, "FileSize") == 0) {
+        m->file_size = json_read_ulong(inp);
+        m->valid |= MM_VALID_FILE_SIZE;
+    }
     else if (strcmp(name, "BSS") == 0) m->bss = json_read_boolean(inp);
     else if (strcmp(name, "Flags") == 0) m->flags = json_read_ulong(inp);
     else if (strcmp(name, "FileName") == 0) m->file_name = json_read_alloc_string(inp);
@@ -1382,8 +1395,7 @@ static void read_memory_map_item(InputStream * inp, void * args) {
     }
     m = mem_buf + mem_buf_pos;
     memset(m, 0, sizeof(MemoryRegion));
-    if (json_read_struct(inp, read_memory_region_property, m) &&
-            m->file_name != NULL && m->file_name[0] != 0) {
+    if (json_read_struct(inp, read_memory_region_property, m) && m->file_name != NULL && m->file_name[0] != 0) {
         struct stat buf;
         char * fnm = apply_path_map(cache->peer->host, cache->ctx, m->file_name, PATH_MAP_TO_LOCAL);
         if (fnm != m->file_name) {

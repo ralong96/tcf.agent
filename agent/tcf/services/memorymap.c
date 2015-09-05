@@ -146,6 +146,7 @@ static void update_context_client_map(Context * ctx) {
                         y->file_offs == x->file_offs &&
                         y->bss == x->bss &&
                         y->flags == x->flags &&
+                        y->valid == x->valid &&
                         str_equ(y->file_name, x->file_name) &&
                         str_equ(y->sect_name, x->sect_name) &&
                         str_equ(y->query, x->query) &&
@@ -180,6 +181,7 @@ static void update_context_client_map(Context * ctx) {
                     y->file_offs = x->file_offs;
                     y->bss = x->bss;
                     y->flags = x->flags;
+                    y->valid = x->valid;
                     if (x->file_name) y->file_name = loc_strdup(x->file_name);
                     if (x->sect_name) y->sect_name = loc_strdup(x->sect_name);
                     if (x->query) y->query = loc_strdup(x->query);
@@ -351,13 +353,13 @@ static void write_map_region(OutputStream * out, MemoryRegion * m) {
     MemoryRegionAttribute * x = m->attrs;
 
     write_stream(out, '{');
-    if (m->addr != 0) {
+    if (m->addr != 0 || (m->valid & MM_VALID_ADDR) != 0) {
         json_write_string(out, "Addr");
         write_stream(out, ':');
         json_write_uint64(out, m->addr);
         write_stream(out, ',');
     }
-    if (m->size != 0) {
+    if (m->size != 0 || (m->valid & MM_VALID_SIZE) != 0) {
         json_write_string(out, "Size");
         write_stream(out, ':');
         json_write_uint64(out, m->size);
@@ -377,11 +379,17 @@ static void write_map_region(OutputStream * out, MemoryRegion * m) {
             write_stream(out, ':');
             json_write_string(out, m->sect_name);
         }
-        else if (m->file_offs != 0) {
+        if (m->file_offs != 0 || (m->valid & MM_VALID_FILE_OFFS) != 0) {
             write_stream(out, ',');
             json_write_string(out, "Offs");
             write_stream(out, ':');
             json_write_uint64(out, m->file_offs);
+        }
+        if (m->file_size != 0 || (m->valid & MM_VALID_FILE_SIZE) != 0) {
+            write_stream(out, ',');
+            json_write_string(out, "FileSize");
+            write_stream(out, ':');
+            json_write_uint64(out, m->file_size);
         }
         if (m->bss) {
             write_stream(out, ',');

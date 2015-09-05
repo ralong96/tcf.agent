@@ -1171,6 +1171,7 @@ static void program_headers_ranges(ELF_File * file, ContextAddress addr0, Contex
             if (p->flags & PF_R) x->flags |= MM_FLAG_R;
             if (p->flags & PF_W) x->flags |= MM_FLAG_W;
             if (p->flags & PF_X) x->flags |= MM_FLAG_X;
+            x->valid = MM_VALID_ADDR | MM_VALID_SIZE | MM_VALID_FILE_OFFS | MM_VALID_FILE_SIZE;
         }
     }
 }
@@ -1275,6 +1276,7 @@ static void linux_kernel_module_ranges(ELF_File * file, KernelModuleAddress * mo
                     r->flags |= MM_FLAG_R;
                     if (s->flags & SHF_WRITE) r->flags |= MM_FLAG_W;
                     if (s->flags & SHF_EXECINSTR) r->flags |= MM_FLAG_X;
+                    r->valid = MM_VALID_ADDR | MM_VALID_SIZE;
                 }
             }
         }
@@ -1285,8 +1287,12 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
     unsigned i;
     for (i = 0; i < map->region_cnt; i++) {
         MemoryRegion * r = map->regions + i;
+        int no_addr = r->addr == 0 && (r->valid & MM_VALID_ADDR) == 0;
+        int no_size = r->size == 0 && (r->valid & MM_VALID_SIZE) == 0;
+        int no_file_offs = r->file_offs == 0 && (r->valid & MM_VALID_FILE_OFFS) == 0;
+        int no_file_size = r->file_size == 0 && (r->valid & MM_VALID_FILE_SIZE) == 0;
         if (r->file_name == NULL) continue;
-        if (r->addr == 0 && r->size == 0 && r->file_offs == 0 && r->file_size == 0 && r->sect_name == NULL) {
+        if (no_addr && no_size && no_file_offs && no_file_size && r->sect_name == NULL) {
             ELF_File * file = elf_open_memory_region_file(r, NULL);
             if (file != NULL) {
                 KernelModuleAddress * module = NULL;
@@ -1311,8 +1317,8 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                 }
             }
         }
-        else if (r->size == 0 && r->file_size == 0 && r->sect_name == NULL) {
-            if (r->file_offs == 0) {
+        else if (no_size && no_file_size && r->sect_name == NULL) {
+            if (no_file_offs) {
                 /* Linux module (shared library): r->addr is "memory load address".
                  * See System V Application Binary Interface for description of
                  * "memory load address" and "base address" */
@@ -1342,13 +1348,14 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                                 x->file_offs = p->offset;
                                 x->file_size = p->file_size;
                                 x->flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
+                                x->valid = MM_VALID_ADDR | MM_VALID_SIZE | MM_VALID_FILE_OFFS | MM_VALID_FILE_SIZE;
                             }
                         }
                     }
                 }
             }
         }
-        else if (r->addr <= addr1 && r->size == 0 && r->sect_name != NULL) {
+        else if (r->addr <= addr1 && no_size && r->sect_name != NULL) {
             ELF_File * file = elf_open_memory_region_file(r, NULL);
             if (file != NULL) {
                 unsigned j;
@@ -1363,9 +1370,10 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                         x->dev = file->dev;
                         x->ino = file->ino;
                         x->file_name = file->name;
-                        x->sect_name = r->sect_name;
+                        x->sect_name = s->name;
                         x->flags = r->flags;
                         if (x->flags == 0) x->flags = MM_FLAG_R | MM_FLAG_W | MM_FLAG_X;
+                        x->valid = MM_VALID_ADDR | MM_VALID_SIZE;
                     }
                 }
             }

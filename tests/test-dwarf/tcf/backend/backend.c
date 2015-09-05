@@ -889,6 +889,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (errcmp(err, "Object is not available at this location") == 0) return;
         if (errcmp(err, "OP_fbreg: cannot read AT_frame_base") == 0) return;
+        if (errcmp(err, "Thread local storage access is not supported yet for machine type 20") == 0) return;
         if (errcmp(err, "Division by zero in location") == 0) return;
         if (errcmp(err, "Cannot find loader debug") == 0) return;
         if (errcmp(err, "Cannot get TLS module ID") == 0) return;
@@ -1970,6 +1971,7 @@ static void next_file(void) {
             r->size = (ContextAddress)p->file_size;
             r->flags = MM_FLAG_R | MM_FLAG_W;
             if (p->flags & PF_X) r->flags |= MM_FLAG_X;
+            r->valid = MM_VALID_ADDR | MM_VALID_SIZE | MM_VALID_FILE_OFFS;
             r->dev = st.st_dev;
             r->ino = st.st_ino;
         }
@@ -1987,6 +1989,7 @@ static void next_file(void) {
             r->size = (ContextAddress)(p->mem_size - p->file_size);
             r->flags = MM_FLAG_R | MM_FLAG_W;
             if (p->flags & PF_X) r->flags |= MM_FLAG_X;
+            r->valid = MM_VALID_ADDR | MM_VALID_SIZE;
             r->dev = st.st_dev;
             r->ino = st.st_ino;
         }
@@ -2009,10 +2012,7 @@ static void next_file(void) {
                 memset(r, 0, sizeof(MemoryRegion));
                 r->addr = addr;
                 r->size = (ContextAddress)sec->size;
-                r->file_offs = sec->offset;
-                if (sec->type == SHT_NOBITS) {
-                    r->bss = 1;
-                }
+                if (sec->type == SHT_NOBITS) r->bss = 1;
                 r->dev = st.st_dev;
                 r->ino = st.st_ino;
                 r->file_name = loc_strdup(elf_file_name);
@@ -2023,6 +2023,7 @@ static void next_file(void) {
                 if (strcmp(sec->name, ".text") == 0) r->flags |= MM_FLAG_X;
                 if (strcmp(sec->name, ".init.text") == 0) r->flags |= MM_FLAG_X;
                 if (strcmp(sec->name, ".exit.text") == 0) r->flags |= MM_FLAG_X;
+                r->valid = MM_VALID_ADDR | MM_VALID_SIZE;
                 addr += r->size;
                 addr = (addr + 0x10000) & ~(ContextAddress)0xffff;
             }

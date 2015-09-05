@@ -149,6 +149,7 @@ struct MemoryRegion {
     char * file_name;               /* Region file name */
     char * sect_name;               /* Region file section name, can be NULL */
     unsigned flags;                 /* Region flags, see MM_FLAG* */
+    unsigned valid;                 /* Region valid flags, see MM_VALID* */
     char * query;                   /* If not NULL, the region is only part of the memory map for contexts matches the query */
     char * id;                      /* Region ID, not NULL only if the region info is submitted by a client */
     MemoryRegionAttribute * attrs;  /* Additional memory region attributes */
@@ -164,6 +165,13 @@ struct MemoryRegionAttribute {
 #define MM_FLAG_R   1
 #define MM_FLAG_W   2
 #define MM_FLAG_X   4
+
+/* These flags are used to resolve ambiguity between MemoryRegion field not set or set to 0.
+ * When the field is not 0, it is valid regardless of the flag. */
+#define MM_VALID_ADDR       1
+#define MM_VALID_SIZE       2
+#define MM_VALID_FILE_OFFS  4
+#define MM_VALID_FILE_SIZE  8
 
 /* Context resume modes */
 #define RM_RESUME                   0 /* Resume normal execution of the context */
