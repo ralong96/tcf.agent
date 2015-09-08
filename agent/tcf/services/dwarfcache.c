@@ -817,6 +817,14 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         dio_ChkFlag(Form);
         if (dio_gFormData) Info->mFlags |= DOIF_public;
         break;
+    case AT_accessibility:
+        dio_ChkData(Form);
+        switch (dio_gFormData) {
+        case DW_ACCESS_private  : Info->mFlags |= DOIF_private; break;
+        case DW_ACCESS_protected: Info->mFlags |= DOIF_protected; break;
+        case DW_ACCESS_public   : Info->mFlags |= DOIF_public; break;
+        }
+        break;
     case AT_location:
         Info->mFlags |= DOIF_location;
         if (Form == FORM_DATA4 || Form == FORM_DATA8 || Form == FORM_SEC_OFFSET || Tag == TAG_formal_parameter) {
