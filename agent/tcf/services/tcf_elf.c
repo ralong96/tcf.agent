@@ -1668,6 +1668,7 @@ ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_S
     if (elf_get_map(ctx, 0, ~(ContextAddress)0, &elf_map) < 0) return 0;
     for (i = 0; i < elf_map.region_cnt; i++) {
         MemoryRegion * r = elf_map.regions + i;
+        ELF_File * exec = file;
         int same_file = 0;
         if (r->dev == 0) {
             same_file = file_name_equ(file, r->file_name);
@@ -1679,13 +1680,12 @@ ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_S
         }
         if (!same_file) {
             /* Check if the memory map entry has a separate debug info file */
-            ELF_File * exec = NULL;
             if (!file->debug_info_file) continue;
             exec = elf_open_memory_region_file(r, NULL);
             if (exec == NULL) continue;
             if (get_dwarf_file(exec) != file) continue;
         }
-        rt = elf_run_time_address_in_region(ctx, r, file, sec, addr);
+        rt = elf_run_time_address_in_region(ctx, r, exec, sec, addr);
         if (errno == 0) return rt;
     }
     if (file->type == ET_EXEC) {
