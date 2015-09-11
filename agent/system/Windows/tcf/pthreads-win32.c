@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -21,6 +21,165 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/errors.h>
 #include <system/Windows/tcf/pthreads-win32.h>
+
+#ifndef ENABLE_WindowsUserspaceSynchronization
+#  define ENABLE_WindowsUserspaceSynchronization 1
+#endif
+
+#if ENABLE_WindowsUserspaceSynchronization
+
+/*
+ * Windows userspace implementation of thread synchronization is much faster.
+ * However, it is not available on Windows XP and older version of the OS.
+ * So, we have to check OS version and fall back to old APIs when necessary.
+ */
+
+static int kernel_version = 0;
+static HMODULE kernel_module = NULL;
+
+static int get_kernel_version(void) {
+    kernel_version = 1;
+    kernel_module = GetModuleHandle("kernel32.dll");
+    if (kernel_module != NULL) {
+        OSVERSIONINFOEX info;
+        memset(&info, 0, sizeof(info));
+        info.dwOSVersionInfoSize = sizeof(info);
+        if (GetVersionEx((OSVERSIONINFO *)&info)) {
+            kernel_version = info.dwMajorVersion;
+        }
+    }
+    return kernel_version;
+}
+
+#define use_old_api() (kernel_version ? kernel_version : get_kernel_version()) < 6
+
+extern int windows_mutex_init(pthread_mutex_t * mutex, const pthread_mutexattr_t * attr);
+extern int windows_mutex_lock(pthread_mutex_t * mutex);
+extern int windows_mutex_unlock(pthread_mutex_t * mutex);
+extern int windows_mutex_destroy(pthread_mutex_t *mutex);
+extern int windows_cond_init(pthread_cond_t * cond, const pthread_condattr_t * attr);
+extern int windows_cond_signal(pthread_cond_t * cond);
+extern int windows_cond_broadcast(pthread_cond_t * cond);
+extern int windows_cond_wait(pthread_cond_t * cond, pthread_mutex_t * mutex);
+extern int windows_cond_timedwait(pthread_cond_t * cond, pthread_mutex_t * mutex, const struct timespec * abstime);
+extern int windows_cond_destroy(pthread_cond_t * cond);
+
+int pthread_mutex_init(pthread_mutex_t * mutex, const pthread_mutexattr_t * attr) {
+    typedef void WINAPI ProcType(void *);
+    static ProcType * proc = NULL;
+    if (proc == NULL) {
+        if (use_old_api()) return windows_mutex_init(mutex, attr);
+        proc = (ProcType *)GetProcAddress(kernel_module, "InitializeSRWLock");
+    }
+    proc(mutex);
+    return 0;
+}
+
+int pthread_mutex_lock(pthread_mutex_t * mutex) {
+    typedef void WINAPI ProcType(void *);
+    static ProcType * proc = NULL;
+    if (proc == NULL) {
+        if (use_old_api()) return windows_mutex_lock(mutex);
+        proc = (ProcType *)GetProcAddress(kernel_module, "AcquireSRWLockExclusive");
+    }
+    proc(mutex);
+    return 0;
+}
+
+int pthread_mutex_unlock(pthread_mutex_t * mutex) {
+    typedef void WINAPI ProcType(void *);
+    static ProcType * proc = NULL;
+    if (proc == NULL) {
+        if (use_old_api()) return windows_mutex_unlock(mutex);
+        proc = (ProcType *)GetProcAddress(kernel_module, "ReleaseSRWLockExclusive");
+    }
+    proc(mutex);
+    return 0;
+}
+
+int pthread_mutex_destroy(pthread_mutex_t * mutex) {
+    if (use_old_api()) return windows_mutex_destroy(mutex);
+    *mutex = NULL;
+    return 0;
+}
+
+int pthread_cond_init(pthread_cond_t * cond, const pthread_condattr_t * attr) {
+    typedef void WINAPI ProcType(void *);
+    static ProcType * proc = NULL;
+    if (proc == NULL) {
+        if (use_old_api()) return windows_cond_init(cond, attr);
+        proc = (ProcType *)GetProcAddress(kernel_module, "InitializeConditionVariable");
+    }
+    proc(cond);
+    return 0;
+}
+
+int pthread_cond_wait(pthread_cond_t * cond, pthread_mutex_t * mutex) {
+    typedef BOOL WINAPI ProcType(void *, void *, DWORD, ULONG);
+    static ProcType * proc = NULL;
+    if (proc == NULL) {
+        if (use_old_api()) return windows_cond_wait(cond, mutex);
+        proc = (ProcType *)GetProcAddress(kernel_module, "SleepConditionVariableSRW");
+    }
+    return proc(cond, mutex, INFINITE, 0) ? 0 : ETIMEDOUT;
+}
+
+int pthread_cond_timedwait(pthread_cond_t * cond, pthread_mutex_t * mutex, const struct timespec * abstime) {
+    uint64_t t0, t1;
+    struct timespec timenow;
+    typedef BOOL WINAPI ProcType(void *, void *, DWORD, ULONG);
+    static ProcType * proc = NULL;
+    if (proc == NULL) {
+        if (use_old_api()) return windows_cond_timedwait(cond, mutex, abstime);
+        proc = (ProcType *)GetProcAddress(kernel_module, "SleepConditionVariableSRW");
+    }
+    if (clock_gettime(CLOCK_REALTIME, &timenow)) return errno;
+    t0 = (uint64_t)timenow.tv_sec * 1000 + (uint64_t)timenow.tv_nsec / 1000000;
+    t1 = (uint64_t)abstime->tv_sec * 1000 + (uint64_t)abstime->tv_nsec / 1000000;
+    if (t1 <= t0) return ETIMEDOUT;
+    return proc(cond, mutex, (DWORD)(t1 - t0), 0) ? 0 : ETIMEDOUT;
+}
+
+int pthread_cond_signal(pthread_cond_t * cond) {
+    typedef void WINAPI ProcType(void *);
+    static ProcType * proc = NULL;
+    if (proc == NULL) {
+        if (use_old_api()) return windows_cond_signal(cond);
+        proc = (ProcType *)GetProcAddress(kernel_module, "WakeConditionVariable");
+    }
+    proc(cond);
+    return 0;
+}
+
+int pthread_cond_broadcast(pthread_cond_t * cond) {
+    typedef void WINAPI ProcType(void *);
+    static ProcType * proc = NULL;
+    if (proc == NULL) {
+        if (use_old_api()) return windows_cond_broadcast(cond);
+        proc = (ProcType *)GetProcAddress(kernel_module, "WakeAllConditionVariable");
+    }
+    proc(cond);
+    return 0;
+}
+
+int pthread_cond_destroy(pthread_cond_t * cond) {
+    if (use_old_api()) return windows_cond_destroy(cond);
+    *cond = NULL;
+    return 0;
+}
+
+#define pthread_mutex_init      windows_mutex_init
+#define pthread_mutex_lock      windows_mutex_lock
+#define pthread_mutex_unlock    windows_mutex_unlock
+#define pthread_mutex_destroy   windows_mutex_destroy
+#define pthread_cond_init       windows_cond_init
+#define pthread_cond_wait       windows_cond_wait
+#define pthread_cond_timedwait  windows_cond_timedwait
+#define pthread_cond_signal     windows_cond_signal
+#define pthread_cond_broadcast  windows_cond_broadcast
+#define pthread_cond_destroy    windows_cond_destroy
+
+#endif /* ENABLE_WindowsUserspaceSynchronization */
 
 /*********************************************************************
     Support of pthreads on Windows is implemented according to
@@ -65,7 +224,7 @@ int pthread_mutex_unlock(pthread_mutex_t * mutex) {
     return 0;
 }
 
-int pthread_mutex_destroy(pthread_mutex_t *mutex) {
+int pthread_mutex_destroy(pthread_mutex_t * mutex) {
     assert(mutex != NULL);
     assert(*mutex != NULL);
     if (!CloseHandle(*mutex)) return set_win32_errno(GetLastError());
