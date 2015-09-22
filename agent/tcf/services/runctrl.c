@@ -1475,6 +1475,7 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
     char * name = NULL;
     ContextAddress sym_addr = 0;
     ContextAddress sym_size = 0;
+    HIDDEN_HOOK;
     if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip, &sym) < 0) return 0;
     if (get_symbol_name(sym, &name) < 0 || name == NULL) return 0;
     if (strcmp(name, "__i686.get_pc_thunk.bx") == 0) {

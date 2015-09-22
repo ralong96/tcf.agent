@@ -50,6 +50,7 @@
 #include <tcf/framework/events.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/protocol.h>
+#include <tcf/services/runctrl-ext.h>
 
 #if SERVICE_RunControl
 
