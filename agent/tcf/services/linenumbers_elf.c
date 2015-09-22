@@ -45,6 +45,7 @@
 #define LINENUMBERS_READER_PREFIX elf_reader_
 #include <tcf/services/linenumbers_mux.h>
 #endif
+#include <tcf/services/linenumbers_elf-ext.h>
 
 static int compare_path(Channel * chnl, Context * ctx, const char * file, const char * pwd, const char * dir, const char * name) {
     int i, j;
@@ -246,6 +247,7 @@ int line_to_address(Context * ctx, const char * file_name, int line, int column,
     int err = 0;
     Channel * chnl = cache_channel();
     static MemoryMap map;
+    LINE_TO_ADDR_HOOK_0;
 
     if (ctx == NULL) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
@@ -278,6 +280,7 @@ int line_to_address(Context * ctx, const char * file_name, int line, int column,
                     FileInfo * f = NULL;
                     if (fnm == NULL) {
                         fnm = canonic_path_map_file_name(file_name);
+                        LINE_TO_ADDR_HOOK_1;
                         h = calc_file_name_hash(fnm);
                     }
                     f = cache->mFileInfoHash[h % cache->mFileInfoHashSize];
@@ -285,6 +288,7 @@ int line_to_address(Context * ctx, const char * file_name, int line, int column,
                         if (f->mNameHash == h && compare_path(chnl, ctx, fnm, f->mCompUnit->mDir, f->mDir, f->mName)) {
                             CompUnit * unit = f->mCompUnit;
                             unsigned j = f - unit->mFiles;
+                            LINE_TO_ADDR_HOOK_2;
                             unit_line_to_address(ctx, r, unit, j, line, column, client, args);
                         }
                         f = f->mNextInHash;
@@ -356,7 +360,10 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
                             if (code_next != NULL) {
                                 if (state->mAddress < code_next->mAddress) {
                                     LineNumbersState * text_next = get_next_in_text(unit, state);
+                                    ADDR_TO_LINE_HOOK;
+                                    {
                                     call_client(ctx, unit, state, code_next, text_next, state->mAddress - range->mAddr + range_rt_addr, client, args);
+                                    }
                                 }
                                 assert(code_next > state);
                                 k = code_next - unit->mStates;
