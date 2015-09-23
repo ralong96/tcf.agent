@@ -83,6 +83,7 @@ typedef struct ContextExtensionRC {
     int step_cnt;
     int step_line_cnt;
     int step_repeat_cnt;
+    int step_into_hidden;
     int stop_group_mark;
     int run_ctrl_ctx_lock_cnt;
     ContextAddress step_range_start;
@@ -762,6 +763,7 @@ static void send_event_context_resumed(Context * ctx);
 typedef struct ResumeParams {
     ContextAddress range_start;
     ContextAddress range_end;
+    int step_into_hidden;
     int error;
 } ResumeParams;
 
@@ -769,6 +771,7 @@ static void resume_params_callback(InputStream * inp, const char * name, void * 
     ResumeParams * args = (ResumeParams *)x;
     if (strcmp(name, "RangeStart") == 0) args->range_start = (ContextAddress)json_read_uint64(inp);
     else if (strcmp(name, "RangeEnd") == 0) args->range_end = (ContextAddress)json_read_uint64(inp);
+    else if (strcmp(name, "StepIntoHidden") == 0) args->step_into_hidden = json_read_boolean(inp);
     else {
         json_skip_object(inp);
         args->error = ERR_UNSUPPORTED;
@@ -827,6 +830,7 @@ static void cancel_step_mode(Context * ctx) {
     ext->step_cnt = 0;
     ext->step_line_cnt = 0;
     ext->step_repeat_cnt = 0;
+    ext->step_into_hidden = 0;
     ext->step_range_start = 0;
     ext->step_range_end = 0;
     ext->step_frame_fp = 0;
@@ -857,6 +861,7 @@ static void start_step_mode(Context * ctx, Channel * c, int mode, int cnt, Conte
     ext->step_range_start = range_start;
     ext->step_range_end = range_end;
     ext->step_repeat_cnt = cnt;
+    ext->step_into_hidden = 0;
 }
 
 int get_stepping_mode(Context * ctx) {
@@ -935,6 +940,7 @@ static void command_resume(char * token, Channel * c) {
     if (err == 0 && (ctx = id2ctx(id)) == NULL) err = ERR_INV_CONTEXT;
     if (err == 0 && ((mode >= RM_UNDEF) || ((get_resume_modes(ctx) & (1 << mode)) == 0))) err = EINVAL;
     if (err == 0 && continue_debug_context(ctx, c, mode, count, args.range_start, args.range_end) < 0) err = errno;
+    if (err == 0 && args.step_into_hidden && context_has_state(ctx)) EXT(ctx)->step_into_hidden = 1;
     send_simple_result(c, token, err);
 }
 
@@ -1476,10 +1482,10 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
     ContextAddress sym_addr = 0;
     ContextAddress sym_size = 0;
     HIDDEN_HOOK;
-    if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip, &sym) < 0) return 0;
-    if (get_symbol_name(sym, &name) < 0 || name == NULL) return 0;
-    if (strcmp(name, "__i686.get_pc_thunk.bx") == 0) {
-        if (get_symbol_address(sym, &sym_addr) < 0) return 0;
+    if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip, &sym) == 0 &&
+            get_symbol_name(sym, &name) == 0 && name != NULL &&
+            strcmp(name, "__i686.get_pc_thunk.bx") == 0 &&
+            get_symbol_address(sym, &sym_addr) == 0) {
         if (get_symbol_size(sym, &sym_size) < 0 || sym_size == 0) {
             *addr0 = ip;
             *addr1 = ip + 1;
@@ -1489,6 +1495,30 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
             *addr1 = sym_addr + sym_size;
         }
         return 1;
+    }
+#endif
+#if ENABLE_ELF
+    /* TODO: a better way to skip dynamic loader code during source level stepping */
+    {
+        static MemoryMap map;
+        extern int elf_get_map(Context * ctx, ContextAddress addr0, ContextAddress addr1, MemoryMap * map);
+        if (elf_get_map(ctx, ip, ip, &map) == 0) {
+            unsigned i;
+            for (i = 0; i < map.region_cnt; i++) {
+                MemoryRegion * r = map.regions + i;
+                if (r->addr <= ip && r->addr + r->size > ip && r->file_name != NULL) {
+                    size_t l;
+                    char * fnm = r->file_name + strlen(r->file_name);
+                    while (fnm > r->file_name && *(fnm - 1) != '/' && *(fnm - 1) != '\\') fnm--;
+                    l = strlen(fnm);
+                    if (l > 6 && strncmp(fnm, "ld-", 3) == 0 && strcmp(fnm + l - 3, ".so") == 0) {
+                        *addr0 = r->addr;
+                        *addr1 = r->addr + r->size;
+                        return 1;
+                    }
+                }
+            }
+        }
     }
 #endif
     return 0;
@@ -1922,21 +1952,22 @@ static int update_step_machine_state(Context * ctx) {
         }
         else if (addr < ext->step_range_start || addr >= ext->step_range_end) {
             int same_line = 0;
-            int hidden_function = 0;
             int function_prologue = 0;
             CodeArea * area = ext->step_code_area;
             if (area == NULL) {
                 ext->step_done = REASON_STEP;
                 return 0;
             }
-            hidden_function = is_hidden_function(ctx, addr, &ext->step_range_start, &ext->step_range_end);
-            if (cache_miss_count() > 0) {
-                errno = ERR_CACHE_MISS;
-                return -1;
-            }
-            if (hidden_function) {
-                /* Don't stop in a function that should be hidden during source level stepping */
-                break;
+            if (!ext->step_into_hidden) {
+                int hidden_function = is_hidden_function(ctx, addr, &ext->step_range_start, &ext->step_range_end);
+                if (cache_miss_count() > 0) {
+                    errno = ERR_CACHE_MISS;
+                    return -1;
+                }
+                if (hidden_function) {
+                    /* Don't stop in a function that should be hidden during source level stepping */
+                    break;
+                }
             }
             ext->step_code_area = NULL;
             if (address_to_line(ctx, addr, addr + 1, update_step_machine_code_area, ext) < 0) {
