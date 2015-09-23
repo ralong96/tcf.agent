@@ -1113,6 +1113,7 @@ static ObjectInfo * find_definition(ObjectInfo * decl) {
                 while (n != 0) {
                     ObjectInfo * obj = tbl->mNext[n].mObject;
                     n = tbl->mNext[n].mNext;
+                    if (obj == decl) continue;
                     if (obj->mTag != decl->mTag) continue;
                     if (obj->mFlags & DOIF_declaration) continue;
                     if (obj->mFlags & DOIF_specification) continue;
