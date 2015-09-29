@@ -705,6 +705,7 @@ void clone_breakpoints_on_process_fork(Context * parent, Context * child) {
         if (bi->cb.ctx != mem) continue;
         ci = add_instruction(child, bi->virtual_addr, bi->cb.address, bi->cb.access_types, bi->cb.length);
         memcpy(ci->saved_code, bi->saved_code, bi->saved_size);
+        memcpy(ci->planted_code, bi->planted_code, bi->saved_size);
         ci->saved_size = bi->saved_size;
         ci->ref_size = bi->ref_size;
         ci->ref_cnt = bi->ref_cnt;
