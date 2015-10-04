@@ -126,16 +126,19 @@ int pthread_cond_wait(pthread_cond_t * cond, pthread_mutex_t * mutex) {
 
 int pthread_cond_timedwait(pthread_cond_t * cond, pthread_mutex_t * mutex, const struct timespec * abstime) {
     uint64_t t0, t1;
-    struct timespec timenow;
     typedef BOOL WINAPI ProcType(void *, void *, DWORD, ULONG);
     static ProcType * proc = NULL;
+    FILETIME ft;
     if (proc == NULL) {
         if (use_old_api()) return windows_cond_timedwait(cond, mutex, abstime);
         proc = (ProcType *)GetProcAddress(kernel_module, "SleepConditionVariableSRW");
     }
-    if (clock_gettime(CLOCK_REALTIME, &timenow)) return errno;
-    t0 = (uint64_t)timenow.tv_sec * 1000 + (uint64_t)timenow.tv_nsec / 1000000;
-    t1 = (uint64_t)abstime->tv_sec * 1000 + (uint64_t)abstime->tv_nsec / 1000000;
+    GetSystemTimeAsFileTime(&ft);
+    t0 = (uint64_t)ft.dwHighDateTime << 32;
+    t0 |= ft.dwLowDateTime;
+    t0 /= 10000u;            /* from 100 nano-sec periods to msec */
+    t0 -= 11644473600000ull; /* from Win epoch to Unix epoch */
+    t1 = (uint64_t)abstime->tv_sec * 1000 + abstime->tv_nsec / 1000000;
     if (t1 <= t0) return ETIMEDOUT;
     return proc(cond, mutex, (DWORD)(t1 - t0), 0) ? 0 : ETIMEDOUT;
 }

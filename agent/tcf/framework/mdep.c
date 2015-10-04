@@ -240,28 +240,20 @@ int inet_pton(int af, const char * src, void * dst) {
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 
-static __int64 file_time_to_unix_time(const FILETIME * ft) {
-    __int64 res = (__int64)ft->dwHighDateTime << 32;
-
-    res |= ft->dwLowDateTime;
-    res /= 10;                   /* from 100 nano-sec periods to usec */
-    res -= 11644473600000000ull; /* from Win epoch to Unix epoch */
-    return res;
-}
-
 int clock_gettime(clockid_t clock_id, struct timespec * tp) {
     if (!tp) {
         errno = EINVAL;
         return -1;
     }
-    memset(tp, 0, sizeof(struct timespec));
     if (clock_id == CLOCK_REALTIME) {
         FILETIME ft;
         __int64 tim;
         GetSystemTimeAsFileTime(&ft);
-        tim = file_time_to_unix_time(&ft);
-        tp->tv_sec  = (time_t)(tim / 1000000L);
-        tp->tv_nsec = (long)(tim % 1000000L) * 1000;
+        tim = (__int64)ft.dwHighDateTime << 32;
+        tim |= ft.dwLowDateTime;
+        tim -= 116444736000000000ull; /* from Win epoch to Unix epoch */
+        tp->tv_sec  = (time_t)(tim / 10000000u);
+        tp->tv_nsec = (long)(tim % 10000000u) * 100u;
         return 0;
     }
     if (clock_id == CLOCK_MONOTONIC) {
