@@ -1681,7 +1681,6 @@ static void evaluate_condition(void * x) {
 
     assert(req != NULL);
     assert(req->bp_cnt > 0);
-    assert(args->index >= 0);
     assert(args->index < req->bp_cnt);
     assert(cache_enter_cnt > 0);
     assert(args->bp == ce->bp);
