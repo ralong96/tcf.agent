@@ -1828,8 +1828,8 @@ static int update_step_machine_state(Context * ctx) {
             ext->step_bp_info = NULL;
         }
 
-        if (get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
-        if (ext->step_frame_fp == info->fp && ext->step_inlined <= info->inlined) {
+        if (ext->step_set_frame_level && get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
+        if (ext->step_set_frame_level && ext->step_frame_fp == info->fp && ext->step_inlined <= info->inlined) {
             StackFrame * tgt = info;
             int same_line = 1;
             int same_func = 1;
