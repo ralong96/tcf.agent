@@ -138,9 +138,9 @@ int pthread_cond_timedwait(pthread_cond_t * cond, pthread_mutex_t * mutex, const
     t0 |= ft.dwLowDateTime;
     t0 /= 10000u;            /* from 100 nano-sec periods to msec */
     t0 -= 11644473600000ull; /* from Win epoch to Unix epoch */
-    t1 = (uint64_t)abstime->tv_sec * 1000 + abstime->tv_nsec / 1000000;
-    if (t1 <= t0) return ETIMEDOUT;
-    return proc(cond, mutex, (DWORD)(t1 - t0), 0) ? 0 : ETIMEDOUT;
+    t1 = (uint64_t)abstime->tv_sec * 1000 + (abstime->tv_nsec + 999999) / 1000000;
+    if (t1 > t0) return proc(cond, mutex, (DWORD)(t1 - t0), 0) ? 0 : ETIMEDOUT;
+    return ETIMEDOUT;
 }
 
 int pthread_cond_signal(pthread_cond_t * cond) {
