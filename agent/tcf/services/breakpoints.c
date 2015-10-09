@@ -569,10 +569,19 @@ static void flush_instructions(void) {
             else if (bi->ref_cnt == 0 && bi->virtual_addr) {
                 remove_instruction(bi);
             }
+#if !defined(_WRS_KERNEL)
+            /*
+             * It is an issue if the TCF agent removes and install again and again
+             * the breakpoints on a VxWorks target even if the breakpoint has not
+             * changed. It may cause some breakpoints to not be hit.
+             * This is caused by the optimisation below; this optimisation
+             * does not apply to VxWorks and can be safely disabled.
+             */
             else if (bi->saved_size == 0 && !bi->hardware) {
                 /* Free space for hardware breakpoints */
                 remove_instruction(bi);
             }
+#endif  /* _WRS_KERNEL */
         }
         if (bi->planted || bi->ref_cnt == 0 || bi->address_error ||
                 bi->cb.ctx->exiting || bi->cb.ctx->exited) {
