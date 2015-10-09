@@ -192,7 +192,7 @@ static int get_resume_modes(Context * ctx) {
 }
 
 static void write_context(OutputStream * out, Context * ctx) {
-    int modes;
+    int modes = get_resume_modes(ctx);
     Context * rc_grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
     Context * bp_grp = context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT);
     Context * ss_grp = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
@@ -240,8 +240,16 @@ static void write_context(OutputStream * out, Context * ctx) {
     write_stream(out, ',');
     json_write_string(out, "CanResume");
     write_stream(out, ':');
-    modes = get_resume_modes(ctx);
     json_write_long(out, modes);
+
+    write_stream(out, ',');
+    json_write_string(out, "CanCount");
+    write_stream(out, ':');
+    json_write_long(out, modes &
+        ~(1 << RM_RESUME) &
+        ~(1 << RM_REVERSE_RESUME) &
+        ~(1 << RM_TERMINATE) &
+        ~(1 << RM_DETACH));
 
     if (context_has_state(ctx)) {
         write_stream(out, ',');
