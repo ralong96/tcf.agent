@@ -40,6 +40,22 @@
 #  define ENABLE_FastMemAlloc 1
 #endif
 
+#if !defined(USE_CLOCK_MONOTONIC)
+#  if defined(__linux__)
+#    define USE_CLOCK_MONOTONIC 1
+#  elif (defined(_WIN32) || defined(__CYGWIN__)) && !defined(DISABLE_PTHREADS_WIN32)
+#    define USE_CLOCK_MONOTONIC 1
+#  else
+#    define USE_CLOCK_MONOTONIC 0
+#  endif
+#endif
+
+#if USE_CLOCK_MONOTONIC
+#  define EVENTS_CLOCK_TYPE CLOCK_MONOTONIC
+#else
+#  define EVENTS_CLOCK_TYPE CLOCK_REALTIME
+#endif
+
 typedef struct event_node event_node;
 
 struct event_node {
@@ -137,7 +153,7 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
     event_node * prev;
     struct timespec runtime;
 
-    if (clock_gettime(CLOCK_REALTIME, &runtime)) check_error(errno);
+    if (clock_gettime(EVENTS_CLOCK_TYPE, &runtime)) check_error(errno);
     time_add_usec(&runtime, delay);
 
     check_error(pthread_mutex_lock(&event_lock));
@@ -179,7 +195,7 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
         event_node * prev;
         struct timespec runtime;
 
-        if (clock_gettime(CLOCK_REALTIME, &runtime)) check_error(errno);
+        if (clock_gettime(EVENTS_CLOCK_TYPE, &runtime)) check_error(errno);
         time_add_usec(&runtime, delay);
 
         alloc_event_node(ev);
@@ -218,6 +234,7 @@ void post_event(EventCallBack * handler, void * arg) {
         event_node * ev;
 
         alloc_event_node(ev);
+        ev->runtime.tv_nsec = 0;
         ev->runtime.tv_sec = 0;
         ev->handler = handler;
         ev->arg = arg;
@@ -306,7 +323,17 @@ int is_dispatch_thread(void) {
 void ini_events_queue(void) {
     event_thread = current_thread;
     check_error(pthread_mutex_init(&event_lock, NULL));
+#if USE_CLOCK_MONOTONIC
+    {
+        pthread_condattr_t attr;
+        check_error(pthread_condattr_init(&attr));
+        check_error(pthread_condattr_setclock(&attr, EVENTS_CLOCK_TYPE));
+        check_error(pthread_cond_init(&event_cond, &attr));
+        check_error(pthread_condattr_destroy(&attr));
+    }
+#else
     check_error(pthread_cond_init(&event_cond, NULL));
+#endif
     check_error(pthread_cond_init(&cancel_cond, NULL));
 #if ENABLE_FastMemAlloc
     {
@@ -355,7 +382,7 @@ void run_event_loop(void) {
                 if ((ev = timer_queue) != NULL) {
                     struct timespec timenow;
                     event_node * evlast = NULL;
-                    if (clock_gettime(CLOCK_REALTIME, &timenow)) check_error(errno);
+                    if (clock_gettime(EVENTS_CLOCK_TYPE, &timenow)) check_error(errno);
                     while (ev != NULL && time_cmp(&ev->runtime, &timenow) <= 0) {
                         evlast = ev;
                         ev = ev->next;
@@ -399,10 +426,10 @@ void run_event_loop(void) {
         }
 
         trace(LOG_EVENTCORE, "run_event_loop: event %#lx, handler %#lx, arg %#lx", ev, ev->handler, ev->arg);
-        if (ev->runtime.tv_sec == 0) {
-            /* Don't count timed events since getting new timed events
-             * before the previous batch of timed events are processed
-             * can cause starvation */
+        if (ev->runtime.tv_sec == 0 && ev->runtime.tv_nsec == 0) {
+            /* Don't count timer queue events since getting new timer events
+             * before the previous batch of timer events are processed
+             * can cause starvation of the main queue */
             event_cnt++;
         }
         ev->handler(ev->arg);

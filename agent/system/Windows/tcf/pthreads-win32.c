@@ -26,6 +26,30 @@
 #  define ENABLE_WindowsUserspaceSynchronization 1
 #endif
 
+typedef struct {
+    clockid_t clock_id;
+} PThreadCondAttr;
+
+int pthread_condattr_init(pthread_condattr_t * attr) {
+    PThreadCondAttr * a = (PThreadCondAttr *)loc_alloc_zero(sizeof(PThreadCondAttr));
+    a->clock_id = CLOCK_REALTIME;
+    *attr = (pthread_condattr_t)a;
+    return 0;
+}
+
+int pthread_condattr_setclock(pthread_condattr_t * attr, clockid_t clock_id) {
+    PThreadCondAttr * a = (PThreadCondAttr *)*attr;
+    a->clock_id = clock_id;
+    return 0;
+}
+
+int pthread_condattr_destroy(pthread_condattr_t * attr) {
+    PThreadCondAttr * a = (PThreadCondAttr *)*attr;
+    loc_free(a);
+    *attr = NULL;
+    return 0;
+}
+
 #if ENABLE_WindowsUserspaceSynchronization
 
 /*
@@ -63,6 +87,11 @@ extern int windows_cond_broadcast(pthread_cond_t * cond);
 extern int windows_cond_wait(pthread_cond_t * cond, pthread_mutex_t * mutex);
 extern int windows_cond_timedwait(pthread_cond_t * cond, pthread_mutex_t * mutex, const struct timespec * abstime);
 extern int windows_cond_destroy(pthread_cond_t * cond);
+
+typedef struct {
+    void * var; /* Actual type is CONDITION_VARIABLE, but the type is not defined in Msys */
+    clockid_t clock_id;
+} PThreadUserspaceCond;
 
 int pthread_mutex_init(pthread_mutex_t * mutex, const pthread_mutexattr_t * attr) {
     typedef void WINAPI ProcType(void *);
@@ -104,69 +133,101 @@ int pthread_mutex_destroy(pthread_mutex_t * mutex) {
 }
 
 int pthread_cond_init(pthread_cond_t * cond, const pthread_condattr_t * attr) {
+    PThreadUserspaceCond * p = NULL;
     typedef void WINAPI ProcType(void *);
     static ProcType * proc = NULL;
     if (proc == NULL) {
         if (use_old_api()) return windows_cond_init(cond, attr);
         proc = (ProcType *)GetProcAddress(kernel_module, "InitializeConditionVariable");
     }
-    proc(cond);
+    p = (PThreadUserspaceCond *)loc_alloc_zero(sizeof(PThreadUserspaceCond));
+    if (attr != NULL) {
+        PThreadCondAttr * a = (PThreadCondAttr *)*attr;
+        p->clock_id = a->clock_id;
+    }
+    else {
+        p->clock_id = CLOCK_REALTIME;
+    }
+    *cond = (pthread_cond_t)p;
+    proc(&p->var);
     return 0;
 }
 
 int pthread_cond_wait(pthread_cond_t * cond, pthread_mutex_t * mutex) {
+    PThreadUserspaceCond * p = NULL;
     typedef BOOL WINAPI ProcType(void *, void *, DWORD, ULONG);
     static ProcType * proc = NULL;
     if (proc == NULL) {
         if (use_old_api()) return windows_cond_wait(cond, mutex);
         proc = (ProcType *)GetProcAddress(kernel_module, "SleepConditionVariableSRW");
     }
-    return proc(cond, mutex, INFINITE, 0) ? 0 : ETIMEDOUT;
+    p = (PThreadUserspaceCond *)*cond;
+    return proc(&p->var, mutex, INFINITE, 0) ? 0 : ETIMEDOUT;
 }
 
 int pthread_cond_timedwait(pthread_cond_t * cond, pthread_mutex_t * mutex, const struct timespec * abstime) {
     uint64_t t0, t1;
+    PThreadUserspaceCond * p = NULL;
     typedef BOOL WINAPI ProcType(void *, void *, DWORD, ULONG);
+    typedef ULONGLONG WINAPI ClockProcType(void);
     static ProcType * proc = NULL;
+    static ClockProcType * clock_proc = NULL;
     FILETIME ft;
     if (proc == NULL) {
         if (use_old_api()) return windows_cond_timedwait(cond, mutex, abstime);
         proc = (ProcType *)GetProcAddress(kernel_module, "SleepConditionVariableSRW");
+        clock_proc = (ClockProcType *)GetProcAddress(kernel_module, "GetTickCount64");
     }
-    GetSystemTimeAsFileTime(&ft);
-    t0 = (uint64_t)ft.dwHighDateTime << 32;
-    t0 |= ft.dwLowDateTime;
-    t0 /= 10000u;            /* from 100 nano-sec periods to msec */
-    t0 -= 11644473600000ull; /* from Win epoch to Unix epoch */
+    p = (PThreadUserspaceCond *)*cond;
+    if (p->clock_id == CLOCK_MONOTONIC) {
+        t0 = clock_proc();
+    }
+    else if (p->clock_id == CLOCK_REALTIME) {
+        GetSystemTimeAsFileTime(&ft);
+        t0 = (uint64_t)ft.dwHighDateTime << 32;
+        t0 |= ft.dwLowDateTime;
+        t0 /= 10000u;            /* from 100 nano-sec periods to msec */
+        t0 -= 11644473600000ull; /* from Win epoch to Unix epoch */
+    }
+    else {
+        return ERR_UNSUPPORTED;
+    }
     t1 = (uint64_t)abstime->tv_sec * 1000 + (abstime->tv_nsec + 999999) / 1000000;
-    if (t1 > t0) return proc(cond, mutex, (DWORD)(t1 - t0), 0) ? 0 : ETIMEDOUT;
+    if (t1 > t0) return proc(&p->var, mutex, (DWORD)(t1 - t0), 0) ? 0 : ETIMEDOUT;
     return ETIMEDOUT;
 }
 
 int pthread_cond_signal(pthread_cond_t * cond) {
+    PThreadUserspaceCond * p = NULL;
     typedef void WINAPI ProcType(void *);
     static ProcType * proc = NULL;
     if (proc == NULL) {
         if (use_old_api()) return windows_cond_signal(cond);
         proc = (ProcType *)GetProcAddress(kernel_module, "WakeConditionVariable");
     }
-    proc(cond);
+    p = (PThreadUserspaceCond *)*cond;
+    proc(&p->var);
     return 0;
 }
 
 int pthread_cond_broadcast(pthread_cond_t * cond) {
+    PThreadUserspaceCond * p = NULL;
     typedef void WINAPI ProcType(void *);
     static ProcType * proc = NULL;
     if (proc == NULL) {
         if (use_old_api()) return windows_cond_broadcast(cond);
         proc = (ProcType *)GetProcAddress(kernel_module, "WakeAllConditionVariable");
     }
-    proc(cond);
+    p = (PThreadUserspaceCond *)*cond;
+    proc(&p->var);
     return 0;
 }
 
 int pthread_cond_destroy(pthread_cond_t * cond) {
+    PThreadUserspaceCond * p = NULL;
     if (use_old_api()) return windows_cond_destroy(cond);
+    p = (PThreadUserspaceCond *)*cond;
+    loc_free(p);
     *cond = NULL;
     return 0;
 }
@@ -204,6 +265,7 @@ typedef struct {
     HANDLE sema;
     HANDLE waiters_done;
     size_t was_broadcast;
+    clockid_t clock_id;
 } PThreadCond;
 
 int pthread_mutex_init(pthread_mutex_t * mutex, const pthread_mutexattr_t * attr) {
@@ -236,7 +298,13 @@ int pthread_mutex_destroy(pthread_mutex_t * mutex) {
 
 int pthread_cond_init(pthread_cond_t * cond, const pthread_condattr_t * attr) {
     PThreadCond * p = (PThreadCond *)loc_alloc_zero(sizeof(PThreadCond));
-    assert(attr == NULL);
+    if (attr != NULL) {
+        PThreadCondAttr * a = (PThreadCondAttr *)*attr;
+        p->clock_id = a->clock_id;
+    }
+    else {
+        p->clock_id = CLOCK_REALTIME;
+    }
     p->waiters_count = 0;
     p->was_broadcast = 0;
     p->sema = CreateSemaphore(NULL, 0, 0x7fffffff, NULL);
@@ -299,7 +367,7 @@ int pthread_cond_timedwait(pthread_cond_t * cond, pthread_mutex_t * mutex, const
     DWORD timeout = 0;
     struct timespec timenow;
 
-    if (clock_gettime(CLOCK_REALTIME, &timenow)) return errno;
+    if (clock_gettime(p->clock_id, &timenow)) return errno;
     if (abstime->tv_sec < timenow.tv_sec) return ETIMEDOUT;
     if (abstime->tv_sec == timenow.tv_sec) {
         if (abstime->tv_nsec <= timenow.tv_nsec) return ETIMEDOUT;

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -33,6 +33,10 @@ typedef struct pthread_condattr_struct * pthread_condattr_t;
 #endif
 
 extern int pthread_attr_init(pthread_attr_t * attr);
+
+extern int pthread_condattr_init(pthread_condattr_t * attr);
+extern int pthread_condattr_setclock(pthread_condattr_t * attr, clockid_t clock_id);
+extern int pthread_condattr_destroy(pthread_condattr_t * attr);
 
 extern int pthread_cond_init(pthread_cond_t * cond, const pthread_condattr_t * attr);
 extern int pthread_cond_signal(pthread_cond_t * cond);
