@@ -62,6 +62,8 @@ struct ContextCache {
     char process_id[256];
     char creator_id[256];
     char symbols_id[256];
+    char rc_group_id[256];
+    char bp_group_id[256];
     char cpu_id[256];
     char * file;
     char * name;
@@ -95,9 +97,15 @@ struct ContextCache {
     int is_container;
     int can_suspend;
     long can_resume;
-    long can_count;
     int can_terminate;
+    int can_detach;
     unsigned word_size;
+#if ENABLE_ContextExtraProperties
+    char ** props_names;
+    char ** props_values;
+    unsigned props_cnt;
+    unsigned props_max;
+#endif
 
     /* Run Control State */
     int intercepted;
@@ -256,7 +264,10 @@ int context_resume(Context * ctx, int mode, ContextAddress range_start, ContextA
 }
 
 int context_can_resume(Context * ctx, int mode) {
-    return 0;
+    ContextCache * c = *EXT(ctx);
+    if (mode == RM_TERMINATE) return c->can_terminate;
+    if (mode == RM_DETACH) return c->can_detach;
+    return c->can_resume & (1 << mode);
 }
 
 int context_single_step(Context * ctx) {
@@ -411,6 +422,18 @@ static void free_stack_frame_cache(StackFrameCache * s) {
     }
 }
 
+static void free_context_extra_props(ContextCache * c) {
+#if ENABLE_ContextExtraProperties
+    unsigned i;
+    for (i = 0; i < c->props_cnt; i++) {
+        loc_free(c->props_names[i]);
+        loc_free(c->props_values[i]);
+    }
+    loc_free(c->props_names);
+    loc_free(c->props_values);
+#endif
+}
+
 static void free_context_cache(ContextCache * c) {
     assert(c->pending_get_mmap == NULL);
     assert(c->pending_regs_cnt == 0);
@@ -454,6 +477,7 @@ static void free_context_cache(ContextCache * c) {
 #if ENABLE_ContextISA
     if (c->def_isa_cache != NULL) free_isa_cache(c->def_isa_cache);
 #endif
+    free_context_extra_props(c);
     loc_free(c);
 }
 
@@ -494,6 +518,8 @@ static void read_run_control_context_property(InputStream * inp, const char * na
     else if (strcmp(name, "ProcessID") == 0) json_read_string(inp, ctx->process_id, sizeof(ctx->process_id));
     else if (strcmp(name, "CreatorID") == 0) json_read_string(inp, ctx->creator_id, sizeof(ctx->creator_id));
     else if (strcmp(name, "SymbolsGroup") == 0) json_read_string(inp, ctx->symbols_id, sizeof(ctx->symbols_id));
+    else if (strcmp(name, "RCGroup") == 0) json_read_string(inp, ctx->rc_group_id, sizeof(ctx->rc_group_id));
+    else if (strcmp(name, "BPGroup") == 0) json_read_string(inp, ctx->bp_group_id, sizeof(ctx->bp_group_id));
     else if (strcmp(name, "CPUGroup") == 0) json_read_string(inp, ctx->cpu_id, sizeof(ctx->cpu_id));
     else if (strcmp(name, "File") == 0) ctx->file = json_read_alloc_string(inp);
     else if (strcmp(name, "Name") == 0) ctx->name = json_read_alloc_string(inp);
@@ -502,10 +528,23 @@ static void read_run_control_context_property(InputStream * inp, const char * na
     else if (strcmp(name, "WordSize") == 0) ctx->word_size = json_read_long(inp);
     else if (strcmp(name, "CanSuspend") == 0) ctx->can_suspend = json_read_boolean(inp);
     else if (strcmp(name, "CanResume") == 0) ctx->can_resume = json_read_long(inp);
-    else if (strcmp(name, "CanCount") == 0) ctx->can_count = json_read_long(inp);
     else if (strcmp(name, "CanTerminate") == 0) ctx->can_terminate = json_read_boolean(inp);
+    else if (strcmp(name, "CanDetach") == 0) ctx->can_detach = json_read_boolean(inp);
     else if (strcmp(name, "BigEndian") == 0) ctx->big_endian = json_read_boolean(inp);
-    else json_skip_object(inp);
+    else {
+#if ENABLE_ContextExtraProperties
+        if (ctx->props_cnt >= ctx->props_max) {
+            ctx->props_max += 16;
+            ctx->props_names = (char **)loc_realloc(ctx->props_names, sizeof(char *) * ctx->props_max);
+            ctx->props_values = (char **)loc_realloc(ctx->props_values, sizeof(char *) * ctx->props_max);
+        }
+        ctx->props_names[ctx->props_cnt] = loc_strdup(name);
+        ctx->props_values[ctx->props_cnt] = json_read_object(inp);
+        ctx->props_cnt++;
+#else
+        json_skip_object(inp);
+#endif
+    }
 }
 
 static void read_context_suspended_data(InputStream * inp, const char * name, void * args) {
@@ -564,6 +603,11 @@ static void read_context_changed_item(InputStream * inp, void * args) {
     if (c != NULL) {
         strcpy(c->parent_id, b->parent_id);
         strcpy(c->process_id, b->process_id);
+        strcpy(c->creator_id, b->creator_id);
+        strcpy(c->symbols_id, b->symbols_id);
+        strcpy(c->rc_group_id, b->rc_group_id);
+        strcpy(c->bp_group_id, b->bp_group_id);
+        strcpy(c->cpu_id, b->cpu_id);
         loc_free(c->file);
         c->file = b->file;
         b->file = NULL;
@@ -574,8 +618,18 @@ static void read_context_changed_item(InputStream * inp, void * args) {
         c->is_container = b->is_container;
         c->can_suspend = b->can_suspend;
         c->can_resume = b->can_resume;
-        c->can_count = b->can_count;
         c->can_terminate = b->can_terminate;
+        c->can_detach = b->can_detach;
+        c->big_endian = b->big_endian;
+#if ENABLE_ContextExtraProperties
+        free_context_extra_props(c);
+        c->props_cnt = b->props_cnt;
+        c->props_max = b->props_max;
+        c->props_names = b->props_names;
+        c->props_values = b->props_values;
+        b->props_names = NULL;
+        b->props_values = NULL;
+#endif
         if (p->rc_done) set_context_links(c);
         send_context_changed_event(c->ctx);
     }
@@ -1039,6 +1093,16 @@ int context_has_state(Context * ctx) {
     return (*EXT(ctx))->has_state;
 }
 
+#if ENABLE_ContextExtraProperties
+int context_get_extra_properties(Context * ctx, const char *** names, const char *** values, int * cnt) {
+    ContextCache * c = *EXT(ctx);
+    *names = (const char **)c->props_names;
+    *values = (const char **)c->props_values;
+    *cnt = (int)c->props_cnt;
+    return 0;
+}
+#endif
+
 Context * context_get_group(Context * ctx, int group) {
     ContextCache * c = *EXT(ctx);
     switch (group) {
@@ -1048,6 +1112,18 @@ Context * context_get_group(Context * ctx, int group) {
             if (h != NULL) return h->ctx;
         }
         break;
+    case CONTEXT_GROUP_BREAKPOINT:
+        if (c->bp_group_id[0]) {
+            ContextCache * h = find_context_cache(c->peer, c->bp_group_id);
+            if (h != NULL) return h->ctx;
+        }
+        return NULL;
+    case CONTEXT_GROUP_INTERCEPT:
+        if (c->rc_group_id[0]) {
+            ContextCache * h = find_context_cache(c->peer, c->rc_group_id);
+            if (h != NULL) return h->ctx;
+        }
+        return ctx;
     case CONTEXT_GROUP_CPU:
         if (c->cpu_id[0]) {
             ContextCache * h = find_context_cache(c->peer, c->cpu_id);

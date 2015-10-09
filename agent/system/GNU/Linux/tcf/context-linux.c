@@ -1067,6 +1067,13 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
 }
 #endif
 
+#if ENABLE_ContextExtraProperties
+int context_get_extra_properties(Context * ctx, const char *** names, const char *** values, int * cnt) {
+    *cnt = 0;
+    return 0;
+}
+#endif
+
 static Context * find_pending_attach(pid_t pid) {
     LINK * l = attach_list.next;
     while (l != &attach_list) {

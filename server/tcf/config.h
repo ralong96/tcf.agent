@@ -143,10 +143,13 @@
 #define ENABLE_ContextMux       0
 #endif
 
+#if !defined(ENABLE_ContextExtraProperties)
+#define ENABLE_ContextExtraProperties           0
+#endif
+
 #define ENABLE_RCBP_TEST        0
 
 #define ENABLE_ContextMemoryProperties          0
-#define ENABLE_ContextExtraProperties           0
 #define ENABLE_ContextStateProperties           0
 #define ENABLE_ExtendedMemoryErrorReports       0
 #define ENABLE_MemoryAccessModes                0
