@@ -629,6 +629,7 @@ static void read_context_changed_item(InputStream * inp, void * args) {
         c->props_values = b->props_values;
         b->props_names = NULL;
         b->props_values = NULL;
+        b->props_cnt = 0;
 #endif
         if (p->rc_done) set_context_links(c);
         send_context_changed_event(c->ctx);
