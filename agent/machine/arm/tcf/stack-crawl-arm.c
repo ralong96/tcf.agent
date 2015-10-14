@@ -1676,6 +1676,21 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
         reg_data[rd].v = op1val | op2val;
         break;
     case 13: /* MOV: Rd:= Op2 */
+        if (rd == 15) {
+            uint32_t prev_instr = 0;
+            uint32_t pc = reg_data[15].v;
+            if (pc >= 4 && read_word(pc - 4, &prev_instr) == 0 && prev_instr == 0xe1a0e00f) {
+                /* Diab Data compiler generates "mov lr, pc; mov pc, ..." for indirect function call. */
+                /* Subroutines are expected to preserve the contents of r4 to r11 and r13 */
+                unsigned i;
+                for (i = 0; i <= 14; i++) {
+                    if (i >= 4 && i <= 11) continue;
+                    if (i == 13) continue;
+                    reg_data[i].o = 0;
+                }
+                return;
+            }
+        }
         reg_data[rd].v = op2val;
         break;
     case 14: /* BIC: Rd:= Op1 AND NOT Op2 */
