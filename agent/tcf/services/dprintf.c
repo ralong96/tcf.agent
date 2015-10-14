@@ -115,14 +115,13 @@ void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsig
 
     while (fmt[fmt_pos]) {
         char ch = fmt[fmt_pos];
-        if (ch == 0) break;
         if (ch == '%' && fmt[fmt_pos + 1] == '%') {
             fmt_pos++;
         }
         else if (ch == '%' && arg_pos < args_cnt) {
             char arg_buf[256];
             char arg_fmt[256];
-            unsigned pos = fmt_pos++;
+            unsigned arg_fmt_pos = 0;
             unsigned arg_len = 0;
             unsigned flag_l = 0;
             unsigned flag_h = 0;
@@ -132,10 +131,13 @@ void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsig
             unsigned flag_t = 0;
             char fmt_ch = 0;
             Value * arg_val = args + arg_pos++;
-            while (fmt[fmt_pos] && fmt_pos - pos < sizeof(arg_fmt)) {
-                ch = fmt[fmt_pos];
-                if (ch == 0) break;
-                fmt_pos++;
+            arg_fmt[arg_fmt_pos++] = ch;
+            fmt_pos++;
+            while (fmt[fmt_pos]) {
+                ch = fmt[fmt_pos++];
+                if (arg_fmt_pos < sizeof(arg_fmt) - 1) {
+                    arg_fmt[arg_fmt_pos++] = ch;
+                }
                 switch (ch) {
                 case 'l': flag_l++; continue;
                 case 'L': flag_L++; continue;
@@ -148,13 +150,26 @@ void dprintf_expression_ctx(Context * ctx, const char * fmt, Value * args, unsig
                     fmt_ch = ch;
                     break;
                 }
+                if (ch == '*') {
+                    arg_fmt_pos--;
+                    if (arg_pos < args_cnt) {
+                        uint64_t n = 0;
+                        unsigned m = 0;
+                        char ns[256];
+                        value_to_unsigned(arg_val, &n);
+                        snprintf(ns, sizeof(ns), "%u", (unsigned)n);
+                        while (arg_fmt_pos < sizeof(arg_fmt) - 1 && ns[m] != 0) {
+                            arg_fmt[arg_fmt_pos++] = ns[m++];
+                        }
+                        arg_val = args + arg_pos++;
+                    }
+                }
             }
+            arg_fmt[arg_fmt_pos++] = 0;
             if (fmt_ch != '%') {
                 int64_t n = 0;
                 uint64_t u = 0;
                 double d = 0;
-                memcpy(arg_fmt, fmt + pos, fmt_pos - pos);
-                arg_fmt[fmt_pos - pos] = 0;
                 arg_buf[0] = 0;
                 switch (fmt_ch) {
                 case 'd':
