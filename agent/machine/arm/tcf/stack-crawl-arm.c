@@ -1155,6 +1155,16 @@ static void return_from_exception(void) {
     cpsr_data = spsr_data;
 }
 
+static void function_call(void) {
+    /* Subroutines are expected to preserve the contents of r4 to r11 and r13 */
+    unsigned i;
+    for (i = 0; i <= 14; i++) {
+        if (i >= 4 && i <= 11) continue;
+        if (i == 13) continue;
+        reg_data[i].o = 0;
+    }
+}
+
 static int trace_arm_bx(uint32_t instr) {
     uint8_t rn = instr & 0xf;
 
@@ -1541,13 +1551,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
         chk_loaded(14);
         if (reg_data[14].o && reg_data[14].v == reg_data[15].v + 4) {
             /* SUB PC,R0,#31 - special form of a function call */
-            /* Subroutines are expected to preserve the contents of r4 to r11 and r13 */
-            unsigned i;
-            for (i = 0; i <= 14; i++) {
-                if (i >= 4 && i <= 11) continue;
-                if (i == 13) continue;
-                reg_data[i].o = 0;
-            }
+            function_call();
             return;
         }
     }
@@ -1681,13 +1685,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
             uint32_t pc = reg_data[15].v;
             if (pc >= 4 && read_word(pc - 4, &prev_instr) == 0 && prev_instr == 0xe1a0e00f) {
                 /* Diab Data compiler generates "mov lr, pc; mov pc, ..." for indirect function call. */
-                /* Subroutines are expected to preserve the contents of r4 to r11 and r13 */
-                unsigned i;
-                for (i = 0; i <= 14; i++) {
-                    if (i >= 4 && i <= 11) continue;
-                    if (i == 13) continue;
-                    reg_data[i].o = 0;
-                }
+                function_call();
                 return;
             }
         }
@@ -1989,13 +1987,7 @@ static int trace_arm(void) {
     }
     else if ((instr & 0x0f000000) == 0x0b000000 ||
              (instr & 0x0ffffff0) == 0x012fff30 ) { /* BL */
-        /* Subroutines are expected to preserve the contents of r4 to r11 and r13 */
-        unsigned i;
-        for (i = 0; i <= 14; i++) {
-            if (i >= 4 && i <= 11) continue;
-            if (i == 13) continue;
-            reg_data[i].o = 0;
-        }
+        function_call();
     }
     else if ((instr & 0x0f9000f0) == 0x01000000) { /* MRS, MSR */
         trace_arm_mrs_msr(instr);
