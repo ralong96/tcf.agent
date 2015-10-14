@@ -49,6 +49,7 @@
 #define USE_MEM_CACHE        1
 #define MEM_HASH_SIZE       61
 #define BRANCH_LIST_SIZE    32
+#define REG_DATA_SIZE       16
 
 #define REG_VAL_ADDR         1
 #define REG_VAL_STACK        2
@@ -63,12 +64,12 @@ typedef struct {
     uint32_t v[MEM_HASH_SIZE]; /* Value */
     uint32_t a[MEM_HASH_SIZE]; /* Address */
     uint8_t  used[MEM_HASH_SIZE];
-    uint8_t  tracked[MEM_HASH_SIZE];
+    uint8_t  valid[MEM_HASH_SIZE];
 } MemData;
 
 typedef struct {
     uint32_t addr;
-    RegData reg_data[16];
+    RegData reg_data[REG_DATA_SIZE];
     RegData cpsr_data;
     RegData spsr_data;
     MemData mem_data;
@@ -209,12 +210,12 @@ static int mem_hash_index(const uint32_t addr) {
     return -1;
 }
 
-static int mem_hash_read(uint32_t addr, uint32_t * data, int * tracked) {
+static int mem_hash_read(uint32_t addr, uint32_t * data, int * valid) {
     int i = mem_hash_index(addr);
 
     if (i >= 0 && mem_data.used[i] && mem_data.a[i] == addr) {
-        *data    = mem_data.v[i];
-        *tracked = mem_data.tracked[i];
+        *data  = mem_data.v[i];
+        *valid = mem_data.valid[i];
         return 0;
     }
 
@@ -223,29 +224,13 @@ static int mem_hash_read(uint32_t addr, uint32_t * data, int * tracked) {
     return -1;
 }
 
-static int mem_hash_write(uint32_t addr, uint32_t value, int valid) {
-    int i = mem_hash_index(addr);
-
-    if (i < 0) {
-        set_errno(ERR_OTHER, "Memory hash overflow");
-        return -1;
-    }
-
-    /* Store the item */
-    mem_data.used[i] = 1;
-    mem_data.a[i] = addr;
-    mem_data.v[i] = valid ? value : 0;
-    mem_data.tracked[i] = (uint8_t)valid;
-    return 0;
-}
-
 static int load_reg(uint32_t addr, int r) {
-    int tracked = 0;
+    int valid = 0;
 
     reg_data[r].o = 0;
     /* Check if the value can be found in the hash */
-    if (mem_hash_read(addr, &reg_data[r].v, &tracked) == 0) {
-        if (tracked) reg_data[r].o = REG_VAL_OTHER;
+    if (mem_hash_read(addr, &reg_data[r].v, &valid) == 0) {
+        if (valid) reg_data[r].o = REG_VAL_OTHER;
     }
     else {
         /* Not in the hash, so read from real memory */
@@ -268,28 +253,39 @@ static int chk_loaded(int r) {
     return load_reg(reg_data[r].v, r);
 }
 
-static int store_reg(uint32_t addr, int r) {
+static int mem_hash_write(uint32_t addr, uint32_t value, int valid) {
+    int h = mem_hash_index(addr);
     unsigned i;
-    if (chk_loaded(r) < 0) return -1;
-    assert(reg_data[r].o != REG_VAL_ADDR);
-    assert(reg_data[r].o != REG_VAL_STACK);
-    for (i = 0; i < 16; i++) {
+
+    if (h < 0) {
+        set_errno(ERR_OTHER, "Memory hash overflow");
+        return -1;
+    }
+
+    /* Fix lazy loaded registers */
+    for (i = 0; i < REG_DATA_SIZE; i++) {
         if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
         if (reg_data[i].v >= addr + 4) continue;
         if (reg_data[i].v + 4 <= addr) continue;
         if (load_reg(reg_data[i].v, i) < 0) return -1;
     }
+
+    /* Store the item */
+    mem_data.used[h] = 1;
+    mem_data.a[h] = addr;
+    mem_data.v[h] = valid ? value : 0;
+    mem_data.valid[h] = (uint8_t)valid;
+    return 0;
+}
+
+static int store_reg(uint32_t addr, int r) {
+    if (chk_loaded(r) < 0) return -1;
+    assert(reg_data[r].o != REG_VAL_ADDR);
+    assert(reg_data[r].o != REG_VAL_STACK);
     return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0);
 }
 
 static int store_invalid(uint32_t addr) {
-    unsigned i;
-    for (i = 0; i < 16; i++) {
-        if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
-        if (reg_data[i].v >= addr + 4) continue;
-        if (reg_data[i].v + 4 <= addr) continue;
-        if (load_reg(reg_data[i].v, i) < 0) return -1;
-    }
     return mem_hash_write(addr, 0, 0);
 }
 
@@ -2117,7 +2113,7 @@ static int trace_instructions(void) {
         memcpy(reg_data, b->reg_data, sizeof(reg_data));
     }
     trace(LOG_STACK, "Stack crawl: Function epilogue not found");
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < REG_DATA_SIZE; i++) {
         if (i >= 4 && i <= 11) { /* Local variables */
             reg_data[i] = org_4to11[i - 4];
         }

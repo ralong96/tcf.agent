@@ -31,6 +31,7 @@
 
 #define MEM_HASH_SIZE       61
 #define BRANCH_LIST_SIZE    12
+#define REG_DATA_SIZE       32
 
 #define REG_VAL_ADDR         1
 #define REG_VAL_STACK        2
@@ -45,7 +46,7 @@ typedef struct {
     uint64_t v[MEM_HASH_SIZE]; /* Value */
     uint64_t a[MEM_HASH_SIZE]; /* Address */
     uint8_t  used[MEM_HASH_SIZE];
-    uint8_t  tracked[MEM_HASH_SIZE];
+    uint8_t  valid[MEM_HASH_SIZE];
 } MemData;
 
 typedef struct {
@@ -58,7 +59,7 @@ typedef struct {
 
 static Context * stk_ctx = NULL;
 static StackFrame * stk_frame = NULL;
-static RegData reg_data[32];
+static RegData reg_data[REG_DATA_SIZE];
 static RegData cpsr_data;
 static RegData pc_data;
 static MemData mem_data;
@@ -177,12 +178,12 @@ static int mem_hash_index(const uint64_t addr) {
     return -1;
 }
 
-static int mem_hash_read(uint64_t addr, uint64_t * data, int * tracked) {
+static int mem_hash_read(uint64_t addr, uint64_t * data, int * valid) {
     int i = mem_hash_index(addr);
 
     if (i >= 0 && mem_data.used[i] && mem_data.a[i] == addr) {
-        *data    = mem_data.v[i];
-        *tracked = mem_data.tracked[i];
+        *data  = mem_data.v[i];
+        *valid = mem_data.valid[i];
         return 0;
     }
 
@@ -191,28 +192,12 @@ static int mem_hash_read(uint64_t addr, uint64_t * data, int * tracked) {
     return -1;
 }
 
-static int mem_hash_write(uint64_t addr, uint64_t value, int valid) {
-    int i = mem_hash_index(addr);
-
-    if (i < 0) {
-        set_errno(ERR_OTHER, "Memory hash overflow");
-        return -1;
-    }
-
-    /* Store the item */
-    mem_data.used[i] = 1;
-    mem_data.a[i] = addr;
-    mem_data.v[i] = valid ? value : 0;
-    mem_data.tracked[i] = (uint8_t)valid;
-    return 0;
-}
-
 static int load_reg(uint64_t addr, int r) {
-    int tracked = 0;
+    int valid = 0;
 
     /* Check if the value can be found in the hash */
-    if (mem_hash_read(addr, &reg_data[r].v, &tracked) == 0) {
-        reg_data[r].o = tracked ? REG_VAL_OTHER : 0;
+    if (mem_hash_read(addr, &reg_data[r].v, &valid) == 0) {
+        reg_data[r].o = valid ? REG_VAL_OTHER : 0;
     }
     else {
         /* Not in the hash, so read from real memory */
@@ -234,28 +219,39 @@ static int chk_loaded(int r) {
     return load_reg(reg_data[r].v, r);
 }
 
-static int store_reg(uint64_t addr, int r) {
+static int mem_hash_write(uint64_t addr, uint64_t value, int valid) {
+    int h = mem_hash_index(addr);
     unsigned i;
-    if (chk_loaded(r) < 0) return -1;
-    assert(reg_data[r].o != REG_VAL_ADDR);
-    assert(reg_data[r].o != REG_VAL_STACK);
-    for (i = 0; i < 32; i++) {
+
+    if (h < 0) {
+        set_errno(ERR_OTHER, "Memory hash overflow");
+        return -1;
+    }
+
+    /* Fix lazy loaded registers */
+    for (i = 0; i < REG_DATA_SIZE; i++) {
         if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
         if (reg_data[i].v >= addr + 8) continue;
         if (reg_data[i].v + 8 <= addr) continue;
         if (load_reg(reg_data[i].v, i) < 0) return -1;
     }
+
+    /* Store the item */
+    mem_data.used[h] = 1;
+    mem_data.a[h] = addr;
+    mem_data.v[h] = valid ? value : 0;
+    mem_data.valid[h] = (uint8_t)valid;
+    return 0;
+}
+
+static int store_reg(uint64_t addr, int r) {
+    if (chk_loaded(r) < 0) return -1;
+    assert(reg_data[r].o != REG_VAL_ADDR);
+    assert(reg_data[r].o != REG_VAL_STACK);
     return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0);
 }
 
 static int store_invalid(uint64_t addr) {
-    unsigned i;
-    for (i = 0; i < 32; i++) {
-        if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
-        if (reg_data[i].v >= addr + 8) continue;
-        if (reg_data[i].v + 8 <= addr) continue;
-        if (load_reg(reg_data[i].v, i) < 0) return -1;
-    }
     return mem_hash_write(addr, 0, 0);
 }
 
@@ -989,7 +985,7 @@ static int trace_instructions(void) {
         memcpy(reg_data, b->reg_data, sizeof(reg_data));
     }
     trace(LOG_STACK, "Stack crawl: Function epilogue not found");
-    for (i = 0; i < 32; i++) reg_data[i].o = 0;
+    for (i = 0; i < REG_DATA_SIZE; i++) reg_data[i].o = 0;
     cpsr_data.o = 0;
     pc_data.o = 0;
     if (org_sp.v != 0 && org_lr.v != 0 && org_pc.v != org_lr.v) {
