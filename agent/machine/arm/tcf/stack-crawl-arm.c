@@ -100,6 +100,9 @@ typedef struct {
 #define MEM_CACHE_SIZE       8
 static MemCache mem_cache[MEM_CACHE_SIZE];
 
+/* Extension can access static variables and static functions */
+#include <machine/arm/tcf/stack-crawl-arm-ext.h>
+
 static int read_byte(uint32_t addr, uint8_t * bt) {
     unsigned i = 0;
     MemCache * c = NULL;
@@ -2049,6 +2052,9 @@ static int trace_instructions(void) {
     RegData org_4to11[8];
     RegData org_cpsr = cpsr_data;
     RegData org_spsr = spsr_data;
+
+    TRACE_INSTRUCTIONS_HOOK;
+
     memcpy(org_4to11, reg_data + 4, sizeof(org_4to11));
     for (;;) {
         unsigned t = 0;
@@ -2113,6 +2119,9 @@ static int trace_instructions(void) {
         memcpy(reg_data, b->reg_data, sizeof(reg_data));
     }
     trace(LOG_STACK, "Stack crawl: Function epilogue not found");
+
+    EPILOGUE_NOT_FOUND_HOOK;
+
     for (i = 0; i < REG_DATA_SIZE; i++) {
         if (i >= 4 && i <= 11) { /* Local variables */
             reg_data[i] = org_4to11[i - 4];
