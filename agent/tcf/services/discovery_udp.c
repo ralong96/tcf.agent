@@ -861,6 +861,11 @@ static void local_peer_changed(PeerServer * ps, int type, void * arg) {
     switch (type) {
     case PS_EVENT_ADDED:
     case PS_EVENT_CHANGED:
+        if (udp_server_socket >= 0 && (ps->flags & PS_FLAG_LOCAL) != 0) {
+            /* Local peer changes are often caused by changes in the network configuration.
+             * We should update interface list before using it to send packets. */
+            ifc_cnt = build_ifclist(udp_server_socket, MAX_IFC, ifc_list);
+        }
         udp_send_peer_info(ps, NULL);
         break;
     }
