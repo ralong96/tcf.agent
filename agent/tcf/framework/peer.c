@@ -76,12 +76,12 @@ static int is_same(PeerServer * a, PeerServer * b) {
 
 static void clear_stale_peers(void * x) {
     PeerServer ** sp = &peers;
-    PeerServer * s;
     time_t timenow = time(NULL);
-    int keep_timer = 0;
 
     assert(is_dispatch_thread());
-    while ((s = *sp) != NULL) {
+    for (;;) {
+        PeerServer * s = *sp;
+        if (s == NULL) break;
         if (s->expiration_time <= timenow) {
             /* Delete stale entry */
             *sp = s->next;
@@ -90,11 +90,10 @@ static void clear_stale_peers(void * x) {
             peer_server_free(s);
         }
         else {
-            keep_timer = 1;
             sp = &s->next;
         }
     }
-    if (keep_timer) {
+    if (peers != NULL) {
         post_event_with_delay(clear_stale_peers, NULL, PEER_DATA_REFRESH_PERIOD * 1000000);
     }
     else {
