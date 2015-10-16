@@ -664,6 +664,10 @@
 			Name="services"
 			>
 			<File
+				RelativePath=".\tcf\services\breakpoints-ext.h"
+				>
+			</File>
+			<File
 				RelativePath=".\tcf\services\breakpoints.c"
 				>
 			</File>

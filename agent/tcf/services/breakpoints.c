@@ -41,6 +41,7 @@
 #include <tcf/services/runctrl.h>
 #include <tcf/services/contextquery.h>
 #include <tcf/services/breakpoints.h>
+#include <tcf/services/breakpoints-ext.h>
 #include <tcf/services/expressions.h>
 #include <tcf/services/linenumbers.h>
 #include <tcf/services/stacktrace.h>
@@ -1576,6 +1577,10 @@ static void plant_breakpoint_address_iterator(CodeArea * area, void * x) {
         ContextAddress addr = area->start_address;
         if ((addr == area->end_address || area->start_line != args->bp->line) &&
             area->next_address != 0) addr = area->next_address;
+#ifdef  BREAKPOINT_ADDR_ADJUST
+        /* Adjust breakpoint address <addr> if needed */
+        BREAKPOINT_ADDR_ADJUST;
+#endif
         plant_breakpoint(args->ctx, args->bp, addr, 1);
     }
     else {
