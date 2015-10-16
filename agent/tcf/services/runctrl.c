@@ -1492,7 +1492,8 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
     HIDDEN_HOOK;
     if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip, &sym) == 0 &&
             get_symbol_name(sym, &name) == 0 && name != NULL &&
-            strcmp(name, "__i686.get_pc_thunk.bx") == 0 &&
+            ((strcmp(name, "__i686.get_pc_thunk.bx") == 0) ||
+             (strcmp(name, "__x86.get_pc_thunk.bx") == 0)) &&
             get_symbol_address(sym, &sym_addr) == 0) {
         if (get_symbol_size(sym, &sym_size) < 0 || sym_size == 0) {
             *addr0 = ip;
