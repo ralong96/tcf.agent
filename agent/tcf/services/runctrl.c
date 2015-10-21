@@ -2263,7 +2263,6 @@ static void sync_run_state(void) {
         ext->pending_safe_event = 0;
         if (context_has_state(ctx)) {
             Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
-            if (!ctx->exited && ctx->stopped && !ext->intercepted) get_current_pc(ctx);
             EXT(grp)->intercept_group = 0;
         }
         else if (ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) {
@@ -2307,6 +2306,7 @@ static void sync_run_state(void) {
             cancel_step_mode(ctx);
         }
         else {
+            get_current_pc(ctx);
             cache_set_def_channel(ext->step_channel);
             if (update_step_machine_state_inlined(ctx) < 0) {
                 int error = errno;
@@ -2361,6 +2361,9 @@ static void sync_run_state(void) {
                 resume_error(ctx, errno);
                 err_cnt++;
             }
+        }
+        if (ctx->pending_intercept && ctx->stopped) {
+            if (ext->pc_error == ERR_OTHER) get_current_pc(ctx);
         }
     }
 
