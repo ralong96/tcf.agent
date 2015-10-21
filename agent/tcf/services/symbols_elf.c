@@ -2163,12 +2163,14 @@ int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
                         elf_next_symbol_by_address(&sym_info);
                         if (sym_info.sym_section == NULL) {
                             *range_size = (ContextAddress)(sec->addr + sec->size) - *range_addr;
+                            *range_addr += ip - lt_addr;
                             return 0;
                         }
                         if (sym_info.name != NULL && *sym_info.name == '$') {
                             ContextAddress sym_addr = (ContextAddress)sym_info.value;
                             if (file->type == ET_REL) sym_addr += (ContextAddress)sec->addr;
                             *range_size = sym_addr - *range_addr;
+                            *range_addr += ip - lt_addr;
                             return 0;
                         }
                     }
