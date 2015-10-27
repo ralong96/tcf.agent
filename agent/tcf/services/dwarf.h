@@ -623,6 +623,7 @@
 #define CFA_val_offset              0x14
 #define CFA_val_offset_sf           0x15
 #define CFA_val_expression          0x16
+#define CFA_CFA_GNU_window_save     0x2d
 #define CFA_GNU_args_size           0x2e
 #define CFA_GNU_negative_offset_ext 0x2f
 #define CFA_lo_user                 0x1c

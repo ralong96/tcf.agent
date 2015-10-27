@@ -406,8 +406,9 @@ static U8_T read_frame_data_pointer(U1_T encoding, ELF_Section ** sec, U8_T func
 
 static void exec_stack_frame_instruction(U8_T func_addr) {
     RegisterRules * reg;
-    U4_T n;
     U1_T op = dio_ReadU1();
+    U4_T n;
+
     switch (op) {
     case CFA_nop:
         break;
@@ -511,6 +512,19 @@ static void exec_stack_frame_instruction(U8_T func_addr) {
         reg->offset = dio_ReadULEB128();
         reg->expression = dio_GetPos();
         dio_Skip(reg->offset);
+        break;
+    case CFA_CFA_GNU_window_save:
+        /* SPARC-specific code */
+        for (n = 8; n < 16; n++) {
+            reg = get_reg(&frame_regs, n);
+            reg->rule = RULE_REGISTER;
+            reg->offset = n + 16;
+        }
+        for (n = 16; n < 32; n++) {
+            reg = get_reg(&frame_regs, n);
+            reg->rule = RULE_OFFSET;
+            reg->offset = (n - 16) * (rules.reg_id_scope.machine == EM_SPARCV9 ? 8 : 4);
+        }
         break;
     case CFA_GNU_args_size:
         /* This instruction specifies the total size of the arguments
