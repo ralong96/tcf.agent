@@ -249,17 +249,26 @@ int get_stack_tracing_info(Context * ctx, ContextAddress addr, StackTracingInfo 
     return 0;
 }
 
+static int error_priority(int error) {
+    switch (get_error_code(error)) {
+    case 0: return 0;
+    case ERR_INV_FORMAT: return 1;
+    case ENOENT: return 2;
+    }
+    return 3;
+}
+
 const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
-    unsigned i;
-    if (module == NULL) {
-        errno = 0;
-        return NULL;
+    int error = 0;
+    if (module != NULL) {
+        unsigned i;
+        for (i = 0; i < reader_cnt; i++) {
+            const char * name = readers[i]->get_symbol_file_name(ctx, module);
+            if (name != NULL) return name;
+            if (error_priority(errno) > error_priority(error)) error = errno;
+        }
     }
-    for (i = 0; i < reader_cnt; i++) {
-        const char * name = readers[i]->get_symbol_file_name(ctx, module);
-        if (name != NULL) return name;
-    }
-    errno = 0;
+    errno = error;
     return NULL;
 }
 
