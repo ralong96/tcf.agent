@@ -415,26 +415,31 @@ static uint32_t calc_shift(uint32_t shift_type, uint32_t shift_imm, uint32_t val
     return val;
 }
 
+static void bx_write_pc(void) {
+    /* Determine the new mode */
+    chk_loaded(15);
+    if (reg_data[15].o) {
+        int thumb_ee = (cpsr_data.v & 0x01000000) && (cpsr_data.v & 0x00000020);
+        if (thumb_ee) {
+            /* Remaining in ThumbEE state */
+            reg_data[15].v &= ~0x1u;
+        }
+        else if ((reg_data[15].v & 0x1u) != 0) {
+            /* Branch to Thumb */
+            cpsr_data.v |= 0x00000020;
+            reg_data[15].v &= ~0x1u;
+        }
+        else if ((reg_data[15].v & 0x2u) == 0) {
+            /* Branch to ARM */
+            cpsr_data.v &= ~0x00000020;
+        }
+    }
+}
+
 static void trace_bx(unsigned rn) {
     /* Set the new PC value */
     reg_data[15] = reg_data[rn];
-    chk_loaded(15);
-
-    /* Determine the new mode */
-    if (reg_data[15].o) {
-        int thumb_ee = (cpsr_data.v & 0x01000000) && (cpsr_data.v & 0x00000020);
-        if (!thumb_ee) {
-            if ((reg_data[15].v & 0x1u) != 0) {
-                /* Branch to Thumb */
-                cpsr_data.v |= 0x00000020;
-                reg_data[15].v &= ~0x1u;
-            }
-            else if ((reg_data[15].v & 0x2u) == 0) {
-                /* Branch to ARM */
-                cpsr_data.v &= ~0x00000020;
-            }
-        }
-    }
+    bx_write_pc();
 
     /* Check if the return value is from the stack */
     if (rn == 14 || reg_data[rn].o == REG_VAL_STACK) {
@@ -982,15 +987,7 @@ static int trace_thumb(void) {
                     return -1;
                 }
 
-                /* The bottom bit should have been set to indicate that
-                 *  the caller was from Thumb.  This would allow return
-                 *  by BX for interworking APCS.
-                 */
-                if ((reg_data[15].v & 0x1) == 0) {
-                    /* Pop into the PC will not switch mode */
-                    set_fmt_errno(ERR_OTHER, "Return address not to Thumb: 0x%08x", reg_data[15].v);
-                    return -1;
-                }
+                bx_write_pc();
 
                 /* Update the sp */
                 reg_data[13].v += 4;
@@ -1332,6 +1329,7 @@ static void trace_arm_ldr_str(uint32_t instr) {
     else if (L) {
         reg_data[rd].o = 0;
     }
+    if (rd == 15) bx_write_pc();
     if (rd == 15 && rn == 13 && !I && !P && !W) { /* pop {pc} */
         /* Found the return instruction */
         trace_return = 1;
@@ -1698,6 +1696,8 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
         break;
     }
 
+    if (rd == 15) bx_write_pc();
+
     if (rd == 15 && !I && !(operand2 & 0x0f90) && (operand2 & 0x000f) == 14 && op2origin) {
         /* move pc, lr - return */
         trace_return = 1;
@@ -1810,6 +1810,7 @@ static int trace_arm_ldm_stm(uint32_t instr) {
 
     /* Check if the PC was loaded */
     if (L && (regs & (1 << 15))) {
+        bx_write_pc();
         /* Found the return address */
         trace_return = 1;
     }
@@ -2136,12 +2137,14 @@ static int trace_instructions(void) {
         cpsr_data = org_cpsr;
         spsr_data = org_spsr;
         reg_data[15] = org_lr;
+        bx_write_pc();
         return_from_exception();
         return 0;
     }
     if (org_sp.v != 0 && org_lr.v != 0 && org_pc.v != org_lr.v) {
         reg_data[13] = org_sp;
         reg_data[15] = org_lr;
+        bx_write_pc();
     }
     return 0;
 }

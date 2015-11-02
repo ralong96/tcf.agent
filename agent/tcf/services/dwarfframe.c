@@ -868,6 +868,11 @@ static void generate_register_commands(RegisterRules * reg, RegisterDefinition *
         add_command(SFT_CMD_NUMBER)->args.num = 8;
         add_command(SFT_CMD_ADD);
     }
+    if (rules.reg_id_scope.machine == EM_ARM &&
+            dst_reg_def != NULL && dst_reg_def->dwarf_id == 15) {
+        add_command(SFT_CMD_NUMBER)->args.num = 0xfffffffe;
+        add_command(SFT_CMD_AND);
+    }
     if (dwarf_stack_trace_regs_cnt >= trace_regs_max) {
         int i;
         trace_regs_max += 16;
