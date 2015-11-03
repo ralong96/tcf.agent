@@ -646,7 +646,7 @@ static int trace_thumb(void) {
     /* Attempt to read the instruction */
     if (read_half(reg_data[15].v, &instr) < 0) return -1;
 
-    /* Format 1: Move shifted register
+    /* Move shifted register
      *  LSL Rd, Rs, #Offset5
      *  LSR Rd, Rs, #Offset5
      *  ASR Rd, Rs, #Offset5
@@ -681,7 +681,7 @@ static int trace_thumb(void) {
             }
         }
     }
-    /* Format 2: add/subtract
+    /* add/subtract
      *  ADD Rd, Rs, Rn
      *  ADD Rd, Rs, #Offset3
      *  SUB Rd, Rs, Rn
@@ -712,7 +712,7 @@ static int trace_thumb(void) {
             }
         }
     }
-    /* Format 3: move/compare/add/subtract immediate
+    /* move/compare/add/subtract immediate
      *  MOV Rd, #Offset8
      *  CMP Rd, #Offset8
      *  ADD Rd, #Offset8
@@ -744,7 +744,7 @@ static int trace_thumb(void) {
             break;
         }
     }
-    /* Format 4: ALU operations
+    /* ALU operations
      *  AND Rd, Rs
      *  EOR Rd, Rs
      *  LSL Rd, Rs
@@ -863,7 +863,7 @@ static int trace_thumb(void) {
             break;
         }
     }
-    /* Format 5: Hi register operations/branch exchange
+    /* Hi register operations/branch exchange
      *  ADD Rd, Hs
      *  ADD Hd, Rs
      *  ADD Hd, Hs
@@ -905,7 +905,7 @@ static int trace_thumb(void) {
             break;
         }
     }
-    /* Format 9: PC-relative load
+    /* PC-relative load
      *  LDR Rd,[PC, #imm]
      */
     else if ((instr & 0xf800) == 0x4800) {
@@ -915,8 +915,7 @@ static int trace_thumb(void) {
         /* Compute load address, adding a word to account for prefetch */
         load_reg_lazy((reg_data[15].v & (~0x3)) + 4 + (word8 << 2), rd);
     }
-    /* Load Register Byte (immediate)
-     */
+    /* Load Register Byte (immediate) */
     else if ((instr & 0xf800) == 0x7800) {
         uint16_t rn  = (instr >> 3) & 0x7;
         uint16_t rt  = instr & 0x7;
@@ -930,7 +929,7 @@ static int trace_thumb(void) {
             }
         }
     }
-    /* Format 13: add offset to Stack Pointer
+    /* add offset to Stack Pointer
      *  ADD sp,#+imm
      *  ADD sp,#-imm
      */
@@ -946,7 +945,22 @@ static int trace_thumb(void) {
             reg_data[13].v += value;
         }
     }
-    /* Format 14: push/pop registers
+    /* ADD (SP plus immediate)
+     * ADD<c> <Rd>,SP,#<imm>
+     */
+    else if ((instr & 0xf800) == 0xa800) {
+        uint32_t rd = (instr >> 8) & 0x7;
+        uint32_t imm8 = instr & 0xff;
+        chk_loaded(13);
+        if (reg_data[13].o) {
+            reg_data[rd].v = reg_data[13].v + (imm8 << 2);
+            reg_data[rd].o = REG_VAL_OTHER;
+        }
+        else {
+            reg_data[rd].o = 0;
+        }
+    }
+    /* push/pop registers
      *  PUSH {Rlist}
      *  PUSH {Rlist, LR}
      *  POP {Rlist}
@@ -1016,14 +1030,11 @@ static int trace_thumb(void) {
             }
         }
     }
-    /* If-Then, and hints
-     */
+    /* If-Then, and hints */
     else if ((instr & 0xff00) == 0xbf00) {
         /* Does not change registers */
     }
-    /* Format 17: conditional branch
-     *  B<c> label
-     */
+    /* Conditional branch */
     else if ((instr & 0xf000) == 0xd000) {
         uint16_t cond = (instr >> 8) & 0xf;
         if (cond == 15) {
@@ -1040,15 +1051,14 @@ static int trace_thumb(void) {
             add_branch(reg_data[15].v + offset * 2 + 4);
         }
     }
-    /* Format 18: unconditional branch
-     *  B label
-     */
+    /* Unconditional branch */
     else if ((instr & 0xf800) == 0xe000) {
         int32_t offset = instr & 0x07ff;
         if (offset & 0x400) offset |= ~0x7ff;
         add_branch(reg_data[15].v + offset * 2 + 4);
         trace_branch = 1;
     }
+    /* 32-bit Thumb instructions */
     else if ((instr & 0xf800) == 0xf000) {
         uint16_t suffix = 0;
         if (read_half(reg_data[15].v + 2, &suffix) < 0) return -1;
@@ -1064,42 +1074,70 @@ static int trace_thumb(void) {
             if (trace_thumb_branches_and_misc_32(instr, suffix) < 0) return -1;
         }
     }
+    /* Load/Store single data item, Memory hints */
     else if ((instr & 0xfe00) == 0xf800) {
         uint16_t suffix = 0;
         if (read_half(reg_data[15].v + 2, &suffix) < 0) return -1;
-        if ((instr & (1 << 4)) && (suffix & 0xf000) == 0xf000) {
-            /* Memory hints */
+        if ((instr & 0x0070) == 0x0010 && (suffix & 0xf000) == 0xf000) {
+            /* Memory hints - don't change registers */
         }
         else {
             /* Load/Store single data item */
+            uint16_t rn = instr & 0xf;
+            uint16_t rt = (suffix >> 12) & 0xf;
+            int W = (instr & (1 << 7)) == 0 && (suffix & (1 << 8)) != 0;
+            int U = (instr & (1 << 7)) != 0 || (suffix & (1 << 9)) != 0;
+            int P = (instr & (1 << 7)) != 0 || (suffix & (1 << 10)) != 0;
+            uint32_t imm32 = instr & (1 << 7) ? suffix & 0xfff : suffix & 0xff;
+            uint32_t addr = 0;
+            chk_loaded(rn);
+            addr = reg_data[rn].v;
+            if (P) addr = U ? addr + imm32 : addr - imm32;
             if (instr & (1 << 4)) { /* LDR */
-                uint16_t rn = instr & 0xf;
-                uint16_t rt = (suffix >> 12) & 0xf;
-                reg_data[rn].o = 0;
-                reg_data[rt].o = 0;
+                if (reg_data[rn].o) {
+                    if ((instr & (1 << 6)) == 0) {
+                        /* Byte or half - not supported */
+                        reg_data[rt].o = 0;
+                    }
+                    else {
+                        load_reg_lazy(addr, rt);
+                    }
+                }
+                else {
+                    reg_data[rt].o = 0;
+                }
             }
             else { /* STR */
-                uint16_t rn = instr & 0xf;
-                reg_data[rn].o = 0;
+                if (reg_data[rn].o) {
+                    if ((instr & (1 << 6)) == 0) {
+                        /* Byte or half - not supported */
+                        store_invalid(addr);
+                    }
+                    else {
+                        store_reg(addr, rt);
+                    }
+                }
             }
+            if (!P) addr = U ? addr + imm32 : addr - imm32;
+            if (W) reg_data[rn].v = addr;
         }
     }
+    /* Advanced SIMD data-processing instructions */
     else if ((instr & 0xef00) == 0xef00) {
-        /* Advanced SIMD data-processing instructions */
     }
+    /* Advanced SIMD element or structure load/store instructions */
     else if ((instr & 0xff10) == 0xf900) {
-        /* Advanced SIMD element or structure load/store instructions */
         uint16_t rn = instr & 0xf;
         reg_data[rn].o = 0;
     }
+    /* Data-processing (shifted register) */
     else if ((instr & 0xfe00) == 0xea00) {
-        /* Data-processing (shifted register) */
         uint16_t suffix = 0;
         if (read_half(reg_data[15].v + 2, &suffix) < 0) return -1;
         if (trace_thumb_data_processing_shifted_register(instr, suffix) < 0) return -1;
     }
+    /* Unknown/undecoded.  May alter some register, so invalidate file */
     else {
-        /* Unknown/undecoded.  May alter some register, so invalidate file */
         unsigned i;
         for (i = 0; i < 13; i++) reg_data[i].o = 0;
     }
