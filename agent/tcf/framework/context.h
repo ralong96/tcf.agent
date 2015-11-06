@@ -614,6 +614,8 @@ typedef struct {
     ContextAddress max_instruction_size;
     const char * isa;
     const char * def;
+    uint8_t * bp_encoding;  /* Encoding of breakpoint instruction */
+    size_t bp_size;         /* Size of breakpoint instruction */
 } ContextISA;
 
 /*

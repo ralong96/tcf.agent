@@ -152,6 +152,8 @@ struct BreakInstruction {
     uint8_t dirty;       /* the instruction is planted, but planting data is obsolete */
     uint8_t unsupported; /* context_plant_breakpoint() returned ERR_UNSUPPORTED */
     uint8_t planted_as_sw_bp;
+    Context * isa_ctx;
+    ContextAddress isa_addr;
 };
 
 struct EvaluationArgs {
@@ -195,12 +197,6 @@ struct ContextExtensionBP {
     int instruction_cnt;
     LINK link_hit_count;
 };
-
-typedef struct {
-    const char * isa;
-    uint8_t code[8];
-    size_t size;
-} ISABreakInstruction;
 
 static const char * BREAKPOINTS = "Breakpoints";
 
@@ -273,13 +269,6 @@ static int bp_line_cnt = 0;
 
 static TCFBroadcastGroup * broadcast_group = NULL;
 
-static ISABreakInstruction isa_break_inst[] = {
-    { "ARM", { 0x70, 0x00, 0x20, 0xe1 }, 4 },
-    { "A64", { 0x00, 0x00, 0x40, 0xd4 }, 4 },
-    { "Thumb", { 0x00, 0xbe }, 2 },
-    { NULL }
-};
-
 static unsigned id2bp_hash(const char * id) {
     unsigned hash = 0;
     while (*id) hash = (hash >> 16) + hash + (unsigned char)*id++;
@@ -311,52 +300,72 @@ static int print_not_stopped_contexts(Context * ctx) {
 }
 #endif
 
-static int select_context_isa(Context * ctx, ContextAddress addr, const char ** isa) {
 #if ENABLE_ContextISA
+
+static int select_context_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     ContextISA i;
     if (context_get_isa(ctx, addr, &i) != 0) return 0;
     if (i.isa == NULL) i.isa = i.def;
-    if (i.isa == NULL) return 0;
-    if (*isa == NULL) {
-        *isa = i.isa;
-        return 0;
+    if (i.isa != NULL) {
+        if (isa->isa == NULL) {
+            isa->isa = i.isa;
+        }
+        else if (strcmp(isa->isa, i.isa) != 0) {
+            set_errno(ERR_OTHER, "Conflicting software breakpoint in shared memory");
+            return -1;
+        }
     }
-    if (strcmp(*isa, i.isa) != 0) {
-        set_errno(ERR_OTHER, "Conflicting software breakpoint in shared memory");
-        return -1;
+    if (i.bp_encoding != NULL) {
+        if (isa->bp_encoding == NULL) {
+            isa->bp_encoding = i.bp_encoding;
+            isa->bp_size = i.bp_size;
+        }
+        else if (isa->bp_size != i.bp_size || memcmp(isa->bp_encoding, i.bp_encoding, i.bp_size) != 0) {
+            set_errno(ERR_OTHER, "Conflicting software breakpoint in shared memory");
+            return -1;
+        }
     }
-#endif
     return 0;
 }
 
-static int select_sw_breakpoint_isa(BreakInstruction * sw, Context ** sw_ctx, const char ** sw_isa) {
+static int select_sw_breakpoint_isa(BreakInstruction * sw, Context ** ctx, uint8_t ** bp_encoding, size_t * bp_size) {
     /* Software breakpoint should be rejected if ISA of the target context is unknown or ambiguous */
     unsigned n;
-    const char * isa = NULL;
-#if ENABLE_ContextISA
+    ContextISA isa;
     LINK * l = instructions.next;
+    memset(&isa, 0, sizeof(isa));
     while (l != &instructions) {
         BreakInstruction * bi = link_all2bi(l);
-        if (bi->ref_cnt > 0 && !bi->no_addr && bi->virtual_addr && (bi->cb.access_types & CTX_BP_ACCESS_INSTRUCTION) != 0) {
-            Context * mem = NULL;
-            ContextAddress mem_addr = 0;
-            if (context_get_canonical_addr(bi->cb.ctx, bi->cb.address, &mem, &mem_addr, NULL, NULL) == 0 &&
-                    mem == sw->cb.ctx && mem_addr == sw->cb.address) {
+        if (bi->ref_cnt > 0 && !bi->no_addr && bi->virtual_addr &&
+                bi->planted && (bi->cb.access_types & CTX_BP_ACCESS_INSTRUCTION) != 0) {
+            if (bi->isa_ctx == NULL) {
+                context_get_canonical_addr(bi->cb.ctx, bi->cb.address, &bi->isa_ctx, &bi->isa_addr, NULL, NULL);
+            }
+            if (bi->isa_ctx == sw->cb.ctx && bi->isa_addr == sw->cb.address) {
                 /* Hardware breakpoint planted at same canonical address, check ISA: */
                 if (select_context_isa(bi->cb.ctx, bi->cb.address, &isa) < 0) return -1;
             }
         }
         l = l->next;
     }
-#endif
     for (n = 0; n < sw->ref_cnt; n++) {
         InstructionRef * r = sw->refs + n;
         if (select_context_isa(r->ctx, r->addr, &isa) < 0) return -1;
-        if (*sw_ctx == NULL) *sw_ctx = r->ctx;
+        if (*ctx == NULL) *ctx = r->ctx;
     }
-    *sw_isa = isa;
+    *bp_encoding = isa.bp_encoding;
+    *bp_size = isa.bp_size;
     return 0;
 }
+
+#else
+
+static int select_sw_breakpoint_isa(BreakInstruction * sw, Context ** ctx, uint8_t ** bp_encoding, size_t * bp_size) {
+    if (sw->ref_cnt > 0) *ctx = sw->refs->ctx;
+    return 0;
+}
+
+#endif /* ENABLE_ContextISA */
 
 static void plant_instruction(BreakInstruction * bi) {
     int error = 0;
@@ -397,37 +406,27 @@ static void plant_instruction(BreakInstruction * bi) {
 
     if (bi->unsupported && !bi->virtual_addr && !bi->hardware) {
         Context * ctx = NULL;
-        const char * isa = NULL;
-        if (select_sw_breakpoint_isa(bi, &ctx, &isa) < 0) {
+        uint8_t * bp_encoding = NULL;
+        size_t bp_size = 0;
+        error = 0;
+        if (select_sw_breakpoint_isa(bi, &ctx, &bp_encoding, &bp_size) < 0) {
             error = errno;
         }
         else if (ctx == NULL) {
             error = set_errno(ERR_OTHER, "Cannot select software breakpoint instruction");
         }
         else {
-            uint8_t * break_inst = NULL;
-            if (isa != NULL) {
-                size_t i = 0;
-                while (isa_break_inst[i].isa != NULL) {
-                    if (strcmp(isa_break_inst[i].isa, isa) == 0) {
-                        break_inst = isa_break_inst[i].code;
-                        bi->saved_size = isa_break_inst[i].size;
-                        break;
-                    }
-                    i++;
-                }
-            }
-            if (break_inst == NULL) break_inst = get_break_instruction(ctx, &bi->saved_size);
-            if (break_inst == NULL) {
+            if (bp_encoding == NULL) bp_encoding = get_break_instruction(ctx, &bp_size);
+            if (bp_encoding == NULL) {
                 error = set_errno(ERR_OTHER, "The context does not support software breakpoints");
             }
             else {
+                bi->saved_size = bp_size;
                 assert(bi->saved_size > 0);
                 assert(sizeof(bi->saved_code) >= bi->saved_size);
                 assert(!bi->virtual_addr);
-                error = 0;
                 planting_instruction = 1;
-                memcpy(bi->planted_code, break_inst, bi->saved_size);
+                memcpy(bi->planted_code, bp_encoding, bi->saved_size);
                 if (context_read_mem(bi->cb.ctx, bi->cb.address, bi->saved_code, bi->saved_size) < 0) {
                     error = errno;
                 }
@@ -485,6 +484,7 @@ static int remove_instruction(BreakInstruction * bi) {
         }
     }
     if (!bi->virtual_addr) planted_sw_bp_cnt--;
+    bi->isa_ctx = NULL;
     bi->planted = 0;
     bi->dirty = 0;
     return 0;
@@ -3176,6 +3176,7 @@ static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddre
                 cnt++;
             }
             if (!bi->virtual_addr) planted_sw_bp_cnt--;
+            bi->isa_ctx = NULL;
             bi->planted = 0;
         }
         addr += sz;
