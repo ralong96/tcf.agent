@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2014-2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -32,14 +32,8 @@
 
 #if defined(__i386__) || defined(__x86_64__)
 
-#if defined(__x86_64__)
-#  define XMM_REGS 16
-#else
-#  define XMM_REGS 8
-#endif
-#define XMM_SIZE 128
-
 #define REG_OFFSET(name) offsetof(REG_SET, name)
+#define REG_SET_SIZE    sizeof(REG_SET)
 
 static RegisterDefinition regs_def[] = {
 #if (defined(_WIN32) || defined(__CYGWIN__)) && defined(__i386__)
@@ -232,6 +226,84 @@ static RegisterDefinition regs_def[] = {
     { "eip",    REG_OFFSET(eip),      4,  8,  8},
     { "eflags", REG_OFFSET(eflags),   4,  9,  9},
 
+    /* FPU */
+
+#define FPU             regs_def + 10
+    { "fpu"  , 0,0,-1,-1,0,0,1,1},                      /* FPU folder */
+
+#ifdef _WRS_ARCH_IS_SIMULATOR
+   /*
+    * 32bits VxSim target
+    *
+    * See FPO_CONTEXT struct (fppSimlinuxLib.h or fppSimntLib.h)
+    */
+
+#define FPU_OFFSET      REG_SET_SIZE
+#define FPX_OFFSET      FPU_OFFSET + 0x1c
+
+    { "fpcr" ,FPU_OFFSET +  0x0,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "fpsr" ,FPU_OFFSET +  0x4,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "fptag",FPU_OFFSET +  0x8,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "ip"   ,FPU_OFFSET +  0xc,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "cs"   ,FPU_OFFSET + 0x10,2,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "op"   ,FPU_OFFSET + 0x12,2,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "dp"   ,FPU_OFFSET + 0x14,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "ds"   ,FPU_OFFSET + 0x18,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+
+    /* DOUBLEX fpx[FP_NUM_REGS]; */
+    { "st/mm0",FPX_OFFSET +  0,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm1",FPX_OFFSET + 10,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm2",FPX_OFFSET + 20,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm3",FPX_OFFSET + 30,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm4",FPX_OFFSET + 40,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm5",FPX_OFFSET + 50,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm6",FPX_OFFSET + 60,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm7",FPX_OFFSET + 70,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+#else
+    /*
+     * 32bits IA target
+     *
+     * See FPX_CONTEXT struct  (fppI86Lib.h)
+     */
+
+#define FPU_OFFSET      REG_SET_SIZE
+#define FPX_OFFSET      FPU_OFFSET+ 0x20
+ 
+    { "fpcr"  ,FPU_OFFSET +  0x0,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "fpsr"  ,FPU_OFFSET +  0x4,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "fptag" ,FPU_OFFSET +  0x8,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "op"    ,FPU_OFFSET +  0xc,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "ip"    ,FPU_OFFSET + 0x10,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "cs"    ,FPU_OFFSET + 0x14,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "dp"    ,FPU_OFFSET + 0x18,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    { "ds"    ,FPU_OFFSET + 0x1c,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
+    
+    /* DOUBLEX fpx[FP_NUM_REGS]; */
+    { "st/mm0",FPX_OFFSET +  0,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm1",FPX_OFFSET + 10,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm2",FPX_OFFSET + 20,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm3",FPX_OFFSET + 30,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm4",FPX_OFFSET + 40,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm5",FPX_OFFSET + 50,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm6",FPX_OFFSET + 60,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+    { "st/mm7",FPX_OFFSET + 70,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
+ 
+    /* XMM */   
+#define XMM             regs_def + 27
+#define XMM_OFFSET      FPX_OFFSET + 80
+
+    /* DOUBLEX_SSE xmm[XMM_NUM_REGS]; */
+    { "xmm", 0, 0, -1, -1, 0, 0, 1, 1 },        /* XMM folder */
+
+    { "xmm0", XMM_OFFSET + 0x00,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm1", XMM_OFFSET + 0x10,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm2", XMM_OFFSET + 0x20,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm3", XMM_OFFSET + 0x30,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm4", XMM_OFFSET + 0x40,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm5", XMM_OFFSET + 0x50,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm6", XMM_OFFSET + 0x60,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm7", XMM_OFFSET + 0x70,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+#endif
 #elif defined(_WRS_KERNEL) && defined(__x86_64__)
 #   define REG_SP rsp
 #   define REG_BP rbp
@@ -255,6 +327,87 @@ static RegisterDefinition regs_def[] = {
     { "rip",    REG_OFFSET(rip),      8, 16, 16},
     { "eflags", REG_OFFSET(eflags),   4, 49, -1},
 
+    /*
+     * 64bit IA & VxSim target
+     *
+     * See FPREG_SET (fppX86_64Lib.h, fppSimlinuxLib.h or fppSimntLib.h)
+     */
+
+    /* FPU */
+#define FPU             regs_def + 18
+#define FPU_OFFSET      REG_SET_SIZE
+#define FPX_OFFSET      FPU_OFFSET+ 0x20
+
+    { "fpu"  , 0,0,-1,-1,0,0,1,1},              /* FPU folder */
+    /* FPREG_SET (FPREGX_EXT_SET) */
+
+    { "fpcr" ,FPU_OFFSET +  0,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0,FPU},
+    { "fpsr" ,FPU_OFFSET +  4,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0,FPU},
+    { "fptag",FPU_OFFSET +  8,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0,FPU},
+    { "op"   ,FPU_OFFSET + 12,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0,FPU},
+    { "ip"   ,FPU_OFFSET + 16,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0,FPU},
+    { "cs"   ,FPU_OFFSET + 20,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0,FPU},
+    { "dp"   ,FPU_OFFSET + 24,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0,FPU},
+    { "ds"   ,FPU_OFFSET + 28,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0,FPU},
+
+    /* DOUBLEX     fpx[FP_NUM_REGS]; */
+    { "st/mm0",FPX_OFFSET +  0,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0,FPU},
+    { "st/mm1",FPX_OFFSET + 10,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0,FPU},
+    { "st/mm2",FPX_OFFSET + 20,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0,FPU},
+    { "st/mm3",FPX_OFFSET + 30,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0,FPU},
+    { "st/mm4",FPX_OFFSET + 40,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0,FPU},
+    { "st/mm5",FPX_OFFSET + 50,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0,FPU},
+    { "st/mm6",FPX_OFFSET + 60,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0,FPU},
+    { "st/mm7",FPX_OFFSET + 70,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0,FPU},
+
+    /* XMM */
+
+#define XMM             regs_def + 35
+#define XMM_OFFSET      FPX_OFFSET + 80
+
+    /* DOUBLEX_SSE xmm[XMM_NUM_REGS]; */
+    { "xmm", 0, 0, -1, -1, 0, 0, 1, 1 },        /* XMM folder */
+
+    { "xmm0", XMM_OFFSET + 0x00,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm1", XMM_OFFSET + 0x10,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm2", XMM_OFFSET + 0x20,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm3", XMM_OFFSET + 0x30,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm4", XMM_OFFSET + 0x40,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm5", XMM_OFFSET + 0x50,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm6", XMM_OFFSET + 0x60,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm7", XMM_OFFSET + 0x70,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm8", XMM_OFFSET + 0x80,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm9", XMM_OFFSET + 0x90,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm10",XMM_OFFSET + 0xa0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm11",XMM_OFFSET + 0xb0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm12",XMM_OFFSET + 0xc0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm13",XMM_OFFSET + 0xd0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm14",XMM_OFFSET + 0xe0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+    { "xmm15",XMM_OFFSET + 0xf0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, XMM},
+
+    /* YMM */
+
+#define YMM             regs_def + 52
+#define YMM_OFFSET      XMM_OFFSET + 0x100
+    /* DOUBLEX_SSE ymm[XMM_NUM_REGS]; */
+    { "ymm", 0, 0, -1, -1, 0, 0, 1, 1 },        /* YMM folder */
+
+    { "ymm0", YMM_OFFSET + 0x00,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm1", YMM_OFFSET + 0x10,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm2", YMM_OFFSET + 0x20,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm3", YMM_OFFSET + 0x30,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm4", YMM_OFFSET + 0x40,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm5", YMM_OFFSET + 0x50,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm6", YMM_OFFSET + 0x60,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm7", YMM_OFFSET + 0x70,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm8", YMM_OFFSET + 0x80,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm9", YMM_OFFSET + 0x90,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm10",YMM_OFFSET + 0xa0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm11",YMM_OFFSET + 0xb0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm12",YMM_OFFSET + 0xc0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm13",YMM_OFFSET + 0xd0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm14",YMM_OFFSET + 0xe0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
+    { "ymm15",YMM_OFFSET + 0xf0,16,-1,-1,0,1,0,1,0,0,0,0,0,0,0, YMM},
 #elif defined(__x86_64__)
 #   define REG_SP user.regs.rsp
 #   define REG_BP user.regs.rbp
@@ -839,52 +992,56 @@ static void ini_main_regs(void) {
     }
 }
 
-static void ini_xmm_regs(void) {
-    static int sub_xmm_sizes[] = {8, 16, 32, 64, -1};
-    char sub_xmm_name[256];
-    int ix = 0, xmm_ix = 0, sub_xmm_sizes_ix = 0;
+static void ini_other_regs(void) {
+    static int sub_sizes[] = {8, 16, 32, 64, -1};
+    char sub_name[256];
+    int ix = 0, sub_sizes_ix = 0;
 
-    /* seek xmm0 definition */
-    while (regs_index[xmm_ix].name != NULL && (strcmp(regs_index[xmm_ix].name, "xmm0") != 0)) xmm_ix++;
-    if (regs_index[xmm_ix].name == NULL) return;
-
-    /* add the xmm sub-registers combinations */
-    for (ix = 0; ix < XMM_REGS; ix++) {
-        for (sub_xmm_sizes_ix = 0; sub_xmm_sizes[sub_xmm_sizes_ix] != -1; sub_xmm_sizes_ix++) {
-            int sub_xmm_ix = 0;
-            int nb_sub_xmm = XMM_SIZE / sub_xmm_sizes[sub_xmm_sizes_ix];
-            RegisterDefinition * def = regs_index + regs_cnt++;
-            sprintf(sub_xmm_name, "w%d", sub_xmm_sizes[sub_xmm_sizes_ix]);
-            assert(regs_cnt < regs_max);
-            def->name = loc_strdup(sub_xmm_name);
-            def->dwarf_id = -1;
-            def->eh_frame_id = -1;
-            def->no_read = 1;
-            def->no_write = 1;
-            def->parent = regs_index + xmm_ix;
-            for (sub_xmm_ix = 0; sub_xmm_ix < nb_sub_xmm; sub_xmm_ix++) {
-                def = regs_index + regs_cnt++;
-                sprintf(sub_xmm_name, "f%d", sub_xmm_ix);
+    while (regs_index[ix].name != NULL) {
+        if ((strcmp(regs_index[ix].name, "xmm") != 0) &&
+            (strcmp(regs_index[ix].name, "ymm") != 0) &&
+            (strcmp(regs_index[ix].name, "zmm") != 0) &&
+            ((strncmp(regs_index[ix].name, "xmm", 3) == 0) ||
+             (strncmp(regs_index[ix].name, "ymm", 3) == 0) ||
+             (strncmp(regs_index[ix].name, "zmm", 3) == 0) ||
+             (strncmp(regs_index[ix].name, "st/mm", 5) == 0))) {
+            for (sub_sizes_ix = 0; sub_sizes[sub_sizes_ix] != -1; sub_sizes_ix++) {
+                int sub_ix = 0;
+                int nb_sub = (regs_index[ix].size*8) / sub_sizes[sub_sizes_ix];
+                RegisterDefinition * def = regs_index + regs_cnt++;
+                sprintf(sub_name, "w%d", sub_sizes[sub_sizes_ix]);
                 assert(regs_cnt < regs_max);
-                def->name = loc_strdup(sub_xmm_name);
-                def->size = sub_xmm_sizes[sub_xmm_sizes_ix] / 8;
-                def->offset = regs_index[xmm_ix].offset + sub_xmm_ix * def->size;
+                def->name = loc_strdup(sub_name);
                 def->dwarf_id = -1;
                 def->eh_frame_id = -1;
-                def->big_endian = regs_index[xmm_ix].big_endian;
-                def->fp_value = regs_index[xmm_ix].fp_value;
-                def->no_read = regs_index[xmm_ix].no_read;
-                def->no_write = regs_index[xmm_ix].no_write;
-                def->read_once = regs_index[xmm_ix].read_once;
-                def->write_once = regs_index[xmm_ix].write_once;
-                def->side_effects = regs_index[xmm_ix].side_effects;
-                def->volatile_value = regs_index[xmm_ix].volatile_value;
-                def->left_to_right = regs_index[xmm_ix].left_to_right;
-                def->first_bit = regs_index[xmm_ix].first_bit;
-                def->parent = def - sub_xmm_ix - 1;
+                def->no_read = 1;
+                def->no_write = 1;
+                def->parent = &regs_index[ix];
+                for (sub_ix = 0; sub_ix < nb_sub; sub_ix++) {
+                    def = regs_index + regs_cnt++;
+                    sprintf(sub_name, "f%d", sub_ix);
+                    assert(regs_cnt < regs_max);
+                    def->name = loc_strdup(sub_name);
+                    def->size = sub_sizes[sub_sizes_ix] / 8;
+                    def->offset = regs_index[ix].offset + sub_ix * def->size;
+                    def->dwarf_id = -1;
+                    def->eh_frame_id = -1;
+                    def->big_endian = regs_index[ix].big_endian;
+                    def->fp_value = regs_index[ix].fp_value;
+                    def->no_read = regs_index[ix].no_read;
+                    def->no_write = regs_index[ix].no_write;
+                    def->read_once = regs_index[ix].read_once;
+                    def->write_once = regs_index[ix].write_once;
+                    def->side_effects = regs_index[ix].side_effects;
+                    def->volatile_value = regs_index[ix].volatile_value;
+                    def->left_to_right = regs_index[ix].left_to_right;
+                    def->first_bit = regs_index[ix].first_bit;
+                    def->parent = def - sub_ix - 1;
+                }
             }
         }
-        xmm_ix++;
+
+        ix++;
     }
 }
 
@@ -1203,11 +1360,11 @@ int cpu_bp_on_suspend(Context * ctx, int * triggered) {
 
 void ini_cpudefs_mdep(void) {
     regs_cnt = 0;
-    regs_max = 800;
+    regs_max = 2000;
     regs_index = (RegisterDefinition *)loc_alloc_zero(sizeof(RegisterDefinition) * regs_max);
     ini_main_regs();
     ini_eflags_bits();
-    ini_xmm_regs();
+    ini_other_regs();
 #if ENABLE_HardwareBreakpoints
     context_extension_offset = context_extension(sizeof(ContextExtensionX86));
 #endif
