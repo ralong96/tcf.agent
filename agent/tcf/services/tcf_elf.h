@@ -378,6 +378,9 @@ typedef struct {
 #ifndef EM_MICROBLAZE
 #define EM_MICROBLAZE 189
 #endif
+#ifndef EM_SPARCV9
+#define EM_SPARCV9     43 /* SPARC Version 9 */
+#endif
 #ifndef EM_TRICORE
 #define EM_TRICORE     44 /* Siemens Tricore */
 #endif
