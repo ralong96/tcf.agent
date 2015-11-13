@@ -268,7 +268,7 @@ static RegisterDefinition regs_def[] = {
 
 #define FPU_OFFSET      REG_SET_SIZE
 #define FPX_OFFSET      FPU_OFFSET+ 0x20
- 
+
     { "fpcr"  ,FPU_OFFSET +  0x0,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
     { "fpsr"  ,FPU_OFFSET +  0x4,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
     { "fptag" ,FPU_OFFSET +  0x8,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
@@ -277,7 +277,7 @@ static RegisterDefinition regs_def[] = {
     { "cs"    ,FPU_OFFSET + 0x14,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
     { "dp"    ,FPU_OFFSET + 0x18,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
     { "ds"    ,FPU_OFFSET + 0x1c,4,-1,-1,0,0,0,1,0,0,0,0,0,0,0, FPU},
-    
+
     /* DOUBLEX fpx[FP_NUM_REGS]; */
     { "st/mm0",FPX_OFFSET +  0,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
     { "st/mm1",FPX_OFFSET + 10,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
@@ -287,8 +287,8 @@ static RegisterDefinition regs_def[] = {
     { "st/mm5",FPX_OFFSET + 50,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
     { "st/mm6",FPX_OFFSET + 60,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
     { "st/mm7",FPX_OFFSET + 70,10,-1,-1,0,1,0,1,0,0,0,0,0,0,0, FPU},
- 
-    /* XMM */   
+
+    /* XMM */
 #define XMM             regs_def + 27
 #define XMM_OFFSET      FPX_OFFSET + 80
 
