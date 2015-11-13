@@ -869,6 +869,12 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             Unit->mDir = (char *)dio_gFormDataAddr;
             break;
         case AT_stmt_list:
+            if (Form == FORM_ADDR) {
+                /* Workaround: some compilers incorrectly use FORM_ADDR for AT_stmt_list */
+                Unit->mLineInfoOffs = dio_gFormData;
+                if (dio_gFormSection != NULL) Unit->mLineInfoOffs -= dio_gFormSection->addr;
+                break;
+            }
             dio_ChkData(Form);
             Unit->mLineInfoOffs = dio_gFormData;
             break;
