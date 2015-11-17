@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014 Xilinx, Inc. and others.
+ * Copyright (c) 2014, 2015 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -90,6 +90,7 @@ static void add_hex_uint64(uint64_t n) {
     while (i > 0) add_char(s[--i]);
 }
 
+#if 0 /* Not used yet */
 static void add_flt_uint32(uint32_t n) {
     char buf[32];
     union {
@@ -111,6 +112,7 @@ static void add_flt_uint64(uint64_t n) {
     snprintf(buf, sizeof(buf), "%g", u.d);
     add_str(buf);
 }
+#endif
 
 static void add_reg_name(uint32_t n, int sf, int sp) {
     if (n == 31) {

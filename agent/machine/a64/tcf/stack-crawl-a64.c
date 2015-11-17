@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014 Xilinx, Inc. and others.
+ * Copyright (c) 2014, 2015 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -103,6 +103,7 @@ static int read_byte(uint64_t addr, uint8_t * bt) {
     c->addr = addr;
     c->size = sizeof(c->data);
     if (context_read_mem(stk_ctx, (ContextAddress)addr, c->data, c->size) < 0) {
+#if ENABLE_ExtendedMemoryErrorReports
         int error = errno;
         MemoryErrorInfo info;
         if (context_get_mem_error_info(&info) < 0 || info.size_valid == 0) {
@@ -111,6 +112,9 @@ static int read_byte(uint64_t addr, uint8_t * bt) {
             return -1;
         }
         c->size = info.size_valid;
+#else
+        return -1;
+#endif
     }
     *bt = c->data[0];
     return 0;
@@ -251,9 +255,11 @@ static int store_reg(uint64_t addr, int r) {
     return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0);
 }
 
+#if 0 /* Not used yret */
 static int store_invalid(uint64_t addr) {
     return mem_hash_write(addr, 0, 0);
 }
+#endif
 
 static void add_branch(uint64_t addr) {
     if (branch_cnt < BRANCH_LIST_SIZE) {
@@ -278,6 +284,7 @@ static void add_branch(uint64_t addr) {
     }
 }
 
+#if 0 /* Not used yret */
 static int search_reg_value(StackFrame * frame, RegisterDefinition * def, uint64_t * v) {
     for (;;) {
         int n;
@@ -289,6 +296,7 @@ static int search_reg_value(StackFrame * frame, RegisterDefinition * def, uint64
     errno = ERR_OTHER;
     return -1;
 }
+#endif
 
 static void set_reg(uint32_t r, int sf, uint64_t v) {
     if (!sf) {
