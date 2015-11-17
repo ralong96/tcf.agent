@@ -386,12 +386,12 @@ static void disassemble_thumb5(void) {
         add_str(" {");
         for (reg = 0; reg < 8; reg++) {
             if ((instr & (1 << reg)) == 0) continue;
-            if (cnt > 0) add_str(", ");
+            if (cnt > 0) add_char(',');
             add_reg_name(reg);
             cnt++;
         }
         if (instr & (1 << 8)) {
-            if (cnt > 0) add_str(", ");
+            if (cnt > 0) add_char(',');
             add_str(instr & (1 << 11) ? "pc" : "lr");
         }
         add_char('}');
