@@ -415,6 +415,25 @@ static uint32_t calc_shift(uint32_t shift_type, uint32_t shift_imm, uint32_t val
     return val;
 }
 
+static void return_from_exception(void) {
+    /* Return from exception - copies the SPSR to the CPSR */
+    RegisterDefinition * def;
+    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+        int r = is_banked_reg_visible(def, spsr_data.v & 0x1f);
+        if (r >= 0 && r != is_banked_reg_visible(def, cpsr_data.v & 0x1f)) {
+            uint64_t v = 0;
+            if (search_reg_value(stk_frame, def, &v) < 0) {
+                reg_data[r].o = 0;
+            }
+            else {
+                reg_data[r].v = (uint32_t)v;
+                reg_data[r].o = REG_VAL_OTHER;
+            }
+        }
+    }
+    cpsr_data = spsr_data;
+}
+
 static void bx_write_pc(void) {
     /* Determine the new mode */
     chk_loaded(15);
@@ -452,6 +471,143 @@ static void trace_bx(unsigned rn) {
     }
 }
 
+static void trace_srs(int wback, int inc, int wordhigher, uint32_t mode) {
+    /* Store Return State */
+#if 0
+    /* TODO: to handle SRS, need to trace banked SP */
+    int sp_id = -1;
+    RegisterDefinition * def;
+    switch (mode) {
+    case 0x11: /* fiq */ sp_id = 156; break;
+    case 0x12: /* irq */ sp_id = 158; break;
+    case 0x13: /* svc */ sp_id = 164; break;
+    case 0x16: /* mon */ sp_id = 166; break;
+    case 0x17: /* abt */ sp_id = 160; break;
+    case 0x1b: /* und */ sp_id = 162; break;
+    default: return;
+    }
+    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+        uint64_t v = 0;
+        if (def->dwarf_id == sp_id) {
+            if (search_reg_value(stk_frame, def, &v) == 0) {
+                uint32_t base = (uint32_t)v;
+                uint32_t addr = inc ? base : base - 8;
+                if (wordhigher) addr += 4;
+                store_reg(addr, 14);
+                mem_hash_write(addr + 4, spsr_data.v, spsr_data.o != 0);
+                if (wback) ... = inc ? base + 8 : base - 8;
+            }
+            break;
+        }
+    }
+#endif
+}
+
+static void trace_rfe(int wback, int inc, int wordhigher, uint32_t mode) {
+    /* Return From Exception */
+}
+
+static int trace_ldm_stm(int cond, uint32_t rn, uint32_t regs, int P, int U, int S, int W, int L) {
+    uint32_t addr = 0;
+    int addr_valid = 0;
+    uint32_t rn_bank = cpsr_data.v & 0x1f;
+    unsigned banked = 0;
+    uint8_t r;
+
+    chk_loaded(rn);
+    addr = reg_data[rn].v;
+    addr_valid = reg_data[rn].o != 0;
+
+    /* S indicates that banked registers (untracked) are used, unless
+     * this is a load including the PC when the S-bit indicates that
+     * CPSR is loaded from SPSR.
+     */
+    if (S) {
+        if (L && (regs & (1 << 15)) != 0) {
+            return_from_exception();
+        }
+        else {
+            switch (cpsr_data.v & 0x1f) {
+            case 0x11:
+                banked = 0x7f00;
+                break;
+            case 0x12:
+            case 0x13:
+            case 0x16:
+            case 0x17:
+            case 0x1b:
+                banked = 0x6000;
+                break;
+            }
+        }
+    }
+
+    if (rn == 15) {
+        set_errno(ERR_OTHER, "r15 used as base register");
+        return -1;
+    }
+
+    /* Check if ascending or descending.
+     *  Registers are loaded/stored in order of address.
+     *  i.e. r0 is at the lowest address, r15 at the highest.
+     */
+    r = U ? 0 : 15;
+
+    for (;;) {
+        /* Check if the register is to be transferred */
+        if (regs & (1 << r)) {
+            if (P) addr = U ? addr + 4 : addr - 4;
+            if (L) {
+                if (banked & (1 << r)) {
+                    /* Load user bank register */
+                }
+                else if (cond) {
+                    reg_data[r].o = 0;
+                }
+                else if (addr_valid) {
+                    reg_data[r].o = rn == 13 ? REG_VAL_STACK : REG_VAL_ADDR;
+                    reg_data[r].v = addr;
+                }
+                else {
+                    /* Invalidate the register as the base reg was invalid */
+                    reg_data[r].o = 0;
+                }
+            }
+            else if (banked & (1 << r)) {
+                /* Store user bank register */
+            }
+            else if (addr_valid) {
+                if (cond) store_invalid(addr);
+                else store_reg(addr, r);
+            }
+            if (!P) addr = U ? addr + 4 : addr - 4;
+        }
+        /* Check the next register */
+        if (U) {
+            if (r == 15) break;
+            r++;
+        }
+        else {
+            if (r == 0) break;
+            r--;
+        }
+    }
+
+    /* Check the writeback bit */
+    if (addr_valid && W && rn_bank == (cpsr_data.v & 0x1f)) {
+        reg_data[rn].o = cond ? 0: REG_VAL_OTHER;
+        reg_data[rn].v = addr;
+    }
+
+    /* Check if the PC was loaded */
+    if (L && (regs & (1 << 15))) {
+        bx_write_pc();
+        /* Found the return address */
+        trace_return = 1;
+    }
+    return 0;
+}
+
 static int trace_thumb_data_processing_pbi_32(uint16_t instr, uint16_t suffix) {
     uint32_t op_code = (instr >> 4) & 0x1f;
     uint32_t rn = instr & 0xf;
@@ -485,34 +641,95 @@ static int trace_thumb_data_processing_pbi_32(uint16_t instr, uint16_t suffix) {
     return 0;
 }
 
-static int trace_thumb_data_processing_32(uint16_t instr, uint16_t suffix) {
-    uint32_t rd = (suffix >> 8) & 0xf;
-    reg_data[rd].o = 0;
-    return 0;
-}
-
 static int trace_thumb_branches_and_misc_32(uint16_t instr, uint16_t suffix) {
     return 0;
 }
 
-static int trace_thumb_data_processing_shifted_register(uint16_t instr, uint16_t suffix) {
+static int trace_thumb_load_store_32(uint16_t instr, uint16_t suffix) {
+    if ((instr & (1 << 6)) == 0) {
+        /* Load/store multiple */
+        uint32_t op = (instr >> 7) & 3;
+        int L = (instr & (1 << 4)) != 0;
+        int W = (instr & (1 << 5)) != 0;
+        int U = (instr & (1 << 8)) == 0;
+        if (op == 0 || op == 3) {
+            if (!L) trace_srs(W, op == 3, 0, suffix & 0x1f);
+            else trace_rfe(instr & 0xf, W, op == 3, 0);
+            return 0;
+        }
+        return trace_ldm_stm(0, instr & 0xf, suffix, !U, U, 0, W, L);
+    }
+
+    if ((instr & 0xffe0) == 0xe840) {
+        /* Load/store exclusive */
+        return 0;
+    }
+
+    if ((instr & 0xffe0) == 0xe8c0) {
+        /* Load/store exclusive */
+        return 0;
+    }
+
+    if ((instr & 0xff60) == 0xe860 || (instr & 0xff40) == 0xe940) {
+        /* Load/store register dual */
+        return 0;
+    }
+
+    if ((instr & 0xfff0) == 0xe8d0 && (suffix & 0x00e0) == 0x0000) {
+        /* Table Branch */
+        return 0;
+    }
+
+    return 0;
+}
+
+static int trace_thumb_data_processing_32(uint16_t instr, uint16_t suffix) {
     uint16_t op = (instr >> 5) & 0xf;
     uint16_t rn = instr & 0xf;
     uint16_t rd = (suffix >> 8) & 0xf;
-    uint16_t rm = suffix & 0xf;
+    int I = (instr & (1 << 9)) == 0;
     int S = (instr & (1 << 4)) != 0;
     int tb = (instr & (1 << 5)) != 0;
-    uint32_t shift_type = (suffix >> 4) & 0x3;
-    uint32_t shift_imm = ((suffix >> 10) & 0x1c) | ((suffix >> 6) & 0x3);
     uint32_t val = 0;
     int rn_ok = 0;
     int rm_ok = 0;
 
     chk_loaded(rn);
-    chk_loaded(rm);
     rn_ok = reg_data[rn].o == REG_VAL_OTHER;
-    rm_ok = reg_data[rm].o == REG_VAL_OTHER;
-    val = calc_shift(shift_type, shift_imm, reg_data[rm].v);
+
+    if (I) {
+        uint32_t rot = (suffix >> 12) & 7;
+        if (instr & (1 << 10)) rot |= 8;
+        val = suffix & 0xff;
+        switch (rot) {
+        case 0:
+            break;
+        case 1:
+            val |= val << 16;
+            break;
+        case 2:
+            val = (val << 8) | (val << 24);
+            break;
+        case 3:
+            val |= (val << 8) | (val << 16) | (val << 24);
+            break;
+        default:
+            rot = rot << 1;
+            if (val & 0x80) rot |= 1;
+            val |= 0x80;
+            val = (val >> rot) | (val << (32 - rot));
+            break;
+        }
+        rm_ok = 1;
+    }
+    else {
+        uint16_t rm = suffix & 0xf;
+        uint32_t shift_type = (suffix >> 4) & 0x3;
+        uint32_t shift_imm = ((suffix >> 10) & 0x1c) | ((suffix >> 6) & 0x3);
+        chk_loaded(rm);
+        rm_ok = reg_data[rm].o == REG_VAL_OTHER;
+        val = calc_shift(shift_type, shift_imm, reg_data[rm].v);
+    }
 
     switch (op) {
     case 0:
@@ -905,15 +1122,28 @@ static int trace_thumb(void) {
             break;
         }
     }
-    /* PC-relative load
-     *  LDR Rd,[PC, #imm]
-     */
+    /* PC-relative load: LDR Rd,[PC, #imm] */
     else if ((instr & 0xf800) == 0x4800) {
         uint8_t  rd    = (instr & 0x0700) >> 8;
         uint8_t  word8 = (instr & 0x00ff);
 
         /* Compute load address, adding a word to account for prefetch */
         load_reg_lazy((reg_data[15].v & (~0x3)) + 4 + (word8 << 2), rd);
+    }
+    /* Load/Store Register (immediate) */
+    else if ((instr & 0xf000) == 0x6000) {
+        uint32_t rt = instr & 0x7;
+        uint32_t rn = (instr >> 3) & 0x7;
+        uint32_t imm = ((instr >> 6) & 0x1f) << 2;
+        int L = (instr & (1 << 11)) != 0;
+        chk_loaded(rn);
+        if (L) {
+            if (!reg_data[rn].o) reg_data[rt].o = 0;
+            else load_reg_lazy(reg_data[rn].v + imm, rt);
+        }
+        else if (reg_data[rn].o) {
+            store_reg(reg_data[rn].v + imm, rt);
+        }
     }
     /* Load Register Byte (immediate) */
     else if ((instr & 0xf800) == 0x7800) {
@@ -967,72 +1197,23 @@ static int trace_thumb(void) {
      *  POP {Rlist, PC}
      */
     else if ((instr & 0xf600) == 0xb400) {
-        int  L = (instr & 0x0800) != 0;
-        int  R = (instr & 0x0100) != 0;
-        uint8_t list = (instr & 0x00ff);
-
-        chk_loaded(13);
-
-        if (L) {
-            int r;
-
-            /* Load from memory: POP */
-            for (r = 0; r < 8; r++) {
-                if (list & (0x1 << r)) {
-                    /* Read the word */
-                    if (reg_data[13].o) {
-                        reg_data[r].o = REG_VAL_STACK;
-                        reg_data[r].v = reg_data[13].v;
-                        reg_data[13].v += 4;
-                    }
-                    else {
-                        reg_data[r].o = 0;
-                    }
-                }
-            }
-
-            /* Check if the PC is to be popped */
-            if (R) {
-                /* Get the return address */
-                if (load_reg(reg_data[13].v, 15) < 0) return -1;
-                if (!reg_data[15].o) {
-                    /* Return address is not valid */
-                    set_errno(ERR_OTHER, "PC popped with invalid address");
-                    return -1;
-                }
-
-                bx_write_pc();
-
-                /* Update the sp */
-                reg_data[13].v += 4;
-
-                /* Compensate for the auto-increment, which isn't needed here */
-                reg_data[15].v -= 2;
-
-                /* Report the return address */
-                trace_return = 1;
-            }
-        }
-        else {
-            int r;
-
-            /* Check if the LR is to be pushed */
-            if (R) {
-                reg_data[13].v -= 4;
-                if (store_reg(reg_data[13].v, 14) < 0) return -1;
-            }
-
-            for (r = 7; r >= 0; r--) {
-                if (list & (0x1 << r)) {
-                    reg_data[13].v -= 4;
-                    if (store_reg(reg_data[13].v, r) < 0) return -1;
-                }
-            }
-        }
+        int L = (instr & (1 << 11)) != 0;
+        int R = (instr & (1 << 8)) != 0;
+        uint32_t regs = (instr & 0x00ff);
+        if (R) regs |= 1 << (L ? 15 : 14);
+        if (trace_ldm_stm(0, 13, regs, !L, L, 0, 1, L) < 0) return -1;
     }
     /* If-Then, and hints */
     else if ((instr & 0xff00) == 0xbf00) {
         /* Does not change registers */
+    }
+    /* Load/Store Multiple */
+    else if ((instr & 0xf000) == 0xc000) {
+        uint32_t rn = (instr >> 8) & 0x7;
+        uint32_t regs = instr & 0xff;
+        int L = (instr & (1 << 11)) != 0;
+        int W = !L || (regs & (1 << rn)) == 0;
+        if (trace_ldm_stm(0, rn, regs, 0, 1, 0, W, L) < 0) return -1;
     }
     /* Conditional branch */
     else if ((instr & 0xf000) == 0xd000) {
@@ -1130,11 +1311,17 @@ static int trace_thumb(void) {
         uint16_t rn = instr & 0xf;
         reg_data[rn].o = 0;
     }
+    /* 32-bit load/store instructions */
+    else if ((instr & 0xfe00) == 0xe800) {
+        uint16_t suffix = 0;
+        if (read_half(reg_data[15].v + 2, &suffix) < 0) return -1;
+        if (trace_thumb_load_store_32(instr, suffix) < 0) return -1;
+    }
     /* Data-processing (shifted register) */
     else if ((instr & 0xfe00) == 0xea00) {
         uint16_t suffix = 0;
         if (read_half(reg_data[15].v + 2, &suffix) < 0) return -1;
-        if (trace_thumb_data_processing_shifted_register(instr, suffix) < 0) return -1;
+        if (trace_thumb_data_processing_32(instr, suffix) < 0) return -1;
     }
     /* Unknown/undecoded.  May alter some register, so invalidate file */
     else {
@@ -1168,25 +1355,6 @@ static int is_data_processing_instr(uint32_t instr) {
     if ((instr & 0xf0000000) == 0xf0000000) return 0;
     if (!S && opcode >= 8 && opcode <= 11) return 0;
     return 1;
-}
-
-static void return_from_exception(void) {
-    /* Return from exception - copies the SPSR to the CPSR */
-    RegisterDefinition * def;
-    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
-        int r = is_banked_reg_visible(def, spsr_data.v & 0x1f);
-        if (r >= 0 && r != is_banked_reg_visible(def, cpsr_data.v & 0x1f)) {
-            uint64_t v = 0;
-            if (search_reg_value(stk_frame, def, &v) < 0) {
-                reg_data[r].o = 0;
-            }
-            else {
-                reg_data[r].v = (uint32_t)v;
-                reg_data[r].o = REG_VAL_OTHER;
-            }
-        }
-    }
-    cpsr_data = spsr_data;
 }
 
 static void function_call(void) {
@@ -1748,111 +1916,15 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
 
 static int trace_arm_ldm_stm(uint32_t instr) {
     uint32_t cond = (instr >> 28) & 0xf;
-    int P = (instr & 0x01000000) != 0;
-    int U = (instr & 0x00800000) != 0;
-    int S = (instr & 0x00400000) != 0;
-    int W = (instr & 0x00200000) != 0;
-    int L = (instr & 0x00100000) != 0;
-    uint16_t rn = (instr & 0x000f0000) >> 16;
+    int P = (instr & (1 << 24)) != 0;
+    int U = (instr & (1 << 23)) != 0;
+    int S = (instr & (1 << 22)) != 0;
+    int W = (instr & (1 << 21)) != 0;
+    int L = (instr & (1 << 20)) != 0;
+    uint16_t rn = (instr >> 16) & 0xf;
     uint16_t regs = (instr & 0x0000ffff);
-    uint32_t addr = 0;
-    int addr_valid = 0;
-    uint32_t rn_bank = cpsr_data.v & 0x1f;
-    unsigned banked = 0;
-    uint8_t r;
 
-    chk_loaded(rn);
-    addr = reg_data[rn].v;
-    addr_valid = reg_data[rn].o != 0;
-
-    /* S indicates that banked registers (untracked) are used, unless
-     * this is a load including the PC when the S-bit indicates that
-     * that CPSR is loaded from SPSR.
-     */
-    if (S) {
-        if (L && (regs & (1 << 15)) != 0) {
-            return_from_exception();
-        }
-        else {
-            switch (cpsr_data.v & 0x1f) {
-            case 0x11:
-                banked = 0x7f00;
-                break;
-            case 0x12:
-            case 0x13:
-            case 0x16:
-            case 0x17:
-            case 0x1b:
-                banked = 0x6000;
-                break;
-            }
-        }
-    }
-
-    if (rn == 15) {
-        set_errno(ERR_OTHER, "r15 used as base register");
-        return -1;
-    }
-
-    /* Check if ascending or descending.
-     *  Registers are loaded/stored in order of address.
-     *  i.e. r0 is at the lowest address, r15 at the highest.
-     */
-    r = U ? 0 : 15;
-
-    for (;;) {
-        /* Check if the register is to be transferred */
-        if (regs & (1 << r)) {
-            if (P) addr = U ? addr + 4 : addr - 4;
-            if (L) {
-                if (banked & (1 << r)) {
-                    /* Load user bank register */
-                }
-                else if (cond != 14) {
-                    reg_data[r].o = 0;
-                }
-                else if (addr_valid) {
-                    reg_data[r].o = rn == 13 ? REG_VAL_STACK : REG_VAL_ADDR;
-                    reg_data[r].v = addr;
-                }
-                else {
-                    /* Invalidate the register as the base reg was invalid */
-                    reg_data[r].o = 0;
-                }
-            }
-            else if (banked & (1 << r)) {
-                /* Store user bank register */
-            }
-            else if (addr_valid) {
-                if (cond != 14) store_invalid(addr);
-                else store_reg(addr, r);
-            }
-            if (!P) addr = U ? addr + 4 : addr - 4;
-        }
-        /* Check the next register */
-        if (U) {
-            if (r == 15) break;
-            r++;
-        }
-        else {
-            if (r == 0) break;
-            r--;
-        }
-    }
-
-    /* Check the writeback bit */
-    if (addr_valid && W && rn_bank == (cpsr_data.v & 0x1f)) {
-        reg_data[rn].o = cond == 14 ? REG_VAL_OTHER : 0;
-        reg_data[rn].v = addr;
-    }
-
-    /* Check if the PC was loaded */
-    if (L && (regs & (1 << 15))) {
-        bx_write_pc();
-        /* Found the return address */
-        trace_return = 1;
-    }
-    return 0;
+    return trace_ldm_stm(cond != 14, rn, regs, P, U, S, W, L);
 }
 
 static void trace_arm_16bit_imm(uint32_t instr) {
@@ -2003,6 +2075,18 @@ static int trace_arm(void) {
 
     if ((instr & 0xfff10020) == 0xf1000000) { /* CPS */
         trace_arm_cps(instr);
+    }
+    else if ((instr & 0xfe500000) == 0xf8400000) { /* SRS */
+        int W = (instr & (1 << 21)) != 0;
+        int U = (instr & (1 << 23)) != 0;
+        int P = (instr & (1 << 24)) != 0;
+        trace_srs(W, U, P == U, instr & 0x1f);
+    }
+    else if ((instr & 0xfe500000) == 0xf8100000) { /* RFE */
+        int W = (instr & (1 << 21)) != 0;
+        int U = (instr & (1 << 23)) != 0;
+        int P = (instr & (1 << 24)) != 0;
+        trace_rfe((instr >> 16) & 0xf, W, U, P == U);
     }
     else if ((instr & 0xfff00000) == 0xf5700000) { /* CLREX, DSB, DMB, ISB */
         /* No register changes */
