@@ -14,6 +14,9 @@ ifndef MACHINE
   ifeq ($(MACHINE),ppc64)
     MACHINE := powerpc
   endif
+  ifeq ($(MACHINE),aarch64)
+    MACHINE := a64
+  endif
 endif
 
 INCDIRS = . system/$(OPSYS) machine/$(MACHINE)

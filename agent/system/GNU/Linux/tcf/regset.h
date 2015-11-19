@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -39,11 +39,17 @@ struct user_fpregs_struct {
 #endif
 
 typedef struct REG_SET {
+#if !defined(MDEP_UseREGSET)
     struct user user;
-#if defined(__arm__)
+#  if defined(__arm__)
     struct user_vfpregs fp;
-#else
+#  else
     struct user_fpregs_struct fp;
+#  endif
+#else
+    /* Since Linux 2.6.34 */
+    struct regset_gp gp; /* General purpose registers */
+    struct regset_fp fp; /* Floating point registers */
 #endif
 
 /* Additional CPU registers - defined in regset-mdep.h */

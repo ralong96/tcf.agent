@@ -87,7 +87,7 @@
 
 #define USE_PTRACE_SYSCALL      0
 
-#if defined(__arm__)
+#if defined(__arm__) || defined(__aarch64__)
 #if !defined(PTRACE_GETVFPREGS)
 #define PTRACE_GETVFPREGS       27
 #define PTRACE_SETVFPREGS       28
@@ -358,19 +358,8 @@ static int flush_regs(Context * ctx) {
 
     for (i = 0; i < sizeof(REG_SET); i++) {
         if (!ext->regs_dirty[i]) continue;
-        if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
-#if defined(__arm__)
-            if (ptrace(PTRACE_SETVFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
-#else
-            if (ptrace(PTRACE_SETFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
-#endif
-                err = errno;
-                break;
-            }
-            memset(ext->regs_dirty + offsetof(REG_SET, fp), 0, sizeof(ext->regs->fp));
-        }
 #ifdef MDEP_OtherRegisters
-        else if (i >= offsetof(REG_SET, other) && i < offsetof(REG_SET, other) + sizeof(ext->regs->other)) {
+        if (i >= offsetof(REG_SET, other) && i < offsetof(REG_SET, other) + sizeof(ext->regs->other)) {
             size_t offs = 0;
             size_t size = 0;
             size_t j = i + 1;
@@ -382,9 +371,46 @@ static int flush_regs(Context * ctx) {
             assert(i >= offs);
             assert(i < offs + size);
             memset(ext->regs_dirty + offs, 0, size);
+            continue;
         }
 #endif
-        else {
+#ifdef MDEP_UseREGSET
+        if (i >= offsetof(REG_SET, gp) && i < offsetof(REG_SET, gp) + sizeof(ext->regs->gp)) {
+            struct iovec buf;
+            buf.iov_base = &ext->regs->gp;
+            buf.iov_len = sizeof(ext->regs->gp);
+            if (ptrace(PTRACE_SETREGSET, ext->pid, REGSET_GP, &buf) < 0) {
+                err = errno;
+                break;
+            }
+            memset(ext->regs_dirty + offsetof(REG_SET, gp), 0, sizeof(ext->regs->gp));
+            continue;
+        }
+        if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
+            struct iovec buf;
+            buf.iov_base = &ext->regs->fp;
+            buf.iov_len = sizeof(ext->regs->fp);
+            if (ptrace(PTRACE_SETREGSET, ext->pid, REGSET_FP, &buf) < 0) {
+                err = errno;
+                break;
+            }
+            memset(ext->regs_dirty + offsetof(REG_SET, fp), 0, sizeof(ext->regs->fp));
+            continue;
+        }
+#else
+        if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
+#if defined(__arm__) || defined(__aarch64__)
+            if (ptrace(PTRACE_SETVFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
+#else
+            if (ptrace(PTRACE_SETFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
+#endif
+                err = errno;
+                break;
+            }
+            memset(ext->regs_dirty + offsetof(REG_SET, fp), 0, sizeof(ext->regs->fp));
+            continue;
+        }
+        if (i >= offsetof(REG_SET, user) && i < offsetof(REG_SET, user) + sizeof(ext->regs->user)) {
             size_t j = i - (i - offsetof(REG_SET, user)) % sizeof(ContextAddress);
             assert(*(ContextAddress *)(ext->regs_valid + j) == ~(ContextAddress)0);
             if (ptrace(PTRACE_POKEUSER, ext->pid, (void *)j, (void *)*(ContextAddress *)((uint8_t *)&ext->regs->user + j)) < 0) {
@@ -393,6 +419,7 @@ static int flush_regs(Context * ctx) {
             }
             *(ContextAddress *)(ext->regs_dirty + j) = 0;
         }
+#endif
     }
 
     if (!err) return 0;
@@ -851,26 +878,8 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
 
     for (i = def->offset + offs; i < def->offset + offs + size; i++) {
         if (ext->regs_valid[i]) continue;
-        if (i >= offsetof(REG_SET, user.regs) && i < offsetof(REG_SET, user.regs) + sizeof(ext->regs->user.regs)) {
-            if (ptrace(PTRACE_GETREGS, ext->pid, 0, &ext->regs->user.regs) < 0 && errno != ESRCH) {
-                err = errno;
-                break;
-            }
-            memset(ext->regs_valid + offsetof(REG_SET, user.regs), 0xff, sizeof(ext->regs->user.regs));
-        }
-        else if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
-#if defined(__arm__)
-            if (ptrace(PTRACE_GETVFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
-#else
-            if (ptrace(PTRACE_GETFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
-#endif
-                err = errno;
-                break;
-            }
-            memset(ext->regs_valid + offsetof(REG_SET, fp), 0xff, sizeof(ext->regs->fp));
-        }
 #ifdef MDEP_OtherRegisters
-        else if (i >= offsetof(REG_SET, other) && i < offsetof(REG_SET, other) + sizeof(ext->regs->other)) {
+        if (i >= offsetof(REG_SET, other) && i < offsetof(REG_SET, other) + sizeof(ext->regs->other)) {
             size_t offs = 0;
             size_t size = 0;
             size_t j = i + 1;
@@ -882,14 +891,60 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
             assert(i >= offs);
             assert(j <= offs + size);
             memset(ext->regs_valid + offs, 0xff, size);
+            continue;
         }
 #endif
-        else if (i >= offsetof(REG_SET, user) && i < offsetof(REG_SET, user) + sizeof(ext->regs->user)) {
+#ifdef MDEP_UseREGSET
+        if (i >= offsetof(REG_SET, gp) && i < offsetof(REG_SET, gp) + sizeof(ext->regs->gp)) {
+            struct iovec buf;
+            buf.iov_base = &ext->regs->gp;
+            buf.iov_len = sizeof(ext->regs->gp);
+            if (ptrace(PTRACE_GETREGSET, ext->pid, REGSET_GP, &buf) < 0 && errno != ESRCH) {
+                err = errno;
+                break;
+            }
+            memset(ext->regs_valid + offsetof(REG_SET, gp), 0xff, sizeof(ext->regs->gp));
+            continue;
+        }
+        if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
+            struct iovec buf;
+            buf.iov_base = &ext->regs->fp;
+            buf.iov_len = sizeof(ext->regs->fp);
+            if (ptrace(PTRACE_GETREGSET, ext->pid, REGSET_FP, &buf) < 0 && errno != ESRCH) {
+                err = errno;
+                break;
+            }
+            memset(ext->regs_valid + offsetof(REG_SET, fp), 0xff, sizeof(ext->regs->fp));
+            continue;
+        }
+#else
+        if (i >= offsetof(REG_SET, user.regs) && i < offsetof(REG_SET, user.regs) + sizeof(ext->regs->user.regs)) {
+            if (ptrace(PTRACE_GETREGS, ext->pid, 0, &ext->regs->user.regs) < 0 && errno != ESRCH) {
+                err = errno;
+                break;
+            }
+            memset(ext->regs_valid + offsetof(REG_SET, user.regs), 0xff, sizeof(ext->regs->user.regs));
+            continue;
+        }
+        if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
+#if defined(__arm__) || defined(__aarch64__)
+            if (ptrace(PTRACE_GETVFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
+#else
+            if (ptrace(PTRACE_GETFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
+#endif
+                err = errno;
+                break;
+            }
+            memset(ext->regs_valid + offsetof(REG_SET, fp), 0xff, sizeof(ext->regs->fp));
+            continue;
+        }
+        if (i >= offsetof(REG_SET, user) && i < offsetof(REG_SET, user) + sizeof(ext->regs->user)) {
             size_t j = i - (i - offsetof(REG_SET, user)) % sizeof(ContextAddress);
             *(ContextAddress *)((uint8_t *)ext->regs + j) = (ContextAddress)ptrace(PTRACE_PEEKUSER,
                 ext->pid, (void *)(j - offsetof(REG_SET, user)), 0);
             memset(ext->regs_valid + j, 0xff, sizeof(ContextAddress));
         }
+#endif
     }
 
     if (err) {
@@ -1038,6 +1093,8 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     isa->def = "X86_64";
 #elif defined(__arm__)
     isa->def = "ARM";
+#elif defined(__aarch64__)
+    isa->def = "A64";
 #elif defined(__powerpc__)
     isa->def = "PowerPC";
 #else
