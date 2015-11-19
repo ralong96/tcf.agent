@@ -1107,6 +1107,8 @@ static BreakInstruction * link_breakpoint_instruction(
     BreakInstruction * bi = NULL;
     InstructionRef * ref = NULL;
 
+    assert(mem == NULL || address_error == NULL);
+
     if (mem == NULL) {
         /* Breakpoint does not have an address, e.g. breakpoint on a signal or I/O event */
         int hash = addr2instr_hash(ctx, bp);
@@ -1788,15 +1790,11 @@ static void evaluate_condition(void * x) {
                 int b = 0;
                 if (evaluate_expression(ctx, STACK_TOP_FRAME, 0, bp->condition, 1, &v) < 0 ||
                         (v.size > 0 && value_to_boolean(&v, &b) < 0)) {
-                    switch (get_error_code(errno)) {
-                    case ERR_CACHE_MISS:
-                    case ERR_CHANNEL_CLOSED:
-                        condition_error = bi->condition_error;
-                        break;
-                    default:
-                        condition_error = get_error_report(errno);
+                    int error = errno;
+                    Channel * c = cache_channel();
+                    if (c == NULL || !is_channel_closed(c)) {
+                        condition_error = get_error_report(error);
                         ce->condition_ok = 1;
-                        break;
                     }
                 }
                 else if (b) {
@@ -1808,7 +1806,7 @@ static void evaluate_condition(void * x) {
             }
         }
     }
-    if (compare_error_reports(bi->condition_error, condition_error)) {
+    if (cache_miss_count() > 0 || compare_error_reports(bi->condition_error, condition_error)) {
         release_error_report(condition_error);
     }
     else {
