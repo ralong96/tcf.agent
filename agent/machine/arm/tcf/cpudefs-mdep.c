@@ -947,13 +947,7 @@ static void ini_reg_defs(void) {
                             x = alloc_reg();
                             snprintf(nm, sizeof(nm), "s%d", i);
                             x->name = loc_strdup(nm);
-                            x->offset = REG_OFFSET(fp.fpregs[i / 2]);
-                            if (r->big_endian) {
-                                if ((i & 1) == 0) x->offset += 4;
-                            }
-                            else {
-                                if ((i & 1) != 0) x->offset += 4;
-                            }
+                            x->offset = REG_OFFSET(fp.fpregs) + i * 4;
                             x->size = 4;
                             x->dwarf_id = 64 + i;
                             x->eh_frame_id = 64 + i;
@@ -969,7 +963,7 @@ static void ini_reg_defs(void) {
                             x = alloc_reg();
                             snprintf(nm, sizeof(nm), "d%d", i);
                             x->name = loc_strdup(nm);
-                            x->offset = REG_OFFSET(fp.fpregs[i]);
+                            x->offset = REG_OFFSET(fp.fpregs) + i * 8;
                             x->size = 8;
                             x->dwarf_id = 256 + i;
                             x->eh_frame_id = 256 + i;
@@ -985,7 +979,7 @@ static void ini_reg_defs(void) {
                             x = alloc_reg();
                             snprintf(nm, sizeof(nm), "q%d", i);
                             x->name = loc_strdup(nm);
-                            x->offset = REG_OFFSET(fp.fpregs[i * 2]);
+                            x->offset = REG_OFFSET(fp.fpregs) + i * 16;
                             x->size = 16;
                             x->fp_value = 1;
                             x->parent = w;
