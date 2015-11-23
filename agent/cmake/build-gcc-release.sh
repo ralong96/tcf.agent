@@ -13,7 +13,24 @@
 # Contributors:
 #     Wind River Systems - initial API and implementation
 #*******************************************************************************
+
+TCF_MACHINE=`uname -m`
+case $TCF_MACHINE in
+  armv6l)
+    TCF_MACHINE=arm
+    ;;
+  armv7l)
+    TCF_MACHINE=arm
+    ;;
+  ppc64)
+    TCF_MACHINE=powerpc
+    ;;
+  aarch64)
+    TCF_MACHINE=a64
+    ;;
+esac
+
 [ -d gcc-release ] || mkdir gcc-release
 cd gcc-release
-[ -f Makefile ] || cmake -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" ../..
+[ -f Makefile ] || cmake -DTCF_MACHINE=$TCF_MACHINE -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" ../..
 make $*

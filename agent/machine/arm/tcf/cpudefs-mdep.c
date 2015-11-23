@@ -41,6 +41,9 @@
 #include <tcf/services/runctrl.h>
 #include <machine/arm/tcf/disassembler-arm.h>
 #include <machine/arm/tcf/stack-crawl-arm.h>
+#if ENABLE_ContextMux
+#include <tcf/framework/cpudefs-mdep-mux.h>
+#endif
 #include <tcf/cpudefs-mdep.h>
 
 #define REG_OFFSET(name) offsetof(REG_SET, name)
@@ -87,10 +90,10 @@ static RegisterDefinition * cpsr_def = NULL;
 #include <sys/ptrace.h>
 
 #if !defined(PTRACE_GETHBPREGS)
-#define PTRACE_GETHBPREGS 29
+#define PTRACE_GETHBPREGS (enum __ptrace_request)29
 #endif
 #if !defined(PTRACE_SETHBPREGS)
-#define PTRACE_SETHBPREGS 30
+#define PTRACE_SETHBPREGS (enum __ptrace_request)30
 #endif
 
 #define ARM_DEBUG_ARCH_V6       1

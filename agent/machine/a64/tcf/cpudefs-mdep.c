@@ -30,6 +30,9 @@
 #include <tcf/services/runctrl.h>
 #include <machine/a64/tcf/disassembler-a64.h>
 #include <machine/a64/tcf/stack-crawl-a64.h>
+#if ENABLE_ContextMux
+#include <tcf/framework/cpudefs-mdep-mux.h>
+#endif
 #include <tcf/cpudefs-mdep.h>
 
 #define REG_OFFSET(name) offsetof(REG_SET, name)

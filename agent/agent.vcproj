@@ -1659,6 +1659,14 @@
 				Name="a64"
 				>
 				<File
+					RelativePath=".\machine\a64\tcf\cpudefs-mdep.c"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\a64\tcf\cpudefs-mdep.h"
+					>
+				</File>
+				<File
 					RelativePath=".\machine\a64\tcf\disassembler-a64.c"
 					>
 				</File>
@@ -1668,6 +1676,10 @@
 				</File>
 				<File
 					RelativePath=".\machine\a64\tcf\dwarfreloc-mdep.h"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\a64\tcf\regset-mdep.h"
 					>
 				</File>
 				<File

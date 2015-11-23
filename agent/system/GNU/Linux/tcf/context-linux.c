@@ -64,10 +64,10 @@
 #endif
 
 #if !defined(PTRACE_SETOPTIONS)
-#define PTRACE_SETOPTIONS       0x4200
-#define PTRACE_GETEVENTMSG      0x4201
-#define PTRACE_GETSIGINFO       0x4202
-#define PTRACE_SETSIGINFO       0x4203
+#define PTRACE_SETOPTIONS       (enum __ptrace_request)0x4200
+#define PTRACE_GETEVENTMSG      (enum __ptrace_request)0x4201
+#define PTRACE_GETSIGINFO       (enum __ptrace_request)0x4202
+#define PTRACE_SETSIGINFO       (enum __ptrace_request)0x4203
 
 #define PTRACE_O_TRACESYSGOOD   0x00000001
 #define PTRACE_O_TRACEFORK      0x00000002
@@ -89,8 +89,8 @@
 
 #if defined(__arm__) || defined(__aarch64__)
 #if !defined(PTRACE_GETVFPREGS)
-#define PTRACE_GETVFPREGS       27
-#define PTRACE_SETVFPREGS       28
+#define PTRACE_GETVFPREGS       (enum __ptrace_request)27
+#define PTRACE_SETVFPREGS       (enum __ptrace_request)28
 #endif
 #endif
 
@@ -480,7 +480,7 @@ static const char * get_ptrace_cmd_name(int cmd) {
 static int do_single_step(Context * ctx) {
     uint32_t is_cont = 0;
     ContextExtensionLinux * ext = EXT(ctx);
-    int cmd = PTRACE_SINGLESTEP;
+    enum __ptrace_request cmd = PTRACE_SINGLESTEP;
 
     assert(!ext->pending_step);
 
@@ -491,7 +491,7 @@ static int do_single_step(Context * ctx) {
     if (cpu_enable_stepping_mode(ctx, &is_cont) < 0) return -1;
     if (flush_regs(ctx) < 0) return -1;
     if (is_cont) cmd = PTRACE_CONT;
-    if (ptrace((enum __ptrace_request)cmd, ext->pid, 0, 0) < 0) {
+    if (ptrace(cmd, ext->pid, 0, 0) < 0) {
         int err = errno;
         trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#lx, id %s, error %d %s",
             get_ptrace_cmd_name(cmd), ctx, ctx->id, err, errno_to_str(err));
@@ -537,9 +537,9 @@ int context_continue(Context * ctx) {
     int signal = 0;
     ContextExtensionLinux * ext = EXT(ctx);
 #if USE_PTRACE_SYSCALL
-    int cmd = PTRACE_SYSCALL;
+    enum __ptrace_request cmd = PTRACE_SYSCALL;
 #else
-    int cmd = PTRACE_CONT;
+    enum __ptrace_request cmd = PTRACE_CONT;
 #endif
 
     assert(is_dispatch_thread());
@@ -578,7 +578,7 @@ int context_continue(Context * ctx) {
     if (flush_regs(ctx) < 0) return -1;
     if (ext->detach_req && !ext->sigstop_posted &&
             sigset_is_empty(&ctx->pending_signals)) cmd = PTRACE_DETACH;
-    if (ptrace((enum __ptrace_request)cmd, ext->pid, 0, signal) < 0) {
+    if (ptrace(cmd, ext->pid, 0, signal) < 0) {
         int err = errno;
         trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#lx, id %s, error %d %s",
             get_ptrace_cmd_name(cmd), ctx, ctx->id, err, errno_to_str(err));
@@ -1353,7 +1353,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             unplant_breakpoints(prs);
             assert(prs->ref_count == 1);
             prs->exited = 1;
-            if (ptrace((enum __ptrace_request)PTRACE_DETACH, pid, 0, 0) < 0) {
+            if (ptrace(PTRACE_DETACH, pid, 0, 0) < 0) {
                 trace(LOG_ALWAYS, "error: ptrace(PTRACE_DETACH) failed: pid %d, error %d %s",
                     pid, errno, errno_to_str(errno));
             }
@@ -1369,7 +1369,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     ext->stop_cnt = 0;
 
     if (ext->ptrace_flags == 0) {
-        if (ptrace((enum __ptrace_request)PTRACE_SETOPTIONS, ext->pid, 0, PTRACE_FLAGS) < 0) {
+        if (ptrace(PTRACE_SETOPTIONS, ext->pid, 0, PTRACE_FLAGS) < 0) {
             trace(LOG_ALWAYS, "error: ptrace(PTRACE_SETOPTIONS) failed: pid %d, error %s",
                 ext->pid, errno_to_str(errno));
         }
@@ -1382,7 +1382,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     case PTRACE_EVENT_FORK:
     case PTRACE_EVENT_VFORK:
     case PTRACE_EVENT_CLONE:
-        if (ptrace((enum __ptrace_request)PTRACE_GETEVENTMSG, pid, 0, &msg) < 0) {
+        if (ptrace(PTRACE_GETEVENTMSG, pid, 0, &msg) < 0) {
             if (errno == ESRCH) {
                 msg = SIGKILL;
             }

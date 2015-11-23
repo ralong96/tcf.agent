@@ -27,8 +27,11 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
 #include <tcf/services/symbols.h>
-#include <tcf/cpudefs-mdep.h>
 #include <machine/powerpc/tcf/disassembler-powerpc.h>
+#if ENABLE_ContextMux
+#include <tcf/framework/cpudefs-mdep-mux.h>
+#endif
+#include <tcf/cpudefs-mdep.h>
 
 #define REG_OFFSET(name) offsetof(REG_SET, name)
 

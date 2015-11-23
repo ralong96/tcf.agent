@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2015 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -39,8 +39,16 @@ typedef struct DisassemblerParams {
 typedef DisassemblyResult * Disassembler(uint8_t * /* code */, ContextAddress /* addr */,
                                 ContextAddress /* size */, DisassemblerParams * /* param */);
 
+#if SERVICE_Disassembly
+
 extern void add_disassembler(Context * ctx, const char * isa, Disassembler disassembler);
 
 extern void ini_disassembly_service(Protocol * proto);
+
+#else /* SERVICE_Disassembly */
+
+#define add_disassembler(ctx, isa, disassembler) (void)(disassembler)
+
+#endif /* SERVICE_Disassembly */
 
 #endif /* D_disassembly */
