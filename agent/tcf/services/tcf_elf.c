@@ -648,8 +648,6 @@ static ELF_File * create_elf_cache(const char * file_name) {
 
     if (error == 0) {
         Elf32_Ehdr hdr;
-        int symtab_found;
-        ELF_Section * dynsym_section;
 
         memset(&hdr, 0, sizeof(hdr));
         if (read_fully(file->fd, (char *)&hdr, sizeof(hdr)) < 0) error = errno;
@@ -669,8 +667,6 @@ static ELF_File * create_elf_cache(const char * file_name) {
             file->byte_swap = file->big_endian != big_endian_host();
         }
 
-        symtab_found = 0;
-        dynsym_section = NULL;
         if (error != 0) {
             /* Nothing */
         }
@@ -740,14 +736,8 @@ static ELF_File * create_elf_cache(const char * file_name) {
                         sec->link = shdr.sh_link;
                         sec->info = shdr.sh_info;
                         sec->entsize = shdr.sh_entsize;
-                        if (sec->type == SHT_SYMTAB) {
+                        if (sec->type == SHT_SYMTAB || sec->type == SHT_DYNSYM) {
                             sec->sym_count = (unsigned)(sec->size / sizeof(Elf32_Sym));
-                            symtab_found = 1;
-                        }
-                        else if (sec->type == SHT_DYNSYM) {
-                            assert(dynsym_section == NULL);
-                            sec->sym_count = (unsigned)(sec->size / sizeof(Elf32_Sym));
-                            dynsym_section = sec;
                         }
                         cnt++;
                     }
@@ -860,14 +850,8 @@ static ELF_File * create_elf_cache(const char * file_name) {
                         sec->link = shdr.sh_link;
                         sec->info = shdr.sh_info;
                         sec->entsize = (U4_T)shdr.sh_entsize;
-                        if (sec->type == SHT_SYMTAB) {
+                        if (sec->type == SHT_SYMTAB || sec->type == SHT_DYNSYM) {
                             sec->sym_count = (unsigned)(sec->size / sizeof(Elf64_Sym));
-                            symtab_found = 1;
-                        }
-                        else if (sec->type == SHT_DYNSYM) {
-                            assert(dynsym_section == NULL);
-                            sec->sym_count = (unsigned)(sec->size / sizeof(Elf64_Sym));
-                            dynsym_section = sec;
                         }
                         cnt++;
                     }
@@ -926,8 +910,6 @@ static ELF_File * create_elf_cache(const char * file_name) {
                 }
             }
         }
-
-        if (dynsym_section != NULL && symtab_found) dynsym_section->sym_count = 0;
     }
     if (error == 0) {
         unsigned m = 0;

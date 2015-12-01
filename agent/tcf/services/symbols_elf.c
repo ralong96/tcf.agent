@@ -69,6 +69,7 @@ struct Symbol {
     int8_t has_address;
     int8_t has_location;
     int8_t priority;
+    int8_t dynsym;
     int8_t weak;
     ContextAddress address;
     Context * ctx;
@@ -316,6 +317,7 @@ int elf_tcf_symbol(Context * ctx, ELF_SymbolInfo * sym_info, Symbol ** symbol) {
     sym->ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
     sym->tbl = sym_info->sym_section;
     sym->index = sym_info->sym_index;
+    sym->dynsym = sym->tbl->type == SHT_DYNSYM;
 
     switch (sym_info->type) {
     case STT_NOTYPE:
@@ -1011,6 +1013,10 @@ static int symbol_prt_comparator(const void * x, const void * y) {
     /* 'this' members have lower priority than local variables */
     if (sx->var == NULL && sy->var != NULL) return +1;
     if (sx->var != NULL && sy->var == NULL) return -1;
+
+    /* Main symbol table is preferred over dynamic symbols */
+    if (sx->dynsym && !sy->dynsym) return -1;
+    if (sy->dynsym && !sx->dynsym) return +1;
 
     /* First added to the results list has higher priority */
     if (sx->pos < sy->pos) return +1;
