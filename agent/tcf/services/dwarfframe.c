@@ -1165,6 +1165,15 @@ static void read_frame_fde(U8_T IP, U8_T fde_pos) {
                 return;
             }
             generate_commands();
+            if (dwarf_stack_trace_regs_cnt == 0) {
+                /* GHS generates dummy frame info with all registers marked undefined */
+                /* Ignore frame info, fall-back to stack crawl logic */
+                dwarf_stack_trace_fp->cmds_cnt = 0;
+                dwarf_stack_trace_addr = 0;
+                dwarf_stack_trace_size = 0;
+                dio_ExitSection();
+                return;
+            }
         }
     }
     dio_ExitSection();
