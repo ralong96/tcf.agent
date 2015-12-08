@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -582,7 +582,7 @@ int get_symbol_type(const Symbol * sym, Symbol ** type) {
             *type = res;
             return 0;
         }
-        assert(sym->sym_class == SYM_CLASS_TYPE);
+        assert(sym->sym_class == SYM_CLASS_UNKNOWN || sym->sym_class == SYM_CLASS_TYPE);
     }
     *type = (Symbol *)sym;
     return 0;
