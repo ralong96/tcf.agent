@@ -357,6 +357,9 @@
     <ClCompile Include="machine\a64\tcf\stack-crawl-a64.c">
       <Filter>machine\a64</Filter>
     </ClCompile>
+    <ClCompile Include="machine\x86_64\tcf\disassembler-x86_64.c">
+      <Filter>machine\x86_64</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tcf\framework\asyncreq.h">
@@ -680,6 +683,9 @@
     </ClInclude>
     <ClInclude Include="machine\a64\tcf\stack-crawl-a64.h">
       <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\x86_64\tcf\disassembler-x86_64.h">
+      <Filter>machine\x86_64</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -43,6 +43,11 @@
 #  define ENABLE_HardwareBreakpoints 1
 #endif
 
+#if !defined(ENABLE_add_cpudefs_disassembler)
+#define ENABLE_add_cpudefs_disassembler 1
+extern void add_cpudefs_disassembler(Context * cpu_ctx);
+#endif
+
 extern RegisterDefinition * regs_index;
 extern unsigned char BREAK_INST[1];
 

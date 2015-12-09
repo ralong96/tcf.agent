@@ -279,6 +279,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="machine\powerpc\tcf\disassembler-powerpc.c" />
+    <ClCompile Include="machine\x86_64\tcf\disassembler-x86_64.c" />
     <ClCompile Include="tcf\framework\asyncreq.c" />
     <ClCompile Include="tcf\framework\base64.c" />
     <ClCompile Include="tcf\framework\cache.c" />
@@ -436,6 +437,7 @@
     <ClInclude Include="machine\powerpc\tcf\disassembler-powerpc.h" />
     <ClInclude Include="machine\powerpc\tcf\dwarfreloc-mdep.h" />
     <ClInclude Include="machine\powerpc\tcf\regset-mdep.h" />
+    <ClInclude Include="machine\x86_64\tcf\disassembler-x86_64.h" />
     <ClInclude Include="machine\x86_64\tcf\dwarfreloc-mdep.h" />
     <ClInclude Include="tcf\framework\asyncreq.h" />
     <ClInclude Include="tcf\framework\base64.h" />

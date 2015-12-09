@@ -29,6 +29,7 @@
 #include <tcf/framework/cpudefs-mdep-mux.h>
 #endif
 #include <tcf/cpudefs-mdep.h>
+#include <machine/x86_64/tcf/disassembler-x86_64.h>
 
 #if defined(__i386__) || defined(__x86_64__)
 
@@ -1357,6 +1358,13 @@ int cpu_bp_on_suspend(Context * ctx, int * triggered) {
 }
 
 #endif /* ENABLE_HardwareBreakpoints */
+
+#if defined(ENABLE_add_cpudefs_disassembler) && ENABLE_add_cpudefs_disassembler
+void add_cpudefs_disassembler(Context * cpu_ctx) {
+    add_disassembler(cpu_ctx, "386", disassemble_x86_32);
+    add_disassembler(cpu_ctx, "X86_64", disassemble_x86_64);
+}
+#endif
 
 void ini_cpudefs_mdep(void) {
     regs_cnt = 0;

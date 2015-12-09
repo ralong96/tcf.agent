@@ -1479,6 +1479,14 @@
 					>
 				</File>
 				<File
+					RelativePath=".\machine\x86_64\tcf\disassembler-x86_64.c"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\x86_64\tcf\disassembler-x86_64.h"
+					>
+				</File>
+				<File
 					RelativePath=".\machine\x86_64\tcf\dwarfreloc-mdep.h"
 					>
 				</File>
