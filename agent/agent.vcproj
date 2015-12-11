@@ -1539,6 +1539,22 @@
 					>
 				</File>
 				<File
+					RelativePath=".\machine\i386\tcf\disassembler-i386.c"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						ExcludedFromBuild="true"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\machine\i386\tcf\disassembler-i386.h"
+					>
+				</File>
+				<File
 					RelativePath=".\machine\i386\tcf\dwarfreloc-mdep.h"
 					>
 				</File>
@@ -1588,6 +1604,22 @@
 				</File>
 				<File
 					RelativePath=".\machine\i686\tcf\cpudefs-mdep.h"
+					>
+				</File>
+				<File
+					RelativePath=".\machine\i686\tcf\disassembler-i686.c"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						ExcludedFromBuild="true"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\machine\i686\tcf\disassembler-i686.h"
 					>
 				</File>
 				<File

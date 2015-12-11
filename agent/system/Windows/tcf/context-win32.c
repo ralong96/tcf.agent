@@ -1441,6 +1441,7 @@ int context_get_breakpoint_status(ContextBreakpoint * bp, const char *** names, 
 int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     ContextExtensionWin32 * ext = EXT(ctx->mem);
     memset(isa, 0, sizeof(ContextISA));
+    isa->max_instruction_size = 15;
     if (ext->debug_state->wow64) {
         isa->def = "386";
     }

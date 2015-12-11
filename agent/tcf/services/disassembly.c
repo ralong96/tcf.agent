@@ -321,14 +321,9 @@ static void disassemble_cache_client(void * x) {
                 if (get_symbol_address(sym, &sym_addr) == 0) sym_addr_ok = 1;
                 if (get_symbol_size(sym, &sym_size) == 0) sym_size_ok = 1;
             }
-            if (sym_addr_ok && sym_addr <= args->addr) {
-                if (args->addr - sym_addr >= 0x1000) {
-                    sym_addr_ok = 0;
-                    sym_size_ok = 0;
-                }
-                else if (sym_size_ok && sym_addr + sym_size > args->addr + args->size) {
-                    sym_size = args->addr + args->size - sym_addr;
-                }
+            if (sym_addr_ok && sym_addr <= args->addr && args->addr - sym_addr >= 0x1000) {
+                sym_addr_ok = 0;
+                sym_size_ok = 0;
             }
         }
 #endif
@@ -346,8 +341,19 @@ static void disassemble_cache_client(void * x) {
 #endif
         if (sym_addr_ok && sym_size_ok && sym_addr <= args->addr && sym_addr + sym_size > args->addr) {
             buf_addr = sym_addr;
-            buf_size = sym_size;
-            mem_size = (size_t)sym_size;
+            if (sym_addr + sym_size > args->addr + args->size) {
+                buf_size = args->addr + args->size - sym_addr;
+                if (isa.max_instruction_size > 0) {
+                    mem_size = (size_t)(buf_size + isa.max_instruction_size);
+                }
+                else {
+                    mem_size = (size_t)(buf_size + MAX_INSTRUCTION_SIZE);
+                }
+            }
+            else {
+                buf_size = sym_size;
+                mem_size = (size_t)sym_size;
+            }
         }
         else if (sym_addr_ok && sym_addr < args->addr) {
             if (get_isa(ctx, sym_addr, &isa) < 0) {
