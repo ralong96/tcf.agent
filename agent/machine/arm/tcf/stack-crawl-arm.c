@@ -75,6 +75,12 @@ typedef struct {
     MemData mem_data;
 } BranchData;
 
+#define CPU_ARMv7A  1
+#define CPU_ARMv7R  2
+#define CPU_ARMv7M  3
+#define CPU_ARM32   4
+
+static unsigned cpu_type = 0;
 static Context * stk_ctx = NULL;
 static StackFrame * stk_frame = NULL;
 static RegData reg_data[16];
@@ -2209,8 +2215,14 @@ static int trace_instructions(void) {
             }
             else {
                 int r = 0;
-                if (cpsr_data.v & 0x01000000) r = trace_jazelle();
-                else if (cpsr_data.v & 0x00000020) r = trace_thumb();
+                uint32_t flag_t = 1 << 5;
+                uint32_t flag_j = 1 << 24;
+                if (cpu_type == CPU_ARMv7M) {
+                    flag_t = 1 << 24;
+                    flag_j = 0;
+                }
+                if (cpsr_data.v & flag_j) r = trace_jazelle();
+                else if (cpsr_data.v & flag_t) r = trace_thumb();
                 else r = trace_arm();
                 if (r < 0) error = errno;
             }
@@ -2275,7 +2287,7 @@ static int trace_instructions(void) {
     return 0;
 }
 
-int crawl_stack_frame_arm(StackFrame * frame, StackFrame * down) {
+static int trace_frame(StackFrame * frame, StackFrame * down) {
     RegisterDefinition * def = NULL;
     int spsr_id = -1;
 
@@ -2357,6 +2369,16 @@ int crawl_stack_frame_arm(StackFrame * frame, StackFrame * down) {
 
     stk_ctx = NULL;
     return 0;
+}
+
+int crawl_stack_frame_arm(StackFrame * frame, StackFrame * down) {
+    cpu_type = CPU_ARM32;
+    return trace_frame(frame, down);
+}
+
+int crawl_stack_frame_arm_v7m(StackFrame * frame, StackFrame * down) {
+    cpu_type = CPU_ARMv7M;
+    return trace_frame(frame, down);
 }
 
 #endif
