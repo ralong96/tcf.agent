@@ -124,6 +124,30 @@ static void add_reg_name(uint32_t n, int sf, int sp) {
     add_dec_uint32(n);
 }
 
+static void add_fp_reg_name_v(uint32_t n, int q) {
+    add_char('v');
+    add_dec_uint32(n);
+    add_char('.');
+    add_str(q ? "16b" : "8b");
+}
+
+static void add_fp_reg_name(uint32_t n, uint32_t sz, int q) {
+    switch (sz) {
+    case 0: add_char('b'); break;
+    case 1: add_char('h'); break;
+    case 2: add_char('s'); break;
+    default: add_char('d'); break;
+    }
+    add_dec_uint32(n);
+    add_char('.');
+    switch (sz) {
+    case 0: add_str(q ? "16b" : "8b"); break;
+    case 1: add_str(q ? "8h" : "4h"); break;
+    case 2: add_str(q ? "4s" : "2s"); break;
+    default: add_str(q ? "2d" : ""); break;
+    }
+}
+
 static void add_prfm_name(uint32_t n) {
     switch (n) {
     case 0: add_str("pldl1keep"); break;
@@ -1615,7 +1639,441 @@ static void data_processing_register(void) {
     }
 }
 
+static void fp_to_fixed_point_conversions(void) {
+    uint32_t sf = (instr >> 31) & 1;
+    uint32_t type = (instr >> 22) & 3;
+    uint32_t rmode = (instr >> 19) & 3;
+    uint32_t opcode = (instr >> 16) & 7;
+    uint32_t scale = (instr >> 10) & 0x3f;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    uint32_t Rd = instr & 0x1f;
+
+    switch (opcode) {
+    case 0:
+        if (rmode == 3) add_str("fcvtzs");
+        break;
+    case 1:
+        if (rmode == 3) add_str("fcvtzu");
+        break;
+    case 2:
+        if (rmode == 0) add_str("scvtf");
+        break;
+    case 3:
+        if (rmode == 0) add_str("ucvtf");
+        break;
+    }
+    if (buf_pos == 0) return;
+    add_char(' ');
+    if (opcode == 2 || opcode == 3) {
+        add_char(type & 1 ? 'd' : 's');
+        add_dec_uint32(Rd);
+        add_str(", ");
+        add_reg_name(Rn, sf, 0);
+    }
+    else {
+        add_reg_name(Rd, sf, 0);
+        add_str(", ");
+        add_char(type & 1 ? 'd' : 's');
+        add_dec_uint32(Rn);
+    }
+    add_str(", #");
+    add_dec_uint32(64 - scale);
+}
+
+static void fp_conditional_compare(void) {
+    uint32_t type = (instr >> 22) & 3;
+    uint32_t cond = (instr >> 12) & 0xf;
+    uint32_t opcode = (instr >> 4) & 1;
+    uint32_t Rm = (instr >> 16) & 0x1f;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    uint32_t nzcv = instr & 0xf;
+
+    add_str(opcode ? "fccmpe" : "fccmp");
+    add_char(' ');
+    add_char(type & 1 ? 'd' : 's');
+    add_dec_uint32(Rn);
+    add_str(", ");
+    add_char(type & 1 ? 'd' : 's');
+    add_dec_uint32(Rm);
+    add_str(", #");
+    add_dec_uint32(nzcv);
+    add_str(", ");
+    add_str(cond_names[cond]);
+}
+
+static void fp_data_processing_2_source(void) {
+    uint32_t type = (instr >> 22) & 3;
+    uint32_t opcode = (instr >> 12) & 0xf;
+    uint32_t Rm = (instr >> 16) & 0x1f;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    uint32_t Rd = instr & 0x1f;
+
+    switch (opcode) {
+    case 0: add_str("fmul"); break;
+    case 1: add_str("fdiv"); break;
+    case 2: add_str("fadd"); break;
+    case 3: add_str("fsub"); break;
+    case 4: add_str("fmax"); break;
+    case 5: add_str("fmin"); break;
+    case 6: add_str("fmaxnm"); break;
+    case 7: add_str("fminmn"); break;
+    case 8: add_str("fnmul"); break;
+    }
+    if (buf_pos == 0) return;
+    add_char(' ');
+    add_char(type & 1 ? 'd' : 's');
+    add_dec_uint32(Rd);
+    add_str(", ");
+    add_char(type & 1 ? 'd' : 's');
+    add_dec_uint32(Rn);
+    add_str(", ");
+    add_char(type & 1 ? 'd' : 's');
+    add_dec_uint32(Rm);
+}
+
+static void fp_conditional_select(void) {
+    uint32_t type = (instr >> 22) & 3;
+    uint32_t cond = (instr >> 12) & 0xf;
+    uint32_t Rm = (instr >> 16) & 0x1f;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    uint32_t Rd = instr & 0x1f;
+
+    add_str("fcsel");
+    add_char(' ');
+    add_char(type & 1 ? 'd' : 's');
+    add_dec_uint32(Rd);
+    add_str(", ");
+    add_char(type & 1 ? 'd' : 's');
+    add_dec_uint32(Rn);
+    add_str(", ");
+    add_char(type & 1 ? 'd' : 's');
+    add_dec_uint32(Rm);
+    add_str(", ");
+    add_str(cond_names[cond]);
+}
+
+static void fp_to_integer_conversions(void) {
+    uint32_t sf = (instr >> 31) & 1;
+    uint32_t type = (instr >> 22) & 3;
+    uint32_t rmode = (instr >> 19) & 3;
+    uint32_t opcode = (instr >> 16) & 7;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    uint32_t Rd = instr & 0x1f;
+    switch (opcode | (rmode << 3)) {
+    case 0x00: add_str("fcvtns"); break;
+    case 0x01: add_str("fcvtnu"); break;
+    case 0x02: add_str("scvtf"); break;
+    case 0x03: add_str("ucvtf"); break;
+    case 0x04: add_str("fcvtas"); break;
+    case 0x05: add_str("fcvtau"); break;
+    case 0x06: add_str("fmov"); break;
+    case 0x07: add_str("fmov"); break;
+    case 0x08: add_str("fcvtps"); break;
+    case 0x09: add_str("fcvtpu"); break;
+    case 0x0e: add_str("fmov"); break;
+    case 0x0f: add_str("fmov"); break;
+    case 0x10: add_str("fcvtms"); break;
+    case 0x11: add_str("fcvtmu"); break;
+    case 0x18: add_str("fcvtzs"); break;
+    case 0x19: add_str("fcvtzu"); break;
+    }
+    if (buf_pos == 0) return;
+    add_char(' ');
+    if (opcode == 2 || opcode == 3 || opcode == 7) {
+        if (opcode == 7 && (rmode & 1)) {
+            add_char('v');
+            add_dec_uint32(Rd);
+            add_str(".d[1]");
+        }
+        else {
+            add_char(type & 1 ? 'd' : 's');
+            add_dec_uint32(Rd);
+        }
+        add_str(", ");
+        add_reg_name(Rn, sf, 0);
+    }
+    else {
+        add_reg_name(Rd, sf, 0);
+        add_str(", ");
+        if (opcode == 6 && (rmode & 1)) {
+            add_char('v');
+            add_dec_uint32(Rn);
+            add_str(".d[1]");
+        }
+        else {
+            add_char(type & 1 ? 'd' : 's');
+            add_dec_uint32(Rn);
+        }
+    }
+}
+
+static void AdvSIMD_three_same(void) {
+    uint32_t Q = (instr >> 30) & 1;
+    uint32_t U = (instr >> 29) & 1;
+    uint32_t size = (instr >> 22) & 3;
+    uint32_t opcode = (instr >> 11) & 0x1f;
+    uint32_t Rm = (instr >> 16) & 0x1f;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    int no_size = 0;
+    int no_rm = 0;
+    switch (opcode | (U << 5)) {
+    case 0x00: add_str("shadd"); break;
+    case 0x01: add_str("sqadd"); break;
+    case 0x02: add_str("srhadd"); break;
+    case 0x03:
+        if (size == 0) add_str("and");
+        else if (size == 1) add_str("bic");
+        else if (size == 2 && Rn == Rm) {
+            add_str("mov");
+            no_rm = 1;
+        }
+        else if (size == 2) add_str("orr");
+        else add_str("orn");
+        no_size = 1;
+        break;
+    case 0x04: add_str("shsub"); break;
+    case 0x05: add_str("sqsub"); break;
+    case 0x06: add_str("cmgt"); break;
+    case 0x07: add_str("cmge"); break;
+    case 0x08: add_str("sshl"); break;
+    case 0x09: add_str("sqshl"); break;
+    case 0x0a: add_str("srshl"); break;
+    case 0x0b: add_str("sqrshl"); break;
+    case 0x0c: add_str("smax"); break;
+    case 0x0d: add_str("smin"); break;
+    case 0x0e: add_str("sabd"); break;
+    case 0x0f: add_str("saba"); break;
+    case 0x10: add_str("add"); break;
+    case 0x11: add_str("cmtst"); break;
+    case 0x12: add_str("mla"); break;
+    case 0x13: add_str("mul"); break;
+    case 0x14: add_str("smaxp"); break;
+    case 0x15: add_str("sminp"); break;
+    case 0x16: add_str("sqdmulh"); break;
+    case 0x17: add_str("addp"); break;
+    case 0x18:
+        if (size < 2) add_str("fmaxnm");
+        else add_str("fminnm");
+        break;
+    case 0x19:
+        if (size < 2) add_str("fmla");
+        else add_str("fmls");
+        break;
+    case 0x1a:
+        if (size < 2) add_str("fadd");
+        else add_str("fsub");
+        break;
+    case 0x1b:
+        if (size < 2) add_str("fmulx");
+        break;
+    case 0x1c:
+        if (size < 2) add_str("fcmeq");
+        break;
+    case 0x1e:
+        if (size < 2) add_str("fmax");
+        else add_str("fmin");
+        break;
+    case 0x1f:
+        if (size < 2) add_str("frecps");
+        else add_str("frsqrts");
+        break;
+    case 0x20: add_str("uhadd"); break;
+    case 0x21: add_str("uqadd"); break;
+    case 0x22: add_str("urhadd"); break;
+    case 0x23:
+        if (size == 0) add_str("eor");
+        else if (size == 1) add_str("bsl");
+        else if (size == 2) add_str("bit");
+        else add_str("bif");
+        no_size = 1;
+        break;
+    case 0x24: add_str("uhsub"); break;
+    case 0x25: add_str("uqsub"); break;
+    case 0x26: add_str("cmhi"); break;
+    case 0x27: add_str("cmhs"); break;
+    case 0x28: add_str("ushl"); break;
+    case 0x29: add_str("uqshl"); break;
+    case 0x2a: add_str("urshl"); break;
+    case 0x2b: add_str("uqrshl"); break;
+    case 0x2c: add_str("umax"); break;
+    case 0x2d: add_str("umin"); break;
+    case 0x2e: add_str("uabd"); break;
+    case 0x2f: add_str("uaba"); break;
+    case 0x30: add_str("sub"); break;
+    case 0x31: add_str("cmeq"); break;
+    case 0x32: add_str("mls"); break;
+    case 0x33: add_str("pmul"); break;
+    case 0x34: add_str("umaxp"); break;
+    case 0x35: add_str("uminp"); break;
+    case 0x36: add_str("sqrdmulh"); break;
+    case 0x38:
+        if (size < 2) add_str("fmaxnmp");
+        else add_str("fminnmp");
+        break;
+    case 0x3a:
+        if (size < 2) add_str("faddp");
+        else add_str("fabd");
+        break;
+    case 0x3b:
+        if (size < 2) add_str("fmul");
+        break;
+    case 0x3c:
+        if (size < 2) add_str("fcmge");
+        else add_str("fcmgt");
+        break;
+    case 0x3d:
+        if (size < 2) add_str("facge");
+        else add_str("facgt");
+        break;
+    case 0x3e:
+        if (size < 2) add_str("fmaxp");
+        break;
+    case 0x3f:
+        if (size < 2) add_str("fdiv");
+        break;
+    }
+    if (buf_pos == 0) return;
+    add_char(' ');
+    if (no_size) add_fp_reg_name_v(instr & 0x1f, Q);
+    else add_fp_reg_name(instr & 0x1f, size, Q);
+    add_str(", ");
+    if (no_size) add_fp_reg_name_v(Rn, Q);
+    else add_fp_reg_name(Rn, size, Q);
+    if (!no_rm) {
+        add_str(", ");
+        if (no_size) add_fp_reg_name_v(Rm, Q);
+        else add_fp_reg_name(Rm, size, Q);
+    }
+}
+
 static void data_processing_simd_and_fp(void) {
+    if ((instr & 0x5f200000) == 0x1e000000) {
+        /* Floating-point<->fixed-point conversions */
+        fp_to_fixed_point_conversions();
+        return;
+    }
+    if ((instr & 0x5f200c00) == 0x1e200400) {
+        /* Floating-point conditional compare */
+        fp_conditional_compare();
+        return;
+    }
+    if ((instr & 0x5f200c00) == 0x1e200800) {
+        /* Floating-point data-processing (2 source) */
+        fp_data_processing_2_source();
+        return;
+    }
+    if ((instr & 0x5f200c00) == 0x1e200c00) {
+        /* Floating-point conditional select */
+        fp_conditional_select();
+        return;
+    }
+    if ((instr & 0x5f201c00) == 0x1e201000) {
+        /* Floating-point immediate */
+        return;
+    }
+    if ((instr & 0x5f203c00) == 0x1e202000) {
+        /* Floating-point compare */
+        return;
+    }
+    if ((instr & 0x5f207c00) == 0x1e204000) {
+        /* Floating-point data-processing (1 source) */
+        return;
+    }
+    if ((instr & 0x5f20fc00) == 0x1e200000) {
+        /* Floating-point<->integer conversions */
+        fp_to_integer_conversions();
+        return;
+    }
+    if ((instr & 0x5f000000) == 0x1f000000) {
+        /* Floating-point data-processing (3 source) */
+        return;
+    }
+    if ((instr & 0x9f200400) == 0x0e200400) {
+        /* AdvSIMD three same */
+        AdvSIMD_three_same();
+        return;
+    }
+    if ((instr & 0x9f200c00) == 0x0e200000) {
+        /* AdvSIMD three different */
+        return;
+    }
+    if ((instr & 0x9f3e0c00) == 0x0e200800) {
+        /* AdvSIMD two-reg misc */
+        return;
+    }
+    if ((instr & 0x9f3e0c00) == 0x0e300800) {
+        /* AdvSIMD across lanes */
+        return;
+    }
+    if ((instr & 0x9fe08400) == 0x0e000400) {
+        /* AdvSIMD copy */
+        return;
+    }
+    if ((instr & 0x9f000001) == 0x0f000000) {
+        /* AdvSIMD vector x indexed element */
+        return;
+    }
+    if ((instr & 0x9f800400) == 0x0f000400) {
+        if ((instr & 0x00780000) == 0x00000000) {
+            /* AdvSIMD modified immediate */
+        }
+        else {
+            /* AdvSIMD shift by immediate */
+        }
+        return;
+    }
+    if ((instr & 0xbf208c00) == 0x0e000000) {
+        /* AdvSIMD TBL/TBX */
+        return;
+    }
+    if ((instr & 0xbf208c00) == 0x0e000800) {
+        /* AdvSIMD ZIP/UZP/TRN */
+        return;
+    }
+    if ((instr & 0xbf208400) == 0x2e000000) {
+        /* AdvSIMD EXT */
+        return;
+    }
+    if ((instr & 0xdf200400) == 0x5e200400) {
+        /* AdvSIMD scalar three same */
+        return;
+    }
+    if ((instr & 0xdf200c00) == 0x5e200000) {
+        /* AdvSIMD scalar three different */
+        return;
+    }
+    if ((instr & 0xdf3e0c00) == 0x5e200800) {
+        /* AdvSIMD scalar two-reg misc */
+        return;
+    }
+    if ((instr & 0xdf3e0c00) == 0x5e300800) {
+        /* AdvSIMD scalar pairwise */
+        return;
+    }
+    if ((instr & 0xdfe08400) == 0x5e000400) {
+        /* AdvSIMD scalar copy */
+        return;
+    }
+    if ((instr & 0xdf000400) == 0x5f000000) {
+        /* AdvSIMD scalar x indexed element */
+        return;
+    }
+    if ((instr & 0xdf800400) == 0x5f000400) {
+        /* AdvSIMD scalar shift by immediate */
+        return;
+    }
+    if ((instr & 0xff3e0c00) == 0x4e280800) {
+        /* Crypto AES */
+        return;
+    }
+    if ((instr & 0xff208c00) == 0x5e000000) {
+        /* Crypto three-reg SHA */
+        return;
+    }
+    if ((instr & 0xff3e0c00) == 0x5e280800) {
+        /* Crypto two-reg SHA */
+        return;
+    }
 }
 
 DisassemblyResult * disassemble_a64(uint8_t * code,
