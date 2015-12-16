@@ -196,6 +196,13 @@ static void add_addr(uint64_t addr) {
 #endif
 }
 
+static void add_sys_reg_name(uint32_t reg) {
+    switch (reg) {
+    case 56962: add_str("tpidr_el0"); return;
+    }
+    add_dec_uint32(reg);
+}
+
 static void add_sys_reg_info(uint32_t reg) {
     uint32_t op0 = (reg >> 14) & 3;
     uint32_t op1 = (reg >> 11) & 7;
@@ -539,9 +546,20 @@ static void data_processing_immediate(void) {
 
     if ((instr & 0x1f800000) == 0x13800000) {
         /* Extract */
+        uint32_t rn = (instr >> 5) & 0x1f;
+        uint32_t rm = (instr >> 16) & 0x1f;
+        int no_rm = 0;
         int sf = (instr & (1u << 31)) != 0;
         switch ((instr >> 29) & 3) {
-        case 0: add_str("extr"); break;
+        case 0:
+            if (rn == rm) {
+                add_str("ror");
+                no_rm = 1;
+            }
+            else {
+                add_str("extr");
+            }
+            break;
         case 1: return;
         case 2: return;
         case 3: return;
@@ -549,11 +567,13 @@ static void data_processing_immediate(void) {
         add_char(' ');
         add_reg_name(instr & 0x1f, sf, 0);
         add_str(", ");
-        add_reg_name((instr >> 5) & 0x1f, sf, 0);
-        add_str(", ");
-        add_reg_name((instr >> 16) & 0x1f, sf, 0);
-        add_str(", #0x");
-        add_hex_uint32((instr >> 10) & 0x3f);
+        add_reg_name(rn, sf, 0);
+        if (!no_rm) {
+            add_str(", ");
+            add_reg_name(rm, sf, 0);
+        }
+        add_str(", #");
+        add_dec_uint32((instr >> 10) & 0x3f);
         return;
     }
 }
@@ -745,7 +765,7 @@ static void branch_exception_system(void) {
             /* MSR (register) */
             uint32_t reg = (instr >> 5) & 0xffff;
             add_str("msr ");
-            add_dec_uint32(reg);
+            add_sys_reg_name(reg);
             add_str(", ");
             add_reg_name(rt, 1, 1);
             add_sys_reg_info(reg);
@@ -770,7 +790,7 @@ static void branch_exception_system(void) {
             add_str("mrs ");
             add_reg_name(rt, 1, 1);
             add_str(", ");
-            add_dec_uint32(reg);
+            add_sys_reg_name(reg);
             add_sys_reg_info(reg);
         }
         return;
@@ -1065,7 +1085,7 @@ static void loads_and_stores(void) {
         add_char(' ');
 
         if (V) {
-            if (opc == 0) {
+            if (opc == 0 || opc == 1) {
                 switch (size) {
                 case 0: add_char('b'); break;
                 case 1: add_char('h'); shift = 1; break;
@@ -1225,23 +1245,139 @@ static void loads_and_stores(void) {
         buf_pos = 0;
     }
 
-    if ((instr & 0xbfbf0000) == 0x0c000000) {
+    if ((instr & 0xbfbf0000) == 0x0c000000 || (instr & 0xbfa00000) == 0x0c800000) {
         /* AdvSIMD load/store multiple structures */
-        return;
-    }
-
-    if ((instr & 0xbfa00000) == 0x0c800000) {
         /* AdvSIMD load/store multiple structures (post-indexed) */
+        int post_indexed = (instr & (1 << 28)) != 0;
+        int Q = (instr >> 30) & 1;
+        int L = (instr >> 22) & 1;
+        uint32_t opcode = (instr >> 12) & 0xf;
+        uint32_t size = (instr >> 10) & 3;
+        uint32_t rm = (instr >> 16) & 0x1f;
+        uint32_t rn = (instr >> 5) & 0x1f;
+        unsigned n = 0;
+        unsigned i;
+        switch (opcode) {
+        case  0: n = 4; break;
+        case  2: n = 4; break;
+        case  4: n = 3; break;
+        case  6: n = 3; break;
+        case  7: n = 1; break;
+        case  8: n = 2; break;
+        case 10: n = 2; break;
+        default: return;
+        }
+        add_str(L ? "ld" : "st");
+        if (instr & (1 << 14)) add_char('1');
+        else add_char((char)('0' + n));
+        add_str(" { ");
+        for (i = 0; i < n; i++) {
+            if (i > 0) add_str(", ");
+            add_fp_reg_name((instr & 0x1f) + i, size, Q);
+        }
+        add_str(" }, ");
+        add_char('[');
+        add_reg_name(rn, 1, 1);
+        add_char(']');
+        if (post_indexed) {
+            add_str(", ");
+            if (rm == 0x1f) {
+                add_str(Q ? "#64" : "#32");
+            }
+            else {
+                add_reg_name(rm, 1, 0);
+            }
+        }
         return;
     }
 
     if ((instr & 0xbf9f0000) == 0x0d000000) {
         /* AdvSIMD load/store single structure */
-        return;
-    }
-
-    if ((instr & 0xbf800000) == 0x0d800000) {
         /* AdvSIMD load/store single structure (post-indexed) */
+        int post_indexed = (instr & (1 << 28)) != 0;
+        int Q = (instr >> 30) & 1;
+        int L = (instr >> 22) & 1;
+        int R = (instr >> 21) & 1;
+        int S = (instr >> 12) & 1;
+        uint32_t opcode = (instr >> 13) & 7;
+        uint32_t size = (instr >> 10) & 3;
+        uint32_t rm = (instr >> 16) & 0x1f;
+        uint32_t rn = (instr >> 5) & 0x1f;
+        char sz_char = 0;
+        unsigned sz = 0;
+        unsigned n = 0;
+        unsigned i;
+        int r = 0;
+        if (!R) {
+            switch (opcode) {
+            case 0: n = 1; break;
+            case 1: n = 3; break;
+            case 2: n = 1; break;
+            case 3: n = 3; break;
+            case 4: n = 1; break;
+            case 5: n = 3; break;
+            default: return;
+            }
+        }
+        else {
+            switch (opcode) {
+            case 0: n = 2; break;
+            case 1: n = 4; break;
+            case 2: n = 2; break;
+            case 3: n = 4; break;
+            case 4: n = 2; break;
+            case 5: n = 4; break;
+            case 6: n = 2; r = 1; break;
+            case 7: n = 4; r = 1; break;
+            default: return;
+            }
+        }
+        if (opcode == 0) {
+            /* 8-bit variant */
+            sz_char = 'b';
+            sz = 0;
+        }
+        else if (opcode == 2 && (size & 1) == 0) {
+            /* 16-bit variant */
+            sz_char = 'h';
+            sz = 1;
+        }
+        else if (opcode == 4 && size == 0) {
+            /* 32-bit variant */
+            sz_char = 's';
+            sz = 2;
+        }
+        else {
+            /* 64-bit variant */
+            sz_char = 'd';
+            sz = 3;
+        }
+        add_str(L ? "ld" : "st");
+        add_char((char)('0' + n));
+        if (r) add_char('r');
+        add_str(" { ");
+        for (i = 0; i < n; i++) {
+            if (i > 0) add_str(", ");
+            add_char('v');
+            add_dec_uint32(instr & 0x1f);
+            add_char('.');
+            add_char(sz_char);
+        }
+        add_str(" }[");
+        add_dec_uint32(((Q << 3) | (S << 2) | size) >> sz);
+        add_str("], [");
+        add_reg_name(rn, 1, 1);
+        add_char(']');
+        if (post_indexed) {
+            add_str(", ");
+            if (rm == 0x1f) {
+                add_char('#');
+                add_dec_uint32(1 << sz);
+            }
+            else {
+                add_reg_name(rm, 1, 0);
+            }
+        }
         return;
     }
 }
@@ -1549,10 +1685,33 @@ static void data_processing_register(void) {
                 }
                 else {
                     switch (op31) {
-                    case 1: add_str(o0 ? "smsubl" : "smaddl"); no_sf = 1; break;
-                    case 2: add_str(o0 ? "" : "smulh"); break;
-                    case 5: add_str(o0 ? "umsubl" : "umaddl"); no_sf = 1; break;
-                    case 6: add_str(o0 ? "" : "umulh"); no_ra = 1; break;
+                    case 1:
+                        if (!o0 && ra == 0x1f) {
+                            add_str("smull");
+                            no_ra = 1;
+                        }
+                        else {
+                            add_str(o0 ? "smsubl" : "smaddl");
+                        }
+                        no_sf = 1;
+                        break;
+                    case 2:
+                        add_str(o0 ? "" : "smulh");
+                        break;
+                    case 5:
+                        if (!o0 && ra == 0x1f) {
+                            add_str("umull");
+                            no_ra = 1;
+                        }
+                        else {
+                            add_str(o0 ? "umsubl" : "umaddl");
+                        }
+                        no_sf = 1;
+                        break;
+                    case 6:
+                        add_str(o0 ? "" : "umulh");
+                        no_ra = 1;
+                        break;
                     }
                 }
             }
