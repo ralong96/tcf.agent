@@ -445,6 +445,8 @@ static void return_from_exception(void) {
 }
 
 static void bx_write_pc(void) {
+    /* ARMv7-M only supports the Thumb execution state */
+    if (cpu_type == CPU_ARMv7M) return;
     /* Determine the new mode */
     chk_loaded(15);
     if (reg_data[15].o) {
@@ -1090,11 +1092,7 @@ static int trace_thumb(void) {
             break;
         }
     }
-    /* Hi register operations/branch exchange
-     *  ADD Rd, Hs
-     *  ADD Hd, Rs
-     *  ADD Hd, Hs
-     */
+    /* Special data instructions and branch and exchange */
     else if ((instr & 0xfc00) == 0x4400) {
         uint8_t op = (instr & 0x0300) >> 8;
         int h1 = (instr & 0x0080) != 0;
@@ -1105,11 +1103,6 @@ static int trace_thumb(void) {
         /* Adjust the register numbers */
         if (h2) rhs += 8;
         if (h1) rhd += 8;
-
-        if (op != 3 && !h1 && !h2) {
-            set_errno(ERR_OTHER, "h1 or h2 must be set for ADD, CMP or MOV");
-            return -1;
-        }
 
         switch (op) {
         case 0: /* ADD */
