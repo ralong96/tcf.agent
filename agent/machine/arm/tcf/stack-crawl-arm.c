@@ -445,10 +445,13 @@ static void return_from_exception(void) {
 }
 
 static void bx_write_pc(void) {
-    /* ARMv7-M only supports the Thumb execution state */
-    if (cpu_type == CPU_ARMv7M) return;
-    /* Determine the new mode */
     chk_loaded(15);
+    /* ARMv7-M only supports the Thumb execution state */
+    if (cpu_type == CPU_ARMv7M) {
+        reg_data[15].v &= ~0x1u;
+        return;
+    }
+    /* Determine the new mode */
     if (reg_data[15].o) {
         int thumb_ee = (cpsr_data.v & 0x01000000) && (cpsr_data.v & 0x00000020);
         if (thumb_ee) {
