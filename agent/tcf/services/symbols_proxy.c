@@ -1770,7 +1770,7 @@ static void read_stack_trace_register(InputStream * inp, const char * id, void *
         trace_regs = (StackFrameRegisterLocation **)loc_realloc(trace_regs, trace_regs_max * sizeof(StackFrameRegisterLocation *));
     }
     location_cmds.cnt = 0;
-    if (json_read_array(inp, read_location_command, NULL)) {
+    if (json_read_array(inp, read_location_command, NULL) && location_cmds.cnt > 0) {
         Context * ctx = NULL;
         int frame = STACK_NO_FRAME;
         StackFrameRegisterLocation * reg = (StackFrameRegisterLocation *)loc_alloc(
@@ -1806,7 +1806,7 @@ static void read_inlined_subroutine(InputStream * inp, void * args) {
 
 static void read_stack_frame_fp(InputStream * inp, StackFrameCache * f) {
     location_cmds.cnt = 0;
-    if (json_read_array(inp, read_location_command, NULL)) {
+    if (json_read_array(inp, read_location_command, NULL) && location_cmds.cnt > 0) {
         f->sti.fp = (StackFrameRegisterLocation *)loc_alloc(sizeof(StackFrameRegisterLocation) +
             (location_cmds.cnt - 1) * sizeof(LocationExpressionCommand));
         f->sti.fp->reg = NULL;
