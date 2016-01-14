@@ -351,6 +351,9 @@
     <ClCompile Include="machine\x86_64\tcf\disassembler-x86_64.c">
       <Filter>machine\x86_64</Filter>
     </ClCompile>
+    <ClCompile Include="tcf\main\gdb-rsp.c">
+      <Filter>main</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tcf\framework\asyncreq.h">
@@ -668,6 +671,9 @@
     </ClInclude>
     <ClInclude Include="machine\x86_64\tcf\disassembler-x86_64.h">
       <Filter>machine\x86_64</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\main\gdb-rsp.h">
+      <Filter>main</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

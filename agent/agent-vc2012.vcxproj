@@ -211,6 +211,7 @@
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
     <Bscmake>
       <SuppressStartupBanner>true</SuppressStartupBanner>
@@ -256,6 +257,7 @@
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <TargetMachine>MachineX64</TargetMachine>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
     </Link>
     <Bscmake>
       <SuppressStartupBanner>true</SuppressStartupBanner>
@@ -308,6 +310,7 @@
     <ClCompile Include="tcf\framework\streams.c" />
     <ClCompile Include="tcf\framework\trace.c" />
     <ClCompile Include="tcf\framework\waitpid.c" />
+    <ClCompile Include="tcf\main\gdb-rsp.c" />
     <ClCompile Include="tcf\services\breakpoints.c" />
     <ClCompile Include="tcf\services\contextquery.c" />
     <ClCompile Include="tcf\services\diagnostics.c" />
@@ -474,6 +477,7 @@
     <ClInclude Include="tcf\framework\tcf.h" />
     <ClInclude Include="tcf\framework\trace.h" />
     <ClInclude Include="tcf\framework\waitpid.h" />
+    <ClInclude Include="tcf\main\gdb-rsp.h" />
     <ClInclude Include="tcf\services\breakpoints.h" />
     <ClInclude Include="tcf\services\contextquery.h" />
     <ClInclude Include="tcf\services\diagnostics.h" />

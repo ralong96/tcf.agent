@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -36,6 +36,7 @@
 #include <tcf/main/test.h>
 #include <tcf/main/cmdline.h>
 #include <tcf/main/services.h>
+#include <tcf/main/gdb-rsp.h>
 #include <tcf/main/server.h>
 #include <tcf/main/main_hooks.h>
 
@@ -183,6 +184,9 @@ static const char * help_text[] = {
 #endif
     "  -s<url>          set agent listening port and protocol, default is " DEFAULT_SERVER_URL,
     "  -S               print server properties in Json format to stdout",
+#if ENABLE_DebugContext
+    "  -g<port>         start GDB Remote Serial Protocol server at the specified TCP port",
+#endif
     "  -I<idle-seconds> exit if there are no connections for the specified time",
 #if ENABLE_Plugins
     "  -P<dir>          set agent plugins directory name",
@@ -299,6 +303,7 @@ int main(int argc, char ** argv) {
 #endif
             case 'L':
             case 's':
+            case 'g':
 #if ENABLE_Plugins
             case 'P':
 #endif
@@ -328,6 +333,15 @@ int main(int argc, char ** argv) {
                 case 's':
                     url = s;
                     break;
+
+#if ENABLE_DebugContext
+                case 'g':
+                    if (ini_gdb_rsp(s) < 0) {
+                        fprintf(stderr, "Cannot create GDB server: %s\n", errno_to_str(errno));
+                        exit(1);
+                    }
+                    break;
+#endif
 
 #if ENABLE_Plugins
                 case 'P':

@@ -1012,6 +1012,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\tcf\main\gdb-rsp.c"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\main\gdb-rsp.h"
+				>
+			</File>
+			<File
 				RelativePath=".\tcf\main\main.c"
 				>
 			</File>
