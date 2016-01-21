@@ -19,9 +19,11 @@
 
 #include <tcf/config.h>
 
-#if ENABLE_DebugContext
+#if !defined(ENABLE_GdbRemoteSerialProtocol)
+#  define ENABLE_GdbRemoteSerialProtocol 0
+#endif
 
-#include <tcf/framework/protocol.h>
+#if ENABLE_GdbRemoteSerialProtocol
 
 /*
  * Create and start GDB Remote Serial Protocol server listening on the given port.
@@ -30,5 +32,5 @@
  */
 extern int ini_gdb_rsp(const char * conf);
 
-#endif /* ENABLE_DebugContext */
+#endif /* ENABLE_GdbRemoteSerialProtocol */
 #endif /* D_gdb_rsp */

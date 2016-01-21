@@ -334,7 +334,7 @@ int main(int argc, char ** argv) {
                     url = s;
                     break;
 
-#if ENABLE_DebugContext
+#if ENABLE_GdbRemoteSerialProtocol
                 case 'g':
                     if (ini_gdb_rsp(s) < 0) {
                         fprintf(stderr, "Cannot create GDB server: %s\n", errno_to_str(errno));

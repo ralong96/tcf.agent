@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -318,6 +318,10 @@
 
 #if !defined(ENABLE_ContextIdHashTable)
 #  define ENABLE_ContextIdHashTable (ENABLE_DebugContext && !ENABLE_ContextProxy && TARGET_WINDOWS)
+#endif
+
+#if !defined(ENABLE_GdbRemoteSerialProtocol)
+#  define ENABLE_GdbRemoteSerialProtocol (ENABLE_DebugContext && SERVICE_RunControl && SERVICE_Breakpoints)
 #endif
 
 #endif /* D_config */
