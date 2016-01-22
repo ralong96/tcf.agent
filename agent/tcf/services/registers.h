@@ -39,6 +39,7 @@ extern void send_event_register_definitions_changed(void);
 
 typedef struct RegistersEventListener {
     void (*register_changed)(Context * ctx, int frame, RegisterDefinition * def, void * args);
+    void (*register_definitions_changed)(void * args);
 } RegistersEventListener;
 
 /*

@@ -371,7 +371,14 @@ void send_event_register_changed(const char * id) {
 }
 
 void send_event_register_definitions_changed(void) {
+    unsigned i;
     OutputStream * out = &broadcast_group->out;
+
+    for (i = 0; i < listener_cnt; i++) {
+        Listener * l = listeners + i;
+        if (l->func->register_definitions_changed == NULL) continue;
+        l->func->register_definitions_changed(l->args);
+    }
 
     write_stringz(out, "E");
     write_stringz(out, REGISTERS);
