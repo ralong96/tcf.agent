@@ -321,7 +321,7 @@
 #endif
 
 #if !defined(ENABLE_GdbRemoteSerialProtocol)
-#  define ENABLE_GdbRemoteSerialProtocol (ENABLE_DebugContext && SERVICE_RunControl && SERVICE_Breakpoints)
+#  define ENABLE_GdbRemoteSerialProtocol (ENABLE_DebugContext && SERVICE_RunControl && SERVICE_Breakpoints && SERVICE_Registers)
 #endif
 
 #endif /* D_config */

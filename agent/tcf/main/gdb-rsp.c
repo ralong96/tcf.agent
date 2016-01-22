@@ -32,6 +32,7 @@
 #include <tcf/framework/trace.h>
 #include <tcf/framework/link.h>
 #include <tcf/services/runctrl.h>
+#include <tcf/services/registers.h>
 
 #include <tcf/main/gdb-rsp.h>
 
@@ -50,8 +51,6 @@ typedef struct GdbServer {
     int disposed;
     AsyncReqInfo req;
     char isa[32];
-    RegisterDefinition ** regs_nm_map;
-    unsigned regs_nm_map_index_mask;
 } GdbServer;
 
 typedef struct GdbClient {
@@ -94,6 +93,8 @@ typedef struct GdbThread {
     GdbClient * client;
     unsigned id;
     Context * ctx;
+    RegisterDefinition ** regs_nm_map;
+    unsigned regs_nm_map_index_mask;
 } GdbThread;
 
 #define link_a2s(x) ((GdbServer *)((char *)(x) - offsetof(GdbServer, link_a2s)))
@@ -190,6 +191,7 @@ static GdbThread * find_thread(GdbClient * c, unsigned id) {
 }
 
 static void free_thread(GdbThread * t) {
+    loc_free(t->regs_nm_map);
     list_remove(&t->link_ctx2t);
     list_remove(&t->link_c2t);
     loc_free(t);
@@ -208,15 +210,14 @@ static unsigned reg_name_hash(const char * name) {
     return h;
 }
 
-static RegisterDefinition * find_register(GdbClient * c, Context * ctx, const char * name) {
-    GdbServer * s = c->server;
-    RegisterDefinition ** map = s->regs_nm_map;
+static RegisterDefinition * find_register(GdbThread * t, const char * name) {
+    RegisterDefinition ** map = t->regs_nm_map;
     unsigned n = 0;
 
     if (map == NULL) {
         unsigned map_len = 0;
         unsigned map_len_p2 = 1;
-        RegisterDefinition * def = get_reg_definitions(ctx);
+        RegisterDefinition * def = get_reg_definitions(t->ctx);
         if (def == NULL) return NULL;
         while (def->name != NULL) {
             map_len++;
@@ -225,20 +226,20 @@ static RegisterDefinition * find_register(GdbClient * c, Context * ctx, const ch
         if (map_len == 0) return NULL;
         while (map_len_p2 < map_len * 3) map_len_p2 <<= 2;
         map = (RegisterDefinition **)loc_alloc_zero(sizeof(RegisterDefinition *) * map_len_p2);
-        s->regs_nm_map_index_mask = map_len_p2 - 1;
-        def = get_reg_definitions(ctx);
+        t->regs_nm_map_index_mask = map_len_p2 - 1;
+        def = get_reg_definitions(t->ctx);
         while (def->name != NULL) {
-            unsigned h = reg_name_hash(def->name) & s->regs_nm_map_index_mask;
-            while (map[h] != NULL) h = (h + 1) & s->regs_nm_map_index_mask;
+            unsigned h = reg_name_hash(def->name) & t->regs_nm_map_index_mask;
+            while (map[h] != NULL) h = (h + 1) & t->regs_nm_map_index_mask;
             map[h] = def;
             def++;
         }
-        s->regs_nm_map = map;
+        t->regs_nm_map = map;
     }
-    n = reg_name_hash(name) & s->regs_nm_map_index_mask;
+    n = reg_name_hash(name) & t->regs_nm_map_index_mask;
     while (map[n] != NULL) {
         if (strcmp(map[n]->name, name) == 0) return map[n];
-        n = (n + 1) & s->regs_nm_map_index_mask;
+        n = (n + 1) & t->regs_nm_map_index_mask;
     }
     return NULL;
 }
@@ -429,7 +430,7 @@ static void add_res_reg_value(GdbClient * c, GdbThread * t, const char * name, u
     unsigned size = (bits + 7) / 8;
     void * buf = tmp_alloc_zero(size);
     unsigned i = 0;
-    if (t != NULL) def = find_register(c, t->ctx, name);
+    if (t != NULL) def = find_register(t, name);
     if (def != NULL && context_read_reg(t->ctx, def, 0, size, buf) < 0) def = NULL;
     while (i < size) {
         if (def == NULL) {
@@ -895,6 +896,7 @@ static void accept_done(void * args) {
     list_add_last(&c->link_s2c, &s->link_s2c);
     list_add_last(&c->channel.chanlink, &channel_root);
     notify_channel_created(&c->channel);
+    async_req_post(&s->req);
 
     if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt)) < 0) {
         trace(LOG_ALWAYS, "GDB Server setsockopt failed: %s", errno_to_str(errno));
@@ -904,7 +906,7 @@ static void accept_done(void * args) {
 
     for (l = context_root.next; l != &context_root; l = l->next) {
         Context * ctx = ctxl2ctxp(l);
-        if (context_has_state(ctx)) {
+        if (!ctx->exited && context_has_state(ctx)) {
             add_thread(c, ctx);
         }
     }
@@ -933,6 +935,21 @@ static void event_context_exited(Context * ctx, void * args) {
     }
 }
 
+static void event_register_definitions_changed(void * args) {
+    LINK * l, * n, * m;
+    for (l = link_a2s.next; l != &link_a2s; l = l->next) {
+        GdbServer * s = link_a2s(l);
+        for (n = s->link_s2c.next; n != &s->link_s2c; n = n->next) {
+            GdbClient * c = link_s2c(n);
+            for (m = c->link_c2t.next; m != &c->link_c2t; m = m->next) {
+                GdbThread * t = link_c2t(m);
+                loc_free(t->regs_nm_map);
+                t->regs_nm_map = NULL;
+            }
+        }
+    }
+}
+
 static ContextEventListener context_listener = {
     event_context_created,
     event_context_exited,
@@ -940,6 +957,11 @@ static ContextEventListener context_listener = {
     NULL,
     NULL,
     NULL
+};
+
+static RegistersEventListener registers_listener = {
+    NULL,
+    event_register_definitions_changed
 };
 
 int ini_gdb_rsp(const char * conf) {
@@ -962,6 +984,7 @@ int ini_gdb_rsp(const char * conf) {
         list_init(&link_a2s);
         context_extension_offset = context_extension(sizeof(LINK));
         add_context_event_listener(&context_listener, NULL);
+        add_registers_event_listener(&registers_listener, NULL);
         ini_done = 1;
     }
     s = (GdbServer *)loc_alloc_zero(sizeof(GdbServer));
