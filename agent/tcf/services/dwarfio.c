@@ -191,6 +191,14 @@ U2_T dio_ReadU2(void) {
 }
 
 U4_T dio_ReadU4(void) {
+#if defined(__BYTE_ORDER__)
+    U4_T x;
+    if (sDataPos + 4 > sDataLen) exception(ERR_EOF);
+    x = *(U4_T *)(sData + sDataPos);
+    if ((sBigEndian == 0) != (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) SWAP(x);
+    sDataPos += 4;
+    return x;
+#else
     U4_T x0, x1, x2, x3;
     if (sDataPos + 4 > sDataLen) exception(ERR_EOF);
     x0 = sData[sDataPos++];
@@ -200,14 +208,15 @@ U4_T dio_ReadU4(void) {
     return sBigEndian ?
         (x0 << 24) | (x1 << 16) | (x2 << 8) | x3:
         x0 | (x1 << 8) | (x2 << 16) | (x3 << 24);
+#endif
 }
 
 U8_T dio_ReadU8(void) {
 #if defined(__BYTE_ORDER__)
     U8_T x;
     if (sDataPos + 8 > sDataLen) exception(ERR_EOF);
-    memcpy(&x, sData + sDataPos, 8);
-    if (!sBigEndian != (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) swap_bytes(&x, 8);
+    x = *(U8_T *)(sData + sDataPos);
+    if ((sBigEndian == 0) != (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) SWAP(x);
     sDataPos += 8;
     return x;
 #else
