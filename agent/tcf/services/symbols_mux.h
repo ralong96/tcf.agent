@@ -56,7 +56,7 @@ typedef struct SymbolReader {
     int (*get_funccall_info)(const Symbol * func,
             const Symbol ** args, unsigned args_cnt, FunctionCallInfo ** info);
     int (*get_stack_tracing_info)(Context * ctx, ContextAddress addr, StackTracingInfo ** info);
-    const char * (*get_symbol_file_name)(Context * ctx, MemoryRegion * module);
+    int (*get_symbol_file_info)(Context * ctx, ContextAddress addr, SymbolFileInfo ** info);
     int (*get_context_isa)(Context * ctx, ContextAddress ip, const char ** isa,
         ContextAddress * range_addr, ContextAddress * range_size);
     int (*reader_is_valid)(Context * ctx, ContextAddress addr);
@@ -97,7 +97,7 @@ typedef struct SymbolReader {
 #define get_location_info READER_NAME(get_location_info)
 #define get_funccall_info READER_NAME(get_funccall_info)
 #define get_stack_tracing_info READER_NAME(get_stack_tracing_info)
-#define get_symbol_file_name READER_NAME(get_symbol_file_name)
+#define get_symbol_file_info READER_NAME(get_symbol_file_info)
 #define get_context_isa READER_NAME(get_context_isa)
 #define symbol_reader READER_NAME(symbol_reader)
 #define ini_symbols_lib READER_NAME(ini_symbols_lib)
@@ -129,7 +129,7 @@ extern int get_location_info(const Symbol * sym, LocationInfo ** info);
 extern int get_funccall_info(const Symbol * func,
         const Symbol ** args, unsigned args_cnt, FunctionCallInfo ** info);
 extern int get_stack_tracing_info(Context * ctx, ContextAddress addr, StackTracingInfo ** info);
-extern const char * get_symbol_file_name(Context * ctx, MemoryRegion * module);
+extern int get_symbol_file_info(Context * ctx, ContextAddress addr, SymbolFileInfo ** info);
 extern int get_array_symbol(const Symbol * sym, ContextAddress length, Symbol ** ptr);
 extern int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
         ContextAddress * range_addr, ContextAddress * range_size);
@@ -143,7 +143,7 @@ static SymbolReader symbol_reader = {
     get_symbol_name, get_symbol_size, get_symbol_base_type, get_symbol_index_type,
     get_symbol_container, get_symbol_length, get_symbol_lower_bound, get_symbol_children,
     get_symbol_flags, get_symbol_props, get_symbol_frame, get_array_symbol, is_plt_section, get_location_info,
-    get_funccall_info, get_stack_tracing_info, get_symbol_file_name,
+    get_funccall_info, get_stack_tracing_info, get_symbol_file_info,
     get_context_isa, reader_is_valid
 };
 

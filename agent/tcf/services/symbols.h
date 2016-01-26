@@ -148,6 +148,14 @@ typedef struct StackTracingInfo {
     int sub_cnt;
 } StackTracingInfo;
 
+typedef struct SymbolFileInfo {
+    ContextAddress addr;
+    ContextAddress size;
+    char * file_name;
+    int file_error;
+    int dyn_loader;
+} SymbolFileInfo;
+
 #endif
 
 #if ENABLE_Symbols
@@ -326,9 +334,12 @@ extern int get_funccall_info(const Symbol * func,
 extern int get_stack_tracing_info(Context * ctx, ContextAddress addr, StackTracingInfo ** info);
 
 /*
- * Get name of a symbol file that is used for a given module.
+ * Get info on a symbol file that is used for a given address.
+ * Return -1 and set errno in case of an error.
+ * Return 0 on success.
+ * Set 'info' to NULL if no symbol file found for the address.
  */
-extern const char * get_symbol_file_name(Context * ctx, MemoryRegion * module);
+extern int get_symbol_file_info(Context * ctx, ContextAddress addr, SymbolFileInfo ** info);
 
 /*
  * Initialize symbol service.

@@ -2432,17 +2432,31 @@ int get_stack_tracing_info(Context * ctx, ContextAddress rt_addr, StackTracingIn
     return -1;
 }
 
-const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
-    int error = 0;
-    ELF_File * file = NULL;
-    if (module == NULL) {
-        errno = 0;
-        return NULL;
+int get_symbol_file_info(Context * ctx, ContextAddress addr, SymbolFileInfo ** info) {
+    MemoryRegion * region = NULL;
+    ELF_File * file = elf_list_first(ctx, addr, addr);
+    ELF_File * syms = get_dwarf_file(file);
+    if (file == NULL) {
+        *info = NULL;
+        if (errno) return -1;
+        return 0;
     }
-    file = get_dwarf_file(elf_open_memory_region_file(module, &error));
-    errno = error;
-    if (file != NULL) return file->name;
-    return NULL;
+    region = elf_list_region(ctx);
+    *info = (SymbolFileInfo *)tmp_alloc_zero(sizeof(SymbolFileInfo));
+    (*info)->file_name = syms->name;
+    (*info)->addr = region->addr;
+    (*info)->size = region->size;
+    {
+        size_t l;
+        char * fnm = file->name + strlen(file->name);
+        while (fnm > file->name && *(fnm - 1) != '/' && *(fnm - 1) != '\\') fnm--;
+        l = strlen(fnm);
+        if (l > 6 && strncmp(fnm, "ld-", 3) == 0 && strcmp(fnm + l - 3, ".so") == 0) {
+            (*info)->dyn_loader = 1;
+        }
+    }
+    elf_list_done(ctx);
+    return 0;
 }
 
 #if ENABLE_MemoryMap

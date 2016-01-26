@@ -181,9 +181,7 @@ typedef struct FileInfoCache {
     Context * ctx;
     ContextAddress addr;
 
-    char * file_name;
-    ContextAddress range_addr;
-    ContextAddress range_size;
+    SymbolFileInfo info;
     ErrorReport * file_error;
 
     int disposed;
@@ -526,7 +524,7 @@ static void free_file_info_cache(FileInfoCache * c) {
         release_error_report(c->error);
         release_error_report(c->file_error);
         context_unlock(c->ctx);
-        loc_free(c->file_name);
+        loc_free(c->info.file_name);
         loc_free(c);
     }
 }
@@ -1980,18 +1978,21 @@ int get_funccall_info(const Symbol * func,
 static void read_file_info_props(InputStream * inp, const char * name, void * args) {
     FileInfoCache * f = (FileInfoCache *)args;
     if (strcmp(name, "Addr") == 0) {
-        f->range_addr = (ContextAddress)json_read_uint64(inp);
+        f->info.addr = (ContextAddress)json_read_uint64(inp);
     }
     else if (strcmp(name, "Size") == 0) {
-        f->range_size = (ContextAddress)json_read_uint64(inp);
+        f->info.size = (ContextAddress)json_read_uint64(inp);
     }
     else if (strcmp(name, "FileName") == 0) {
-        loc_free(f->file_name);
-        f->file_name = json_read_alloc_string(inp);
+        loc_free(f->info.file_name);
+        f->info.file_name = json_read_alloc_string(inp);
     }
     else if (strcmp(name, "FileError") == 0 && f->file_error == NULL) {
         release_error_report(f->file_error);
         f->file_error = get_error_report(read_error_object(inp));
+    }
+    else if (strcmp(name, "DynLoader") == 0) {
+        f->info.dyn_loader = json_read_boolean(inp);
     }
     else {
         json_skip_object(inp);
@@ -2043,7 +2044,7 @@ static FileInfoCache * get_file_info_cache(Context * ctx, ContextAddress addr) {
                 f = c;
                 break;
             }
-            else if (c->range_addr <= addr && c->range_addr + c->range_size > addr) {
+            else if (c->info.addr <= addr && c->info.addr + c->info.size > addr) {
                 f = c;
                 break;
             }
@@ -2080,11 +2081,16 @@ static FileInfoCache * get_file_info_cache(Context * ctx, ContextAddress addr) {
     return f;
 }
 
-const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
-    FileInfoCache * f = get_file_info_cache(ctx, module->addr);
-    if (f == NULL) return NULL;
-    set_error_report_errno(f->file_error);
-    return f->file_name;
+int get_symbol_file_info(Context * ctx, ContextAddress addr, SymbolFileInfo ** info) {
+    FileInfoCache * f = get_file_info_cache(ctx, addr);
+    *info = NULL;
+    if (f != NULL) {
+        f->info.file_error = set_error_report_errno(f->file_error);
+        *info = &f->info;
+        if (f->info.file_name != NULL) return 0;
+    }
+    if (errno) return -1;
+    return 0;
 }
 
 /*************************************************************************************************/
@@ -2203,7 +2209,7 @@ static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddre
 #if ENABLE_SymbolsMux
 static int reader_is_valid(Context * ctx, ContextAddress addr) {
     FileInfoCache * f = get_file_info_cache(ctx, addr);
-    return f != NULL && f->file_name != NULL;
+    return f != NULL && f->info.file_name != NULL;
 }
 #endif
 

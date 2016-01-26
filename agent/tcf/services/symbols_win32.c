@@ -1331,24 +1331,26 @@ int get_funccall_info(const Symbol * func,
     return 0;
 }
 
-const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
+int get_symbol_file_info(Context * ctx, ContextAddress addr, SymbolFileInfo ** res) {
     char * name = NULL;
     IMAGEHLP_MODULEW64 info;
     HANDLE process = get_context_handle(context_get_group(ctx, CONTEXT_GROUP_PROCESS));
-    if (module == NULL) {
-        errno = 0;
-        return NULL;
-    }
+
+    *res = NULL;
     memset(&info, 0, sizeof(info));
     info.SizeOfStruct = sizeof(info);
-    if (!SymGetModuleInfoW64(process, module->addr, &info)) {
+    if (!SymGetModuleInfoW64(process, addr, &info)) {
         set_win32_errno(GetLastError());
-        return NULL;
+        return -1;
     }
-    if (wchar_to_utf8(info.LoadedImageName, &name) < 0) return NULL;
-    errno = 0;
-    if (info.LoadedImageName[0] == 0) return NULL;
-    return tmp_strdup(name);
+    if (wchar_to_utf8(info.LoadedImageName, &name) < 0) return -1;
+    if (info.LoadedImageName[0] != 0) {
+        *res = (SymbolFileInfo *)tmp_alloc_zero(sizeof(SymbolFileInfo));
+        (*res)->file_name = tmp_strdup(name);
+        (*res)->addr = (ContextAddress)info.BaseOfImage;
+        (*res)->size = (ContextAddress)info.ImageSize;
+    }
+    return 0;
 }
 
 static void event_context_exited(Context * ctx, void * client_data) {

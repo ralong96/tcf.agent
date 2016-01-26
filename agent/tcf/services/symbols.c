@@ -1058,76 +1058,47 @@ typedef struct CommandSymFileInfo {
 } CommandSymFileInfo;
 
 static void command_get_sym_file_info_cache_client(void * x) {
-    int err = 0;
-    MemoryMap * client_map = NULL;
-    MemoryMap * target_map = NULL;
-    MemoryRegion * region = NULL;
     Channel * c = cache_channel();
     CommandSymFileInfo * args = (CommandSymFileInfo *)x;
-    const char * sym_file = NULL;
+    SymbolFileInfo * sym_file = NULL;
     Context * ctx = NULL;
-    int sym_error = 0;
+    int err = 0;
 
     ctx = id2ctx(args->id);
     if (ctx == NULL) err = ERR_INV_CONTEXT;
-    if (!err && memory_map_get(ctx, &client_map, &target_map) < 0) err = errno;
-
-    if (!err) {
-        unsigned i;
-        for (i = 0; i < client_map->region_cnt; i++) {
-            MemoryRegion * r = client_map->regions + i;
-            if (r->addr <= args->addr && r->addr + r->size > args->addr) region = r;
-        }
-        if (region == NULL) {
-            for (i = 0; i < target_map->region_cnt; i++) {
-                MemoryRegion * r = target_map->regions + i;
-                if (r->addr <= args->addr && r->addr + r->size > args->addr) region = r;
-            }
-        }
-
-#if ENABLE_ELF
-        /* TODO: need a generic way to support ELF program headers in getSymFileInfo command */
-        if (region == NULL) {
-            static MemoryMap map;
-            extern int elf_get_map(Context * ctx, ContextAddress addr0, ContextAddress addr1, MemoryMap * map);
-            if (elf_get_map(ctx, args->addr, args->addr, &map) == 0) {
-                for (i = 0; i < map.region_cnt; i++) {
-                    MemoryRegion * r = map.regions + i;
-                    if (r->addr <= args->addr && r->addr + r->size > args->addr) region = r;
-                }
-            }
-        }
-#endif
-
-        sym_file = get_symbol_file_name(ctx, region);
-        sym_error = errno;
-    }
+    if (!err && get_symbol_file_info(ctx, args->addr, &sym_file) < 0) err = errno;
 
     cache_exit();
 
     write_stringz(&c->out, "R");
     write_stringz(&c->out, args->token);
     write_errno(&c->out, err);
-    if (region != NULL) {
+    if (sym_file != NULL) {
         write_stream(&c->out, '{');
         json_write_string(&c->out, "Addr");
         write_stream(&c->out, ':');
-        json_write_uint64(&c->out, region->addr);
+        json_write_uint64(&c->out, sym_file->addr);
         write_stream(&c->out, ',');
         json_write_string(&c->out, "Size");
         write_stream(&c->out, ':');
-        json_write_uint64(&c->out, region->size);
-        if (sym_file != NULL) {
+        json_write_uint64(&c->out, sym_file->size);
+        if (sym_file->file_name != NULL) {
             write_stream(&c->out, ',');
             json_write_string(&c->out, "FileName");
             write_stream(&c->out, ':');
-            json_write_string(&c->out, sym_file);
+            json_write_string(&c->out, sym_file->file_name);
         }
-        if (sym_error != 0) {
+        if (sym_file->file_error) {
             write_stream(&c->out, ',');
             json_write_string(&c->out, "FileError");
             write_stream(&c->out, ':');
-            write_error_object(&c->out, sym_error);
+            write_error_object(&c->out, sym_file->file_error);
+        }
+        if (sym_file->dyn_loader) {
+            write_stream(&c->out, ',');
+            json_write_string(&c->out, "DynLoader");
+            write_stream(&c->out, ':');
+            json_write_boolean(&c->out, 1);
         }
         write_stream(&c->out, '}');
         write_stream(&c->out, 0);

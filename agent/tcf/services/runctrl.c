@@ -1489,6 +1489,7 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
     char * name = NULL;
     ContextAddress sym_addr = 0;
     ContextAddress sym_size = 0;
+    SymbolFileInfo * file = NULL;
     HIDDEN_HOOK;
     if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip, &sym) == 0 &&
             get_symbol_name(sym, &name) == 0 && name != NULL &&
@@ -1505,29 +1506,10 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
         }
         return 1;
     }
-#endif
-#if ENABLE_ELF
-    /* TODO: a better way to skip dynamic loader code during source level stepping */
-    {
-        static MemoryMap map;
-        extern int elf_get_map(Context * ctx, ContextAddress addr0, ContextAddress addr1, MemoryMap * map);
-        if (elf_get_map(ctx, ip, ip, &map) == 0) {
-            unsigned i;
-            for (i = 0; i < map.region_cnt; i++) {
-                MemoryRegion * r = map.regions + i;
-                if (r->addr <= ip && r->addr + r->size > ip && r->file_name != NULL) {
-                    size_t l;
-                    char * fnm = r->file_name + strlen(r->file_name);
-                    while (fnm > r->file_name && *(fnm - 1) != '/' && *(fnm - 1) != '\\') fnm--;
-                    l = strlen(fnm);
-                    if (l > 6 && strncmp(fnm, "ld-", 3) == 0 && strcmp(fnm + l - 3, ".so") == 0) {
-                        *addr0 = r->addr;
-                        *addr1 = r->addr + r->size;
-                        return 1;
-                    }
-                }
-            }
-        }
+    if (get_symbol_file_info(ctx, ip, &file) == 0 && file != NULL && file->dyn_loader) {
+        *addr0 = file->addr;
+        *addr1 = file->addr + file->size;
+        return 1;
     }
 #endif
     return 0;

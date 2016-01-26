@@ -258,18 +258,20 @@ static int error_priority(int error) {
     return 3;
 }
 
-const char * get_symbol_file_name(Context * ctx, MemoryRegion * module) {
+int get_symbol_file_info(Context * ctx, ContextAddress addr, SymbolFileInfo ** info) {
     int error = 0;
-    if (module != NULL) {
-        unsigned i;
-        for (i = 0; i < reader_cnt; i++) {
-            const char * name = readers[i]->get_symbol_file_name(ctx, module);
-            if (name != NULL) return name;
-            if (error_priority(errno) > error_priority(error)) error = errno;
-        }
+    unsigned i;
+    for (i = 0; i < reader_cnt; i++) {
+        int r = readers[i]->get_symbol_file_info(ctx, addr, info);
+        if (r == 0 && *info != NULL) return 0;
+        if (error_priority(errno) > error_priority(error)) error = errno;
     }
-    errno = error;
-    return NULL;
+    *info = NULL;
+    if (error) {
+        errno = error;
+        return -1;
+    }
+    return 0;
 }
 
 int get_symbol_class(const Symbol * sym, int * sym_class) {

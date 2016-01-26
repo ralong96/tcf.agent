@@ -601,6 +601,7 @@ extern ELF_File * elf_open_inode(Context * ctx, dev_t dev, ino_t ino, int64_t mt
  * Returns the file descriptior on success. If error, returns NULL and sets errno.
  */
 extern ELF_File * elf_list_first(Context * ctx, ContextAddress addr0, ContextAddress addr1);
+extern MemoryRegion * elf_list_region(Context * ctx);
 extern ELF_File * elf_list_next(Context * ctx);
 
 /*

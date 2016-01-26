@@ -76,6 +76,7 @@ typedef struct ElfListState {
     Context * ctx;
     unsigned pos;
     MemoryMap map;
+    MemoryRegion * region;
     struct ElfListState * next;
 } ElfListState;
 
@@ -1436,6 +1437,13 @@ ELF_File * elf_list_first(Context * ctx, ContextAddress addr_min, ContextAddress
     return NULL;
 }
 
+MemoryRegion * elf_list_region(Context * ctx) {
+    ElfListState * state = elf_list_state;
+    assert(state != NULL);
+    assert(state->ctx == ctx);
+    return state->region;
+}
+
 ELF_File * elf_list_next(Context * ctx) {
     ElfListState * state = elf_list_state;
     assert(state != NULL);
@@ -1447,6 +1455,7 @@ ELF_File * elf_list_next(Context * ctx) {
         ELF_File * file = elf_open_memory_region_file(r, &error);
         if (file != NULL) {
             if (file->listed) continue;
+            state->region = r;
             file->listed = 1;
             return file;
         }
