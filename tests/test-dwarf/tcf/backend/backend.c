@@ -1404,7 +1404,7 @@ static void test_public_names(void) {
     time_t time_start = time(0);
     while (n < cache->mPubNames.mCnt) {
         ObjectInfo * obj = cache->mPubNames.mNext[n++].mObject;
-        if (obj != NULL) {
+        if (obj != NULL && (obj->mParent == NULL || obj->mParent->mTag != TAG_namespace)) {
             Symbol * sym1 = NULL;
             Symbol * sym2 = NULL;
             ContextAddress addr = 0;
@@ -1926,6 +1926,7 @@ static void next_file(void) {
     if (pass_cnt == files_cnt) exit(0);
     elf_file_name = files[pass_cnt % files_cnt];
 
+    printf("\n");
     printf("File: %s\n", elf_file_name);
     fflush(stdout);
     if (stat(elf_file_name, &st) < 0) {

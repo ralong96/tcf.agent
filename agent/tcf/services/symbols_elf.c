@@ -167,7 +167,6 @@ static struct BaseTypeAlias {
 #define equ_symbol_names(x, y) (*x == *y && cmp_symbol_names(x, y) == 0)
 #define check_in_range(obj, addr) dwarf_check_in_range(obj, (addr)->section, (addr)->lt_addr)
 
-static const char * get_linkage_name(ObjectInfo * obj);
 static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym);
 
 /* This function is used for DWARF reader testing */
@@ -446,6 +445,27 @@ static int is_thread_based_object(Symbol * sym) {
     /* Variables can be thread local */
     if (sym->sym_class == SYM_CLASS_REFERENCE) return 1;
     return 0;
+}
+
+static const char * get_linkage_name(ObjectInfo * obj) {
+    Trap trap;
+    PropertyValue p;
+    if ((obj->mFlags & DOIF_mips_linkage_name) && set_trap(&trap)) {
+        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_MIPS_linkage_name, &p);
+        clear_trap(&trap);
+        if (p.mAddr != NULL) return (char *)p.mAddr;
+    }
+    if ((obj->mFlags & DOIF_linkage_name) && set_trap(&trap)) {
+        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_linkage_name, &p);
+        clear_trap(&trap);
+        if (p.mAddr != NULL) return (char *)p.mAddr;
+    }
+    if ((obj->mFlags & DOIF_mangled_name) && set_trap(&trap)) {
+        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_mangled, &p);
+        clear_trap(&trap);
+        if (p.mAddr != NULL) return (char *)p.mAddr;
+    }
+    return obj->mName;
 }
 
 static int symbol_priority(ObjectInfo * obj) {
@@ -902,27 +922,6 @@ static int cmp_object_profiles(ObjectInfo * x, ObjectInfo * y) {
     return 1;
 }
 
-static const char * get_linkage_name(ObjectInfo * obj) {
-    Trap trap;
-    PropertyValue p;
-    if ((obj->mFlags & DOIF_mips_linkage_name) && set_trap(&trap)) {
-        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_MIPS_linkage_name, &p);
-        clear_trap(&trap);
-        if (p.mAddr != NULL) return (char *)p.mAddr;
-    }
-    if ((obj->mFlags & DOIF_linkage_name) && set_trap(&trap)) {
-        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_linkage_name, &p);
-        clear_trap(&trap);
-        if (p.mAddr != NULL) return (char *)p.mAddr;
-    }
-    if ((obj->mFlags & DOIF_mangled_name) && set_trap(&trap)) {
-        read_and_evaluate_dwarf_object_property(sym_ctx, sym_frame, obj, AT_mangled, &p);
-        clear_trap(&trap);
-        if (p.mAddr != NULL) return (char *)p.mAddr;
-    }
-    return obj->mName;
-}
-
 static int cmp_object_linkage_names(ObjectInfo * x, ObjectInfo * y) {
     const char * xname = get_linkage_name(x);
     const char * yname = get_linkage_name(y);
@@ -1089,6 +1088,20 @@ static void sort_find_symbol_buf(void) {
     }
 }
 
+static int same_namespace(ObjectInfo * x, ObjectInfo * y) {
+    int xn = x->mParent != NULL && x->mParent->mTag == TAG_namespace;
+    int yn = y->mParent != NULL && y->mParent->mTag == TAG_namespace;
+    if (xn != yn) return 0;
+    if (!xn) return 1;
+    x = x->mParent;
+    y = y->mParent;
+    if (x->mName == y->mName) return 1;
+    if (x->mName == NULL) return 0;
+    if (y->mName == NULL) return 0;
+    if (strcmp(x->mName, y->mName) == 1) return 0;
+    return same_namespace(x, y);
+}
+
 /* If 'decl' represents a declaration, replace it with definition - if possible */
 static ObjectInfo * find_definition(ObjectInfo * decl) {
     while (decl != NULL) {
@@ -1126,6 +1139,7 @@ static ObjectInfo * find_definition(ObjectInfo * decl) {
                     if (!equ_symbol_names(obj->mName, decl->mName)) continue;
                     if (!cmp_object_profiles(decl, obj)) continue;
                     if (!cmp_object_linkage_names(decl, obj)) continue;
+                    if (!same_namespace(decl, obj)) continue;
                     def = obj;
                     break;
                 }
@@ -1147,7 +1161,8 @@ static void find_by_name_in_pub_names(DWARFCache * cache, const char * name) {
         unsigned n = tbl->mHash[calc_symbol_name_hash(name) % tbl->mHashSize];
         while (n != 0) {
             ObjectInfo * obj = tbl->mNext[n].mObject;
-            if (equ_symbol_names(obj->mName, name)) {
+            int ns = obj->mParent != NULL && obj->mParent->mTag == TAG_namespace;
+            if (!ns && equ_symbol_names(obj->mName, name)) {
                 add_obj_to_find_symbol_buf(obj, 1);
             }
             n = tbl->mNext[n].mNext;

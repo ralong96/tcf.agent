@@ -651,7 +651,6 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                 case TAG_global_subroutine:
                 case TAG_subroutine:
                 case TAG_subprogram:
-                case TAG_namespace:
                     dio_SetPos(Sibling);
                     return;
                 }
@@ -1255,26 +1254,33 @@ static void load_pub_names(ELF_Section * debug_info, ELF_Section * pub_names) {
     dio_ExitSection();
 }
 
+static void add_namespace(PubNamesTable * tbl, ObjectInfo * ns) {
+    ObjectInfo * obj = get_dwarf_children(ns);
+    while (obj != NULL) {
+        if ((obj->mFlags & DOIF_pub_mark) == 0 && obj->mDefinition == NULL && obj->mName != NULL) {
+            add_pub_name(tbl, obj);
+        }
+        if (obj->mTag == TAG_enumeration_type) {
+            ObjectInfo * n = get_dwarf_children(obj);
+            while (n != NULL) {
+                if ((n->mFlags & DOIF_pub_mark) == 0 && n->mName != NULL) {
+                    add_pub_name(tbl, n);
+                }
+                n = n->mSibling;
+            }
+        }
+        if (obj->mTag == TAG_namespace) {
+            add_namespace(tbl, obj);
+        }
+        obj = obj->mSibling;
+    }
+}
+
 static void create_pub_names(unsigned idx) {
     ObjectInfo * unit = sCache->mObjectHashTable[idx].mCompUnits;
     PubNamesTable * tbl = &sCache->mPubNames;
     while (unit != NULL) {
-        ObjectInfo * obj = get_dwarf_children(unit);
-        while (obj != NULL) {
-            if ((obj->mFlags & DOIF_pub_mark) == 0 && obj->mDefinition == NULL && obj->mName != NULL) {
-                add_pub_name(tbl, obj);
-            }
-            if (obj->mTag == TAG_enumeration_type) {
-                ObjectInfo * n = get_dwarf_children(obj);
-                while (n != NULL) {
-                    if ((n->mFlags & DOIF_pub_mark) == 0 && n->mName != NULL) {
-                        add_pub_name(tbl, n);
-                    }
-                    n = n->mSibling;
-                }
-            }
-            obj = obj->mSibling;
-        }
+        add_namespace(tbl, unit);
         if ((unit->mFlags & DOIF_pub_mark) == 0 && unit->mName != NULL) {
             add_pub_name(tbl, unit);
         }
