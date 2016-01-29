@@ -24,5 +24,6 @@
 #include <tcf/framework/channel.h>
 
 extern void create_context_proxy(Channel * host, Channel * target, int forward_pm);
+extern void ini_context_proxy_service(Protocol * proto);
 
 #endif /* D_context_proxy */

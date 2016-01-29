@@ -65,6 +65,9 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if SERVICE_Symbols
         ini_symbols_service(target->protocol);
 #endif
+#if ENABLE_DebugContext && ENABLE_ContextProxy
+        ini_context_proxy_service(target->protocol);
+#endif
     }
     if (target->state == ChannelStateConnected) {
         int i;

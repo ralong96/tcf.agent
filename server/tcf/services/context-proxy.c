@@ -236,6 +236,7 @@ static size_t context_extension_offset = 0;
 
 #define EXT(ctx) ((ContextCache **)((char *)(ctx) + context_extension_offset))
 
+static const char CONTEXT_PROXY[] = "ContextProxy";
 static const char RUN_CONTROL[] = "RunControl";
 static const char MEMORY_MAP[] = "MemoryMap";
 static const char PATH_MAP[] = "PathMap";
@@ -481,11 +482,9 @@ static void free_context_cache(ContextCache * c) {
     loc_free(c);
 }
 
-static void on_context_suspended(ContextCache * c) {
+static void clear_context_cache(ContextCache * c) {
     LINK * l;
 
-    /* TODO: context proxy needs to flush caches when a context is suspended temporarlily.
-     * No such event is available. Only intercept is notified. */
     if (c->peer->rc_done) {
         LINK * x = context_root.next;
         while (x != &context_root) {
@@ -665,7 +664,7 @@ static void read_container_suspended_item(InputStream * inp, void * args) {
         assert(*EXT(c->ctx) == c);
         if (!c->intercepted) {
             c->intercepted = 1;
-            on_context_suspended(c);
+            clear_context_cache(c);
         }
     }
     else if (p->rc_done) {
@@ -749,7 +748,7 @@ static void event_context_suspended(Channel * ch, void * args) {
         c->pc_valid = 1;
         if (!c->intercepted) {
             c->intercepted = 1;
-            on_context_suspended(c);
+            clear_context_cache(c);
         }
     }
     else {
@@ -810,7 +809,7 @@ static void event_container_suspended(Channel * ch, void * args) {
         c->pc_valid = 1;
         if (!c->intercepted) {
             c->intercepted = 1;
-            on_context_suspended(c);
+            clear_context_cache(c);
         }
     }
     else {
@@ -1047,7 +1046,7 @@ static void validate_peer_cache_state(Channel * c, void * args, int error) {
                 add_context_cache(p, x);
                 x->intercepted = x->pc_valid;
                 if (x->intercepted) {
-                    on_context_suspended(x);
+                    clear_context_cache(x);
                 }
                 protocol_send_command(p->target, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
                 json_write_string(&p->target->out, x->id);
@@ -2165,6 +2164,39 @@ void init_contexts_sys_dep(void) {
     add_context_event_listener(&context_event_listener, NULL);
     add_channel_close_listener(channel_close_listener);
     context_extension_offset = context_extension(sizeof(ContextCache *));
+}
+
+static void command_clear(char * token, Channel * c) {
+    char id[256];
+    LINK * l;
+
+    json_read_string(&c->inp, id, sizeof(id));
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    /* Context proxy needs to clear its caches when a context is suspended temporarlily.
+     * No such event is available. Only intercept is notified.
+     * So, target is expected to send "ContextProxy clear <Context ID>" command
+     * when a context is suspended temporarily. */
+
+    for (l = peers.next; l != &peers; l = l->next) {
+        PeerCache * p = peers2peer(l);
+        if (p->host == c || p->target == c) {
+            ContextCache * cache = find_context_cache(p, id);
+            if (cache != NULL) {
+                clear_context_suspended_data(cache);
+                clear_context_cache(cache);
+            }
+        }
+    }
+
+    write_stringz(&c->out, "R");
+    write_stringz(&c->out, token);
+    write_stream(&c->out, MARKER_EOM);
+}
+
+void ini_context_proxy_service(Protocol * proto) {
+    add_command_handler(proto, CONTEXT_PROXY, "clear", command_clear);
 }
 
 #endif /* ENABLE_DebugContext && ENABLE_ContextProxy */

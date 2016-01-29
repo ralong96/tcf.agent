@@ -2682,6 +2682,31 @@ static void event_context_changed(Context * ctx, void * args) {
     stop_if_safe_events(ctx);
 }
 
+static void context_proxy_reply(Channel * c, void * args, int error) {
+    if (!error) json_test_char(&c->inp, MARKER_EOM);
+}
+
+static void clear_context_proxy_cache(Context * ctx) {
+    LINK * l = channel_root.next;
+    while (l != &channel_root) {
+        Channel * c = chanlink2channelp(l);
+        if (!is_channel_closed(c)) {
+            int i;
+            for (i = 0; i < c->peer_service_cnt; i++) {
+                char * nm = c->peer_service_list[i];
+                if (strcmp(nm, "ContextProxy") == 0) {
+                    protocol_send_command(c, "ContextProxy", "clear", context_proxy_reply, NULL);
+                    json_write_string(&c->out, ctx->id);
+                    write_stream(&c->out, 0);
+                    write_stream(&c->out, MARKER_EOM);
+                    break;
+                }
+            }
+        }
+        l = l->next;
+    }
+}
+
 static void event_context_stopped(Context * ctx, void * args) {
     ContextExtensionRC * ext = EXT(ctx);
     assert(ctx->stopped);
@@ -2699,6 +2724,7 @@ static void event_context_stopped(Context * ctx, void * args) {
         }
         ext->step_done = NULL;
     }
+    clear_context_proxy_cache(ctx);
 #if SERVICE_Breakpoints
     if (ctx->stopped_by_bp || ctx->stopped_by_cb) evaluate_breakpoint(ctx);
 #endif
