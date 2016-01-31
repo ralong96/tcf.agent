@@ -1168,6 +1168,9 @@ static void find_by_name_in_pub_names(DWARFCache * cache, const char * name) {
             n = tbl->mNext[n].mNext;
         }
     }
+    if (cache->mFile->dwz_file != NULL) {
+        find_by_name_in_pub_names(get_dwarf_cache(cache->mFile->dwz_file), name);
+    }
 }
 
 static int find_in_object_tree(ObjectInfo * parent, unsigned level,
@@ -1954,7 +1957,9 @@ const char * symbol2id(const Symbol * sym) {
         tmp_app_str('.', base);
     }
     else {
-        ELF_File * file = NULL;
+        ELF_File * obj_file = NULL;
+        ELF_File * var_file = NULL;
+        ELF_File * ref_file = NULL;
         unsigned obj_sec = 0;
         unsigned var_sec = 0;
         unsigned ref_sec = 0;
@@ -1962,42 +1967,51 @@ const char * symbol2id(const Symbol * sym) {
         uint64_t var_id = 0;
         uint64_t ref_id = 0;
         unsigned tbl_index = 0;
-        if (sym->obj != NULL) file = sym->obj->mCompUnit->mFile;
-        if (sym->tbl != NULL) file = sym->tbl->file;
+        if (sym->obj != NULL) obj_file = sym->obj->mCompUnit->mFile;
+        if (sym->tbl != NULL) obj_file = sym->tbl->file;
         if (sym->obj != NULL) {
             obj_sec = sym->obj->mCompUnit->mDesc.mSection->index;
             obj_id = sym->obj->mID;
         }
         if (sym->var != NULL) {
+            var_file = sym->var->mCompUnit->mFile;
             var_sec = sym->var->mCompUnit->mDesc.mSection->index;
             var_id = sym->var->mID;
         }
         if (sym->ref != NULL) {
+            ref_file = sym->ref->mCompUnit->mFile;
             ref_sec = sym->ref->mCompUnit->mDesc.mSection->index;
             ref_id = sym->ref->mID;
         }
         if (sym->tbl != NULL) tbl_index = sym->tbl->index;
-        assert(sym->var == NULL || sym->var->mCompUnit->mFile == file);
         tmp_len = 0;
         tmp_app_char('@');
         tmp_app_hex('S', sym->sym_class);
-        tmp_app_hex('.', file ? file->dev : (dev_t)0);
-        tmp_app_hex('.', file ? file->ino : (ino_t)0);
-        tmp_app_hex('.', file ? file->mtime : (int64_t)0);
-        if (obj_sec) {
-            tmp_app_hex('%', obj_sec);
+        if (obj_file != NULL) {
+            tmp_app_hex('%', obj_file->dev);
+            tmp_app_hex('.', obj_file->ino);
+            tmp_app_hex('.', obj_file->mtime);
+            tmp_app_hex('.', obj_sec);
             tmp_app_hex('.', obj_id);
         }
-        if (var_sec) {
-            tmp_app_hex('^', var_sec);
+        if (var_file != NULL) {
+            tmp_app_hex('^', var_file->dev);
+            tmp_app_hex('.', var_file->ino);
+            tmp_app_hex('.', var_file->mtime);
+            tmp_app_hex('.', var_sec);
             tmp_app_hex('.', var_id);
         }
-        if (ref_sec == obj_sec && ref_id == obj_id) {
-            tmp_app_char('&');
-        }
-        else if (ref_sec) {
-            tmp_app_hex('*', ref_sec);
-            tmp_app_hex('.', ref_id);
+        if (ref_file != NULL) {
+            if (ref_file == obj_file && ref_sec == obj_sec && ref_id == obj_id) {
+                tmp_app_char('&');
+            }
+            else {
+                tmp_app_hex('*', ref_file->dev);
+                tmp_app_hex('.', ref_file->ino);
+                tmp_app_hex('.', ref_file->mtime);
+                tmp_app_hex('.', ref_sec);
+                tmp_app_hex('.', ref_id);
+            }
         }
         if (tbl_index) {
             tmp_app_hex('-', tbl_index);
@@ -2028,19 +2042,35 @@ static uint64_t read_hex(const char ** s) {
     return res;
 }
 
+typedef struct FileID {
+    int valid;
+    dev_t dev;
+    ino_t ino;
+    int64_t mtime;
+    unsigned obj_sec;
+    ContextAddress obj_id;
+    ELF_File * file;
+} FileID;
+
+static void read_file_id(const char ** s, FileID * id) {
+    const char * p = *s;
+    p++;
+    id->dev = (dev_t)read_hex(&p);
+    if (*p == '.') p++;
+    id->ino = (ino_t)read_hex(&p);
+    if (*p == '.') p++;
+    id->mtime = (int64_t)read_hex(&p);
+    if (*p == '.') p++;
+    id->obj_sec = (unsigned)read_hex(&p);
+    if (*p == '.') p++;
+    id->obj_id = (ContextAddress)read_hex(&p);
+    id->valid = 1;
+    *s = p;
+}
+
 int id2symbol(const char * id, Symbol ** res) {
     Symbol * sym = alloc_symbol();
-    dev_t dev = 0;
-    ino_t ino = 0;
-    int64_t mtime;
-    unsigned obj_sec = 0;
-    unsigned var_sec = 0;
-    unsigned ref_sec = 0;
-    ContextAddress obj_id = 0;
-    ContextAddress var_id = 0;
-    ContextAddress ref_id = 0;
     unsigned tbl_index = 0;
-    ELF_File * file = NULL;
     const char * p;
     Trap trap;
 
@@ -2063,36 +2093,20 @@ int id2symbol(const char * id, Symbol ** res) {
         return 0;
     }
     else if (id != NULL && id[0] == '@' && id[1] == 'S') {
+        FileID obj;
+        FileID var;
+        FileID ref;
+        memset(&obj, 0, sizeof(FileID));
+        memset(&var, 0, sizeof(FileID));
+        memset(&ref, 0, sizeof(FileID));
         p = id + 2;
         sym->sym_class = (int8_t)read_hex(&p);
-        if (*p == '.') p++;
-        dev = (dev_t)read_hex(&p);
-        if (*p == '.') p++;
-        ino = (ino_t)read_hex(&p);
-        if (*p == '.') p++;
-        mtime = (int64_t)read_hex(&p);
-        if (*p == '%') {
-            p++;
-            obj_sec = (unsigned)read_hex(&p);
-            if (*p == '.') p++;
-            obj_id = (ContextAddress)read_hex(&p);
-        }
-        if (*p == '^') {
-            p++;
-            var_sec = (unsigned)read_hex(&p);
-            if (*p == '.') p++;
-            var_id = (ContextAddress)read_hex(&p);
-        }
+        if (*p == '%') read_file_id(&p, &obj);
+        if (*p == '^') read_file_id(&p, &var);
+        if (*p == '*') read_file_id(&p, &ref);
         if (*p == '&') {
             p++;
-            ref_sec = obj_sec;
-            ref_id = obj_id;
-        }
-        else if (*p == '*') {
-            p++;
-            ref_sec = (unsigned)read_hex(&p);
-            if (*p == '.') p++;
-            ref_id = (ContextAddress)read_hex(&p);
+            ref = obj;
         }
         if (*p == '-') {
             p++;
@@ -2114,28 +2128,37 @@ int id2symbol(const char * id, Symbol ** res) {
             errno = ERR_INV_CONTEXT;
             return -1;
         }
-        if (dev == 0 && ino == 0 && mtime == 0) return 0;
-        file = elf_open_inode(sym->ctx, dev, ino, mtime);
-        if (file == NULL) return -1;
+        if (obj.valid) {
+            obj.file = elf_open_inode(sym->ctx, obj.dev, obj.ino, obj.mtime);
+            if (obj.file == NULL) return -1;
+        }
+        if (var.valid) {
+            var.file = elf_open_inode(sym->ctx, var.dev, var.ino, var.mtime);
+            if (var.file == NULL) return -1;
+        }
+        if (ref.valid) {
+            ref.file = elf_open_inode(sym->ctx, ref.dev, ref.ino, ref.mtime);
+            if (ref.file == NULL) return -1;
+        }
         if (set_trap(&trap)) {
-            if (obj_sec) {
-                if (obj_sec >= file->section_cnt) exception(ERR_INV_CONTEXT);
-                sym->obj = find_object(file->sections + obj_sec, obj_id);
+            if (obj.obj_sec) {
+                if (obj.obj_sec >= obj.file->section_cnt) exception(ERR_INV_CONTEXT);
+                sym->obj = find_object(obj.file->sections + obj.obj_sec, obj.obj_id);
                 if (sym->obj == NULL) exception(ERR_INV_CONTEXT);
             }
-            if (var_sec) {
-                if (var_sec >= file->section_cnt) exception(ERR_INV_CONTEXT);
-                sym->var = find_object(file->sections + var_sec, var_id);
+            if (var.obj_sec) {
+                if (var.obj_sec >= var.file->section_cnt) exception(ERR_INV_CONTEXT);
+                sym->var = find_object(var.file->sections + var.obj_sec, var.obj_id);
                 if (sym->var == NULL) exception(ERR_INV_CONTEXT);
             }
-            if (ref_sec) {
-                if (ref_sec >= file->section_cnt) exception(ERR_INV_CONTEXT);
-                sym->ref = find_object(file->sections + ref_sec, ref_id);
+            if (ref.obj_sec) {
+                if (ref.obj_sec >= ref.file->section_cnt) exception(ERR_INV_CONTEXT);
+                sym->ref = find_object(ref.file->sections + ref.obj_sec, ref.obj_id);
                 if (sym->ref == NULL) exception(ERR_INV_CONTEXT);
             }
-            if (tbl_index) {
-                if (tbl_index >= file->section_cnt) exception(ERR_INV_CONTEXT);
-                sym->tbl = file->sections + tbl_index;
+            if (tbl_index && obj.valid) {
+                if (tbl_index >= obj.file->section_cnt) exception(ERR_INV_CONTEXT);
+                sym->tbl = obj.file->sections + tbl_index;
             }
             clear_trap(&trap);
             return 0;
@@ -3795,33 +3818,60 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
             return 0;
         }
         if (obj->mTag != TAG_inlined_subroutine && (obj->mFlags & DOIF_const_value) != 0) {
+            U8_T val_size = 0;
+            U8_T bit_size = 0;
             LocationExpressionCommand * cmd = NULL;
             if (!set_trap(&trap)) return -1;
             read_dwarf_object_property(sym_ctx, sym_frame, obj, AT_const_value, &v);
             assert(v.mObject == obj);
             assert(v.mPieces == NULL);
             assert(v.mForm != FORM_EXPRLOC);
-            if (v.mAddr != NULL) {
+            if (!get_object_size(sym->ref, obj, 0, &val_size, &bit_size)) {
+                str_exception(ERR_INV_DWARF, "Unknown object size");
+            }
+            if (v.mAddr != NULL && v.mSize == val_size) {
                 assert(v.mBigEndian == info->big_endian);
                 cmd = add_location_command(info, SFT_CMD_PIECE);
                 cmd->args.piece.bit_size = v.mSize * 8;
                 cmd->args.piece.value = v.mAddr;
             }
             else {
-                U1_T * bf = NULL;
-                U8_T val_size = 0;
-                U8_T bit_size = 0;
-                U1_T * p = (U1_T *)&v.mValue;
-                if (!get_object_size(sym->ref, obj, 0, &val_size, &bit_size)) {
-                    str_exception(ERR_INV_DWARF, "Unknown object size");
+                U1_T * bf = (U1_T *)tmp_alloc_zero((size_t)val_size);
+                U1_T * p = v.mAddr;
+                size_t p_size = v.mSize;
+                int has_endianess = 0;
+                if (p == NULL) {
+                    assert(v.mForm != FORM_EXPR_VALUE);
+                    p_size = sizeof(v.mValue);
+                    p = (U1_T *)tmp_alloc(p_size);
+                    memcpy(p, &v.mValue, p_size);
+                    if (big_endian_host()) swap_bytes(p, p_size);
+                    has_endianess = 1;
                 }
-                assert(v.mForm != FORM_EXPR_VALUE);
-                if (val_size > sizeof(v.mValue)) str_exception(ERR_INV_DWARF, "Unknown object size");
-                bf = (U1_T *)tmp_alloc((size_t)val_size);
-                if (big_endian_host()) p += sizeof(v.mValue) - (size_t)val_size;
-                memcpy(bf, p, (size_t)val_size);
-                info->big_endian = big_endian_host();
+                else {
+                    int type_class = 0;
+                    get_object_type_class(obj, &type_class);
+                    switch (type_class) {
+                    case TYPE_CLASS_CARDINAL:
+                    case TYPE_CLASS_INTEGER:
+                    case TYPE_CLASS_ENUMERATION:
+                        has_endianess = 1;
+                        break;
+                    }
+                    if (has_endianess && v.mBigEndian) {
+                        p = (U1_T *)tmp_alloc(p_size);
+                        memcpy(p, v.mAddr, p_size);
+                        swap_bytes(p, p_size);
+                    }
+                }
+                if (val_size > p_size) {
+                    memcpy(bf, p, p_size);
+                }
+                else {
+                    memcpy(bf, p, (size_t)val_size);
+                }
                 if (bit_size % 8 != 0) bf[bit_size / 8] &= (1 << (bit_size % 8)) - 1;
+                if (has_endianess && info->big_endian) swap_bytes(bf, (size_t)val_size);
                 cmd = add_location_command(info, SFT_CMD_PIECE);
                 cmd->args.piece.bit_size = (unsigned)(bit_size ? bit_size : val_size * 8);
                 cmd->args.piece.value = bf;

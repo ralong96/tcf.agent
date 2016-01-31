@@ -274,6 +274,7 @@ struct DWARFCache {
     int mLineInfoLoaded;
     CompUnit ** mTypeUnitHash;
     unsigned mTypeUnitHashSize;
+    int lazy_loaded;
 };
 
 /* Return DWARF cache for given file, create and populate the cache if needed, throw an exception if error */

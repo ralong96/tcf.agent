@@ -201,30 +201,33 @@ ObjectInfo * find_object(ELF_Section * Section, ContextAddress ID) {
         Info = Info->mHashNext;
     }
 #if ENABLE_DWARF_LAZY_LOAD
-    sCache = Cache;
-    sCompUnit = NULL;
-    sCompUnit = find_comp_unit(Section, ID);
-    if (sCompUnit != NULL) {
-        Trap trap;
-        sUnitDesc = sCompUnit->mDesc;
-        sDebugSection = sUnitDesc.mSection;
-        sParentObject = NULL;
-        sPrevSibling = NULL;
-        dio_EnterSection(&sCompUnit->mDesc, sDebugSection, ID - sDebugSection->addr);
-        if (set_trap(&trap)) {
-            dio_ReadEntry(read_object_info, 0);
-            Info = HashTable->mObjectHash[OBJ_HASH(HashTable, ID)];
-            while (Info != NULL) {
-                if (Info->mID == ID) break;
-                Info = Info->mHashNext;
+    if (Cache->lazy_loaded) {
+        sCache = Cache;
+        sCompUnit = NULL;
+        sCompUnit = find_comp_unit(Section, ID);
+        if (sCompUnit != NULL) {
+            Trap trap;
+            sUnitDesc = sCompUnit->mDesc;
+            sDebugSection = sUnitDesc.mSection;
+            sParentObject = NULL;
+            sPrevSibling = NULL;
+            dio_EnterSection(&sCompUnit->mDesc, sDebugSection, ID - sDebugSection->addr);
+            if (set_trap(&trap)) {
+                dio_ReadEntry(read_object_info, 0);
+                Info = HashTable->mObjectHash[OBJ_HASH(HashTable, ID)];
+                while (Info != NULL) {
+                    if (Info->mID == ID) break;
+                    Info = Info->mHashNext;
+                }
+                clear_trap(&trap);
             }
-            clear_trap(&trap);
+            dio_ExitSection();
+            sDebugSection = NULL;
+            read_object_refs(Section);
         }
-        dio_ExitSection();
-        sDebugSection = NULL;
-        read_object_refs(Section);
+        sCompUnit = NULL;
+        sCache = NULL;
     }
-    sCompUnit = NULL;
 #endif
     return Info;
 }
@@ -641,7 +644,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             }
             if (Tag == TAG_enumerator && Info->mType == NULL) Info->mType = sParentObject;
 #if ENABLE_DWARF_LAZY_LOAD
-            if (sCache->mFile->lock_cnt == 0 && Sibling != 0) {
+            if (sCache->mFile->lock_cnt == 0 && Sibling != 0 && sDebugSection->size >= 0x40000) {
                 switch (Tag) {
                 case TAG_union_type:
                 case TAG_array_type:
@@ -651,6 +654,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                 case TAG_global_subroutine:
                 case TAG_subroutine:
                 case TAG_subprogram:
+                    sCache->lazy_loaded = 1;
                     dio_SetPos(Sibling);
                     return;
                 }
@@ -680,6 +684,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     case AT_type:
         if (Form == FORM_GNU_REF_ALT) {
             Info->mType = find_alt_object_info((ContextAddress)dio_gFormData);
+            add_object_reference(Info->mType, NULL);
             break;
         }
         if (Form == FORM_REF_SIG8) {
@@ -690,6 +695,7 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
                 Info->mType = find_loaded_object(Unit->mDesc.mSection, ID);
             }
             if (Info->mType == NULL) str_exception(ERR_INV_DWARF, "Invalid type unit reference");
+            add_object_reference(Info->mType, NULL);
             break;
         }
         dio_ChkRef(Form);
@@ -727,14 +733,20 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         if (*(char *)dio_gFormDataAddr) Info->mName = (char *)dio_gFormDataAddr;
         break;
     case AT_specification_v2:
-        if (Form != FORM_GNU_REF_ALT) {
+        if (Form == FORM_GNU_REF_ALT) {
+            add_object_reference(find_alt_object_info((ContextAddress)dio_gFormData), Info);
+        }
+        else {
             dio_ChkRef(Form);
             add_object_reference(add_object_info((ContextAddress)dio_gFormData), Info);
         }
         Info->mFlags |= DOIF_specification;
         break;
     case AT_abstract_origin:
-        if (Form != FORM_GNU_REF_ALT) {
+        if (Form == FORM_GNU_REF_ALT) {
+            add_object_reference(find_alt_object_info((ContextAddress)dio_gFormData), Info);
+        }
+        else {
             dio_ChkRef(Form);
             add_object_reference(add_object_info((ContextAddress)dio_gFormData), Info);
         }
@@ -888,86 +900,85 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     }
 }
 
-static int object_references_comparator(const void * x, const void * y) {
-    ObjectReference * rx = (ObjectReference *)x;
-    ObjectReference * ry = (ObjectReference *)y;
-    if (rx->obj == ry->obj) return 0;
-    if (rx->obj == NULL) return -1;
-    if (ry->obj == NULL) return +1;
-    if (rx->obj == ry->org) return -1;
-    if (rx->org == ry->obj) return +1;
-    if (rx->obj->mID < ry->obj->mID) return -1;
-    if (rx->obj->mID > ry->obj->mID) return +1;
-    return 0;
-}
-
 static void read_object_refs(ELF_Section * Section) {
-    U4_T pos = 0;
+    U4_T pass_cnt = 0;
 #if ENABLE_DWARF_LAZY_LOAD
-    /*
-     * Build transitive closure of DWARF objects graph:
-     * load objects that are referenced by already loaded objects.
-     */
-    sCompUnit = NULL;
-    while (pos < sObjRefsCnt) {
-        ObjectReference ref = sObjRefs[pos++];
-        if (ref.org->mCompUnit == NULL) ref.org->mCompUnit = find_comp_unit(Section, ref.org->mID);
-        if (ref.org->mTag == 0) {
-            Trap trap;
-            ObjectInfo * obj = ref.org;
-            sCompUnit = obj->mCompUnit;
-            sUnitDesc = sCompUnit->mDesc;
-            sDebugSection = sUnitDesc.mSection;
-            sParentObject = NULL;
-            sPrevSibling = NULL;
-            dio_EnterSection(&sCompUnit->mDesc, sDebugSection, obj->mID - sDebugSection->addr);
-            if (set_trap(&trap)) {
-                dio_ReadEntry(read_object_info, 0);
-                clear_trap(&trap);
+    if (sCache->lazy_loaded) {
+        /*
+         * Build transitive closure of DWARF objects graph:
+         * load objects that are referenced by already loaded objects.
+         */
+        U4_T pos = 0;
+        sCompUnit = NULL;
+        while (pos < sObjRefsCnt) {
+            ObjectReference ref = sObjRefs[pos++];
+            if (ref.org->mCompUnit == NULL) ref.org->mCompUnit = find_comp_unit(Section, ref.org->mID);
+            if (ref.org->mTag == 0) {
+                Trap trap;
+                ObjectInfo * obj = ref.org;
+                sCompUnit = obj->mCompUnit;
+                sUnitDesc = sCompUnit->mDesc;
+                sDebugSection = sUnitDesc.mSection;
+                sParentObject = NULL;
+                sPrevSibling = NULL;
+                dio_EnterSection(&sCompUnit->mDesc, sDebugSection, obj->mID - sDebugSection->addr);
+                if (set_trap(&trap)) {
+                    dio_ReadEntry(read_object_info, 0);
+                    clear_trap(&trap);
+                }
+                dio_ExitSection();
+                sDebugSection = NULL;
+                sCompUnit = NULL;
+                if (trap.error) exception(trap.error);
             }
-            dio_ExitSection();
-            sDebugSection = NULL;
-            sCompUnit = NULL;
-            if (trap.error) exception(trap.error);
         }
     }
-    pos = 0;
 #endif
     /*
      * Propagate attributes like mName and mType along chain of references.
      */
-    qsort(sObjRefs, sObjRefsCnt, sizeof(ObjectReference), object_references_comparator);
-    while (pos < sObjRefsCnt) {
-        ObjectReference ref = sObjRefs[pos++];
-        if (ref.obj != NULL) {
-            assert(ref.org->mTag != 0);
-            if (ref.org->mFlags & DOIF_load_mark) str_fmt_exception(ERR_INV_DWARF,
-                "Invalid forward reference at %x", (unsigned)ref.obj->mID);
-            if (ref.obj->mName == NULL) ref.obj->mName = ref.org->mName;
-            if (ref.obj->mType == NULL || ref.obj->mType->mID == OBJECT_ID_VOID(ref.obj->mCompUnit)) ref.obj->mType = ref.org->mType;
-            ref.obj->mFlags |= ref.org->mFlags & ~(DOIF_children_loaded | DOIF_declaration | DOIF_specification);
-            if (ref.obj->mFlags & DOIF_specification) {
-                ref.org->mDefinition = ref.obj;
-                if ((ref.obj->mFlags & (DOIF_low_pc | DOIF_ranges)) == 0) {
-                    ref.obj->mFlags |= ref.org->mFlags & DOIF_declaration;
+    for (;;) {
+        U4_T pos = 0;
+        int fwd = 0;
+        while (pos < sObjRefsCnt) {
+            ObjectReference ref = sObjRefs[pos++];
+            if (ref.obj != NULL) {
+                assert(ref.org->mTag != 0);
+                if (ref.org->mFlags & DOIF_load_mark) {
+                    fwd = 1;
+                }
+                else {
+                    if (ref.obj->mName == NULL) ref.obj->mName = ref.org->mName;
+                    if (ref.obj->mType == NULL || ref.obj->mType->mID == OBJECT_ID_VOID(ref.obj->mCompUnit)) ref.obj->mType = ref.org->mType;
+                    ref.obj->mFlags |= ref.org->mFlags & ~(DOIF_children_loaded | DOIF_declaration | DOIF_specification);
+                    if (ref.obj->mFlags & DOIF_specification) {
+                        ref.org->mDefinition = ref.obj;
+                        if ((ref.obj->mFlags & (DOIF_low_pc | DOIF_ranges)) == 0) {
+                            ref.obj->mFlags |= ref.org->mFlags & DOIF_declaration;
+                        }
+                    }
+                    if (ref.obj->mFlags & DOIF_abstract_origin) {
+                        if ((ref.obj->mTag == TAG_variable && (ref.obj->mFlags & DOIF_external)) ||
+                                ref.obj->mTag == TAG_subprogram ||
+                                (ref.obj->mTag == TAG_formal_parameter && ref.obj->mParent != NULL && ref.obj->mParent->mTag == TAG_subprogram))
+                            ref.org->mDefinition = ref.obj;
+                    }
+                    if (ref.obj->mFlags & DOIF_external) {
+                        ObjectInfo * cls = ref.org;
+                        while (cls->mParent != NULL &&
+                            (cls->mParent->mTag == TAG_class_type || cls->mParent->mTag == TAG_structure_type)) {
+                            cls = cls->mParent;
+                        }
+                        cls->mFlags |= DOIF_external;
+                    }
+                    ref.obj->mFlags &= ~DOIF_load_mark;
+                    ref.obj = NULL;
                 }
             }
-            if (ref.obj->mFlags & DOIF_abstract_origin) {
-                if ((ref.obj->mTag == TAG_variable && (ref.obj->mFlags & DOIF_external)) ||
-                        ref.obj->mTag == TAG_subprogram ||
-                        (ref.obj->mTag == TAG_formal_parameter && ref.obj->mParent != NULL && ref.obj->mParent->mTag == TAG_subprogram))
-                    ref.org->mDefinition = ref.obj;
-            }
-            if (ref.obj->mFlags & DOIF_external) {
-                ObjectInfo * cls = ref.org;
-                while (cls->mParent != NULL &&
-                    (cls->mParent->mTag == TAG_class_type || cls->mParent->mTag == TAG_structure_type)) {
-                    cls = cls->mParent;
-                }
-                cls->mFlags |= DOIF_external;
-            }
-            ref.obj->mFlags &= ~DOIF_load_mark;
         }
+        if (!fwd) break;
+        if (pass_cnt >= 8) break;
+        pass_cnt++;
     }
     sObjRefsCnt = 0;
 }
@@ -1649,7 +1660,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
     sUnitDesc = sCompUnit->mDesc;
     sDebugSection = sCompUnit->mDesc.mSection;
     sCache = (DWARFCache *)sCompUnit->mFile->dwarf_dt_cache;
-    dio_EnterSection(&sCompUnit->mDesc, sDebugSection, Obj->mID - sDebugSection->addr);
+    dio_EnterSection(&sUnitDesc, sDebugSection, Obj->mID - sDebugSection->addr);
     for (;;) {
         if (sUnitDesc.mVersion == 1 && Attr == AT_data_member_location) {
             gop_gAttr = AT_location;
@@ -1669,25 +1680,39 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
         if (gop_gForm != 0) break;
         if (gop_gSpecificationForm == FORM_GNU_REF_ALT) {
             ObjectInfo * Ref = find_alt_object_info((ContextAddress)gop_gSpecification);
-            ELF_Section * RefSec = Ref->mCompUnit->mDesc.mSection;
-            dio_EnterSection(&Ref->mCompUnit->mDesc, RefSec, Ref->mID - RefSec->addr);
+            sCompUnit = Ref->mCompUnit;
+            sUnitDesc = sCompUnit->mDesc;
+            sDebugSection = sCompUnit->mDesc.mSection;
+            dio_EnterSection(&sUnitDesc, sDebugSection, Ref->mID - sDebugSection->addr);
         }
         else if (gop_gSpecification != 0) {
+            ObjectInfo * Ref = NULL;
             dio_ChkRef(gop_gSpecificationForm);
-            dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gSpecification - sDebugSection->addr);
+            Ref = find_object(sDebugSection, (ContextAddress)gop_gSpecification);
+            sCompUnit = Ref->mCompUnit;
+            sUnitDesc = sCompUnit->mDesc;
+            if (sDebugSection != sCompUnit->mDesc.mSection) str_exception(ERR_INV_DWARF, "Invalid AT_specification attribute");
+            dio_EnterSection(&sUnitDesc, sDebugSection, Ref->mID - sDebugSection->addr);
         }
         else if (gop_gAbstractOriginForm == FORM_GNU_REF_ALT) {
             ObjectInfo * Ref = find_alt_object_info((ContextAddress)gop_gAbstractOrigin);
-            ELF_Section * RefSec = Ref->mCompUnit->mDesc.mSection;
-            dio_EnterSection(&Ref->mCompUnit->mDesc, RefSec, Ref->mID - RefSec->addr);
+            sCompUnit = Ref->mCompUnit;
+            sUnitDesc = sCompUnit->mDesc;
+            sDebugSection = sCompUnit->mDesc.mSection;
+            dio_EnterSection(&sUnitDesc, sDebugSection, Ref->mID - sDebugSection->addr);
         }
         else if (gop_gAbstractOrigin != 0) {
+            ObjectInfo * Ref = NULL;
             dio_ChkRef(gop_gAbstractOriginForm);
-            dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gAbstractOrigin - sDebugSection->addr);
+            Ref = find_object(sDebugSection, (ContextAddress)gop_gAbstractOrigin);
+            sCompUnit = Ref->mCompUnit;
+            sUnitDesc = sCompUnit->mDesc;
+            if (sDebugSection != sCompUnit->mDesc.mSection) str_exception(ERR_INV_DWARF, "Invalid AT_abstract_origin attribute");
+            dio_EnterSection(&sUnitDesc, sDebugSection, Ref->mID - sDebugSection->addr);
         }
         else if (gop_gExtension != 0) {
             dio_ChkRef(gop_gExtensionForm);
-            dio_EnterSection(&sCompUnit->mDesc, sDebugSection, gop_gExtension - sDebugSection->addr);
+            dio_EnterSection(&sUnitDesc, sDebugSection, gop_gExtension - sDebugSection->addr);
         }
         else break;
     }
@@ -1717,6 +1742,7 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
     case FORM_EXPRLOC   :
     case FORM_REF_SIG8  :
     case FORM_STRING    :
+    case FORM_GNU_STRP_ALT:
         Value->mAddr = (U1_T *)gop_gFormDataAddr;
         Value->mSize = gop_gFormDataSize;
         break;

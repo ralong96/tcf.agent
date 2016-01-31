@@ -516,10 +516,17 @@ static char * get_dwz_file_name(ELF_File * file, int * error) {
                 struct stat buf;
                 char * name = (char *)sec->data;
                 int l = (int)strlen(file->name);
+                int m = (int)strlen(name);
                 while (l > 0 && file->name[l - 1] != '/' && file->name[l - 1] != '\\') l--;
                 if (strcmp(file->name + l, name) != 0) {
                     char fnm[FILE_PATH_SIZE];
                     snprintf(fnm, sizeof(fnm), "%.*s%s", l, file->name, name);
+                    if (stat(fnm, &buf) == 0) return loc_strdup(fnm);
+                }
+                while (m > 0 && name[m - 1] != '/' && name[m - 1] != '\\') m--;
+                if (strcmp(file->name + l, name) != 0) {
+                    char fnm[FILE_PATH_SIZE];
+                    snprintf(fnm, sizeof(fnm), "%.*s%s", l, file->name, name + m);
                     if (stat(fnm, &buf) == 0) return loc_strdup(fnm);
                 }
                 lnm = name;

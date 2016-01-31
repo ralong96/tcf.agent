@@ -889,6 +889,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (errcmp(err, "Object is not available at this location") == 0) return;
         if (errcmp(err, "OP_fbreg: cannot read AT_frame_base") == 0) return;
+        if (errcmp(err, "OP_implicit_pointer: invalid object reference") == 0) return;
         if (errcmp(err, "Thread local storage access is not supported yet for machine type 20") == 0) return;
         if (errcmp(err, "Division by zero in location") == 0) return;
         if (errcmp(err, "Cannot find loader debug") == 0) return;
@@ -2109,6 +2110,7 @@ static void add_dir(const char * dir_name) {
         if (strcmp(e->d_name, ".") == 0) continue;
         if (strcmp(e->d_name, "..") == 0) continue;
         if (strcmp(e->d_name + strlen(e->d_name) - 6, ".debug") == 0) continue;
+        if (strcmp(e->d_name + strlen(e->d_name) - 7, ".x86_64") == 0) continue;
         if (strcmp(e->d_name + strlen(e->d_name) - 4, ".txt") == 0) continue;
         snprintf(path, sizeof(path), "%s/%s", dir_name, e->d_name);
         if (stat(path, &st) == 0) {
