@@ -1107,7 +1107,7 @@ static ChannelServer * channel_server_create(PeerServer * ps, int sock) {
 #else
     si->addr_len = 0x1000;
 #endif
-    si->addr_buf = (struct sockaddr *)loc_alloc(si->addr_len);
+    si->addr_buf = (struct sockaddr *)loc_alloc_zero(si->addr_len);
     si->serv.close = server_close;
     si->sock = sock;
     si->serv.ps = ps;
