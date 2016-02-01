@@ -1098,7 +1098,7 @@ static int same_namespace(ObjectInfo * x, ObjectInfo * y) {
     if (x->mName == y->mName) return 1;
     if (x->mName == NULL) return 0;
     if (y->mName == NULL) return 0;
-    if (strcmp(x->mName, y->mName) == 1) return 0;
+    if (strcmp(x->mName, y->mName) != 0) return 0;
     return same_namespace(x, y);
 }
 
