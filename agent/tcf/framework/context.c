@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/myalloc.h>
+#include <tcf/framework/events.h>
 
 typedef struct Listener {
     ContextEventListener * func;
@@ -209,41 +210,49 @@ void context_lock(Context * ctx) {
     ctx->ref_count++;
 }
 
+static void dispose_ctx(void * args) {
+    Context * ctx = (Context *)args;
+    unsigned i;
+
+    assert(ctx->exited);
+    assert(ctx->ref_count == 0);
+    assert(list_is_empty(&ctx->children));
+    if (ctx->parent != NULL) {
+        list_remove(&ctx->cldl);
+        context_unlock(ctx->parent);
+        ctx->parent = NULL;
+    }
+    if (ctx->creator != NULL) {
+        context_unlock(ctx->creator);
+        ctx->creator = NULL;
+    }
+
+#if ENABLE_ContextIdHashTable
+    if (!list_is_empty(ctx2idlink(ctx))) list_remove(ctx2idlink(ctx));
+#endif
+
+    assert(!ctx->event_notification);
+    ctx->event_notification = 1;
+    for (i = 0; i < listener_cnt; i++) {
+        Listener * l = listeners + i;
+        if (l->func->context_disposed == NULL) continue;
+        l->func->context_disposed(ctx, l->args);
+    }
+    ctx->event_notification = 0;
+    assert(ctx->ref_count == 0);
+    list_remove(&ctx->ctxl);
+    sigset_clear(&ctx->pending_signals);
+    sigset_clear(&ctx->sig_dont_stop);
+    sigset_clear(&ctx->sig_dont_pass);
+    loc_free(ctx->name);
+    loc_free(ctx);
+}
+
 void context_unlock(Context * ctx) {
     assert(ctx->ref_count > 0);
     if (--(ctx->ref_count) == 0) {
-        unsigned i;
-
         assert(ctx->exited);
-        assert(list_is_empty(&ctx->children));
-        if (ctx->parent != NULL) {
-            list_remove(&ctx->cldl);
-            context_unlock(ctx->parent);
-            ctx->parent = NULL;
-        }
-        if (ctx->creator != NULL) {
-            context_unlock(ctx->creator);
-            ctx->creator = NULL;
-        }
-
-#if ENABLE_ContextIdHashTable
-        if (!list_is_empty(ctx2idlink(ctx))) list_remove(ctx2idlink(ctx));
-#endif
-
-        assert(!ctx->event_notification);
-        ctx->event_notification = 1;
-        for (i = 0; i < listener_cnt; i++) {
-            Listener * l = listeners + i;
-            if (l->func->context_disposed == NULL) continue;
-            l->func->context_disposed(ctx, l->args);
-        }
-        ctx->event_notification = 0;
-        list_remove(&ctx->ctxl);
-        sigset_clear(&ctx->pending_signals);
-        sigset_clear(&ctx->sig_dont_stop);
-        sigset_clear(&ctx->sig_dont_pass);
-        loc_free(ctx->name);
-        loc_free(ctx);
+        post_event(dispose_ctx, ctx);
     }
 }
 
