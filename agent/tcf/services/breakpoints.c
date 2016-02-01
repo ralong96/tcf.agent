@@ -524,6 +524,9 @@ static void clear_instruction_refs(Context * ctx, BreakpointInfo * bp) {
             ref->cnt = 0;
             bi->valid = 0;
 #if ENABLE_ContextISA
+            loc_free(bi->isa.isa);
+            loc_free(bi->isa.def);
+            loc_free(bi->isa.bp_encoding);
             memset(&bi->isa, 0, sizeof(bi->isa));
             bi->isa_ph_ctx = NULL;
             bi->isa_ph_addr = 0;
@@ -544,6 +547,11 @@ static void free_instruction(BreakInstruction * bi) {
     release_error_report(bi->address_error);
     release_error_report(bi->planting_error);
     release_error_report(bi->condition_error);
+#if ENABLE_ContextISA
+    loc_free(bi->isa.bp_encoding);
+    loc_free(bi->isa.isa);
+    loc_free(bi->isa.def);
+#endif
     loc_free(bi->refs);
     loc_free(bi);
 }
@@ -1090,7 +1098,16 @@ static void get_isa_info(BreakInstruction * bi) {
         ContextAddress isa_ph_addr = 0;
         if (context_get_isa(bi->cb.ctx, bi->cb.address, &isa) == 0 &&
                 context_get_canonical_addr(bi->cb.ctx, bi->cb.address, &isa_ph_ctx, &isa_ph_addr, NULL, NULL) == 0) {
+            loc_free(bi->isa.isa);
+            loc_free(bi->isa.def);
+            loc_free(bi->isa.bp_encoding);
             bi->isa = isa;
+            if (isa.bp_encoding) {
+                bi->isa.bp_encoding = (uint8_t *)loc_alloc(isa.bp_size);
+                memcpy(bi->isa.bp_encoding, isa.bp_encoding, isa.bp_size);
+            }
+            if (isa.isa) bi->isa.isa = loc_strdup(isa.isa);
+            if (isa.def) bi->isa.def = loc_strdup(isa.def);
             bi->isa_ph_ctx = isa_ph_ctx;
             bi->isa_ph_addr = isa_ph_addr;
         }
