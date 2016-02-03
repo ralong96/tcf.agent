@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -153,6 +153,7 @@ static int get_resume_modes(Context * ctx) {
     for (md = 0; md < RM_UNDEF; md++) {
         if (md == RM_DETACH) continue;
         if (md == RM_TERMINATE) continue;
+        if (md == RM_SKIP_PROLOGUE) continue;
         if (context_can_resume(ctx, md)) modes |= 1 << md;
     }
     if (!has_state) {
@@ -247,9 +248,7 @@ static void write_context(OutputStream * out, Context * ctx) {
     write_stream(out, ':');
     json_write_long(out, modes &
         ~(1 << RM_RESUME) &
-        ~(1 << RM_REVERSE_RESUME) &
-        ~(1 << RM_TERMINATE) &
-        ~(1 << RM_DETACH));
+        ~(1 << RM_REVERSE_RESUME));
 
     if (context_has_state(ctx)) {
         write_stream(out, ',');

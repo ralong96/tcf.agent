@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -192,6 +192,7 @@ struct MemoryRegionAttribute {
 #define RM_REVERSE_STEP_INTO_RANGE 15 /* Reverse of RM_STEP_INTO_RANGE */
 #define RM_UNTIL_ACTIVE            16 /* Run until the context becomes active - scheduled to run on a target CPU */
 #define RM_REVERSE_UNTIL_ACTIVE    17 /* Run reverse until the context becomes active */
+/* These modes are used internally by the agent and should not be exposed to remote clients */
 #define RM_DETACH                  18 /* Detach the context */
 #define RM_TERMINATE               19 /* Terminate the context */
 #define RM_SKIP_PROLOGUE           20 /* Skip function prologue */
