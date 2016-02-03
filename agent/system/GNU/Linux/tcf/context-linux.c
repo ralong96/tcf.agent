@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -126,6 +126,7 @@ typedef struct ContextExtensionLinux {
     int                     pending_step;
     int                     stop_cnt;
     int                     sigstop_posted;
+    int                     sigkill_posted;
     int                     detach_req;
     int                     crt0_done;
 #if ENABLE_ProfilerSST
@@ -205,7 +206,7 @@ static void get_thread_ids(pid_t pid, int * cnt, pid_t ** pids) {
             pid_t pid = atol(ent->d_name);
             if (threads_cnt >= max_threads_cnt) {
                 max_threads_cnt += 10;
-                thread_pid = (pid_t *)loc_realloc(thread_pid, max_threads_cnt * sizeof(pid_t));
+                thread_pid = (pid_t *)tmp_realloc(thread_pid, max_threads_cnt * sizeof(pid_t));
             }
             thread_pid[threads_cnt++] = pid;
         }
@@ -300,28 +301,34 @@ int context_stop(Context * ctx) {
     assert(!ctx->exited);
     assert(!ctx->exiting);
     assert(!ctx->stopped);
-    if (ext->stop_cnt > 4) {
+    if (ext->stop_cnt >= 4) {
         /* Waiting too long, check for zombies */
         int ch = get_process_state(ext->pid);
-        if (ch == EOF) trace(LOG_ALWAYS, "error: waiting too long to stop %s, stat not found", ctx->id);
-        else trace(LOG_ALWAYS, "error: waiting too long to stop %s, stat %c", ctx->id, ch);
-        if (ch == EOF || ch == 'Z') {
-            /* Already exited or zombie */
+        if (ch == EOF) {
+            set_context_state_name(ctx, "Exited");
+            ctx->exiting = 1;
+            return 0;
+        }
+        if (ch == 'Z') {
+            set_context_state_name(ctx, "Zombie");
             ctx->exiting = 1;
             return 0;
         }
         ext->stop_cnt = 0;
         ext->sigstop_posted = 0;
+        trace(LOG_ALWAYS, "error: waiting too long to stop %s, stat %c", ctx->id, ch);
     }
     if (!ext->sigstop_posted) {
         if (tkill(ext->pid, SIGSTOP) < 0) {
             int err = errno;
-            trace(LOG_ALWAYS, "error: tkill(SIGSTOP) failed: ctx %#lx, id %s, error %d %s",
-                ctx, ctx->id, err, errno_to_str(err));
             if (err == ESRCH) {
+                set_context_state_name(ctx, "Exited");
                 ctx->exiting = 1;
                 return 0;
             }
+            trace(LOG_ALWAYS,
+                "error: tkill(SIGSTOP) failed: ctx %#lx, id %s, error %d %s",
+                ctx, ctx->id, err, errno_to_str(err));
             errno = err;
             return -1;
         }
@@ -592,6 +599,7 @@ int context_continue(Context * ctx) {
         return -1;
     }
     sigset_set(&ctx->pending_signals, signal, 0);
+    if (signal == SIGKILL) ext->sigkill_posted = 1;
     if (syscall_never_returns(ctx)) {
         ext->syscall_enter = 0;
         ext->syscall_exit = 0;
@@ -600,6 +608,7 @@ int context_continue(Context * ctx) {
     send_context_started_event(ctx);
     if (cmd == PTRACE_DETACH) {
         Context * prs = ctx->parent;
+        assert(signal == 0);
         assert(ctx->exiting);
         if (ext->pid == EXT(prs)->pid && (EXT(prs)->attach_mode & CONTEXT_ATTACH_SELF) != 0) {
             /* The inferior process was started by the agent, post waitpid to collect zombie */
@@ -1270,7 +1279,7 @@ static Context * add_thread(Context * parent, Context * creator, pid_t pid) {
     ctx = create_context(pid2id(pid, EXT(parent)->pid));
     EXT(ctx)->pid = pid;
     EXT(ctx)->attach_mode = EXT(parent)->attach_mode;
-    EXT(ctx)->sigstop_posted = (EXT(ctx)->attach_mode & CONTEXT_ATTACH_SELF) == 0;
+    EXT(ctx)->sigstop_posted = 1;
     alloc_regs(ctx);
     ctx->mem = parent;
     ctx->big_endian = parent->big_endian;
@@ -1323,10 +1332,14 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             link_context(prs);
             send_context_created_event(prs);
             ctx = add_thread(prs, NULL, pid);
+            if (signal == SIGTRAP && (EXT(prs)->attach_mode & CONTEXT_ATTACH_SELF) != 0) {
+                /* In case of self-attach, tracee can be stopped by SIGTRAP instead of SIGSTOP */
+                EXT(ctx)->sigstop_posted = 0;
+            }
             get_thread_ids(pid, &cnt, &pids);
             for (n = 0; n < cnt; n++) {
                 if (pids[n] == pid) continue;
-                if (ptrace(PTRACE_ATTACH, pids[n],0,0) != 0) {
+                if (ptrace(PTRACE_ATTACH, pids[n], 0, 0) != 0) {
                     trace(LOG_ALWAYS,
                         "error: ptrace(PTRACE_ATTACH) failed: pid %d, error %d %s",
                         pids[n], errno, errno_to_str(errno));
@@ -1363,8 +1376,8 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     }
 
     ext = EXT(ctx);
-    assert(!ext->attach_callback);
     assert(!ctx->exited);
+    assert(!ext->attach_callback);
     if (signal == SIGSTOP) ext->sigstop_posted = 0;
     ext->stop_cnt = 0;
 
@@ -1440,7 +1453,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         memory_map_event_mapping_changed(ctx->mem);
         break;
     case PTRACE_EVENT_EXIT:
-        {
+        if (ext->sigkill_posted) {
             /* SIGKILL can override PTRACE_EVENT_CLONE event with PTRACE_EVENT_EXIT */
             unsigned long child_pid = get_child_pid(EXT(ctx->parent)->pid);
             if (child_pid) {
@@ -1476,6 +1489,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         }
         ctx->exiting = 1;
         memset(ext->regs_dirty, 0, sizeof(REG_SET));
+        set_context_state_name(ctx, "Zombie");
         break;
     }
 
