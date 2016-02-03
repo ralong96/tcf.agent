@@ -190,9 +190,9 @@ int context_attach_self(void) {
 static void get_thread_ids(pid_t pid, int * cnt, pid_t ** pids) {
     char dir[FILE_PATH_SIZE];
     DIR * proc;
-    static int max_threads_cnt = 0;
+    int threads_max = 0;
     int threads_cnt = 0;
-    static pid_t * thread_pid = NULL;
+    pid_t * thread_pid = NULL;
 
     *cnt = 0;
 
@@ -204,9 +204,9 @@ static void get_thread_ids(pid_t pid, int * cnt, pid_t ** pids) {
         if (ent == NULL) break;
         if (ent->d_name[0] >= '1' && ent->d_name[0] <= '9') {
             pid_t pid = atol(ent->d_name);
-            if (threads_cnt >= max_threads_cnt) {
-                max_threads_cnt += 10;
-                thread_pid = (pid_t *)tmp_realloc(thread_pid, max_threads_cnt * sizeof(pid_t));
+            if (threads_cnt >= threads_max) {
+                threads_max += 10;
+                thread_pid = (pid_t *)tmp_realloc(thread_pid, threads_max * sizeof(pid_t));
             }
             thread_pid[threads_cnt++] = pid;
         }
