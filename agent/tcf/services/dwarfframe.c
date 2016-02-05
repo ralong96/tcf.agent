@@ -266,7 +266,7 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
             break;
         case EM_AARCH64:
             min_reg_cnt = 32;
-            if (n >= 19 && n <= 28) { /* Callee-saved registers */
+            if (n >= 19 && n <= 29) { /* Callee-saved registers */
                 regs->regs[n].rule = RULE_SAME_VALUE;
             }
             else if (n == 31) { /* Stack pointer */
