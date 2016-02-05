@@ -363,6 +363,9 @@
     <ClCompile Include="tcf\main\gdb-rsp.c">
       <Filter>main</Filter>
     </ClCompile>
+    <ClCompile Include="machine\a64\tcf\cpudefs-mdep.c">
+      <Filter>machine\a64</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tcf\framework\asyncreq.h">
@@ -692,6 +695,12 @@
     </ClInclude>
     <ClInclude Include="tcf\main\gdb-rsp.h">
       <Filter>main</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\cpudefs-mdep.h">
+      <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\regset-mdep.h">
+      <Filter>machine\a64</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
