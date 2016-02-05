@@ -213,11 +213,11 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
     while (stack->frame_cnt < max_frames) {
         int frame_idx = stack->frame_cnt - 1;
         StackFrame * frame = stack->frames + frame_idx;
-        trace(LOG_STACK, "Frame %d", stack->frame_cnt);
 #if ENABLE_Trace
         if (LOG_STACK & log_mode) {
             uint64_t v;
             RegisterDefinition * def;
+            trace(LOG_STACK, "Frame %d", stack->frame_cnt - 1);
             for (def = get_reg_definitions(ctx); def->name != NULL; def++) {
                 if (read_reg_value(frame, def, &v) == 0) {
                     trace(LOG_STACK, "  %-8s %16"PRIX64, def->name, v);

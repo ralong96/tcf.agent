@@ -284,7 +284,7 @@ static void add_branch(uint64_t addr) {
     }
 }
 
-#if 0 /* Not used yret */
+#if 0 /* Not used yet */
 static int search_reg_value(StackFrame * frame, RegisterDefinition * def, uint64_t * v) {
     for (;;) {
         int n;
@@ -937,7 +937,7 @@ static int trace_a64(void) {
         unsigned i;
         /* Unknown/undecoded. May alter some register, so invalidate file */
         for (i = 0; i < 30; i++) reg_data[i].o = 0;
-        trace(LOG_STACK, "Stack crawl: unknown instruction %08x", instr);
+        trace(LOG_STACK, "Stack crawl: unknown ARM A64 instruction %08x", instr);
     }
 
     if (!trace_return && !trace_branch) {

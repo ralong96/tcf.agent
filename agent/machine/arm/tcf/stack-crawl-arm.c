@@ -1333,6 +1333,7 @@ static int trace_thumb(void) {
     else {
         unsigned i;
         for (i = 0; i < 13; i++) reg_data[i].o = 0;
+        trace(LOG_STACK, "Stack crawl: unknown Thumb instruction %04x", instr);
     }
 
     if (!trace_return && !trace_branch) {
@@ -1348,7 +1349,7 @@ static int trace_thumb(void) {
 }
 
 static int trace_jazelle(void) {
-    set_errno(ERR_OTHER, "Jazelle is not supported yet");
+    set_errno(ERR_OTHER, "Jazelle stack crawl is not supported yet");
     return -1;
 }
 
@@ -2162,7 +2163,7 @@ static int trace_arm(void) {
         unsigned i;
         /* Unknown/undecoded. May alter some register, so invalidate file */
         for (i = 0; i < 11; i++) reg_data[i].o = 0;
-        trace(LOG_STACK, "ARM stack crawl: unknown instruction %08x", instr);
+        trace(LOG_STACK, "Stack crawl: unknown ARM A32 instruction %08x", instr);
     }
 
     if (!trace_return && !trace_branch) {
