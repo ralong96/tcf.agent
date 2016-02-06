@@ -447,6 +447,7 @@ static void free_context_cache(ContextCache * c) {
     context_clear_memory_map(&c->target_map);
     loc_free(c->target_map.regions);
     loc_free(c->reg_defs);
+    loc_free(c->suspend_reason);
     loc_free(c->signal_name);
     loc_free(c->bp_ids);
     if (c->reg_props != NULL) {
