@@ -208,8 +208,8 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
             disassembler_ok = 0;
         }
         if (!disassembler_ok) {
-            disassembler = find_disassembler(cpu, isa->isa);
-            if (disassembler == NULL) disassembler = find_disassembler(cpu, isa->def);
+            if (isa->isa != NULL) disassembler = find_disassembler(cpu, isa->isa);
+            else disassembler = find_disassembler(cpu, isa->def);
             disassembler_ok = 1;
         }
         if (disassembler) dr = disassembler(mem_buf + (size_t)offs, addr, size, &param);
