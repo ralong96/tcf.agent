@@ -219,9 +219,9 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             RegisterDefinition * def;
             trace(LOG_STACK, "Frame %d", stack->frame_cnt - 1);
             for (def = get_reg_definitions(ctx); def->name != NULL; def++) {
-                if (read_reg_value(frame, def, &v) == 0) {
-                    trace(LOG_STACK, "  %-8s %16"PRIX64, def->name, v);
-                }
+                if (def->no_read || def->read_once) continue;
+                if (read_reg_value(frame, def, &v) != 0) continue;
+                trace(LOG_STACK, "  %-8s %16"PRIX64, def->name, v);
             }
         }
 #endif
