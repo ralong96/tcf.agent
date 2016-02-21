@@ -861,6 +861,8 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     case AT_static_link:
     case AT_use_location:
     case AT_vtable_elem_location:
+    case AT_upper_bound:
+    case AT_lower_bound:
         /* Note: FORM_DATA4, FORM_DATA8 and FORM_SEC_OFFSET are location lists.
          * Location list needs PC, so we set DOIF_need_frame because of that */
         if (Form == FORM_DATA4 || Form == FORM_DATA8 || Form == FORM_SEC_OFFSET) {

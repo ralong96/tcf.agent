@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -164,6 +164,7 @@ typedef struct LocationExpressionState {
     unsigned stk_pos;
     unsigned stk_max;
     uint64_t * stk;
+    uint8_t * type_stk;
 } LocationExpressionState;
 
 typedef int LocationExpressionCallback(LocationExpressionState *);

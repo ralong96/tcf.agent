@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -764,20 +764,27 @@ static void op_parameter_ref(void) {
             if (args->mTag == TAG_GNU_call_site_parameter && args->mFlags & DOIF_abstract_origin) {
                 read_and_evaluate_dwarf_object_property(expr_ctx, STACK_NO_FRAME, args, AT_abstract_origin, &pv);
                 if (get_numeric_property_value(&pv) == ref_id) {
-                    read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, args, AT_GNU_call_site_value, &pv);
-                    dwarf_get_expression_list(&pv, info_last);
-                    while (*info_last != NULL) {
-                        DWARFExpressionInfo * e = *info_last;
-                        if (e->code_size == 0 ||
-                                (e->code_addr <= site->u.mCode.mLowPC &&
-                                 e->code_addr + e->code_size > site->u.mCode.mLowPC)) {
-                            e->code_addr = site->u.mCode.mLowPC;
-                            e->code_size = 1;
-                            info_last = &e->next;
+                    Trap trap;
+                    if (set_trap(&trap)) {
+                        read_dwarf_object_property(expr_ctx, STACK_NO_FRAME, args, AT_GNU_call_site_value, &pv);
+                        dwarf_get_expression_list(&pv, info_last);
+                        while (*info_last != NULL) {
+                            DWARFExpressionInfo * e = *info_last;
+                            if (e->code_size == 0 ||
+                                    (e->code_addr <= site->u.mCode.mLowPC &&
+                                     e->code_addr + e->code_size > site->u.mCode.mLowPC)) {
+                                e->code_addr = site->u.mCode.mLowPC;
+                                e->code_size = 1;
+                                info_last = &e->next;
+                            }
+                            else {
+                                *info_last = e->next;
+                            }
                         }
-                        else {
-                            *info_last = e->next;
-                        }
+                        clear_trap(&trap);
+                    }
+                    else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
+                        str_exception(errno, "Cannot read value of call site parameter");
                     }
                 }
             }
@@ -827,6 +834,17 @@ static void adjust_jumps(void) {
 static void check_frame(void) {
     if (expr_frame != STACK_NO_FRAME) return;
     str_exception(ERR_OTHER, "Object location is relative to a stack frame");
+}
+
+static void get_type(U8_T type, U2_T * fund_type, U8_T * byte_size) {
+    ObjectInfo * obj = find_object(
+        expr->object->mCompUnit->mDesc.mSection,
+        expr->object->mCompUnit->mDesc.mSection->addr +
+        expr->object->mCompUnit->mDesc.mUnitOffs + type);
+    if (obj == NULL) str_exception(ERR_INV_DWARF, "Invalid type reference in DWARF expression");
+    if (obj->mTag != TAG_base_type) str_exception(ERR_INV_DWARF, "Invalid type object tag in DWARF expression");
+    if (!get_num_prop(obj, AT_byte_size, byte_size)) str_exception(ERR_INV_DWARF, "Invalid type size in DWARF expression");
+    *fund_type = obj->u.mFundType;
 }
 
 static void add_expression(DWARFExpressionInfo * info) {
@@ -999,14 +1017,12 @@ static void add_expression(DWARFExpressionInfo * info) {
             {
                 U8_T type = read_u8leb128();
                 unsigned size = expr->expr_addr[expr_pos++];
+                U2_T fund_type = 0;
+                U8_T byte_size = 0;
                 int sign = 0;
-                ObjectInfo * obj = find_object(
-                    expr->object->mCompUnit->mDesc.mSection,
-                    expr->object->mCompUnit->mDesc.mSection->addr +
-                    expr->object->mCompUnit->mDesc.mUnitOffs + type);
-                if (obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_const_type");
-                if (obj->mTag != TAG_base_type) str_exception(ERR_INV_DWARF, "Invalid object tag in OP_GNU_const_type");
-                switch (obj->u.mFundType) {
+                int ok = 1;
+                get_type(type, &fund_type, &byte_size);
+                switch (fund_type) {
                 case ATE_address:
                 case ATE_unsigned:
                 case ATE_unsigned_char:
@@ -1019,15 +1035,25 @@ static void add_expression(DWARFExpressionInfo * info) {
                     sign = 1;
                     break;
                 default:
-                    str_exception(ERR_INV_DWARF, "Unsupported type in OP_GNU_const_type");
+                    ok = 0;
                     break;
                 }
-                switch (size) {
-                case 1: add(sign ? OP_const1s : OP_const1u); break;
-                case 2: add(sign ? OP_const2s : OP_const2u); break;
-                case 4: add(sign ? OP_const4s : OP_const4u); break;
-                case 8: add(sign ? OP_const8s : OP_const8u); break;
-                default: str_exception(ERR_INV_DWARF, "Invalid size in OP_GNU_const_type");
+                if (ok) {
+                    switch (size) {
+                    case 1: add(sign ? OP_const1s : OP_const1u); break;
+                    case 2: add(sign ? OP_const2s : OP_const2u); break;
+                    case 4: add(sign ? OP_const4s : OP_const4u); break;
+                    case 8: add(sign ? OP_const8s : OP_const8u); break;
+                    default:
+                        ok = 0;
+                        break;
+                    }
+                }
+                if (!ok) {
+                    add(OP_GNU_const_type);
+                    add_uleb128(fund_type);
+                    add_uleb128(byte_size);
+                    add_uleb128(size);
                 }
                 copy(size);
             }
@@ -1035,50 +1061,90 @@ static void add_expression(DWARFExpressionInfo * info) {
         case OP_GNU_regval_type:
             expr_pos++;
             {
-                U8_T size = 0;
                 U4_T reg = read_u4leb128();
                 U8_T type = read_u8leb128();
-                ObjectInfo * obj = find_object(
-                    expr->object->mCompUnit->mDesc.mSection,
-                    expr->object->mCompUnit->mDesc.mSection->addr +
-                    expr->object->mCompUnit->mDesc.mUnitOffs + type);
-                if (obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_regval_type");
-                if (!get_num_prop(obj, AT_byte_size, &size)) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_regval_type");
-                add(OP_regx);
-                add_uleb128(reg);
-                add(OP_piece);
-                add_uleb128(size);
+                U2_T fund_type = 0;
+                U8_T byte_size = 0;
+                int ok = 0;
+                get_type(type, &fund_type, &byte_size);
+                if (expr_pos == info->expr_size) {
+                    switch (fund_type) {
+                    case ATE_address:
+                    case ATE_unsigned:
+                    case ATE_unsigned_char:
+                    case ATE_unsigned_fixed:
+                    case ATE_UTF:
+                        ok = 1;
+                        add(OP_regx);
+                        add_uleb128(reg);
+                        add(OP_piece);
+                        add_uleb128(byte_size);
+                        break;
+                    }
+                }
+                if (!ok) {
+                    add(OP_GNU_regval_type);
+                    add_uleb128(reg);
+                    add_uleb128(fund_type);
+                    add_uleb128(byte_size);
+                }
+            }
+            break;
+        case OP_GNU_deref_type:
+            expr_pos++;
+            {
+                unsigned size = expr->expr_addr[expr_pos++];
+                U8_T type = read_u8leb128();
+                U2_T fund_type = 0;
+                U8_T byte_size = 0;
+                int ok = 0;
+                get_type(type, &fund_type, &byte_size);
+                switch (fund_type) {
+                case ATE_address:
+                case ATE_unsigned:
+                case ATE_unsigned_char:
+                case ATE_unsigned_fixed:
+                case ATE_UTF:
+                    ok = 1;
+                    add(OP_deref_size);
+                    add(size);
+                    break;
+                }
+                if (!ok) {
+                    add(OP_GNU_deref_type);
+                    add_uleb128(size);
+                    add_uleb128(fund_type);
+                    add_uleb128(byte_size);
+                }
             }
             break;
         case OP_GNU_convert:
             expr_pos++;
             {
                 U8_T type = read_u8leb128();
+                U2_T fund_type = 0;
+                U8_T byte_size = 0;
+                int ok = 0;
                 if (type == 0) {
                     /* 0 means to cast the value back to the "implicit" type */
                 }
                 else {
-                    U8_T size = 0;
-                    ObjectInfo * obj = find_object(
-                        expr->object->mCompUnit->mDesc.mSection,
-                        expr->object->mCompUnit->mDesc.mSection->addr +
-                        expr->object->mCompUnit->mDesc.mUnitOffs + type);
-                    if (obj != NULL && obj->mTag == TAG_base_type && get_num_prop(obj, AT_byte_size, &size)) {
-                        switch (obj->u.mFundType) {
-                        case ATE_unsigned:
-                            if (size < 8) {
-                                add(OP_constu);
-                                add_uleb128(((U8_T)1 << (size * 8)) - 1);
-                                add(OP_and);
-                            }
-                            break;
-                        default:
-                            str_exception(ERR_INV_DWARF, "Unsupported type in OP_GNU_convert");
-                            break;
+                    get_type(type, &fund_type, &byte_size);
+                    switch (fund_type) {
+                    case ATE_unsigned:
+                        if (byte_size < 8) {
+                            add(OP_constu);
+                            add_uleb128(((U8_T)1 << (byte_size * 8)) - 1);
+                            add(OP_and);
+                            ok = 1;
                         }
                         break;
                     }
-                    str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_convert");
+                }
+                if (!ok) {
+                    add(OP_GNU_convert);
+                    add_uleb128(fund_type);
+                    add_uleb128(byte_size);
                 }
             }
             break;

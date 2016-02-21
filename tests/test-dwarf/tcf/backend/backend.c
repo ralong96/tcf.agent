@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -896,6 +896,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (errcmp(err, "Cannot get TLS module ID") == 0) return;
         if (errcmp(err, "Cannot get address of ELF symbol: indirect symbol") == 0) return;
         if (errcmp(err, "Unsupported type in OP_GNU_const_type") == 0) return;
+        if (errcmp(err, "Unsupported type in OP_GNU_regval_type") == 0) return;
         if (errcmp(err, "Unsupported type in OP_GNU_convert") == 0) return;
         if (errcmp(err, "Invalid size of implicit value") == 0) return;
         if (errcmp(err, "Invalid implicit pointer") == 0) return;
@@ -983,6 +984,9 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
             if (errcmp(err, "Cannot get object address: the object is located in a register") == 0) ok = 1;
+        }
+        if (!ok && obj != NULL && type_class == TYPE_CLASS_ARRAY) {
+            if (errcmp(err, "Cannot get array upper bound. No object location info found") == 0) ok = 1;
         }
         if (!ok && obj != NULL && obj->mTag == TAG_dwarf_procedure) {
             ok = 1;
@@ -1315,6 +1319,9 @@ static void loc_var_func(void * args, Symbol * sym) {
                 if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
                     if (errcmp(err, "Cannot get object address: the object is located in a register") == 0) ok = 1;
                 }
+                if (!ok && obj != NULL) {
+                    if (errcmp(err, "Cannot get array upper bound. No object location info found") == 0) ok = 1;
+                }
                 if (!ok) {
                     errno = err;
                     error_sym("get_symbol_length", sym);
@@ -1547,7 +1554,6 @@ static void check_addr_ranges(void) {
 static void next_pc(void) {
     Symbol * sym = NULL;
     ContextAddress lt_addr;
-    ContextAddress rt_addr;
     ELF_File * lt_file;
     ELF_Section * lt_sec;
     ObjectInfo * func_object = NULL;
@@ -1559,6 +1565,9 @@ static void next_pc(void) {
     ContextAddress next_pc = pc + 1;
     UnitAddressRange * unit_range = NULL;
     ContextAddress rage_rt_addr = 0;
+    const char * isa = NULL;
+    ContextAddress isa_range_addr = 0;
+    ContextAddress isa_range_size = 0;
 
     for (;;) {
         if (mem_region_pos < 0) {
@@ -1594,6 +1603,20 @@ static void next_pc(void) {
 
         set_regs_PC(elf_ctx, pc);
         send_context_changed_event(elf_ctx);
+
+        if (get_context_isa(elf_ctx, pc, &isa, &isa_range_addr, &isa_range_size) < 0) {
+            error("get_context_isa");
+        }
+        if (isa != NULL) {
+            if (pc < isa_range_addr) {
+                set_errno(ERR_OTHER, "pc < isa_range_addr");
+                error("get_context_isa");
+            }
+            if (isa_range_addr + isa_range_size > 0 && pc >= isa_range_addr + isa_range_size) {
+                set_errno(ERR_OTHER, "pc >= isa_range_addr + isa_range_size");
+                error("get_context_isa");
+            }
+        }
 
         func_name = NULL;
         func_object = NULL;
@@ -1824,18 +1847,22 @@ static void next_pc(void) {
         if (errno) error("elf_map_to_link_time_address");
         assert(lt_file != NULL);
         assert(lt_file == get_dwarf_file(elf_file));
-        assert(lt_sec == NULL || lt_sec->file == lt_file);
-        rt_addr = elf_map_to_run_time_address(elf_ctx, lt_file, lt_sec, lt_addr);
-        if (pc != rt_addr) {
-            set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
-            error("elf_map_to_run_time_address");
-        }
-        if (set_trap(&trap)) {
-            get_dwarf_stack_frame_info(elf_ctx, lt_file, lt_sec, lt_addr);
-            clear_trap(&trap);
-        }
-        else {
-            error("get_dwarf_stack_frame_info 1");
+        if (lt_sec != NULL) {
+            ContextAddress rt_addr;
+            assert(lt_sec->file == lt_file);
+            rt_addr = elf_map_to_run_time_address(elf_ctx, lt_file, lt_sec, lt_addr);
+            if (errno) error("elf_map_to_run_time_address");
+            if (pc != rt_addr) {
+                set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
+                error("elf_map_to_run_time_address");
+            }
+            if (set_trap(&trap)) {
+                get_dwarf_stack_frame_info(elf_ctx, lt_file, lt_sec, lt_addr);
+                clear_trap(&trap);
+            }
+            else {
+                error("get_dwarf_stack_frame_info 1");
+            }
         }
 
         if (enumerate_symbols(elf_ctx, STACK_TOP_FRAME, loc_var_func, NULL) < 0) {
@@ -2095,8 +2122,17 @@ static void test(void * args) {
     post_event_with_delay(test, NULL, 1);
 }
 
+static int file_name_comparator(const void * x, const void * y) {
+    return strcmp(*(const char **)x, *(const char **)y);
+}
+
 static void add_dir(const char * dir_name) {
     DIR * dir = opendir(dir_name);
+    char ** buf = NULL;
+    unsigned buf_len = 0;
+    unsigned buf_max = 0;
+    unsigned i;
+
     if (dir == NULL) {
         printf("Cannot open '%s' directory\n", dir_name);
         fflush(stdout);
@@ -2104,15 +2140,30 @@ static void add_dir(const char * dir_name) {
     }
     for (;;) {
         struct dirent * e = readdir(dir);
-        char path[FILE_PATH_SIZE];
-        struct stat st;
         if (e == NULL) break;
         if (strcmp(e->d_name, ".") == 0) continue;
         if (strcmp(e->d_name, "..") == 0) continue;
         if (strcmp(e->d_name + strlen(e->d_name) - 6, ".debug") == 0) continue;
         if (strcmp(e->d_name + strlen(e->d_name) - 7, ".x86_64") == 0) continue;
         if (strcmp(e->d_name + strlen(e->d_name) - 4, ".txt") == 0) continue;
-        snprintf(path, sizeof(path), "%s/%s", dir_name, e->d_name);
+        if (buf_len >= buf_max) {
+            buf_max = buf_max == 0 ? 256 : buf_max * 2;
+            buf = (char **)loc_realloc(buf, buf_max * sizeof(char *));
+        }
+        buf[buf_len++] = loc_strdup(e->d_name);
+    }
+    closedir(dir);
+    qsort(buf, buf_len, sizeof(char *), file_name_comparator);
+    for (i = 0; i < buf_len; i++) {
+        char * name = buf[i];
+        char path[FILE_PATH_SIZE];
+        struct stat st;
+        if (strcmp(dir_name, ".") == 0) {
+            strlcpy(path, name, sizeof(path));
+        }
+        else {
+            snprintf(path, sizeof(path), "%s/%s", dir_name, name);
+        }
         if (stat(path, &st) == 0) {
             if (S_ISDIR(st.st_mode)) {
                 add_dir(path);
@@ -2125,15 +2176,16 @@ static void add_dir(const char * dir_name) {
                 else {
                     close(fd);
                     if (files_cnt >= files_max) {
-                        files_max += 8;
+                        files_max = files_max == 0 ? 256 : files_max * 2;
                         files = (char **)loc_realloc(files, files_max * sizeof(char *));
                     }
                     files[files_cnt++] = loc_strdup(path);
                 }
             }
         }
+        loc_free(name);
     }
-    closedir(dir);
+    loc_free(buf);
 }
 
 void init_contexts_sys_dep(void) {

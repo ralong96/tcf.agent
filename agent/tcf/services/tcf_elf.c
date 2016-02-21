@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1091,8 +1091,7 @@ static U8_T get_pheader_file_size(ELF_File * file, ELF_PHeader * p, MemoryRegion
     return p->file_size;
 }
 
-static U8_T get_pheader_address(ELF_File * file, ELF_PHeader * p) {
-    ELF_File * debug = get_dwarf_file(file);
+static U8_T get_debug_pheader_address(ELF_File * file, ELF_File * debug, ELF_PHeader * p) {
     assert(p >= file->pheaders && p < file->pheaders + file->pheader_cnt);
     /* p->address is not valid if the file is exec file with split debug info */
     if (file != debug) {
@@ -1588,7 +1587,7 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
                 ELF_PHeader * p = file->pheaders + j;
                 ELF_Section * sec = NULL;
                 if (!is_p_header_region(file, p, r)) continue;
-                pheader_address = get_pheader_address(file, p);
+                pheader_address = get_debug_pheader_address(file, debug, p);
                 pheader_file_size = get_pheader_file_size(file, p, r);
                 offs_min = addr_min - r->addr + r->file_offs;
                 offs_max = addr_max - r->addr + r->file_offs;
@@ -1627,6 +1626,8 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
 }
 
 ContextAddress elf_run_time_address_in_region(Context * ctx, MemoryRegion * r, ELF_File * file, ELF_Section * sec, ContextAddress addr) {
+    /* Note: when debug info is in a separate file, debug file link-time addresses are not same as exec file link-time addresses,
+     * because Linux has a habbit of re-linking execs after extracting debug info */
     unsigned i;
     errno = 0;
     if (r->sect_name == NULL) {
@@ -1666,7 +1667,6 @@ ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_S
     if (elf_get_map(ctx, 0, ~(ContextAddress)0, &elf_map) < 0) return 0;
     for (i = 0; i < elf_map.region_cnt; i++) {
         MemoryRegion * r = elf_map.regions + i;
-        ELF_File * exec = file;
         int same_file = 0;
         if (r->dev == 0) {
             same_file = file_name_equ(file, r->file_name);
@@ -1678,19 +1678,20 @@ ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_S
         }
         if (!same_file) {
             /* Check if the memory map entry has a separate debug info file */
+            ELF_File * exec = NULL;
             if (!file->debug_info_file) continue;
             exec = elf_open_memory_region_file(r, NULL);
             if (exec == NULL) continue;
             if (get_dwarf_file(exec) != file) continue;
         }
-        rt = elf_run_time_address_in_region(ctx, r, exec, sec, addr);
+        rt = elf_run_time_address_in_region(ctx, r, file, sec, addr);
         if (errno == 0) return rt;
     }
     if (file->type == ET_EXEC) {
         errno = 0;
         return addr;
     }
-    errno = ERR_INV_ADDRESS;
+    errno = set_errno(ERR_INV_ADDRESS, "Invalid memory map, cannot compute run-time address");
     return 0;
 }
 
@@ -1710,21 +1711,21 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
         if (r->sect_name == NULL) {
             unsigned j;
             if (f->pheader_cnt == 0 && f->type == ET_EXEC) {
-                *file = d;
                 if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
+                *file = d;
                 errno = 0;
                 return addr;
             }
             for (j = 0; j < f->pheader_cnt; j++) {
                 U8_T offs = addr - r->addr + r->file_offs;
-                U8_T pheader_address = 0;
                 ELF_PHeader * p = f->pheaders + j;
+                U8_T pheader_address = 0;
                 if (!is_p_header_region(f, p, r)) continue;
                 if (offs < p->offset || offs >= p->offset + p->mem_size) continue;
-                *file = d;
-                pheader_address = to_dwarf ? get_pheader_address(f, p) : p->address;
+                pheader_address = get_debug_pheader_address(f, d, p);
                 addr = (ContextAddress)(offs - p->offset + pheader_address);
                 if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
+                *file = d;
                 errno = 0;
                 return addr;
             }
@@ -1734,9 +1735,9 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
             for (j = 1; j < d->section_cnt; j++) {
                 ELF_Section * s = d->sections + j;
                 if (strcmp(s->name, r->sect_name) == 0) {
-                    *file = d;
                     addr = (ContextAddress)(addr - r->addr + s->addr);
                     if (sec != NULL) *sec = s;
+                    *file = d;
                     errno = 0;
                     return addr;
                 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2008, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -111,7 +111,8 @@ void dwarf_evaluate_expression(PropertyValue * Value, uint64_t * args, unsigned 
     DWARFExpressionInfo * Info = NULL;
 
     State = (LocationExpressionState *)tmp_alloc_zero(sizeof(LocationExpressionState));
-    State->stk = (U8_T *)tmp_alloc(sizeof(U8_T) * (State->stk_max = 8));
+    State->stk = (uint64_t *)tmp_alloc(sizeof(uint64_t) * (State->stk_max = 8));
+    State->type_stk = (uint8_t *)tmp_alloc_zero(State->stk_max);
     State->ctx = Value->mContext;
     if (Value->mFrame != STACK_NO_FRAME &&
             get_frame_info(Value->mContext, Value->mFrame, &State->stack_frame) < 0)

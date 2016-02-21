@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -404,6 +404,7 @@ LocationExpressionState * evaluate_location_expression(Context * ctx, StackFrame
             break;
         case SFT_CMD_LOCATION:
             state->stk = stk;
+            state->type_stk = (uint8_t *)tmp_alloc_zero(stk_max);
             state->stk_pos = stk_pos;
             state->stk_max = stk_max;
             state->reg_id_scope = cmd->args.loc.reg_id_scope;

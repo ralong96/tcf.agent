@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -26,6 +26,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/stacktrace.h>
+#include <tcf/services/symbols.h>
 #include <tcf/services/dwarf.h>
 #include <tcf/services/vm.h>
 
@@ -194,6 +195,7 @@ static int is_end_of_loc_expr(void) {
 
 static void evaluate_expression(void) {
     uint64_t data = 0;
+    uint8_t type = 0;
 
     if (code_len == 0) inv_dwarf("location expression size = 0");
 
@@ -204,57 +206,73 @@ static void evaluate_expression(void) {
         if (state->stk_pos + 4 > state->stk_max) {
             state->stk_max += 8;
             state->stk = (uint64_t *)tmp_realloc(state->stk, sizeof(uint64_t) * state->stk_max);
+            state->type_stk = (uint8_t *)tmp_realloc(state->type_stk, sizeof(uint8_t) * state->stk_max);
         }
 
         switch (op) {
         case OP_deref:
             check_e_stack(1);
             state->stk[state->stk_pos - 1] = read_memory(state->stk[state->stk_pos - 1], state->addr_size);
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_deref2:
             check_e_stack(1);
             state->stk[state->stk_pos - 1] = (int16_t)read_memory(state->stk[state->stk_pos - 1], 2);
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_deref_size:
             check_e_stack(1);
             state->stk[state->stk_pos - 1] = read_memory(state->stk[state->stk_pos - 1], read_u1());
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_const:
             state->stk[state->stk_pos++] = read_ia();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_const1u:
             state->stk[state->stk_pos++] = read_u1();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_const1s:
             state->stk[state->stk_pos++] = (int8_t)read_u1();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_INTEGER;
             break;
         case OP_const2u:
             state->stk[state->stk_pos++] = read_u2();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_const2s:
             state->stk[state->stk_pos++] = (int16_t)read_u2();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_INTEGER;
             break;
         case OP_const4u:
             state->stk[state->stk_pos++] = read_u4();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_const4s:
             state->stk[state->stk_pos++] = (int32_t)read_u4();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_INTEGER;
             break;
         case OP_const8u:
             state->stk[state->stk_pos++] = read_u8();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_const8s:
             state->stk[state->stk_pos++] = (int64_t)read_u8();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_INTEGER;
             break;
         case OP_constu:
             state->stk[state->stk_pos++] = read_u8leb128();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_consts:
             state->stk[state->stk_pos++] = read_i8leb128();
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_INTEGER;
             break;
         case OP_dup:
             check_e_stack(1);
             state->stk[state->stk_pos] = state->stk[state->stk_pos - 1];
+            state->type_stk[state->stk_pos] = state->type_stk[state->stk_pos - 1];
             state->stk_pos++;
             break;
         case OP_drop:
@@ -264,6 +282,7 @@ static void evaluate_expression(void) {
         case OP_over:
             check_e_stack(2);
             state->stk[state->stk_pos] = state->stk[state->stk_pos - 2];
+            state->type_stk[state->stk_pos] = state->type_stk[state->stk_pos - 2];
             state->stk_pos++;
             break;
         case OP_pick:
@@ -271,30 +290,40 @@ static void evaluate_expression(void) {
                 unsigned n = read_u1();
                 check_e_stack(n + 1);
                 state->stk[state->stk_pos] = state->stk[state->stk_pos - n - 1];
+                state->type_stk[state->stk_pos] = state->type_stk[state->stk_pos - n - 1];
                 state->stk_pos++;
             }
             break;
         case OP_swap:
             check_e_stack(2);
             data = state->stk[state->stk_pos - 1];
+            type = state->type_stk[state->stk_pos - 1];
             state->stk[state->stk_pos - 1] = state->stk[state->stk_pos - 2];
+            state->type_stk[state->stk_pos - 1] = state->type_stk[state->stk_pos - 2];
             state->stk[state->stk_pos - 2] = data;
+            state->type_stk[state->stk_pos - 2] = type;
             break;
         case OP_rot:
             check_e_stack(3);
             data = state->stk[state->stk_pos - 1];
+            type = state->type_stk[state->stk_pos - 1];
             state->stk[state->stk_pos - 1] = state->stk[state->stk_pos - 2];
+            state->type_stk[state->stk_pos - 1] = state->type_stk[state->stk_pos - 2];
             state->stk[state->stk_pos - 2] = state->stk[state->stk_pos - 3];
+            state->type_stk[state->stk_pos - 2] = state->type_stk[state->stk_pos - 3];
             state->stk[state->stk_pos - 3] = data;
+            state->type_stk[state->stk_pos - 2] = type;
             break;
         case OP_xderef:
             check_e_stack(2);
             state->stk[state->stk_pos - 2] = read_memory(state->stk[state->stk_pos - 1], state->addr_size);
+            state->type_stk[state->stk_pos - 2] = TYPE_CLASS_CARDINAL;
             state->stk_pos--;
             break;
         case OP_xderef_size:
             check_e_stack(2);
             state->stk[state->stk_pos - 2] = read_memory(state->stk[state->stk_pos - 1], read_u1());
+            state->type_stk[state->stk_pos - 2] = TYPE_CLASS_CARDINAL;
             state->stk_pos--;
             break;
         case OP_abs:
@@ -404,31 +433,37 @@ static void evaluate_expression(void) {
             check_e_stack(2);
             state->stk_pos--;
             state->stk[state->stk_pos - 1] = state->stk[state->stk_pos - 1] == state->stk[state->stk_pos];
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_ge:
             check_e_stack(2);
             state->stk_pos--;
             state->stk[state->stk_pos - 1] = state->stk[state->stk_pos - 1] >= state->stk[state->stk_pos];
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_gt:
             check_e_stack(2);
             state->stk_pos--;
             state->stk[state->stk_pos - 1] = state->stk[state->stk_pos - 1] > state->stk[state->stk_pos];
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_le:
             check_e_stack(2);
             state->stk_pos--;
             state->stk[state->stk_pos - 1] = state->stk[state->stk_pos - 1] <= state->stk[state->stk_pos];
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_lt:
             check_e_stack(2);
             state->stk_pos--;
             state->stk[state->stk_pos - 1] = state->stk[state->stk_pos - 1] < state->stk[state->stk_pos];
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_ne:
             check_e_stack(2);
             state->stk_pos--;
             state->stk[state->stk_pos - 1] = state->stk[state->stk_pos - 1] != state->stk[state->stk_pos];
+            state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_skip:
             code_pos += (int16_t)read_u2();
@@ -466,7 +501,8 @@ static void evaluate_expression(void) {
         case OP_lit29:
         case OP_lit30:
         case OP_lit31:
-            state->stk[state->stk_pos++] = op - OP_lit0;
+            state->stk[state->stk_pos] = op - OP_lit0;
+            state->type_stk[state->stk_pos++] = TYPE_CLASS_CARDINAL;
             break;
         case OP_reg0:
         case OP_reg1:
@@ -559,6 +595,7 @@ static void evaluate_expression(void) {
                 RegisterDefinition * def = get_reg_by_id(state->ctx, op - OP_breg0, &state->reg_id_scope);
                 if (def == NULL) exception(errno);
                 if (read_reg_value(state->stack_frame, def, state->stk + state->stk_pos) < 0) exception(errno);
+                state->type_stk[state->stk_pos] = TYPE_CLASS_CARDINAL;
                 state->stk[state->stk_pos++] += read_i8leb128();
             }
             break;
@@ -567,6 +604,7 @@ static void evaluate_expression(void) {
                 RegisterDefinition * def = get_reg_by_id(state->ctx, (unsigned)read_u4leb128(), &state->reg_id_scope);
                 if (def == NULL) exception(errno);
                 if (read_reg_value(state->stack_frame, def, state->stk + state->stk_pos) < 0) exception(errno);
+                state->type_stk[state->stk_pos] = TYPE_CLASS_CARDINAL;
                 state->stk[state->stk_pos++] += read_i8leb128();
             }
             break;
@@ -575,13 +613,14 @@ static void evaluate_expression(void) {
                 RegisterDefinition * def = get_reg_by_id(state->ctx, (unsigned)read_ua(), &state->reg_id_scope);
                 if (def == NULL) exception(errno);
                 if (read_reg_value(state->stack_frame, def, state->stk + state->stk_pos) < 0) exception(errno);
-                state->stk_pos++;
+                state->type_stk[state->stk_pos++] = TYPE_CLASS_CARDINAL;
             }
             break;
         case OP_call_frame_cfa:
             {
                 StackFrame * frame = state->stack_frame;
                 if (frame == NULL) str_exception(ERR_INV_ADDRESS, "Stack frame address not available");
+                state->type_stk[state->stk_pos] = TYPE_CLASS_CARDINAL;
                 state->stk[state->stk_pos++] = frame->fp;
             }
             break;
@@ -589,6 +628,7 @@ static void evaluate_expression(void) {
             break;
         case OP_push_object_address:
             if (state->args_cnt == 0) exception(ERR_INV_CONT_OBJ);
+            state->type_stk[state->stk_pos] = TYPE_CLASS_CARDINAL;
             state->stk[state->stk_pos++] = state->args[0];
             break;
         case OP_piece:
@@ -622,6 +662,18 @@ static void evaluate_expression(void) {
                 }
             }
             if (!is_end_of_loc_expr()) inv_dwarf("OP_stack_value must be last instruction");
+            break;
+        case OP_GNU_const_type:
+            inv_dwarf("Unsupported type in OP_GNU_const_type");
+            break;
+        case OP_GNU_regval_type:
+            inv_dwarf("Unsupported type in OP_GNU_regval_type");
+            break;
+        case OP_GNU_deref_type:
+            inv_dwarf("Unsupported type in OP_GNU_deref_type");
+            break;
+        case OP_GNU_convert:
+            inv_dwarf("Unsupported type in OP_GNU_convert");
             break;
         case OP_TCF_switch:
             check_e_stack(1);
@@ -729,9 +781,11 @@ static void evaluate_expression(void) {
                         for (i = 0; i < value_size; i++) {
                             value |= ((uint8_t *)value_addr)[i] << (i * 8);
                         }
+                        s->type_stk[s->stk_pos] = TYPE_CLASS_CARDINAL;
                         s->stk[s->stk_pos++] = value;
                     }
                     else if (entry_state.stk_pos == 1) {
+                        s->type_stk[s->stk_pos] = entry_state.type_stk[entry_state.stk_pos - 1];
                         s->stk[s->stk_pos++] = entry_state.stk[entry_state.stk_pos - 1];
                     }
                     else {

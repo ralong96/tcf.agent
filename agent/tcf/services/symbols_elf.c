@@ -385,6 +385,7 @@ static int is_frame_based_object(Symbol * sym) {
 
     if (sym->var != NULL) return 1;
     if (sym->obj != NULL && (sym->obj->mFlags & DOIF_need_frame)) return 1;
+    if (sym->ref != NULL && (sym->ref->mFlags & DOIF_need_frame)) return 1;
 
     switch (sym->sym_class) {
     case SYM_CLASS_VALUE:
@@ -602,7 +603,9 @@ static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
         sym->sym_class = SYM_CLASS_VARIANT;
         break;
     }
+    sym->ref = ref;
     sym->frame = STACK_NO_FRAME;
+    if (sym->sym_class == SYM_CLASS_REFERENCE && obj->mTag != TAG_member) sym->ref = obj;
     sym->ctx = context_get_group(sym_ctx, CONTEXT_GROUP_SYMBOLS);
     if (sym_frame != STACK_NO_FRAME && is_frame_based_object(sym)) {
         sym->frame = sym_frame;
@@ -611,8 +614,6 @@ static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
     else if (sym_ctx != sym->ctx && is_thread_based_object(sym)) {
         sym->ctx = sym_ctx;
     }
-    sym->ref = ref;
-    if (sym->sym_class == SYM_CLASS_REFERENCE && obj->mTag != TAG_member) sym->ref = obj;
     sym->priority = (int8_t)symbol_priority(obj);
     sym->weak = (int8_t)symbol_is_weak(obj);
     *res = sym;
