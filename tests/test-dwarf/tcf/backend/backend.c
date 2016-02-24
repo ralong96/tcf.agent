@@ -1469,36 +1469,34 @@ static void test_public_names(void) {
                     if (elf_tcf_symbol(elf_ctx, &sym_info, &sym) < 0) {
                         error("elf_tcf_symbol");
                     }
-                    if (file_addr_offs) {
-                        switch (sym_info.type) {
-                        case STT_OBJECT:
-                        case STT_FUNC:
-                            if (sym_info.section != NULL) {
-                                U8_T value = sym_info.value;
-                                ContextAddress addr = 0;
-                                ContextAddress lt = 0;
-                                ELF_File * lt_file = NULL;
-                                ELF_Section * lt_sec = NULL;
-                                if (elf_file->type == ET_REL) {
-                                    value += sym_info.section->addr;
+                    switch (sym_info.type) {
+                    case STT_OBJECT:
+                    case STT_FUNC:
+                        if (sym_info.section != NULL) {
+                            U8_T value = sym_info.value;
+                            ContextAddress addr = 0;
+                            ContextAddress lt = 0;
+                            ELF_File * lt_file = NULL;
+                            ELF_Section * lt_sec = NULL;
+                            if (elf_file->type == ET_REL) {
+                                value += sym_info.section->addr;
+                            }
+                            if (is_in_segment(value)) {
+                                if (get_symbol_address(sym, &addr) < 0) {
+                                    error("get_symbol_address");
                                 }
-                                if (is_in_segment(value)) {
-                                    if (get_symbol_address(sym, &addr) < 0) {
-                                        error("get_symbol_address");
-                                    }
-                                    if (addr != value + file_addr_offs) {
-                                        set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
-                                        error("get_symbol_address");
-                                    }
-                                    lt = elf_map_to_link_time_address(elf_ctx, addr, 0, &lt_file, &lt_sec);
-                                    if (lt != value) {
-                                        set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
-                                        error("elf_map_to_link_time_address");
-                                    }
+                                if (addr != value + file_addr_offs) {
+                                    set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
+                                    error("get_symbol_address");
+                                }
+                                lt = elf_map_to_link_time_address(elf_ctx, addr, 0, &lt_file, &lt_sec);
+                                if (lt != value) {
+                                    set_errno(ERR_OTHER, "Invalid address - broken relocation logic?");
+                                    error("elf_map_to_link_time_address");
                                 }
                             }
-                            break;
                         }
+                        break;
                     }
                     loc_var_func(NULL, sym);
                     if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, sym_info.name, &sym1) < 0) {
@@ -1551,7 +1549,7 @@ static void check_addr_ranges(void) {
     }
 }
 
-static void next_pc(void) {
+static void next_region(void) {
     Symbol * sym = NULL;
     ContextAddress lt_addr;
     ELF_File * lt_file;
@@ -1947,8 +1945,9 @@ static void next_pc(void) {
 }
 
 static void next_file(void) {
-    unsigned j;
+    unsigned j, k;
     ELF_File * f = NULL;
+    int can_relocate = 0;
     struct stat st;
 
     if (pass_cnt == files_cnt) exit(0);
@@ -1983,10 +1982,25 @@ static void next_file(void) {
     file_addr_offs = 0;
     context_clear_memory_map(&mem_map);
     for (j = 0; j < f->pheader_cnt; j++) {
+        ELF_PHeader * p = f->pheaders + j;
+        if (p->type != PT_LOAD) continue;
+        can_relocate = 1;
+    }
+    for (j = 0; j < f->pheader_cnt; j++) {
+        ELF_PHeader * p = f->pheaders + j;
+        if (p->type != PT_LOAD) continue;
+        for (k = 0; k < j; k++) {
+            ELF_PHeader * h = f->pheaders + k;
+            if (h->type != PT_LOAD) continue;
+            if (p->offset == h->offset) can_relocate = 0;
+        }
+    }
+    if (can_relocate) file_addr_offs = 0x10000;
+
+    for (j = 0; j < f->pheader_cnt; j++) {
         MemoryRegion * r = NULL;
         ELF_PHeader * p = f->pheaders + j;
         if (p->type != PT_LOAD) continue;
-        file_addr_offs = 0x10000;
         if (p->file_size > 0) {
             if (mem_map.region_cnt >= mem_map.region_max) {
                 mem_map.region_max += 8;
@@ -2028,6 +2042,7 @@ static void next_file(void) {
     }
     if (mem_map.region_cnt == 0) {
         ContextAddress addr = 0x10000;
+        assert(file_addr_offs == 0);
         for (j = 0; j < f->section_cnt; j++) {
             ELF_Section * sec = f->sections + j;
             if (sec->name == NULL) continue;
@@ -2115,7 +2130,7 @@ static void test(void * args) {
         next_file();
     }
     else {
-        next_pc();
+        next_region();
     }
     assert(test_posted == 0);
     test_posted = 1;

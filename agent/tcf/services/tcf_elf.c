@@ -1661,12 +1661,14 @@ ContextAddress elf_run_time_address_in_region(Context * ctx, MemoryRegion * r, E
 
 ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_Section * sec, ContextAddress addr) {
     unsigned i;
+    unsigned cnt = 0;
     ContextAddress rt = 0;
 
     /* Note: 'addr' is link-time address - it cannot be used as elf_get_map() argument */
     if (elf_get_map(ctx, 0, ~(ContextAddress)0, &elf_map) < 0) return 0;
     for (i = 0; i < elf_map.region_cnt; i++) {
         MemoryRegion * r = elf_map.regions + i;
+        ContextAddress a = 0;
         int same_file = 0;
         if (r->dev == 0) {
             same_file = file_name_equ(file, r->file_name);
@@ -1684,8 +1686,15 @@ ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_S
             if (exec == NULL) continue;
             if (get_dwarf_file(exec) != file) continue;
         }
-        rt = elf_run_time_address_in_region(ctx, r, file, sec, addr);
-        if (errno == 0) return rt;
+        a = elf_run_time_address_in_region(ctx, r, file, sec, addr);
+        if (errno == 0) {
+            rt = a;
+            cnt++;
+        }
+    }
+    if (cnt == 1) {
+        errno = 0;
+        return rt;
     }
     if (file->type == ET_EXEC) {
         errno = 0;
@@ -1697,6 +1706,9 @@ ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_S
 
 ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, int to_dwarf, ELF_File ** file, ELF_Section ** sec) {
     unsigned i;
+    unsigned cnt = 0;
+    ContextAddress lt = 0;
+    ELF_Section * exec_sec = NULL;
 
     if (elf_get_map(ctx, addr, addr, &elf_map) < 0) return 0;
     for (i = 0; i < elf_map.region_cnt; i++) {
@@ -1710,11 +1722,8 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
         d = to_dwarf ? get_dwarf_file(f) : f;
         if (r->sect_name == NULL) {
             unsigned j;
-            if (f->pheader_cnt == 0 && f->type == ET_EXEC) {
-                if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
-                *file = d;
-                errno = 0;
-                return addr;
+            if (exec_sec == NULL && f->type == ET_EXEC) {
+                exec_sec = find_section_by_address(d, addr, to_dwarf);
             }
             for (j = 0; j < f->pheader_cnt; j++) {
                 U8_T offs = addr - r->addr + r->file_offs;
@@ -1723,11 +1732,10 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
                 if (!is_p_header_region(f, p, r)) continue;
                 if (offs < p->offset || offs >= p->offset + p->mem_size) continue;
                 pheader_address = get_debug_pheader_address(f, d, p);
-                addr = (ContextAddress)(offs - p->offset + pheader_address);
+                lt = (ContextAddress)(offs - p->offset + pheader_address);
                 if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
                 *file = d;
-                errno = 0;
-                return addr;
+                cnt++;
             }
         }
         else {
@@ -1735,15 +1743,27 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
             for (j = 1; j < d->section_cnt; j++) {
                 ELF_Section * s = d->sections + j;
                 if (strcmp(s->name, r->sect_name) == 0) {
-                    addr = (ContextAddress)(addr - r->addr + s->addr);
+                    lt = (ContextAddress)(addr - r->addr + s->addr);
                     if (sec != NULL) *sec = s;
                     *file = d;
-                    errno = 0;
-                    return addr;
+                    cnt++;
                 }
             }
         }
     }
+    if (cnt == 1) {
+        assert(*file != NULL);
+        errno = 0;
+        return lt;
+    }
+    if (exec_sec != NULL) {
+        *file = exec_sec->file;
+        if (sec != NULL) *sec = exec_sec;
+        errno = 0;
+        return addr;
+    }
+    *file = NULL;
+    if (sec != NULL) *sec = NULL;
     errno = 0;
     return 0;
 }

@@ -272,8 +272,8 @@ int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * ad
             return -1;
         }
         if (info->section != NULL) {
+            sec = info->section;
             if (file->type == ET_REL) {
-                sec = info->section;
                 value += sec->addr;
             }
             if (info->section->size > 0 && info->value == info->section->addr + info->section->size) {
