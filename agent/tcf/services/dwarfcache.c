@@ -1180,7 +1180,10 @@ static int cmp_pub_objects(ObjectInfo * x, ObjectInfo * y) {
         DOIF_mips_linkage_name |
         DOIF_linkage_name |
         DOIF_mangled_name |
-        DOIF_optional;
+        DOIF_optional |
+        DOIF_location |
+        DOIF_data_location |
+        DOIF_const_value;
 
     if ((x->mFlags & flags) != (y->mFlags & flags)) return 0;
     switch (x->mTag) {
@@ -1204,6 +1207,8 @@ static void add_pub_name(PubNamesTable * tbl, ObjectInfo * obj) {
     case TAG_structure_type:
     case TAG_union_type:
     case TAG_interface_type:
+    case TAG_enumeration_type:
+    case TAG_enumerator:
     case TAG_variable:
         {
             /* Check for duplicates */
