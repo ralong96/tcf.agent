@@ -1733,7 +1733,7 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
                 if (offs < p->offset || offs >= p->offset + p->mem_size) continue;
                 pheader_address = get_debug_pheader_address(f, d, p);
                 lt = (ContextAddress)(offs - p->offset + pheader_address);
-                if (sec != NULL) *sec = find_section_by_address(d, addr, to_dwarf);
+                if (sec != NULL) *sec = find_section_by_address(d, lt, to_dwarf);
                 *file = d;
                 cnt++;
             }
