@@ -339,6 +339,7 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
     if (mode & 0x01) buf.mode.continue_on_error = 1;
     if (mode & 0x02) buf.mode.verify = 1;
     if (mode & 0x04) buf.mode.bypass_addr_check = 1;
+    if (mode & 0x08) buf.mode.bypass_cache_sync = 1;
     switch (cmd) {
     case CMD_SET:
         json_read_binary_start(&buf.state, &c->inp);

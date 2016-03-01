@@ -412,11 +412,13 @@ typedef struct MemoryAccessMode {
     unsigned word_size; /* 0 means any */
     int continue_on_error;
     int bypass_addr_check;
+    int bypass_cache_sync;
     int verify;
 } MemoryAccessMode;
 
 /* Optional memory access function that take additional argument: access mode. */
 #if ENABLE_MemoryAccessModes
+
 /*
  * Write context memory.
  * Implementation calls check_breakpoints_on_memory_write() before writing to context memory,
