@@ -1573,7 +1573,7 @@ static void to_host_endianness(Value * v) {
 }
 
 static int64_t to_int_fixed_point(int mode, Value * v) {
-    if (mode != MODE_NORMAL) {
+    if (v->size == 0 || mode != MODE_NORMAL) {
         if (v->remote) {
             v->value = tmp_alloc_zero((size_t)v->size);
             v->remote = 0;
@@ -1627,7 +1627,7 @@ static int64_t to_int_fixed_point(int mode, Value * v) {
 }
 
 static uint64_t to_uns_fixed_point(int mode, Value * v) {
-    if (mode != MODE_NORMAL) {
+    if (v->size == 0 || mode != MODE_NORMAL) {
         if (v->remote) {
             v->value = tmp_alloc_zero((size_t)v->size);
             v->remote = 0;
@@ -1756,7 +1756,7 @@ static uint64_t to_uns(int mode, Value * v) {
 }
 
 static double to_double(int mode, Value * v) {
-    if (mode != MODE_NORMAL) {
+    if (v->size == 0 || mode != MODE_NORMAL) {
         if (v->remote) {
             v->value = tmp_alloc_zero((size_t)v->size);
             v->remote = 0;
@@ -1828,7 +1828,7 @@ static double to_double(int mode, Value * v) {
 }
 
 static double to_i_double(int mode, Value * v) {
-    if (mode != MODE_NORMAL) {
+    if (v->size == 0 || mode != MODE_NORMAL) {
         if (v->remote) {
             v->value = tmp_alloc_zero((size_t)v->size);
             v->remote = 0;
@@ -1856,7 +1856,7 @@ static double to_i_double(int mode, Value * v) {
 }
 
 static double to_r_double(int mode, Value * v) {
-    if (mode != MODE_NORMAL) {
+    if (v->size == 0 || mode != MODE_NORMAL) {
         if (v->remote) {
             v->value = tmp_alloc_zero((size_t)v->size);
             v->remote = 0;
