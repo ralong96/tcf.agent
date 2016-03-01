@@ -1947,7 +1947,11 @@ static void expression(int mode, Value * v);
 static void primary_expression(int mode, Value * v) {
     if (text_sy == '(') {
         next_sy();
-        expression(mode, v);
+        for (;;) {
+            expression(mode, v);
+            if (text_sy != ',') break;
+            next_sy();
+        }
         if (text_sy != ')') error(ERR_INV_EXPRESSION, "Missing ')'");
         next_sy();
     }
@@ -3745,7 +3749,11 @@ static int evaluate_script(int mode, char * s, int load, Value * v) {
         text_len = strlen(s) + 1;
         next_ch();
         next_sy();
-        expression(mode, v);
+        for (;;) {
+            expression(mode, v);
+            if (text_sy != ',') break;
+            next_sy();
+        }
         if (text_sy != 0) error(ERR_INV_EXPRESSION, "Illegal characters at the end of expression");
         if (load) load_value(v);
         clear_trap(&trap);
