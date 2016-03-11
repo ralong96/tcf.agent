@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -106,11 +106,12 @@ void json_write_ulong(OutputStream * out, unsigned long n) {
 }
 
 void json_write_long(OutputStream * out, long n) {
+    unsigned long u = (unsigned long)n;
     if (n < 0) {
         write_stream(out, '-');
-        n = -n;
+        u = ~u + 1;
     }
-    json_write_ulong(out, (unsigned long)n);
+    json_write_ulong(out, u);
 }
 
 void json_write_uint64(OutputStream * out, uint64_t n) {
@@ -122,11 +123,12 @@ void json_write_uint64(OutputStream * out, uint64_t n) {
 }
 
 void json_write_int64(OutputStream * out, int64_t n) {
+    uint64_t u = (uint64_t)n;
     if (n < 0) {
         write_stream(out, '-');
-        n = -n;
+        u = ~u + 1;
     }
-    json_write_uint64(out, (uint64_t)n);
+    json_write_uint64(out, u);
 }
 
 void json_write_double(OutputStream * out, double n) {
