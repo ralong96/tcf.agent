@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -109,6 +109,30 @@ static void command_echo_fp(char * token, Channel * c) {
     write_stringz(&c->out, "R");
     write_stringz(&c->out, token);
     json_write_double(&c->out, x);
+    write_stream(&c->out, 0);
+    write_stream(&c->out, MARKER_EOM);
+}
+
+static void command_echo_int(char * token, Channel * c) {
+    long v0 = 0; unsigned long v1 = 0; int64_t v2 = 0; uint64_t v3 = 0;
+    int type = (int)json_read_long(&c->inp);
+    json_test_char(&c->inp, MARKER_EOA);
+    switch (type) {
+    case 0: v0 = json_read_long(&c->inp); break;
+    case 1: v1 = json_read_ulong(&c->inp); break;
+    case 2: v2 = json_read_int64(&c->inp); break;
+    case 3: v3 = json_read_uint64(&c->inp); break;
+    }
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+    write_stringz(&c->out, "R");
+    write_stringz(&c->out, token);
+    switch (type) {
+    case 0: json_write_long(&c->out, v0); break;
+    case 1: json_write_ulong(&c->out, v1); break;
+    case 2: json_write_int64(&c->out, v2); break;
+    case 3: json_write_uint64(&c->out, v3); break;
+    }
     write_stream(&c->out, 0);
     write_stream(&c->out, MARKER_EOM);
 }
@@ -449,6 +473,7 @@ static void command_dispose_test_stream(char * token, Channel * c) {
 void ini_diagnostics_service(Protocol * proto) {
     add_command_handler(proto, DIAGNOSTICS, "echo", command_echo);
     add_command_handler(proto, DIAGNOSTICS, "echoFP", command_echo_fp);
+    add_command_handler(proto, DIAGNOSTICS, "echoINT", command_echo_int);
     add_command_handler(proto, DIAGNOSTICS, "echoERR", command_echo_err);
     add_command_handler(proto, DIAGNOSTICS, "getTestList", command_get_test_list);
     add_command_handler(proto, DIAGNOSTICS, "runTest", command_run_test);
