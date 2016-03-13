@@ -189,7 +189,7 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
 }
 
 void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long delay) {
-    if (is_event_thread) {
+    if (is_event_thread && cancel_handler == NULL) {
         event_node * ev;
         event_node * next;
         event_node * prev;
@@ -230,7 +230,7 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
 }
 
 void post_event(EventCallBack * handler, void * arg) {
-    if (is_event_thread) {
+    if (is_event_thread && cancel_handler == NULL) {
         event_node * ev;
 
         alloc_event_node(ev);
