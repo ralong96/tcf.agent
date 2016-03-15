@@ -157,7 +157,7 @@ extern void usleep(useconds_t useconds);
 extern int truncate(const char * path, off_t size);
 extern int ftruncate(int f, off_t size);
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && _MSC_VER < 1900
 #define snprintf _snprintf
 #endif
 
