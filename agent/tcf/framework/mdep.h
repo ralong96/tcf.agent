@@ -49,6 +49,10 @@
 #  pragma warning(disable:4996) /* 'strcpy': This function or variable may be unsafe */
 #  if _MSC_VER <= 1500
 #    pragma warning(disable:4702) /* unreachable code */
+#  elif _MSC_VER >= 1900 /* MSVC 2015*/
+#    ifndef _CRT_NO_TIME_T
+#      define _TIMESPEC_DEFINED
+#    endif
 #  endif
 #  ifdef _WIN64
 #    pragma warning(disable:4244) /* conversion from 'type1' to 'type2', possible loss of data */
