@@ -272,10 +272,6 @@ static void advance_stream_buffer(VirtualStream * stream) {
         assert(min_pos - buf_pos <= len);
         stream->buf_out = (stream->buf_out + (unsigned)(min_pos - buf_pos)) % stream->buf_len;
     }
-    else if (stream->pos - min_pos >= stream->buf_len) {
-        /* TODO: drop stream data */
-        assert(0);
-    }
     if (len != (stream->buf_inp + stream->buf_len - stream->buf_out) % stream->buf_len &&
         !stream->space_available_posted) {
         post_event(notify_space_available, stream);
@@ -561,6 +557,17 @@ int virtual_stream_is_empty(VirtualStream * stream) {
     assert(stream->magic == STREAM_MAGIC);
     assert(!stream->deleted);
     return stream->buf_out == stream->buf_inp;
+}
+
+void virtual_stream_drop_data(VirtualStream * stream, size_t size) {
+    size_t len = virtual_stream_data_size(stream);
+    if (size < len) len = size;
+    stream->buf_out = (stream->buf_out + len) % stream->buf_len;
+}
+
+size_t virtual_stream_data_size(VirtualStream * stream) {
+    assert(stream->magic == STREAM_MAGIC);
+    return (stream->buf_inp + stream->buf_len - stream->buf_out) % stream->buf_len;
 }
 
 void virtual_stream_delete(VirtualStream * stream) {

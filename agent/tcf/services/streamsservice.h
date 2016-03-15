@@ -43,6 +43,9 @@ extern int virtual_stream_add_data(VirtualStream * stream, char * buf, size_t bu
 extern int virtual_stream_get_data(VirtualStream * stream, char * buf, size_t buf_size, size_t * data_size, int * eos);
 extern int virtual_stream_is_empty(VirtualStream * stream);
 
+extern void virtual_stream_drop_data(VirtualStream * stream, size_t size);
+extern size_t virtual_stream_data_size(VirtualStream * stream);
+
 extern int virtual_stream_eos(Channel * c, char * token, char * id);
 extern int virtual_stream_write(Channel * c, char * token, char * id, size_t size, InputStream * inp);
 extern int virtual_stream_read(Channel * c, char * token, char * id, size_t size);
