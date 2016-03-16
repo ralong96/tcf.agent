@@ -35,53 +35,63 @@
 
 #define REG_OFFSET(name) offsetof(REG_SET, name)
 
+#ifdef __powerpc64__
+#  define RSZ 8
+#else
+#  define RSZ 4
+#endif
+
 RegisterDefinition regs_def[] = {
 #   define REG_PC user.regs.gpr[32]
-    { "gpr0",      REG_OFFSET(user.regs.gpr[0]),      4, 0, 0, 1},
-    { "gpr1",      REG_OFFSET(user.regs.gpr[1]),      4, 1, 1, 1},
-    { "gpr2",      REG_OFFSET(user.regs.gpr[2]),      4, 2, 2, 1},
-    { "gpr3",      REG_OFFSET(user.regs.gpr[3]),      4, 3, 3, 1},
-    { "gpr4",      REG_OFFSET(user.regs.gpr[4]),      4, 4, 4, 1},
-    { "gpr5",      REG_OFFSET(user.regs.gpr[5]),      4, 5, 5, 1},
-    { "gpr6",      REG_OFFSET(user.regs.gpr[6]),      4, 6, 6, 1},
-    { "gpr7",      REG_OFFSET(user.regs.gpr[7]),      4, 7, 7, 1},
-    { "gpr8",      REG_OFFSET(user.regs.gpr[8]),      4, 8, 8, 1},
-    { "gpr9",      REG_OFFSET(user.regs.gpr[9]),      4, 9, 9, 1},
-    { "gpr10",     REG_OFFSET(user.regs.gpr[10]),     4, 10, 10, 1},
-    { "gpr11",     REG_OFFSET(user.regs.gpr[11]),     4, 11, 11, 1},
-    { "gpr12",     REG_OFFSET(user.regs.gpr[12]),     4, 12, 12, 1},
-    { "gpr13",     REG_OFFSET(user.regs.gpr[13]),     4, 13, 13, 1},
-    { "gpr14",     REG_OFFSET(user.regs.gpr[14]),     4, 14, 14, 1},
-    { "gpr15",     REG_OFFSET(user.regs.gpr[15]),     4, 15, 15, 1},
-    { "gpr16",     REG_OFFSET(user.regs.gpr[16]),     4, 16, 16, 1},
-    { "gpr17",     REG_OFFSET(user.regs.gpr[17]),     4, 17, 17, 1},
-    { "gpr18",     REG_OFFSET(user.regs.gpr[18]),     4, 18, 18, 1},
-    { "gpr19",     REG_OFFSET(user.regs.gpr[19]),     4, 19, 19, 1},
-    { "gpr20",     REG_OFFSET(user.regs.gpr[20]),     4, 20, 20, 1},
-    { "gpr21",     REG_OFFSET(user.regs.gpr[21]),     4, 21, 21, 1},
-    { "gpr22",     REG_OFFSET(user.regs.gpr[22]),     4, 22, 22, 1},
-    { "gpr23",     REG_OFFSET(user.regs.gpr[23]),     4, 23, 23, 1},
-    { "gpr24",     REG_OFFSET(user.regs.gpr[24]),     4, 24, 24, 1},
-    { "gpr25",     REG_OFFSET(user.regs.gpr[25]),     4, 25, 25, 1},
-    { "gpr26",     REG_OFFSET(user.regs.gpr[26]),     4, 26, 26, 1},
-    { "gpr27",     REG_OFFSET(user.regs.gpr[27]),     4, 27, 27, 1},
-    { "gpr28",     REG_OFFSET(user.regs.gpr[28]),     4, 28, 28, 1},
-    { "gpr29",     REG_OFFSET(user.regs.gpr[29]),     4, 29, 29, 1},
-    { "gpr30",     REG_OFFSET(user.regs.gpr[30]),     4, 30, 30, 1},
-    { "gpr31",     REG_OFFSET(user.regs.gpr[31]),     4, 31, 31, 1},
+    { "gpr0",      REG_OFFSET(user.regs.gpr[0]),      RSZ, 0, 0, 1},
+    { "gpr1",      REG_OFFSET(user.regs.gpr[1]),      RSZ, 1, 1, 1},
+    { "gpr2",      REG_OFFSET(user.regs.gpr[2]),      RSZ, 2, 2, 1},
+    { "gpr3",      REG_OFFSET(user.regs.gpr[3]),      RSZ, 3, 3, 1},
+    { "gpr4",      REG_OFFSET(user.regs.gpr[4]),      RSZ, 4, 4, 1},
+    { "gpr5",      REG_OFFSET(user.regs.gpr[5]),      RSZ, 5, 5, 1},
+    { "gpr6",      REG_OFFSET(user.regs.gpr[6]),      RSZ, 6, 6, 1},
+    { "gpr7",      REG_OFFSET(user.regs.gpr[7]),      RSZ, 7, 7, 1},
+    { "gpr8",      REG_OFFSET(user.regs.gpr[8]),      RSZ, 8, 8, 1},
+    { "gpr9",      REG_OFFSET(user.regs.gpr[9]),      RSZ, 9, 9, 1},
+    { "gpr10",     REG_OFFSET(user.regs.gpr[10]),     RSZ, 10, 10, 1},
+    { "gpr11",     REG_OFFSET(user.regs.gpr[11]),     RSZ, 11, 11, 1},
+    { "gpr12",     REG_OFFSET(user.regs.gpr[12]),     RSZ, 12, 12, 1},
+    { "gpr13",     REG_OFFSET(user.regs.gpr[13]),     RSZ, 13, 13, 1},
+    { "gpr14",     REG_OFFSET(user.regs.gpr[14]),     RSZ, 14, 14, 1},
+    { "gpr15",     REG_OFFSET(user.regs.gpr[15]),     RSZ, 15, 15, 1},
+    { "gpr16",     REG_OFFSET(user.regs.gpr[16]),     RSZ, 16, 16, 1},
+    { "gpr17",     REG_OFFSET(user.regs.gpr[17]),     RSZ, 17, 17, 1},
+    { "gpr18",     REG_OFFSET(user.regs.gpr[18]),     RSZ, 18, 18, 1},
+    { "gpr19",     REG_OFFSET(user.regs.gpr[19]),     RSZ, 19, 19, 1},
+    { "gpr20",     REG_OFFSET(user.regs.gpr[20]),     RSZ, 20, 20, 1},
+    { "gpr21",     REG_OFFSET(user.regs.gpr[21]),     RSZ, 21, 21, 1},
+    { "gpr22",     REG_OFFSET(user.regs.gpr[22]),     RSZ, 22, 22, 1},
+    { "gpr23",     REG_OFFSET(user.regs.gpr[23]),     RSZ, 23, 23, 1},
+    { "gpr24",     REG_OFFSET(user.regs.gpr[24]),     RSZ, 24, 24, 1},
+    { "gpr25",     REG_OFFSET(user.regs.gpr[25]),     RSZ, 25, 25, 1},
+    { "gpr26",     REG_OFFSET(user.regs.gpr[26]),     RSZ, 26, 26, 1},
+    { "gpr27",     REG_OFFSET(user.regs.gpr[27]),     RSZ, 27, 27, 1},
+    { "gpr28",     REG_OFFSET(user.regs.gpr[28]),     RSZ, 28, 28, 1},
+    { "gpr29",     REG_OFFSET(user.regs.gpr[29]),     RSZ, 29, 29, 1},
+    { "gpr30",     REG_OFFSET(user.regs.gpr[30]),     RSZ, 30, 30, 1},
+    { "gpr31",     REG_OFFSET(user.regs.gpr[31]),     RSZ, 31, 31, 1},
 
-    { "nip",       REG_OFFSET(user.regs.nip),         4, -1, -1, 1},
-    { "msr",       REG_OFFSET(user.regs.msr),         4, 66, -1, 1},
-    { "orig_gpr3", REG_OFFSET(user.regs.orig_gpr3),   4, -1, -1, 1},
-    { "ctr",       REG_OFFSET(user.regs.ctr),         4, 109, -1, 1},
-    { "link",      REG_OFFSET(user.regs.link),        4, 108, -1, 1},
-    { "xer",       REG_OFFSET(user.regs.xer),         4, 101, -1, 1},
-    { "ccr",       REG_OFFSET(user.regs.ccr),         4, -1, -1, 1},
+    { "nip",       REG_OFFSET(user.regs.nip),         RSZ, -1, -1, 1},
+    { "msr",       REG_OFFSET(user.regs.msr),         RSZ, 66, -1, 1},
+    { "orig_gpr3", REG_OFFSET(user.regs.orig_gpr3),   RSZ, -1, -1, 1},
+    { "ctr",       REG_OFFSET(user.regs.ctr),         RSZ, 109, -1, 1},
+    { "link",      REG_OFFSET(user.regs.link),        RSZ, 108, -1, 1},
+    { "xer",       REG_OFFSET(user.regs.xer),         RSZ, 101, -1, 1},
+    { "ccr",       REG_OFFSET(user.regs.ccr),         RSZ, -1, -1, 1},
+#ifdef __powerpc64__
+    { "softe",     REG_OFFSET(user.regs.softe),       RSZ, -1, -1, 1},
+#else
     { "mq",        REG_OFFSET(user.regs.mq),          4, 100, -1, 1},
-    { "trap",      REG_OFFSET(user.regs.trap),        4, -1, -1, 1},
-    { "dar",       REG_OFFSET(user.regs.dar),         4, 119, -1, 1},
-    { "dsisr",     REG_OFFSET(user.regs.dsisr),       4, 118, -1, 1},
-    { "result",    REG_OFFSET(user.regs.result),      4, -1, -1, 1},
+#endif
+    { "trap",      REG_OFFSET(user.regs.trap),        RSZ, -1, -1, 1},
+    { "dar",       REG_OFFSET(user.regs.dar),         RSZ, 119, -1, 1},
+    { "dsisr",     REG_OFFSET(user.regs.dsisr),       RSZ, 118, -1, 1},
+    { "result",    REG_OFFSET(user.regs.result),      RSZ, -1, -1, 1},
 
     { "f0",        REG_OFFSET(fp.fpregs[0]),          8, 32, 32, 1},
     { "f1",        REG_OFFSET(fp.fpregs[1]),          8, 33, 33, 1},
@@ -137,7 +147,10 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
 
 #if ENABLE_add_cpudefs_disassembler
 void add_cpudefs_disassembler(Context * cpu_ctx) {
-    add_disassembler(cpu_ctx, "PowerPC", disassemble_powerpc);
+#ifdef __powerpc64__
+    add_disassembler(cpu_ctx, "PPC64", disassemble_powerpc);
+#endif
+    add_disassembler(cpu_ctx, "PPC", disassemble_powerpc);
 }
 #endif
 
