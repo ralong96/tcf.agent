@@ -918,7 +918,7 @@ static void channel_close_listener(Channel * c) {
         StreamClient * client = all2client(l);
         l = l->next;
         if (client->channel == c) {
-            trace(LOG_ALWAYS, "Stream is left connected by client: "STREAM_BASE_ID"%d", client->stream->id);
+            trace(LOG_ALWAYS, "Stream is left connected by client: " STREAM_BASE_ID "%d", client->stream->id);
             delete_client(client);
         }
     }

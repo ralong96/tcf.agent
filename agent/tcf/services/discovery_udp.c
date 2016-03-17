@@ -750,11 +750,11 @@ static void udp_receive_ack_slaves(time_t timenow) {
             if (log_mode & LOG_DISCOVERY) {
                 char buf[64];
                 snprintf(buf, sizeof(buf), "%s:%d", inet_ntoa(recvreq_addr.sin_addr), ntohs(recvreq_addr.sin_port));
-                trace(LOG_DISCOVERY, "ACK_SLAVES %"PRId64":%u:%s from %s",
+                trace(LOG_DISCOVERY, "ACK_SLAVES %" PRId64 ":%u:%s from %s",
                     timestamp, ntohs(addr.sin_port), inet_ntoa(addr.sin_addr), buf);
             }
             if (timeval < timenow - delta || timeval > timenow + delta) {
-                trace(LOG_DISCOVERY, "Discovery: invalid slave info timestamp %"PRId64" from %s:%d",
+                trace(LOG_DISCOVERY, "Discovery: invalid slave info timestamp %" PRId64 " from %s:%d",
                     timestamp, inet_ntoa(recvreq_addr.sin_addr), ntohs(recvreq_addr.sin_port));
                 timeval = timenow - PEER_DATA_RETENTION_PERIOD / 2;
             }
