@@ -84,6 +84,7 @@ int filter_add_message_filter(const char * filter) {
             mf->flags |= FILTER_LIMIT;
             break;
         default:
+            loc_free(mf);
             return 1;
         }
         s++;
@@ -97,10 +98,11 @@ int filter_add_message_filter(const char * filter) {
             mf->limit = 0;
             do {
                 mf->limit *= 10;
-                if ((c >= '0') && (c <= '9'))
-                    mf->limit += c - '0';
-                else
+                if (c < '0' || c > '9') {
+                    loc_free(mf);
                     return 1;
+                }
+                mf->limit += c - '0';
                 s++;
             } while ((c = *s) != '\0' && c != ',');
         }
@@ -129,8 +131,10 @@ int filter_add_message_filter(const char * filter) {
     if ((mf->flags & FILTER_MODE) != FILTER_IN &&
         (mf->flags & FILTER_MODE) != FILTER_OUT &&
         (mf->flags & FILTER_MODE) != FILTER_LIMIT &&
-        (mf->flags & FILTER_MODE) != FILTER_LIMIT_REPLY)
+        (mf->flags & FILTER_MODE) != FILTER_LIMIT_REPLY) {
+        loc_free(mf);
         return 1;
+    }
 
     list_add_last(&mf->all, &message_filters);
     return 0;
