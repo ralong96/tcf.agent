@@ -353,6 +353,20 @@ void cancel_event_loop(void) {
     process_events = 0;
 }
 
+static void exit_event(void * args) {
+    if (event_queue == NULL) {
+        process_events = 0;
+    }
+    else {
+        post_event(exit_event, NULL);
+    }
+}
+
+void exit_event_loop(void) {
+    /* Note: need to wake main thread in case exit_event_loop() is called from signal handler */
+    post_from_bg_thread(exit_event, NULL, 0);
+}
+
 void run_event_loop(void) {
     unsigned event_cnt = 0;
     uint32_t last_tick_count_ms = events_timer_ms;

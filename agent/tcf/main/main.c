@@ -128,8 +128,13 @@ static void signal_handler(int sig) {
     SIGNAL_HANDLER_HOOK;
     if (is_dispatch_thread()) {
         discovery_stop();
-        signal(sig, SIG_DFL);
-        raise(sig);
+        if (sig == SIGTERM) {
+            exit_event_loop();
+        }
+        else {
+            signal(sig, SIG_DFL);
+            raise(sig);
+        }
     }
     else {
         post_event(shutdown_event, NULL);

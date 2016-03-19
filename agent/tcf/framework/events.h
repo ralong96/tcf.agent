@@ -86,8 +86,16 @@ extern void run_event_loop(void);
 /*
  * Cancel event loop.
  * The function causes run_event_loop() to stop event dispatching and return.
+ * Already posted events are lost.
  */
 extern void cancel_event_loop(void);
+
+/*
+ * Exit event loop.
+ * The function causes run_event_loop() to finish dispatching already posted events,
+ * then stop event dispatching and return.
+ */
+extern void exit_event_loop(void);
 
 /*
  * Time in milliseconds. Implementation is optional.
