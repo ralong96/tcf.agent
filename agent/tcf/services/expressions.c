@@ -3307,13 +3307,13 @@ static void multiplicative_expression(int mode, Value * v) {
             else if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
                 uint64_t value = 0;
                 if (mode == MODE_NORMAL) {
-                    if (sy != '*' && to_int(mode, &x) == 0) {
-                        error(ERR_INV_EXPRESSION, "Dividing by zero");
-                    }
+                    uint64_t a = to_uns(mode, v);
+                    uint64_t b = to_uns(mode, &x);
+                    if (sy != '*' && b == 0) error(ERR_INV_EXPRESSION, "Dividing by zero");
                     switch (sy) {
-                    case '*': value = to_uns(mode, v) * to_uns(mode, &x); break;
-                    case '/': value = to_uns(mode, v) / to_uns(mode, &x); break;
-                    case '%': value = to_uns(mode, v) % to_uns(mode, &x); break;
+                    case '*': value = a * b; break;
+                    case '/': value = a / b; break;
+                    case '%': value = a % b; break;
                     }
                 }
                 v->type = NULL;
@@ -3323,13 +3323,13 @@ static void multiplicative_expression(int mode, Value * v) {
             else {
                 int64_t value = 0;
                 if (mode == MODE_NORMAL) {
-                    if (sy != '*' && to_int(mode, &x) == 0) {
-                        error(ERR_INV_EXPRESSION, "Dividing by zero");
-                    }
+                    int64_t a = to_int(mode, v);
+                    int64_t b = to_int(mode, &x);
+                    if (sy != '*' && b == 0) error(ERR_INV_EXPRESSION, "Dividing by zero");
                     switch (sy) {
-                    case '*': value = to_int(mode, v) * to_int(mode, &x); break;
-                    case '/': value = to_int(mode, v) / to_int(mode, &x); break;
-                    case '%': value = to_int(mode, v) % to_int(mode, &x); break;
+                    case '*': value = a * b; break;
+                    case '/': value = a / b; break;
+                    case '%': value = a % b; break;
                     }
                 }
                 v->type = NULL;
