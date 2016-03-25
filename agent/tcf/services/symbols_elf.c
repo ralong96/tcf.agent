@@ -392,8 +392,11 @@ static int is_frame_based_object(Symbol * sym) {
     case SYM_CLASS_BLOCK:
     case SYM_CLASS_NAMESPACE:
     case SYM_CLASS_COMP_UNIT:
-    case SYM_CLASS_FUNCTION:
         return 0;
+    case SYM_CLASS_FUNCTION:
+        /* Keep frame reference to allow get_symbol_children() to return
+         * frame-based symbols for parameters and local vars */
+        return 1;
     case SYM_CLASS_TYPE:
         if (sym->obj != NULL) {
             ObjectInfo * obj = sym->obj;
@@ -723,6 +726,8 @@ static void evaluate_variable_num_prop(void * x) {
     int big_endian = 0;
     unsigned i;
 
+    sym_ctx = args->ctx;
+    sym_frame = args->frame;
     object2symbol(NULL, args->ref, &sym);
     if (is_pointer_type(sym)) {
         if (get_symbol_value(sym, &value, &size, &big_endian) < 0) exception(errno);
@@ -844,6 +849,7 @@ static int get_variable_num_prop(ObjectInfo * ref, ObjectInfo * obj, U2_T at, U8
     }
     else if (ref != NULL && get_error_code(errno) == ERR_INV_CONT_OBJ) {
         /* Dynamic property - need object address */
+        assert(args.frame == sym_frame);
         if (elf_save_symbols_state(evaluate_variable_num_prop, &args) < 0) return 0;
         *res = args.res;
         return 1;
@@ -2818,7 +2824,7 @@ int get_symbol_type(const Symbol * sym, Symbol ** type) {
         else {
             *type = alloc_symbol();
             (*type)->ctx = sym->ctx;
-            (*type)->frame = STACK_NO_FRAME;
+            (*type)->frame = sym->frame;
             (*type)->sym_class = SYM_CLASS_TYPE;
             (*type)->base = (Symbol *)sym;
         }

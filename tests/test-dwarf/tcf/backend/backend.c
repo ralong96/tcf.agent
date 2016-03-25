@@ -1627,6 +1627,7 @@ static void next_region(void) {
             int i;
             ContextAddress func_addr = 0;
             ContextAddress func_size = 0;
+            Symbol * frame_sym = NULL;
             Symbol * func_type = NULL;
             int func_children_count = 0;
             Symbol ** func_children = NULL;
@@ -1642,11 +1643,21 @@ static void next_region(void) {
             if (get_symbol_size(sym, &func_size) < 0) {
                 error_sym("get_symbol_size", sym);
             }
-            if (get_symbol_type(sym, &func_type) < 0) {
-                error_sym("get_symbol_type", sym);
-            }
             if (get_symbol_flags(sym, &flags) < 0) {
                 error_sym("get_symbol_flags", sym);
+            }
+            /* Function type can be frame based */
+            if (find_symbol_by_addr(elf_ctx, STACK_TOP_FRAME, pc, &frame_sym) < 0) {
+                if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
+                    error("find_symbol_by_addr");
+                }
+            }
+            if (frame_sym == NULL || get_symbol_object(sym) != get_symbol_object(frame_sym)) {
+                set_errno(ERR_OTHER, "Find by PC and find by top frame differ");
+                error_sym("find_symbol_by_addr", frame_sym);
+            }
+            if (get_symbol_type(frame_sym, &func_type) < 0) {
+                error_sym("get_symbol_type", sym);
             }
             if (func_type != NULL) {
                 if (get_symbol_children(func_type, &func_children, &func_children_count) < 0) {
@@ -1664,9 +1675,10 @@ static void next_region(void) {
                     }
                     if (get_symbol_size(func_children[i], &arg_size) < 0) {
                         int error = errno;
-                        ObjectInfo * obj = get_symbol_object(sym);
-                        if (obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95 &&
-                                errcmp(error, "Object location is relative to a stack frame") == 0) {
+                        if (errcmp(error, "Cannot get object address: the object is located in a register") == 0) {
+                            /* OK */
+                        }
+                        else if (errcmp(error, "Object is not available at this location") == 0) {
                             /* OK */
                         }
                         else {
