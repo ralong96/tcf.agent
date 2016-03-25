@@ -29,6 +29,7 @@
 #include <tcf/services/dwarfexpr.h>
 #include <tcf/services/dwarfecomp.h>
 #include <tcf/services/stacktrace.h>
+#include <tcf/services/elf-symbols.h>
 #include <tcf/services/vm.h>
 
 void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** List) {
@@ -105,7 +106,17 @@ void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** Lis
     }
 }
 
-void dwarf_evaluate_expression(PropertyValue * Value, uint64_t * args, unsigned args_cnt) {
+typedef struct ExpressionArgs {
+    PropertyValue * value;
+    uint64_t * args;
+    unsigned args_cnt;
+} ExpressionArgs;
+
+static void evaluate_expression(void * x) {
+    ExpressionArgs * expr_args = (ExpressionArgs *)x;
+    PropertyValue * Value = expr_args->value;
+    uint64_t * args = expr_args->args;
+    unsigned args_cnt = expr_args->args_cnt;
     CompUnit * Unit = Value->mObject->mCompUnit;
     LocationExpressionState * State = NULL;
     DWARFExpressionInfo * Info = NULL;
@@ -161,5 +172,15 @@ void dwarf_evaluate_expression(PropertyValue * Value, uint64_t * args, unsigned 
         str_exception(ERR_INV_DWARF, "Invalid DWARF expression stack");
     }
 }
+
+void dwarf_evaluate_expression(PropertyValue * value, uint64_t * args, unsigned args_cnt) {
+    /* Need to save symbols state, because expression evaluation calls get_stack_tracing_info() */
+    ExpressionArgs expr_args;
+    expr_args.value = value;
+    expr_args.args = args;
+    expr_args.args_cnt = args_cnt;
+    if (elf_save_symbols_state(evaluate_expression, &expr_args) < 0) exception(errno);
+}
+
 
 #endif /* ENABLE_ELF && ENABLE_DebugContext */
