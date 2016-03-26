@@ -1247,7 +1247,7 @@ static int qualified_name(int mode, Value * scope, SYM_FLAGS flags, Value * v) {
                 name = tilda ? tmp_strdup2("~", name) : tmp_strdup(name);
                 next_sy();
                 if (text_sy == SY_SCOPE) f |= SYM_FLAG_TYPE;
-                sym_class = identifier(mode, scope, name, f, v);
+                sym_class = identifier(text_sy != SY_SCOPE ? mode : MODE_TYPE, scope, name, f, v);
                 if (sym_class < 0) error(ERR_INV_EXPRESSION, "Undefined identifier '%s'", name);
             }
             else {
@@ -1260,7 +1260,8 @@ static int qualified_name(int mode, Value * scope, SYM_FLAGS flags, Value * v) {
                 Context * ctx = NULL;
                 int frame = STACK_NO_FRAME;
                 RegisterDefinition * def = NULL;
-                const char * id = (char *)text_val.value;
+                const char * id = tmp_strdup((char *)text_val.value);
+                next_sy();
                 if (id2register(id, &ctx, &frame, &def) >= 0) {
                     if (frame == STACK_TOP_FRAME) frame = expression_frame;
                     sym_class = SYM_CLASS_UNKNOWN;
@@ -1271,14 +1272,16 @@ static int qualified_name(int mode, Value * scope, SYM_FLAGS flags, Value * v) {
                 if (!ok) {
                     Symbol * sym = NULL;
                     if (id2symbol(id, &sym) >= 0) {
-                        sym_class = sym2value(mode, sym, v);
+                        sym_class = sym2value(text_sy != SY_SCOPE ? mode : MODE_TYPE, sym, v);
                         ok = 1;
                     }
                 }
 #endif
                 if (!ok) error(ERR_INV_EXPRESSION, "Symbol not found: %s", id);
             }
-            next_sy();
+            else {
+                next_sy();
+            }
         }
         else {
             error(ERR_INV_EXPRESSION, "Identifier expected");
