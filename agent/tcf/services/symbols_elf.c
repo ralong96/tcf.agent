@@ -1494,10 +1494,20 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                         sym->frame = STACK_NO_FRAME;
                         sym->sym_class = SYM_CLASS_VALUE;
                         sym->base = find_symbol_list;
-                        sym->index = i;
                         find_symbol_list = NULL;
-                        assert(is_constant_pseudo_symbol(sym));
-                        add_to_find_symbol_buf(sym);
+                        i = 0;
+                        while (constant_pseudo_symbols[i].name) {
+                            if (strcmp(name, constant_pseudo_symbols[i].name) == 0 &&
+                                strcmp(sym->base->obj->mName, constant_pseudo_symbols[i].type) == 0) {
+                                break;
+                            }
+                            i++;
+                        }
+                        if (constant_pseudo_symbols[i].name) {
+                            sym->index = i;
+                            assert(is_constant_pseudo_symbol(sym));
+                            add_to_find_symbol_buf(sym);
+                        }
                     }
                 }
                 clear_trap(&trap);
