@@ -1627,17 +1627,8 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
     if (error == 0 && scope != NULL && scope->obj != NULL) {
         Trap trap;
         if (set_trap(&trap)) {
-            if (sym_frame != STACK_NO_FRAME) {
-                int use_frame = 0;
-                if (scope->obj->mTag == TAG_subprogram || scope->obj->mTag == TAG_lexical_block || scope->obj->mTag == TAG_inlined_subroutine) {
-                    UnitAddress addr;
-                    find_unit(sym_ctx, sym_ip, &addr);
-                    if (addr.unit != NULL && check_in_range(scope->obj, &addr)) use_frame = 1;
-                }
-                if (!use_frame) sym_frame = STACK_NO_FRAME;
-            }
             find_in_object_tree(scope->obj, 2, NULL, name);
-            if (find_symbol_list == NULL && scope->obj->mTag == TAG_subprogram) {
+            if (find_symbol_list == NULL && (scope->obj->mTag == TAG_subprogram || scope->obj->mTag == TAG_global_subroutine)) {
                 ObjectInfo * obj = get_dwarf_children(scope->obj);
                 while (obj != NULL) {
                     if (obj->mTag == TAG_lexical_block) find_in_object_tree(obj, 3, NULL, name);
@@ -3326,6 +3317,10 @@ int get_symbol_container(const Symbol * sym, Symbol ** container) {
         if (obj->mTag >= TAG_fund_type && obj->mTag < TAG_fund_type + 0x100) {
             /* Virtual DWARF object that is created by the DWARF reader. */
             object2symbol(NULL, obj->mCompUnit->mObject, container);
+            return 0;
+        }
+        if (obj->mTag == TAG_compile_unit) {
+            *container = NULL;
             return 0;
         }
         return err_wrong_obj();

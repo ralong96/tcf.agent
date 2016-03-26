@@ -381,6 +381,26 @@ static int errcmp(int err, const char * msg) {
     return 1;
 }
 
+static char * esc(char * s) {
+    size_t n = 0;
+    size_t i = 0;
+    char * t = s;
+    for (i = 0; s[i]; i++) {
+        if (s[i] == '\\') n++;
+    }
+    if (n > 0) {
+        size_t sz = i + n + 1;
+        t = (char *)tmp_alloc(sz);
+        for (i = 0, n = 0; s[i]; i++) {
+            t[n++] = s[i];
+            if (s[i] == '\\') t[n++] = '\\';
+        }
+        t[n++] = 0;
+        assert(n == sz);
+    }
+    return t;
+}
+
 static void test(void * args);
 static void loc_var_func(void * args, Symbol * sym);
 
@@ -788,12 +808,17 @@ static void loc_var_func(void * args, Symbol * sym) {
     StackFrame * frame_info = NULL;
     LocationInfo * loc_info = NULL;
     LocationExpressionState * loc_state = NULL;
+    UnitAddressRange * unit_range = (UnitAddressRange *)args;
+    Symbol * sym_container = NULL;
 
     if (get_symbol_class(sym, &symbol_class) < 0) {
         error_sym("get_symbol_class", sym);
     }
     if (get_symbol_flags(sym, &flags) < 0) {
         error_sym("get_symbol_flags", sym);
+    }
+    if (get_symbol_object(sym) != NULL && get_symbol_container(sym, &sym_container) < 0) {
+        error_sym("get_symbol_container", sym);
     }
     if (get_symbol_name(sym, &name) < 0) {
         error_sym("get_symbol_name", sym);
@@ -823,7 +848,6 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (get_symbol_object(sym) != NULL && symcmp(sym, find_sym) != 0) {
             /* 'sym' is eclipsed in the current scope by a nested declaration */
-            Symbol * sym_container = NULL;
             Symbol * find_container = NULL;
             if (!found_next) {
                 find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, name, &find_sym);
@@ -831,9 +855,6 @@ static void loc_var_func(void * args, Symbol * sym) {
                 error_sym("Invalid result of find_next_symbol()", find_sym);
             }
             found_next = 0;
-            if (get_symbol_container(sym, &sym_container) < 0) {
-                error_sym("get_symbol_container", sym);
-            }
             if (find_symbol_in_scope(elf_ctx, STACK_TOP_FRAME, 0, sym_container, name, &find_sym) < 0) {
                 error("find_symbol_in_scope");
             }
@@ -1094,31 +1115,42 @@ static void loc_var_func(void * args, Symbol * sym) {
                 symbol_class != SYM_CLASS_COMP_UNIT &&
                 !cpp_ref) {
             Value v;
-            char * expr = (char *)tmp_alloc(strlen(name) + 16);
+            char * expr = (char *)tmp_alloc(strlen(name) + 300);
             if (size_ok) {
-                sprintf(expr, "$\"%s\"", name);
+                sprintf(expr, "$\"%s\"", esc(name));
                 if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
                     error_sym("evaluate_expression", sym);
                 }
             }
             if (addr_ok) {
+                unsigned p = 0;
                 ContextAddress a0 = addr;
-                ContextAddress a1 = 0;
                 if (!elf_file->elf64) a0 &= 0xffffffffu;
-                sprintf(expr, "&$\"%s\"", name);
-                if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
-                    error_sym("evaluate_expression", sym);
-                }
-                if (v.size != (elf_file->elf64 ? 8 : 4)) {
-                    errno = ERR_INV_ADDRESS;
-                    error_sym("evaluate_expression", sym);
-                }
-                if (value_to_address(&v, &a1) < 0) {
-                    error_sym("value_to_address", sym);
-                }
-                if (a0 != a1 && !indirect) {
-                    errno = ERR_INV_ADDRESS;
-                    error_sym("value_to_address", sym);
+                for (p = 0; p < 2; p++) {
+                    ContextAddress a1 = 0;
+                    switch (p) {
+                    case 0:
+                        sprintf(expr, "&$\"%s\"", esc(name));
+                        break;
+                    case 1:
+                        if (unit_range == NULL) continue;
+                        sprintf(expr, "&${%s}::$\"%s\"", symbol2id(sym_container), esc(name));
+                        break;
+                    }
+                    if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
+                        error_sym("evaluate_expression", sym);
+                    }
+                    if (v.size != (elf_file->elf64 ? 8 : 4)) {
+                        errno = ERR_INV_ADDRESS;
+                        error_sym("evaluate_expression", sym);
+                    }
+                    if (value_to_address(&v, &a1) < 0) {
+                        error_sym("value_to_address", sym);
+                    }
+                    if (a0 != a1 && !indirect) {
+                        errno = ERR_INV_ADDRESS;
+                        error_sym("value_to_address", sym);
+                    }
                 }
             }
         }
@@ -1127,7 +1159,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         int type_sym_class = 0;
         int type_type_class = 0;
         Symbol * org_type = NULL;
-        Symbol * container = NULL;
+        Symbol * type_container = NULL;
         int container_class = 0;
         int base_type_class = 0;
         ContextAddress type_length = 0;
@@ -1231,10 +1263,10 @@ static void loc_var_func(void * args, Symbol * sym) {
                 }
             }
         }
-        if (get_symbol_container(type, &container) < 0) {
+        if (get_symbol_container(type, &type_container) < 0) {
             error_sym("get_symbol_container", type);
         }
-        if (get_symbol_class(container, &container_class) < 0) {
+        if (get_symbol_class(type_container, &container_class) < 0) {
             error_sym("get_symbol_class", type);
         }
         if (type_class == TYPE_CLASS_MEMBER_PTR) {
@@ -1243,7 +1275,7 @@ static void loc_var_func(void * args, Symbol * sym) {
                 if (get_symbol_container(org_type, &org_container) < 0) {
                     error_sym("get_symbol_container", org_type);
                 }
-                if (symcmp(container, org_container) != 0) {
+                if (symcmp(type_container, org_container) != 0) {
                     errno = ERR_OTHER;
                     error("Invalid container of typedef");
                 }
@@ -1390,6 +1422,31 @@ static void loc_var_func(void * args, Symbol * sym) {
                     name != NULL && strcmp(name, "this") == 0) {
                 test_composite_type(base_type);
                 test_this_pointer(base_type);
+            }
+        }
+        if (unit_range != NULL && type_name != NULL && strcmp(type_name, "boolean") == 0) {
+            Symbol * sym_true = NULL;
+            if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, pc, "true", &sym_true) < 0) {
+                if (get_error_code(errno) == ERR_SYM_NOT_FOUND) {
+                    // OK
+                }
+                else {
+                    error_sym("find_symbol_by_name", type);
+                }
+            }
+            if (sym_true != NULL) {
+                Symbol * sym_true_type = NULL;
+                if (get_symbol_type(sym_true, &sym_true_type) < 0) {
+                    error_sym("get_symbol_type", sym_true);
+                }
+                if (sym_true_type == NULL || get_symbol_object(sym_true_type) == NULL) {
+                    errno = ERR_OTHER;
+                    error("Invalid type of 'true'");
+                }
+                if (get_symbol_object(sym_true_type)->mCompUnit != unit_range->mUnit) {
+                    errno = ERR_OTHER;
+                    error("Invalid type of 'true'");
+                }
             }
         }
     }
@@ -1726,7 +1783,7 @@ static void next_region(void) {
                         if (get_symbol_flags(fnd_sym, &flags) < 0) {
                             error_sym("get_symbol_flags", fnd_sym);
                         }
-                        sprintf(expr, "$\"%s\"", func_name);
+                        sprintf(expr, "$\"%s\"", esc(func_name));
                         if (evaluate_expression(elf_ctx, STACK_TOP_FRAME, 0, expr, 0, &v) < 0) {
                             error_sym("evaluate_expression", fnd_sym);
                         }
@@ -1875,7 +1932,7 @@ static void next_region(void) {
             }
         }
 
-        if (enumerate_symbols(elf_ctx, STACK_TOP_FRAME, loc_var_func, NULL) < 0) {
+        if (enumerate_symbols(elf_ctx, STACK_TOP_FRAME, loc_var_func, unit_range) < 0) {
             error("enumerate_symbols");
         }
 
