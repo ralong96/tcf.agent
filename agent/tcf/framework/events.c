@@ -124,6 +124,7 @@ static event_node * timer_queue = NULL;
 static EventCallBack * cancel_handler = NULL;
 static void * cancel_arg = NULL;
 static int process_events = 0;
+static event_node * exit_event = NULL;
 
 uint32_t events_timer_ms = 0;
 
@@ -347,24 +348,33 @@ void ini_events_queue(void) {
         }
     }
 #endif
+    exit_event = (event_node *)loc_alloc_zero(sizeof(event_node));
 }
 
 void cancel_event_loop(void) {
     process_events = 0;
 }
 
-static void exit_event(void * args) {
+static void exit_event_handler(void * args) {
     if (event_queue == NULL) {
         process_events = 0;
     }
     else {
-        post_event(exit_event, NULL);
+        post_event(exit_event_handler, NULL);
     }
 }
 
 void exit_event_loop(void) {
     /* Note: need to wake main thread in case exit_event_loop() is called from signal handler */
-    post_from_bg_thread(exit_event, NULL, 0);
+    check_error(pthread_mutex_lock(&event_lock));
+    if (exit_event != NULL) {
+        exit_event->handler = exit_event_handler;
+        exit_event->next = timer_queue;
+        timer_queue = exit_event;
+        exit_event = NULL;
+        check_error(pthread_cond_signal(&event_cond));
+    }
+    check_error(pthread_mutex_unlock(&event_lock));
 }
 
 void run_event_loop(void) {
