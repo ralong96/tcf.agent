@@ -1466,34 +1466,38 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                     while (constant_pseudo_symbols[i].name) {
                         if (strcmp(name, constant_pseudo_symbols[i].name) == 0) {
                             Trap trap;
-                            Symbol * type = NULL;
-                            Symbol * list = find_symbol_list;
-                            const char * type_name = constant_pseudo_symbols[i].type;
                             if (set_trap(&trap)) {
-                                find_symbol_list = NULL;
-                                find_in_dwarf(type_name);
-                                if (curr_file != NULL) {
-                                    DWARFCache * cache = get_dwarf_cache(get_dwarf_file(curr_file));
-                                    find_by_name_in_pub_names(cache, type_name);
-                                }
-                                sort_find_symbol_buf();
-                                type = find_symbol_list;
+                                find_in_dwarf(constant_pseudo_symbols[i].type);
                                 clear_trap(&trap);
-                            }
-                            find_symbol_list = list;
-                            if (type != NULL) {
-                                Symbol * sym = alloc_symbol();
-                                sym->ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
-                                sym->frame = STACK_NO_FRAME;
-                                sym->sym_class = SYM_CLASS_VALUE;
-                                sym->base = type;
-                                sym->index = i;
-                                assert(is_constant_pseudo_symbol(sym));
-                                add_to_find_symbol_buf(sym);
-                                break;
                             }
                         }
                         i++;
+                    }
+                    if (curr_file != NULL) {
+                        i = 0;
+                        while (constant_pseudo_symbols[i].name) {
+                            if (strcmp(name, constant_pseudo_symbols[i].name) == 0) {
+                                Trap trap;
+                                if (set_trap(&trap)) {
+                                    DWARFCache * cache = get_dwarf_cache(get_dwarf_file(curr_file));
+                                    find_by_name_in_pub_names(cache, constant_pseudo_symbols[i].type);
+                                    clear_trap(&trap);
+                                }
+                            }
+                            i++;
+                        }
+                    }
+                    if (find_symbol_list != NULL) {
+                        Symbol * sym = alloc_symbol();
+                        sort_find_symbol_buf();
+                        sym->ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
+                        sym->frame = STACK_NO_FRAME;
+                        sym->sym_class = SYM_CLASS_VALUE;
+                        sym->base = find_symbol_list;
+                        sym->index = i;
+                        find_symbol_list = NULL;
+                        assert(is_constant_pseudo_symbol(sym));
+                        add_to_find_symbol_buf(sym);
                     }
                 }
                 clear_trap(&trap);
