@@ -890,13 +890,14 @@ int discovery_start_udp(void) {
 }
 
 int discovery_stop_udp(void) {
-    assert(!discovery_stopped);
-    udp_send_peer_removed();
-    discovery_stopped = 1;
-    if (slave_info != NULL) {
-        loc_free(slave_info);
-        slave_cnt = 0;
-        slave_max = 0;
+    if (!discovery_stopped) {
+        udp_send_peer_removed();
+        discovery_stopped = 1;
+        if (slave_info != NULL) {
+            loc_free(slave_info);
+            slave_cnt = 0;
+            slave_max = 0;
+        }
     }
     return 0;
 }

@@ -104,7 +104,6 @@ static void check_idle_timeout(void * args) {
         idle_count++;
         if (idle_count > idle_timeout) {
             trace(LOG_ALWAYS, "No connections for %d seconds, shutting down", idle_timeout);
-            discovery_stop();
             cancel_event_loop();
             return;
         }
@@ -120,14 +119,12 @@ static void channel_closed(Channel *c) {
 #if ENABLE_SignalHandlers
 
 static void shutdown_event(void * args) {
-    discovery_stop();
     cancel_event_loop();
 }
 
 static void signal_handler(int sig) {
     SIGNAL_HANDLER_HOOK;
     if (is_dispatch_thread()) {
-        discovery_stop();
         if (sig == SIGTERM) {
             exit_event_loop();
         }
@@ -419,8 +416,7 @@ int main(int argc, char ** argv) {
 
     PRE_DAEMON_HOOK;
 #if !defined(_WRS_KERNEL)
-    if (daemon)
-        close_out_and_err();
+    if (daemon) close_out_and_err();
 #endif
 
 #if ENABLE_SignalHandlers
@@ -443,6 +439,7 @@ int main(int argc, char ** argv) {
      * returns ECHILD otherwise, thinking we are not the owner. */
     run_event_loop();
 
+    discovery_stop();
 #if ENABLE_Plugins
     plugins_destroy();
 #endif /* ENABLE_Plugins */
