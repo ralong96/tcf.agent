@@ -1223,6 +1223,24 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
 
 RegisterDefinition * get_reg_by_id(Context * ctx, unsigned id, RegisterIdScope * scope) {
     RegisterDefinition * defs = get_reg_definitions(ctx);
+    if (scope->machine == 3 && defs && defs->name && strcmp(defs->name, "rax") == 0) {
+        /* TODO: better way to handle 32-bit ELF on X86_64 */
+        switch (id) {
+        case 0: /* eax */ id = 0; break;
+        case 1: /* ecx */ id = 2; break;
+        case 2: /* edx */ id = 1; break;
+        case 3: /* ebx */ id = 3; break;
+        case 4: /* esp */ id = 7; break;
+        case 5: /* ebp */ id = 6; break;
+        case 6: /* esi */ id = 4; break;
+        case 7: /* edi */ id = 5; break;
+        case 8: /* eip */ id = 16; break;
+        case 9: /* eflags */ id = 49; break;
+        default:
+            set_errno(ERR_OTHER, "Invalid register ID");
+            return NULL;
+        }
+    }
     while (defs != NULL && defs->name != NULL) {
         switch (scope->id_type) {
         case REGNUM_DWARF:
