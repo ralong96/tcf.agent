@@ -41,9 +41,10 @@
 
 #define HASH_SIZE (4 * MEM_USAGE_FACTOR - 1)
 
-#define ACC_SIZE    1
-#define ACC_LENGTH  2
-#define ACC_OTHER   3
+#define ACC_SIZE     1
+#define ACC_BOUNDS   2
+#define ACC_LOCATION 3
+#define ACC_OTHER    4
 
 #ifndef SYMBOLS_PROXY_CLEANUP_DELAY
 #define SYMBOLS_PROXY_CLEANUP_DELAY 1000000
@@ -731,8 +732,13 @@ static SymInfoCache * get_sym_info_cache(const Symbol * sym, int acc_mode) {
         assert(context_has_state(s->update_owner));
         switch (acc_mode) {
         case ACC_SIZE:
-        case ACC_LENGTH:
-            if (s->type_class != TYPE_CLASS_ARRAY) break;
+        case ACC_BOUNDS:
+            if (s->type_class == TYPE_CLASS_ARRAY) update = 1;
+            if (s->type_class == TYPE_CLASS_COMPOSITE) update = 1;
+            if (s->type_class == TYPE_CLASS_UNKNOWN) update = 1;
+            break;
+        case ACC_LOCATION:
+            /* Location can be volatile in ADA */
             update = 1;
             break;
         }
@@ -1222,7 +1228,7 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
 }
 
 int get_symbol_length(const Symbol * sym, ContextAddress * length) {
-    SymInfoCache * c = get_sym_info_cache(sym, ACC_LENGTH);
+    SymInfoCache * c = get_sym_info_cache(sym, ACC_BOUNDS);
     if (c == NULL) return -1;
     if (c->has_length) {
         *length = c->length;
@@ -1233,7 +1239,7 @@ int get_symbol_length(const Symbol * sym, ContextAddress * length) {
 }
 
 int get_symbol_lower_bound(const Symbol * sym, int64_t * lower_bound) {
-    SymInfoCache * c = get_sym_info_cache(sym, ACC_OTHER);
+    SymInfoCache * c = get_sym_info_cache(sym, ACC_BOUNDS);
     if (c == NULL) return -1;
     if (!c->has_lower_bound) {
         errno = ERR_INV_CONTEXT;
@@ -1703,7 +1709,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** loc) {
     Context * ctx = NULL;
     uint64_t ip = 0;
 
-    sym_cache = get_sym_info_cache(sym, ACC_OTHER);
+    sym_cache = get_sym_info_cache(sym, ACC_LOCATION);
     if (sym_cache == NULL) return -1;
 
     ctx = sym_cache->update_owner;
