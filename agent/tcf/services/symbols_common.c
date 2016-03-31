@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -29,24 +29,23 @@
 
 static LocationInfo * loc_info = NULL;
 
-static LocationExpressionState * evaluate_symbol_location(const Symbol * sym, unsigned args_cnt) {
+static LocationExpressionState * evaluate_symbol_location(const Symbol * sym) {
     Trap trap;
     Context * ctx = NULL;
     int frame = STACK_NO_FRAME;
     StackFrame * frame_info = NULL;
     LocationExpressionState * state = NULL;
-    static uint64_t args[] = { 0, 0 };
 
     if (get_symbol_frame(sym, &ctx, &frame) < 0) return NULL;
     if (get_location_info(sym, &loc_info) < 0) return NULL;
-    if (loc_info->args_cnt != args_cnt) {
-        set_errno(ERR_OTHER, "Wrong object kind");
+    if (loc_info->args_cnt > 0) {
+        set_errno(ERR_OTHER, "Object location is relative to owner address");
         return NULL;
     }
     if (frame != STACK_NO_FRAME && get_frame_info(ctx, frame, &frame_info) < 0) return NULL;
     if (!set_trap(&trap)) return NULL;
     state = evaluate_location_expression(ctx, frame_info,
-        loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, args, args_cnt);
+        loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, NULL, 0);
     clear_trap(&trap);
     return state;
 }
@@ -59,11 +58,11 @@ static const char * pieces_err_msg(LocationExpressionState * state) {
 }
 
 int get_symbol_address(const Symbol * sym, ContextAddress * address) {
-    LocationExpressionState * state = evaluate_symbol_location(sym, 0);
+    LocationExpressionState * state = evaluate_symbol_location(sym);
     if (state == NULL) return -1;
-    if (state->pieces_cnt == 1 && state->pieces->implicit_pointer == 0 &&
-            state->pieces->reg == NULL && state->pieces->value == NULL &&
-            state->pieces->bit_offs == 0) {
+    if (state->pieces_cnt == 1 &&
+            state->pieces->implicit_pointer == 0 && state->pieces->optimized_away == 0 &&
+            state->pieces->reg == NULL && state->pieces->value == NULL && state->pieces->bit_offs == 0) {
         *address = state->pieces->addr;
         return 0;
     }
@@ -80,29 +79,25 @@ int get_symbol_address(const Symbol * sym, ContextAddress * address) {
 }
 
 int get_symbol_offset(const Symbol * sym, ContextAddress * offset) {
-    LocationExpressionState * state = evaluate_symbol_location(sym, 1);
-    if (state == NULL) return -1;
-    if (state->pieces_cnt == 1 &&
-            state->pieces->implicit_pointer == 0 && state->pieces->optimized_away == 0 &&
-            state->pieces->reg == NULL && state->pieces->value == NULL &&
-            state->pieces->bit_offs == 0) {
-        *offset = state->pieces->addr;
-        return 0;
-    }
-    if (state->pieces_cnt > 0) {
-        set_fmt_errno(ERR_OTHER, "Cannot get member offset: the object %s", pieces_err_msg(state));
-        return -1;
-    }
-    if (state->stk_pos == 1) {
-        *offset = (ContextAddress)state->stk[0];
-        return 0;
+    LocationInfo * loc_info = NULL;
+    if (get_location_info(sym, &loc_info) < 0) return -1;
+    if (loc_info->args_cnt == 1) {
+        /* Relative location. Only static offset can be returned.
+         * Dynamic offset can only be computed in an expression. */
+        if (loc_info->value_cmds.cnt == 3 &&
+                loc_info->value_cmds.cmds[0].cmd == SFT_CMD_ARG &&
+                loc_info->value_cmds.cmds[1].cmd == SFT_CMD_NUMBER &&
+                loc_info->value_cmds.cmds[2].cmd == SFT_CMD_ADD) {
+            *offset = (ContextAddress)loc_info->value_cmds.cmds[1].args.num;
+            return 0;
+        }
     }
     set_errno(ERR_OTHER, "Object does not have member offset");
     return -1;
 }
 
 int get_symbol_register(const Symbol * sym, Context ** ctx, int * frame, RegisterDefinition ** reg) {
-    LocationExpressionState * state = evaluate_symbol_location(sym, 0);
+    LocationExpressionState * state = evaluate_symbol_location(sym);
     if (state == NULL) return -1;
     if (state->pieces_cnt == 1 && state->pieces->reg != NULL && state->pieces->reg->size == state->pieces->size) {
         if (get_symbol_frame(sym, ctx, frame) < 0) return -1;
@@ -115,7 +110,7 @@ int get_symbol_register(const Symbol * sym, Context ** ctx, int * frame, Registe
 
 int get_symbol_value(const Symbol * sym, void ** value, size_t * size, int * big_endian) {
     Trap trap;
-    LocationExpressionState * state = evaluate_symbol_location(sym, 0);
+    LocationExpressionState * state = evaluate_symbol_location(sym);
     if (state == NULL) return -1;
     if (!set_trap(&trap)) return -1;
     if (state->pieces_cnt > 0) {

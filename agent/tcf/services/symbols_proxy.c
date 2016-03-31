@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -43,8 +43,7 @@
 
 #define ACC_SIZE     1
 #define ACC_BOUNDS   2
-#define ACC_LOCATION 3
-#define ACC_OTHER    4
+#define ACC_OTHER    3
 
 #ifndef SYMBOLS_PROXY_CLEANUP_DELAY
 #define SYMBOLS_PROXY_CLEANUP_DELAY 1000000
@@ -736,10 +735,6 @@ static SymInfoCache * get_sym_info_cache(const Symbol * sym, int acc_mode) {
             if (s->type_class == TYPE_CLASS_ARRAY) update = 1;
             if (s->type_class == TYPE_CLASS_COMPOSITE) update = 1;
             if (s->type_class == TYPE_CLASS_UNKNOWN) update = 1;
-            break;
-        case ACC_LOCATION:
-            /* Location can be volatile in ADA */
-            update = 1;
             break;
         }
         if (update) {
@@ -1709,7 +1704,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** loc) {
     Context * ctx = NULL;
     uint64_t ip = 0;
 
-    sym_cache = get_sym_info_cache(sym, ACC_LOCATION);
+    sym_cache = get_sym_info_cache(sym, ACC_OTHER);
     if (sym_cache == NULL) return -1;
 
     ctx = sym_cache->update_owner;
