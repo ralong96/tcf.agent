@@ -216,7 +216,6 @@ static void add_reg(unsigned reg, unsigned size) {
     }
 }
 
-#if 0 /* Not used yet */
 static void add_seg_reg(unsigned reg) {
     switch (reg) {
     case 0: add_str("es"); break;
@@ -230,6 +229,7 @@ static void add_seg_reg(unsigned reg) {
     }
 }
 
+#if 0
 static void add_ctrl_reg(unsigned reg) {
     add_str("cr");
     add_dec_uint32(reg);
@@ -466,11 +466,29 @@ static void add_a_op(unsigned op) {
     }
 }
 
+static int shift_op(unsigned op) {
+    switch (op) {
+    case 0: add_str("rol "); return 1;
+    case 1: add_str("ror "); return 1;
+    case 2: add_str("rcl "); return 1;
+    case 3: add_str("rcr "); return 1;
+    case 4: add_str("shl "); return 1;
+    case 5: add_str("shr "); return 1;
+    case 7: add_str("sar "); return 1;
+    }
+    return 0;
+}
+
 static void disassemble_0f(void) {
     uint8_t opcode = get_code();
     uint8_t modrm = 0;
 
     switch (opcode) {
+    case 0x1f:
+        modrm = get_code();
+        add_str("nop ");
+        add_modrm(modrm, data_size);
+        return;
     case 0x38:
         switch (get_code()) {
         case 0xf6:
@@ -511,6 +529,23 @@ static void disassemble_0f(void) {
         return;
     case 0xa1:
         add_str("pop fs");
+        return;
+    case 0xa4:
+        add_str("shld ");
+        modrm = get_code();
+        add_modrm(modrm, data_size);
+        add_char(',');
+        add_reg((modrm >> 3) & 7, data_size);
+        add_char(',');
+        add_imm8();
+        return;
+    case 0xa5:
+        add_str("shld ");
+        modrm = get_code();
+        add_modrm(modrm, data_size);
+        add_char(',');
+        add_reg((modrm >> 3) & 7, data_size);
+        add_str(",cl");
         return;
     case 0xa8:
         add_str("push gs");
@@ -808,6 +843,27 @@ static void disassemble_instr(void) {
         add_char(',');
         add_modrm(modrm, data_size);
         return;
+    case 0x8c:
+        modrm = get_code();
+        add_str("mov ");
+        add_modrm(modrm, data_size);
+        add_char(',');
+        add_seg_reg((modrm >> 3) & 7);
+        return;
+    case 0x8d:
+        modrm = get_code();
+        add_str("lea ");
+        add_reg((modrm >> 3) & 7, data_size);
+        add_char(',');
+        add_modrm(modrm, 0);
+        return;
+    case 0x8e:
+        modrm = get_code();
+        add_str("mov ");
+        add_seg_reg((modrm >> 3) & 7);
+        add_char(',');
+        add_modrm(modrm, data_size);
+        return;
     case 0x8f:
         modrm = get_code();
         switch ((modrm >> 3) & 7) {
@@ -815,6 +871,23 @@ static void disassemble_instr(void) {
             add_str("pop ");
             add_modrm(modrm, data_size);
             return;
+        }
+        break;
+    case 0x90:
+        add_str("nop");
+        return;
+    case 0x98:
+        switch (data_size) {
+        case 2: add_str("cbw"); return;
+        case 4: add_str("cwde"); return;
+        case 8: add_str("cdqe"); return;
+        }
+        break;
+    case 0x99:
+        switch (data_size) {
+        case 2: add_str("cwd"); return;
+        case 4: add_str("cdq"); return;
+        case 8: add_str("cqo"); return;
         }
         break;
     case 0x9a:
@@ -884,6 +957,14 @@ static void disassemble_instr(void) {
         if (addr_size <= 2) add_imm16();
         else add_imm32();
         return;
+    case 0xc0:
+    case 0xc1:
+        modrm = get_code();
+        if (!shift_op((modrm >> 3) & 7)) break;
+        add_modrm(modrm, data_size);
+        add_char(',');
+        add_imm8();
+        return;
     case 0xc2:
         add_str("ret ");
         add_imm16();
@@ -929,6 +1010,20 @@ static void disassemble_instr(void) {
         return;
     case 0xcb:
         add_str("ret");
+        return;
+    case 0xd0:
+    case 0xd1:
+        modrm = get_code();
+        if (!shift_op((modrm >> 3) & 7)) break;
+        add_modrm(modrm, data_size);
+        add_str(",1");
+        return;
+    case 0xd2:
+    case 0xd3:
+        modrm = get_code();
+        if (!shift_op((modrm >> 3) & 7)) break;
+        add_modrm(modrm, data_size);
+        add_str(",cl");
         return;
     case 0xe3:
         switch (data_size) {
