@@ -202,6 +202,10 @@
 #  define ENABLE_LineNumbers    (ENABLE_LineNumbersProxy || SERVICE_LineNumbers)
 #endif
 
+#if !defined(ENABLE_Expressions)
+#  define ENABLE_Expressions    (SERVICE_Expressions)
+#endif
+
 #if !defined(ENABLE_ELF)
 #  define ENABLE_ELF            (TARGET_UNIX && (SERVICE_Symbols || SERVICE_LineNumbers))
 #endif

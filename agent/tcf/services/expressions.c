@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,7 +27,11 @@
 
 #include <tcf/config.h>
 
-#if SERVICE_Expressions
+#if !defined(ENABLE_Expressions)
+#  define ENABLE_Expressions        (SERVICE_Expressions)
+#endif
+
+#if ENABLE_Expressions
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -3786,6 +3790,9 @@ static int evaluate_script(int mode, char * s, int load, Value * v) {
 }
 
 int evaluate_expression(Context * ctx, int frame, ContextAddress addr, char * s, int load, Value * v) {
+#if !defined(SERVICE_Expressions)
+    big_endian = big_endian_host();
+#endif
     expression_context = ctx;
     expression_frame = frame;
     expression_addr = addr;
@@ -3831,6 +3838,8 @@ int value_to_double(Value * v, double *res) {
     clear_trap(&trap);
     return 0;
 }
+
+#if SERVICE_Expressions
 
 /********************** Commands **************************/
 
@@ -4139,7 +4148,7 @@ static void command_get_context(char * token, Channel * c) {
     cache_enter(get_context_cache_client, c, &args, sizeof(args));
 }
 
-#if ENABLE_Symbols && SERVICE_StackTrace
+#if ENABLE_Symbols && (SERVICE_StackTrace || ENABLE_ContextProxy)
 
 static int sym_cnt = 0;
 static int sym_max = 0;
@@ -4161,7 +4170,7 @@ static void get_children_cache_client(void * x) {
     int err = 0;
 
     /* TODO: Expressions.getChildren - structures */
-#if ENABLE_Symbols && SERVICE_StackTrace
+#if ENABLE_Symbols && (SERVICE_StackTrace || ENABLE_ContextProxy)
     char parent_id[256];
     {
         Context * ctx;
@@ -4195,7 +4204,7 @@ static void get_children_cache_client(void * x) {
     write_errno(&c->out, err);
 
     write_stream(&c->out, '[');
-#if ENABLE_Symbols && SERVICE_StackTrace
+#if ENABLE_Symbols && (SERVICE_StackTrace || ENABLE_ContextProxy)
     {
         int i;
         for (i = 0; i < sym_cnt; i++) {
@@ -4696,6 +4705,8 @@ static void on_channel_close(Channel * c) {
     }
 }
 
+#endif  /* SERVICE_Expressions */
+
 void add_identifier_callback(ExpressionIdentifierCallBack * callback) {
     if (id_callback_cnt >= id_callback_max) {
         id_callback_max += 8;
@@ -4704,6 +4715,8 @@ void add_identifier_callback(ExpressionIdentifierCallBack * callback) {
     }
     id_callbacks[id_callback_cnt++] = callback;
 }
+
+#if SERVICE_Expressions
 
 #if ENABLE_FuncCallInjection
 static void context_intercepted(Context * ctx, void * args) {
@@ -4724,16 +4737,21 @@ static void context_intercepted(Context * ctx, void * args) {
 #endif
 
 void ini_expressions_service(Protocol * proto) {
-    unsigned i;
+    static int init = 0;
+    if (init == 0) {
+        unsigned i;
 #if ENABLE_FuncCallInjection
-    static RunControlEventListener rc_listener = { context_intercepted, NULL };
-    add_run_control_event_listener(&rc_listener, NULL);
+        static RunControlEventListener rc_listener = { context_intercepted, NULL };
+        add_run_control_event_listener(&rc_listener, NULL);
 #endif
 #if ENABLE_ExpressionSerialization
-    list_init(&cmd_queue);
+        list_init(&cmd_queue);
 #endif
-    for (i = 0; i < ID2EXP_HASH_SIZE; i++) list_init(id2exp + i);
-    add_channel_close_listener(on_channel_close);
+        for (i = 0; i < ID2EXP_HASH_SIZE; i++) list_init(id2exp + i);
+        add_channel_close_listener(on_channel_close);
+        big_endian = big_endian_host();
+        init = 1;
+    }
     add_command_handler(proto, EXPRESSIONS, "getContext", command_get_context);
     add_command_handler(proto, EXPRESSIONS, "getChildren", command_get_children);
     add_command_handler(proto, EXPRESSIONS, "create", command_create);
@@ -4741,8 +4759,7 @@ void ini_expressions_service(Protocol * proto) {
     add_command_handler(proto, EXPRESSIONS, "evaluate", command_evaluate);
     add_command_handler(proto, EXPRESSIONS, "assign", command_assign);
     add_command_handler(proto, EXPRESSIONS, "dispose", command_dispose);
-
-    big_endian = big_endian_host();
 }
 
 #endif  /* if SERVICE_Expressions */
+#endif  /* if ENABLE_Expressions */

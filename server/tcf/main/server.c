@@ -23,6 +23,9 @@
 #include <tcf/framework/json.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/proxy.h>
+#if SERVICE_Expressions
+#include <tcf/services/expressions.h>
+#endif
 #include <tcf/services/linenumbers.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/pathmap.h>
@@ -124,6 +127,9 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #endif
 #if SERVICE_Disassembly
         if (!service_da) ini_disassembly_service(host->protocol);
+#endif
+#if SERVICE_Expressions
+        ini_expressions_service(host->protocol);
 #endif
 #if ENABLE_DebugContext && ENABLE_ContextProxy
         create_context_proxy(host, target, forward_pm);

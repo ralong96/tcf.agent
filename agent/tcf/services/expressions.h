@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -25,7 +25,11 @@
 #include <tcf/framework/context.h>
 #include <tcf/services/symbols.h>
 
-#if SERVICE_Expressions
+#if !defined(ENABLE_Expressions)
+#  define ENABLE_Expressions        (SERVICE_Expressions)
+#endif
+
+#if ENABLE_Expressions
 
 /* Expression evaluation modes: */
 #define EXPRESSION_MODE_NORMAL 0 /* All attributes of expression value are computed */
@@ -117,6 +121,6 @@ extern void add_identifier_callback(ExpressionIdentifierCallBack * callback);
 
 extern void ini_expressions_service(Protocol * proto);
 
-#endif /* SERVICE_Expressions */
+#endif /* ENABLE_Expressions */
 
 #endif /* D_expressions */
