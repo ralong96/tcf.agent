@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -53,6 +53,7 @@ typedef struct RegisterCache RegisterCache;
 #if ENABLE_ContextISA
 typedef struct DefIsaCache DefIsaCache;
 #endif
+typedef struct ErrorAddress ErrorAddress;
 
 #define CTX_ID_HASH_SIZE 101
 
@@ -142,11 +143,19 @@ struct RegisterCache {
     int valid;
 };
 
+struct ErrorAddress {
+    ContextAddress addr;
+    ContextAddress size;
+    long stat;
+};
+
 struct MemoryCache {
     LINK link_ctx;
     ContextCache * ctx;
     AbstractCache cache;
     ErrorReport * error;
+    ErrorAddress * errors_address;
+    int errors_address_cnt;
     ContextAddress addr;
     void * buf;
     size_t size;
@@ -240,6 +249,8 @@ static const char CONTEXT_PROXY[] = "ContextProxy";
 static const char RUN_CONTROL[] = "RunControl";
 static const char MEMORY_MAP[] = "MemoryMap";
 static const char PATH_MAP[] = "PathMap";
+static const char MEMORY[] = "Memory";
+static const char REGISTERS[] = "Registers";
 
 #if ENABLE_ContextMux
 /*
@@ -832,6 +843,95 @@ static void event_container_resumed(Channel * c, void * args) {
     json_test_char(p->bck_inp, MARKER_EOM);
 }
 
+static void event_register_changed(Channel * channel, void * args) {
+    char * id;
+    PeerCache * peer = (PeerCache *)args;
+    ContextCache * c = NULL;
+
+    write_stringz(&peer->host->out, "E");
+    write_stringz(&peer->host->out, REGISTERS);
+    write_stringz(&peer->host->out, "registerChanged");
+    id = json_read_alloc_string(peer->bck_inp);
+    json_test_char(peer->bck_inp, MARKER_EOA);
+    json_test_char(peer->bck_inp, MARKER_EOM);
+
+    {
+        int ix;
+
+        for (ix = 0; ix < CTX_ID_HASH_SIZE; ix++) {
+            LINK * h = peer->context_id_hash + ix;
+            LINK * l = h->next;
+            while (l != h) {
+                int jx;
+                ContextCache * ctx_cache = idhashl2ctx(l);
+                l = l->next;
+                if (ctx_cache->ctx->exited) continue;
+                if (ctx_cache->reg_props == NULL && ctx_cache->reg_defs == NULL) continue;
+                for (jx = 0; jx < ctx_cache->reg_max; jx++) {
+                    RegisterDefinition * r = ctx_cache->reg_defs + jx;
+                    if (r->name == NULL) continue;
+                    if (strcmp(ctx_cache->reg_props[jx].id, id) != 0) continue;
+                    c = ctx_cache;
+                    break;
+                }
+                if (c != NULL) break;
+            }
+            if (c != NULL) break;
+        }
+    }
+
+    if (c != NULL) {
+        LINK * l;
+        l = c->stk_cache_list.next;
+        while (l != &c->stk_cache_list) {
+            StackFrameCache * f = ctx2stk(c->stk_cache_list.next);
+            l = l->next;
+            free_stack_frame_cache(f);
+        }
+    }
+
+    loc_free(id);
+}
+
+static void event_memory_changed(Channel * channel, void * args) {
+    char id[256];
+    PeerCache * peer = (PeerCache *)args;
+    ContextCache * c = NULL;
+
+    write_stringz(&peer->host->out, "E");
+    write_stringz(&peer->host->out, MEMORY);
+    write_stringz(&peer->host->out, "memoryChanged");
+    json_read_string(peer->bck_inp, id, sizeof(id));
+    json_test_char(peer->bck_inp, MARKER_EOA);
+    /* <array of address ranges> */
+    json_read_object(peer->bck_inp);
+    json_test_char(peer->bck_inp, MARKER_EOA);
+    json_test_char(peer->bck_inp, MARKER_EOM);
+
+    c = find_context_cache(peer, id);
+    if (c != NULL && peer->rc_done) {
+        LINK * x = context_root.next;
+        assert(*EXT(c->ctx) == c);
+        while (x != &context_root) {
+            Context * ctx = ctxl2ctxp(x);
+            if (ctx->mem == c->ctx->mem) {
+                LINK * l;
+                ContextCache * ctx_cache = *EXT(ctx);
+                l = ctx_cache->mem_cache_list.next;
+                while (l != &ctx_cache->mem_cache_list) {
+                    MemoryCache * m = ctx2mem(ctx_cache->mem_cache_list.next);
+                    l = l->next;
+                    free_memory_cache(m);
+                }
+            }
+            x = x->next;
+        }
+    }
+    else if (peer->rc_done) {
+        trace(LOG_ALWAYS, "Invalid ID in 'memory changed' event: %s", id);
+    }
+}
+
 static void event_memory_map_changed(Channel * c, void * args) {
     char id[256];
     PeerCache * p = (PeerCache *)args;
@@ -893,8 +993,10 @@ void create_context_proxy(Channel * host, Channel * target, int forward_pm) {
     add_event_handler2(target, RUN_CONTROL, "containerSuspended", event_container_suspended, p);
     add_event_handler2(target, RUN_CONTROL, "containerResumed", event_container_resumed, p);
     add_event_handler2(target, MEMORY_MAP, "changed", event_memory_map_changed, p);
+    add_event_handler2(target, MEMORY, "memoryChanged", event_memory_changed, p);
+    add_event_handler2(target, REGISTERS, "registerChanged", event_register_changed, p);
     if (forward_pm) add_command_handler2(host->protocol, PATH_MAP, "set", command_path_map_set, p);
-    /* Retrive initial set of run control contexts */
+    /* Retrieve initial set of run control contexts */
     protocol_send_command(p->target, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
     write_stringz(&p->target->out, "null");
     write_stream(&p->target->out, MARKER_EOM);
@@ -1135,6 +1237,25 @@ Context * context_get_group(Context * ctx, int group) {
     return ctx->mem;
 }
 
+static void cb_check_memory_error_struct(InputStream * inp, const char * name, void * args) {
+    ErrorAddress * error = (ErrorAddress *)args;
+
+    if (strcmp(name, "addr") == 0) error->addr = json_read_int64(inp);
+    else if (strcmp(name, "size") == 0) error->size = json_read_int64(inp);
+    else if (strcmp(name, "stat") == 0) error->stat = json_read_long(inp);
+    else json_skip_object(inp);
+}
+
+static void cb_check_memory_error_array(InputStream * inp, void * args) {
+    MemoryCache * m = (MemoryCache *)args;
+    m->errors_address_cnt++;
+    m->errors_address = loc_realloc(m->errors_address,
+            sizeof(ErrorAddress) * m->errors_address_cnt);
+    memset(m->errors_address + m->errors_address_cnt - 1, 0, sizeof(ErrorAddress));
+    json_read_struct(inp, cb_check_memory_error_struct,
+            m->errors_address + m->errors_address_cnt - 1);
+}
+
 static void validate_memory_cache(Channel * c, void * args, int error) {
     MemoryCache * m = (MemoryCache *)args;
     Context * ctx = m->ctx->ctx;
@@ -1142,6 +1263,7 @@ static void validate_memory_cache(Channel * c, void * args, int error) {
 
     assert(m->pending != NULL);
     assert(m->error == NULL);
+    assert(m->errors_address == NULL);
     if (set_trap(&trap)) {
         m->pending = NULL;
         if (!error) {
@@ -1156,7 +1278,8 @@ static void validate_memory_cache(Channel * c, void * args, int error) {
             json_read_binary_end(&state);
             json_test_char(&c->inp, MARKER_EOA);
             error = read_errno(&c->inp);
-            while (read_stream(&c->inp) != 0) {}
+            json_read_array(&c->inp, cb_check_memory_error_array, m);
+            json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
         }
         clear_trap(&trap);
@@ -1184,9 +1307,23 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
     for (l = cache->mem_cache_list.next; l != &cache->mem_cache_list; l = l->next) {
         m = ctx2mem(l);
         if (address >= m->addr && address + size <= m->addr + m->size) {
+            int valid = 0;
             if (m->pending != NULL) cache_wait(&m->cache);
             memcpy(buf, (int8_t *)m->buf + (address - m->addr), size);
-            set_error_report_errno(m->error);
+            if (m->error != NULL && m->errors_address_cnt > 0) {
+                /* Check if the requested range is in a valid memory read */
+                int ix;
+                for (ix = 0; ix < m->errors_address_cnt; ix++) {
+                    ErrorAddress * err_addr = m->errors_address + ix;
+                    if (err_addr->stat != 0) continue;
+                    if (address >= err_addr->addr &&
+                            (address + size) <= (err_addr->addr + err_addr->size)) {
+                        valid = 1;
+                        break;
+                    }
+                }
+            }
+            if (!valid) set_error_report_errno(m->error);
             clear_trap(&trap);
             return !errno ? 0 : -1;
         }
