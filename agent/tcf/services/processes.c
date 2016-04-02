@@ -1673,6 +1673,8 @@ static void command_start(char * token, Channel * c, void * x) {
             AttachDoneArgs * data = (AttachDoneArgs *)loc_alloc_zero(sizeof *data);
             data->c = c;
             strcpy(data->token, token);
+            data->set_dont_stop = params.set_dont_stop;
+            data->set_dont_pass = params.set_dont_pass;
             sigset_copy(&data->sig_dont_stop, &params.sig_dont_stop);
             sigset_copy(&data->sig_dont_pass, &params.sig_dont_pass);
             if (selfattach) mode |= CONTEXT_ATTACH_SELF;

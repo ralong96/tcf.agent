@@ -19,6 +19,7 @@
 
 #include <tcf/config.h>
 
+#include <stdio.h>
 #include <signal.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/sigsets.h>
@@ -35,30 +36,36 @@ typedef struct ExceptionName {
 static ExceptionName exception_names[] = {
     { 0x40010005, NULL, "Control-C" },
     { 0x40010008, NULL, "Control-Break" },
-    { EXCEPTION_DATATYPE_MISALIGNMENT, "EXCEPTION_DATATYPE_MISALIGNMENT", "Datatype Misalignment" },
-    { EXCEPTION_ACCESS_VIOLATION, "EXCEPTION_ACCESS_VIOLATION", "Access Violation" },
-    { EXCEPTION_IN_PAGE_ERROR, "EXCEPTION_IN_PAGE_ERROR", "In Page Error" },
-    { EXCEPTION_ILLEGAL_INSTRUCTION, "EXCEPTION_ILLEGAL_INSTRUCTION", "Illegal Instruction" },
-    { EXCEPTION_ARRAY_BOUNDS_EXCEEDED, "EXCEPTION_ARRAY_BOUNDS_EXCEEDED", "Array Bounds Exceeded" },
-    { EXCEPTION_FLT_DENORMAL_OPERAND, "EXCEPTION_FLT_DENORMAL_OPERAND", "Float Denormal Operand" },
-    { EXCEPTION_FLT_DIVIDE_BY_ZERO, "EXCEPTION_FLT_DIVIDE_BY_ZERO", "Float Divide by Zero" },
-    { EXCEPTION_FLT_INEXACT_RESULT, "EXCEPTION_FLT_INEXACT_RESULT", "Float Inexact Result" },
-    { EXCEPTION_FLT_INVALID_OPERATION, "EXCEPTION_FLT_INVALID_OPERATION", "Float Invalid Operation" },
-    { EXCEPTION_FLT_OVERFLOW, "EXCEPTION_FLT_OVERFLOW", "Float Overflow" },
-    { EXCEPTION_FLT_STACK_CHECK, "EXCEPTION_FLT_STACK_CHECK", "Float Stack Check" },
-    { EXCEPTION_FLT_UNDERFLOW, "EXCEPTION_FLT_UNDERFLOW", "Float Underflow" },
-    { EXCEPTION_NONCONTINUABLE_EXCEPTION, "EXCEPTION_NONCONTINUABLE_EXCEPTION", "Noncontinuable Exception" },
-    { EXCEPTION_INVALID_DISPOSITION, "EXCEPTION_INVALID_DISPOSITION", "Invalid Disposition" },
-    { EXCEPTION_INT_DIVIDE_BY_ZERO, "EXCEPTION_INT_DIVIDE_BY_ZERO", "Integer Divide by Zero" },
-    { EXCEPTION_INT_OVERFLOW, "EXCEPTION_INT_OVERFLOW", "Integer Overflow" },
-    { EXCEPTION_PRIV_INSTRUCTION, "EXCEPTION_PRIV_INSTRUCTION", "Privileged Instruction" },
-    { EXCEPTION_STACK_OVERFLOW, "EXCEPTION_STACK_OVERFLOW", "Stack Overflow" },
-    { EXCEPTION_GUARD_PAGE, "EXCEPTION_GUARD_PAGE", "Guard Page" },
-    { 0xC0000194, "EXCEPTION_POSSIBLE_DEADLOCK", "Possible Deadlock" },
-    { EXCEPTION_INVALID_HANDLE, "EXCEPTION_INVALID_HANDLE", "Invalid Handle" },
-    { 0xc0000017, NULL, "No Memory" },
+    { 0x80000001, "EXCEPTION_GUARD_PAGE", "Guard Page" },
+    { 0x80000002, "EXCEPTION_DATATYPE_MISALIGNMENT", "Datatype Misalignment" },
+    { 0xc0000005, "EXCEPTION_ACCESS_VIOLATION", "Access Violation" },
+    { 0xc0000006, "EXCEPTION_IN_PAGE_ERROR", "In Page Error" },
+    { 0xc0000008, "EXCEPTION_INVALID_HANDLE", "Invalid Handle" },
+    { 0xc0000017, NULL, "Not Enough Quota" },
+    { 0xc000001d, "EXCEPTION_ILLEGAL_INSTRUCTION", "Illegal Instruction" },
+    { 0xc0000025, "EXCEPTION_NONCONTINUABLE_EXCEPTION", "Noncontinuable Exception" },
+    { 0xc0000026, "EXCEPTION_INVALID_DISPOSITION", "Invalid Disposition" },
+    { 0xc000008c, "EXCEPTION_ARRAY_BOUNDS_EXCEEDED", "Array Bounds Exceeded" },
+    { 0xc000008d, "EXCEPTION_FLT_DENORMAL_OPERAND", "Float Denormal Operand" },
+    { 0xc000008e, "EXCEPTION_FLT_DIVIDE_BY_ZERO", "Float Divide by Zero" },
+    { 0xc000008f, "EXCEPTION_FLT_INEXACT_RESULT", "Float Inexact Result" },
+    { 0xc0000090, "EXCEPTION_FLT_INVALID_OPERATION", "Float Invalid Operation" },
+    { 0xc0000091, "EXCEPTION_FLT_OVERFLOW", "Float Overflow" },
+    { 0xc0000092, "EXCEPTION_FLT_STACK_CHECK", "Float Stack Check" },
+    { 0xc0000093, "EXCEPTION_FLT_UNDERFLOW", "Float Underflow" },
+    { 0xc0000094, "EXCEPTION_INT_DIVIDE_BY_ZERO", "Integer Divide by Zero" },
+    { 0xc0000095, "EXCEPTION_INT_OVERFLOW", "Integer Overflow" },
+    { 0xc0000096, "EXCEPTION_PRIV_INSTRUCTION", "Privileged Instruction" },
+    { 0xc00000fd, "EXCEPTION_STACK_OVERFLOW", "Stack Overflow" },
     { 0xc0000135, NULL, "DLL Not Found" },
+    { 0xc0000138, NULL, "Ordinal Not Found" },
+    { 0xc0000139, NULL, "Entry Point Not Found" },
     { 0xc0000142, NULL, "DLL Initialization Failed" },
+    { 0xc000014a, "STATUS_ILLEGAL_FLOAT_CONTEXT", "Floating-point hardware is not present" },
+    { 0xc0000194, "EXCEPTION_POSSIBLE_DEADLOCK", "Possible Deadlock" },
+    { 0xc00002b4, "STATUS_FLOAT_MULTIPLE_FAULTS", "Multiple floating-point faults" },
+    { 0xc00002b5, "STATUS_FLOAT_MULTIPLE_TRAPS", "Multiple floating-point traps" },
+    { 0xc00002c9, "STATUS_REG_NAT_CONSUMPTION", "Register NaT consumption faults" },
     { 0xc06d007e, NULL, "Module Not Found" },
     { 0xc06d007f, NULL, "Procedure Not Found" },
     { 0xe06d7363, NULL, "Microsoft C++ Exception" },
@@ -174,13 +181,29 @@ static SignalInfo * get_info(int signal) {
     static SignalInfo ** index = NULL;
     if (index_len == 0) {
         int i;
+#if defined(SIGRTMIN) && defined(SIGRTMAX)
+        index_len = SIGRTMAX + 1;
+#else
         for (i = 0; i < INFO_CNT; i++) {
             if (info[i].signal >= index_len) index_len = info[i].signal + 1;
         }
+#endif
         index = (SignalInfo **)loc_alloc_zero(sizeof(SignalInfo *) * index_len);
         for (i = 0; i < INFO_CNT; i++) {
             index[info[i].signal] = &info[i];
         }
+#if defined(SIGRTMIN) && defined(SIGRTMAX)
+        for (i = SIGRTMIN; i <= SIGRTMAX; i++) {
+            char buf[32];
+            SignalInfo * s = (SignalInfo *)loc_alloc_zero(sizeof(SignalInfo));
+            snprintf(buf, sizeof(buf), "SIGRTMIN+%d", i - SIGRTMIN);
+            s->name = loc_strdup(buf);
+            snprintf(buf, sizeof(buf), "Real-time Signal %d", i);
+            s->desc = loc_strdup(buf);
+            s->signal = i;
+            index[i] = s;
+        }
+#endif
     }
     if (signal < 0 || signal >= index_len) return NULL;
     return index[signal];
