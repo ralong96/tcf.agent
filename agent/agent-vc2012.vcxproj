@@ -265,6 +265,14 @@
     </Bscmake>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="machine\a64\tcf\cpudefs-mdep.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="machine\a64\tcf\disassembler-a64.c" />
+    <ClCompile Include="machine\a64\tcf\stack-crawl-a64.c" />
     <ClCompile Include="machine\arm\tcf\cpudefs-mdep.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
@@ -431,6 +439,11 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="machine\a64\tcf\cpudefs-mdep.h" />
+    <ClInclude Include="machine\a64\tcf\disassembler-a64.h" />
+    <ClInclude Include="machine\a64\tcf\dwarfreloc-mdep.h" />
+    <ClInclude Include="machine\a64\tcf\regset-mdep.h" />
+    <ClInclude Include="machine\a64\tcf\stack-crawl-a64.h" />
     <ClInclude Include="machine\arm\tcf\cpudefs-mdep.h" />
     <ClInclude Include="machine\arm\tcf\disassembler-arm.h" />
     <ClInclude Include="machine\arm\tcf\dwarfreloc-mdep.h" />

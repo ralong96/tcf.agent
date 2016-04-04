@@ -55,6 +55,9 @@
     <Filter Include="machine\ppc">
       <UniqueIdentifier>{ff538629-61f5-41bb-907c-975bcb6161f1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="machine\a64">
+      <UniqueIdentifier>{b9c11e60-65ff-4f7f-bf82-77d8dc3ed5c0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="tcf\framework\asyncreq.c">
@@ -353,6 +356,15 @@
     </ClCompile>
     <ClCompile Include="tcf\main\gdb-rsp.c">
       <Filter>main</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\a64\tcf\cpudefs-mdep.c">
+      <Filter>machine\a64</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\a64\tcf\disassembler-a64.c">
+      <Filter>machine\a64</Filter>
+    </ClCompile>
+    <ClCompile Include="machine\a64\tcf\stack-crawl-a64.c">
+      <Filter>machine\a64</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -674,6 +686,21 @@
     </ClInclude>
     <ClInclude Include="tcf\main\gdb-rsp.h">
       <Filter>main</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\cpudefs-mdep.h">
+      <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\disassembler-a64.h">
+      <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\dwarfreloc-mdep.h">
+      <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\regset-mdep.h">
+      <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="machine\a64\tcf\stack-crawl-a64.h">
+      <Filter>machine\a64</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
