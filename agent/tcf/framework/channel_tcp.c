@@ -1049,6 +1049,7 @@ static void tcp_server_accept_done(void * x) {
 
     if (si->sock < 0) {
         /* Server closed. */
+        loc_free(si->addr_buf);
         loc_free(si);
         return;
     }
@@ -1082,6 +1083,7 @@ static void server_close(ChannelServer * serv) {
         shutdown_set_stopped(&channel_shutdown);
     list_remove(&s->servlink);
     peer_server_free(s->serv.ps);
+    shutdown(s->sock, SHUT_RDWR);
     closesocket(s->sock);
     s->sock = -1;
     /* TODO: free server struct */
