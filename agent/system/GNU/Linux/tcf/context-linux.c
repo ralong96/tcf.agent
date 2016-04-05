@@ -700,7 +700,7 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
                     ctx, ctx->id, address, size);
         errno = EFAULT;
         return -1;
-    } 
+    }
     if (check_breakpoints_on_memory_write(ctx, address, buf, size) < 0) return -1;
     for (word_addr = address & ~((ContextAddress)word_size - 1); word_addr < address + size; word_addr += word_size) {
         unsigned long word = 0;
@@ -794,7 +794,7 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
                     ctx, ctx->id, address, size);
         errno = EFAULT;
         return -1;
-    } 
+    }
     for (word_addr = address & ~((ContextAddress)word_size - 1); word_addr < address + size; word_addr += word_size) {
         unsigned long word = 0;
         errno = 0;
