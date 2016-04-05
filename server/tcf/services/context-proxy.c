@@ -155,7 +155,7 @@ struct MemoryCache {
     AbstractCache cache;
     ErrorReport * error;
     ErrorAddress * errors_address;
-    int errors_address_cnt;
+    unsigned errors_address_cnt;
     ContextAddress addr;
     void * buf;
     size_t size;
@@ -390,6 +390,7 @@ static void free_memory_cache(MemoryCache * m) {
     if (m->pending == NULL) {
         release_error_report(m->error);
         cache_dispose(&m->cache);
+        loc_free(m->errors_address);
         loc_free(m->buf);
         loc_free(m);
     }
@@ -856,13 +857,12 @@ static void event_register_changed(Channel * channel, void * args) {
     json_test_char(peer->bck_inp, MARKER_EOM);
 
     {
-        int ix;
-
+        unsigned ix;
         for (ix = 0; ix < CTX_ID_HASH_SIZE; ix++) {
             LINK * h = peer->context_id_hash + ix;
             LINK * l = h->next;
             while (l != h) {
-                int jx;
+                unsigned jx;
                 ContextCache * ctx_cache = idhashl2ctx(l);
                 l = l->next;
                 if (ctx_cache->ctx->exited) continue;
@@ -1249,7 +1249,7 @@ static void cb_check_memory_error_struct(InputStream * inp, const char * name, v
 static void cb_check_memory_error_array(InputStream * inp, void * args) {
     MemoryCache * m = (MemoryCache *)args;
     m->errors_address_cnt++;
-    m->errors_address = loc_realloc(m->errors_address,
+    m->errors_address = (ErrorAddress *)loc_realloc(m->errors_address,
             sizeof(ErrorAddress) * m->errors_address_cnt);
     memset(m->errors_address + m->errors_address_cnt - 1, 0, sizeof(ErrorAddress));
     json_read_struct(inp, cb_check_memory_error_struct,
@@ -1312,12 +1312,11 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
             memcpy(buf, (int8_t *)m->buf + (address - m->addr), size);
             if (m->error != NULL && m->errors_address_cnt > 0) {
                 /* Check if the requested range is in a valid memory read */
-                int ix;
+                unsigned ix;
                 for (ix = 0; ix < m->errors_address_cnt; ix++) {
                     ErrorAddress * err_addr = m->errors_address + ix;
                     if (err_addr->stat != 0) continue;
-                    if (address >= err_addr->addr &&
-                            (address + size) <= (err_addr->addr + err_addr->size)) {
+                    if (address >= err_addr->addr && address - err_addr->addr + size <= err_addr->size) {
                         valid = 1;
                         break;
                     }
