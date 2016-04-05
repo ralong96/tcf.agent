@@ -651,9 +651,9 @@ void check_error_debug(const char * file, int line, int error) {
     trace(LOG_ALWAYS, "  Exiting agent...");
     if (log_file == stderr) exit(1);
 #endif
-    fprintf(stderr, "Fatal error %d: %s", error, errno_to_str(error));
-    fprintf(stderr, "  At %s:%d", file, line);
-    fprintf(stderr, "  Exiting agent...");
+    fprintf(stderr, "Fatal error %d: %s\n", error, errno_to_str(error));
+    fprintf(stderr, "  At %s:%d\n", file, line);
+    fprintf(stderr, "  Exiting agent...\n");
     exit(1);
 }
 
