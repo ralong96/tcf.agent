@@ -163,19 +163,17 @@ const char * register2id(Context * ctx, int frame, RegisterDefinition * reg) {
     return tmp_strdup(id);
 }
 
-int id2register(const char * id, Context ** ctx, int * frame, RegisterDefinition ** reg_def) {
-    int r = 0;
-
-    *ctx = NULL;
+int id2reg_num(const char * id, const char ** ctx_id, int * frame, unsigned * reg_num) {
+    *ctx_id = NULL;
     *frame = STACK_TOP_FRAME;
-    *reg_def = NULL;
+    *reg_num = 0;
     if (*id++ != 'R') {
         errno = ERR_INV_CONTEXT;
         return -1;
     }
     while (*id != '.' && *id != '@') {
         if (*id >= '0' && *id <= '9') {
-            r = r * 10 + (*id++ - '0');
+            *reg_num = *reg_num * 10 + (*id++ - '0');
         }
         else {
             errno = ERR_INV_CONTEXT;
@@ -197,7 +195,20 @@ int id2register(const char * id, Context ** ctx, int * frame, RegisterDefinition
         *frame = n;
     }
     id++;
-    *ctx = id2ctx(id);
+    *ctx_id = id;
+    return 0;
+}
+
+int id2register(const char * id, Context ** ctx, int * frame, RegisterDefinition ** reg_def) {
+    const char * ctx_id = NULL;
+    unsigned reg_num = 0;
+
+    *ctx = NULL;
+    *reg_def = NULL;
+
+    if (id2reg_num(id, &ctx_id, frame, &reg_num) < 0) return -1;
+
+    *ctx = id2ctx(ctx_id);
     if (*ctx == NULL) {
         errno = ERR_INV_CONTEXT;
         return -1;
@@ -206,7 +217,7 @@ int id2register(const char * id, Context ** ctx, int * frame, RegisterDefinition
         errno = ERR_ALREADY_EXITED;
         return -1;
     }
-    *reg_def = get_reg_definitions(*ctx) + r;
+    *reg_def = get_reg_definitions(*ctx) + reg_num;
     return 0;
 }
 

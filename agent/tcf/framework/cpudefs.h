@@ -280,6 +280,7 @@ extern int id2frame(const char * id, Context ** ctx, int * frame);
 extern const char * register2id(Context * ctx, int frame, RegisterDefinition * reg);
 
 /* Get register for TCF ID */
+extern int id2reg_num(const char * id, const char ** ctx_id, int * frame, unsigned * reg_num);
 extern int id2register(const char * id, Context ** ctx, int * frame, RegisterDefinition ** reg_def);
 
 /* Get breakpoint instruction code and size.

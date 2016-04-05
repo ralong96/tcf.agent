@@ -845,52 +845,63 @@ static void event_container_resumed(Channel * c, void * args) {
 }
 
 static void event_register_changed(Channel * channel, void * args) {
-    char * id;
+    char id[256];
     PeerCache * peer = (PeerCache *)args;
-    ContextCache * c = NULL;
 
     write_stringz(&peer->host->out, "E");
     write_stringz(&peer->host->out, REGISTERS);
     write_stringz(&peer->host->out, "registerChanged");
-    id = json_read_alloc_string(peer->bck_inp);
+    json_read_string(peer->bck_inp, id, sizeof(id));
     json_test_char(peer->bck_inp, MARKER_EOA);
     json_test_char(peer->bck_inp, MARKER_EOM);
 
-    {
-        unsigned ix;
-        for (ix = 0; ix < CTX_ID_HASH_SIZE; ix++) {
-            LINK * h = peer->context_id_hash + ix;
-            LINK * l = h->next;
-            while (l != h) {
-                unsigned jx;
-                ContextCache * ctx_cache = idhashl2ctx(l);
-                l = l->next;
-                if (ctx_cache->ctx->exited) continue;
-                if (ctx_cache->reg_props == NULL && ctx_cache->reg_defs == NULL) continue;
-                for (jx = 0; jx < ctx_cache->reg_max; jx++) {
-                    RegisterDefinition * r = ctx_cache->reg_defs + jx;
-                    if (r->name == NULL) continue;
-                    if (strcmp(ctx_cache->reg_props[jx].id, id) != 0) continue;
-                    c = ctx_cache;
-                    break;
-                }
-                if (c != NULL) break;
+    if (peer->rc_done) {
+        ContextCache * c = NULL;
+        const char * ctx_id = NULL;
+        int frame = STACK_TOP_FRAME;
+        unsigned reg_num = 0;
+
+        id2reg_num(id, &ctx_id, &frame, &reg_num);
+        if (ctx_id != NULL) c = find_context_cache(peer, ctx_id);
+
+        if (c != NULL) {
+            while (!list_is_empty(&c->stk_cache_list)) {
+                free_stack_frame_cache(ctx2stk(c->stk_cache_list.next));
             }
-            if (c != NULL) break;
         }
     }
+}
 
-    if (c != NULL) {
-        LINK * l;
-        l = c->stk_cache_list.next;
-        while (l != &c->stk_cache_list) {
-            StackFrameCache * f = ctx2stk(c->stk_cache_list.next);
-            l = l->next;
-            free_stack_frame_cache(f);
+static void read_memory_changed_struct(InputStream * inp, const char * name, void * args) {
+    ErrorAddress * addr = (ErrorAddress *)args;
+    if (strcmp(name, "addr") == 0) addr->addr = (ContextAddress)json_read_uint64(inp);
+    else if (strcmp(name, "size") == 0) addr->size = (ContextAddress)json_read_uint64(inp);
+    else json_skip_object(inp);
+}
+
+static void read_memory_changed_item(InputStream * inp, void * args) {
+    ContextCache * c = (ContextCache *)args;
+    ErrorAddress addr;
+    memset(&addr, 0, sizeof(ErrorAddress));
+    if (json_read_struct(inp, read_memory_changed_struct, &addr) && addr.size > 0 && c != NULL) {
+        LINK * x = context_root.next;
+        assert(*EXT(c->ctx) == c);
+        while (x != &context_root) {
+            Context * ctx = ctxl2ctxp(x);
+            if (ctx->mem == c->ctx->mem) {
+                ContextCache * ctx_cache = *EXT(ctx);
+                LINK * l = ctx_cache->mem_cache_list.next;
+                while (l != &ctx_cache->mem_cache_list) {
+                    MemoryCache * m = ctx2mem(ctx_cache->mem_cache_list.next);
+                    l = l->next;
+                    if (m->addr + m->size >= m->addr && m->addr + m->size <= addr.addr) continue;
+                    if (addr.addr + addr.size > addr.addr && addr.addr + addr.size <= m->addr) continue;
+                    free_memory_cache(m);
+                }
+            }
+            x = x->next;
         }
     }
-
-    loc_free(id);
 }
 
 static void event_memory_changed(Channel * channel, void * args) {
@@ -903,33 +914,13 @@ static void event_memory_changed(Channel * channel, void * args) {
     write_stringz(&peer->host->out, "memoryChanged");
     json_read_string(peer->bck_inp, id, sizeof(id));
     json_test_char(peer->bck_inp, MARKER_EOA);
-    /* <array of address ranges> */
-    json_read_object(peer->bck_inp);
+    if (peer->rc_done) {
+        c = find_context_cache(peer, id);
+        if (c == NULL) trace(LOG_ALWAYS, "Invalid ID in 'memory changed' event: %s", id);
+    }
+    json_read_array(peer->bck_inp, read_memory_changed_item, c);
     json_test_char(peer->bck_inp, MARKER_EOA);
     json_test_char(peer->bck_inp, MARKER_EOM);
-
-    c = find_context_cache(peer, id);
-    if (c != NULL && peer->rc_done) {
-        LINK * x = context_root.next;
-        assert(*EXT(c->ctx) == c);
-        while (x != &context_root) {
-            Context * ctx = ctxl2ctxp(x);
-            if (ctx->mem == c->ctx->mem) {
-                LINK * l;
-                ContextCache * ctx_cache = *EXT(ctx);
-                l = ctx_cache->mem_cache_list.next;
-                while (l != &ctx_cache->mem_cache_list) {
-                    MemoryCache * m = ctx2mem(ctx_cache->mem_cache_list.next);
-                    l = l->next;
-                    free_memory_cache(m);
-                }
-            }
-            x = x->next;
-        }
-    }
-    else if (peer->rc_done) {
-        trace(LOG_ALWAYS, "Invalid ID in 'memory changed' event: %s", id);
-    }
 }
 
 static void event_memory_map_changed(Channel * c, void * args) {
