@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <signal.h>
+#include <tcf/framework/mdep-threads.h>
 #include <tcf/framework/asyncreq.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/errors.h>
@@ -124,19 +125,27 @@ static void shutdown_event(void * args) {
 
 static void signal_handler(int sig) {
     SIGNAL_HANDLER_HOOK;
-    if (is_dispatch_thread()) {
-        if (sig == SIGTERM) {
-            exit_event_loop();
-        }
-        else {
-            signal(sig, SIG_DFL);
-            raise(sig);
-        }
+    if (sig == SIGTERM) {
+        exit_event_loop();
+    }
+    else if (is_dispatch_thread()) {
+        signal(sig, SIG_DFL);
+        raise(sig);
     }
     else {
         post_event(shutdown_event, NULL);
     }
 }
+
+#if defined(_POSIX_C_SOURCE)
+static void * signal_handler_thread(void * arg) {
+    int sig  = 0;
+    sigset_t * set = arg;
+    sigwait(set, &sig);
+    exit_event_loop();
+    return NULL;
+}
+#endif
 
 #if defined(_WIN32) || defined(__CYGWIN__)
 static LONG NTAPI VectoredExceptionHandler(PEXCEPTION_POINTERS x) {
@@ -160,12 +169,32 @@ static BOOL CtrlHandler(DWORD ctrl) {
     case CTRL_CLOSE_EVENT:
     case CTRL_BREAK_EVENT:
     case CTRL_SHUTDOWN_EVENT:
-        post_event(shutdown_event, NULL);
+        exit_event_loop();
         return TRUE;
     }
     return FALSE;
 }
 #endif
+
+static void ini_signal_handlers(void) {
+#if defined(_POSIX_C_SOURCE)
+    pthread_t thread;
+    static sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGTERM);
+    if (sigprocmask(SIG_BLOCK, &set, NULL) < 0) check_error(errno);
+    check_error(pthread_create(&thread, NULL, &signal_handler_thread, (void *)&set));
+#else
+    signal(SIGTERM, signal_handler);
+#endif
+    signal(SIGABRT, signal_handler);
+    signal(SIGILL, signal_handler);
+    signal(SIGINT, signal_handler);
+#if defined(_WIN32) || defined(__CYGWIN__)
+    SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
+    AddVectoredExceptionHandler(1, VectoredExceptionHandler);
+#endif
+}
 
 #endif /* ENABLE_SignalHandlers */
 
@@ -243,6 +272,10 @@ int main(int argc, char ** argv) {
     ini_events_queue();
     ini_asyncreq();
     PRE_THREADING_HOOK;
+
+#if ENABLE_SignalHandlers
+    ini_signal_handlers();
+#endif
 
 #if defined(_WRS_KERNEL)
 
@@ -418,17 +451,6 @@ int main(int argc, char ** argv) {
 #if !defined(_WRS_KERNEL)
     if (daemon) close_out_and_err();
 #endif
-
-#if ENABLE_SignalHandlers
-    signal(SIGABRT, signal_handler);
-    signal(SIGILL, signal_handler);
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-#if defined(_WIN32) || defined(__CYGWIN__)
-    SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
-    AddVectoredExceptionHandler(1, VectoredExceptionHandler);
-#endif
-#endif /* ENABLE_SignalHandlers */
 
     if (idle_timeout != 0) {
         add_channel_close_listener(channel_closed);
