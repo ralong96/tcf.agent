@@ -140,7 +140,7 @@ static void signal_handler(int sig) {
 #if defined(_POSIX_C_SOURCE)
 static void * signal_handler_thread(void * arg) {
     int sig  = 0;
-    sigset_t * set = arg;
+    sigset_t * set = (sigset_t *)arg;
     sigwait(set, &sig);
     exit_event_loop();
     return NULL;
