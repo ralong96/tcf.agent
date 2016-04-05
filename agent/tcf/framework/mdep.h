@@ -94,6 +94,7 @@
   #elif defined(_WIN32)
    typedef long ssize_t;
   #endif
+#  define PRIu64 "I64u"
 #  define PRId64 "I64d"
 #  define PRIX64 "I64X"
 #  define SCNx64 "I64x"
@@ -138,6 +139,7 @@ typedef unsigned int useconds_t;
 #  define __x86_64__
 #endif
 #define strcasecmp(x,y) stricmp(x,y)
+#define strncasecmp(x,y,z) strnicmp(x,y,z)
 #if defined(USE_WINDOWS_SCHED_H)
 #  include <windows/sched.h>
 #else

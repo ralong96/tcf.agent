@@ -80,6 +80,9 @@ extern int wsa_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *excep
 #ifndef SHUT_WR
 #define SHUT_WR SD_SEND
 #endif
+#ifndef SHUT_RDWR
+#define SHUT_RDWR SD_BOTH
+#endif
 
 #define loc_freeaddrinfo freeaddrinfo
 #define loc_getaddrinfo getaddrinfo
