@@ -125,7 +125,7 @@ static void shutdown_event(void * args) {
 
 static void signal_handler(int sig) {
     SIGNAL_HANDLER_HOOK;
-    if (sig == SIGTERM) {
+    if (sig == SIGINT || sig == SIGTERM) {
         exit_event_loop();
     }
     else if (is_dispatch_thread()) {
@@ -181,15 +181,16 @@ static void ini_signal_handlers(void) {
     pthread_t thread;
     static sigset_t set;
     sigemptyset(&set);
+    sigaddset(&set, SIGINT);
     sigaddset(&set, SIGTERM);
     if (sigprocmask(SIG_BLOCK, &set, NULL) < 0) check_error(errno);
     check_error(pthread_create(&thread, NULL, &signal_handler_thread, (void *)&set));
 #else
+    signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 #endif
     signal(SIGABRT, signal_handler);
     signal(SIGILL, signal_handler);
-    signal(SIGINT, signal_handler);
 #if defined(_WIN32) || defined(__CYGWIN__)
     SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
     AddVectoredExceptionHandler(1, VectoredExceptionHandler);
@@ -467,5 +468,6 @@ int main(int argc, char ** argv) {
     plugins_destroy();
 #endif /* ENABLE_Plugins */
 
+    fprintf(stderr, "\n");
     return 0;
 }
