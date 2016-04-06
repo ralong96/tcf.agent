@@ -205,9 +205,6 @@ static const char * help_text[] = {
 #if ENABLE_Cmdline
     "  -i               run in interactive mode",
 #endif
-#if ENABLE_RCBP_TEST
-    "  -t               run in diagnostic mode",
-#endif
     "  -L<file>         enable logging, use -L- to send log to stderr",
 #if ENABLE_Trace
     "  -l<level>        set log level, the level is comma separated list of:",
@@ -263,8 +260,8 @@ int main(int argc, char ** argv) {
     int interactive = 0;
     int print_server_properties = 0;
     const char * url = DEFAULT_SERVER_URL;
-    Protocol * proto;
     TCFBroadcastGroup * bcg;
+    Protocol * proto;
 
     PRE_INIT_HOOK;
     ini_mdep();
@@ -272,6 +269,17 @@ int main(int argc, char ** argv) {
     ini_events_queue();
     ini_asyncreq();
     PRE_THREADING_HOOK;
+
+#if ENABLE_RCBP_TEST
+    for (ind = 1; ind < argc; ind++) {
+        char * s = argv[ind];
+        if (*s++ != '-') break;
+        if (*s++ == 't') {
+            test_proc();
+            exit(0);
+        }
+    }
+#endif
 
 #if ENABLE_SignalHandlers
     ini_signal_handlers();
@@ -295,13 +303,6 @@ int main(int argc, char ** argv) {
             switch (c) {
             case 'i':
                 interactive = 1;
-                break;
-
-            case 't':
-#if ENABLE_RCBP_TEST
-                test_proc();
-#endif
-                exit(0);
                 break;
 
             case 'd':
