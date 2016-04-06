@@ -1002,7 +1002,11 @@ Context * context_get_group(Context * ctx, int group) {
     static Context * cpu_group = NULL;
     switch (group) {
     case CONTEXT_GROUP_INTERCEPT:
+#if defined(ENABLE_AllStopMode) && ENABLE_AllStopMode
+        return ctx->mem;
+#else
         return ctx;
+#endif
     case CONTEXT_GROUP_CPU:
         if (cpu_group == NULL) {
             cpu_group = create_context("CPU");

@@ -328,4 +328,8 @@
 #  define ENABLE_GdbRemoteSerialProtocol (ENABLE_DebugContext && SERVICE_RunControl && SERVICE_Breakpoints && SERVICE_Registers)
 #endif
 
+#if !defined(ENABLE_AllStopMode)
+#  define ENABLE_AllStopMode 0
+#endif
+
 #endif /* D_config */
