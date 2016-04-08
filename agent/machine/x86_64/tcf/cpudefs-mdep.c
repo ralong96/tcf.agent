@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014-2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1327,33 +1327,34 @@ int cpu_bp_on_resume(Context * ctx, int * single_step) {
 }
 
 int cpu_bp_on_suspend(Context * ctx, int * triggered) {
-    int cb_found = 0;
+    unsigned cb_cnt = 0;
     uint8_t dr6 = 0;
 
     if (ctx->exiting) return 0;
     if (context_read_reg(ctx, get_DR_definition(6), 0, sizeof(dr6), &dr6) < 0) return -1;
 
     if (dr6 & 0xfu) {
-        int i, j = 0;
+        int i;
         ContextExtensionX86 * ext = EXT(ctx);
         ContextExtensionX86 * bps = EXT(context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
         for (i = 0; i < MAX_HW_BPS; i++) {
             if (dr6 & ((uint32_t)1 << i)) {
                 ContextBreakpoint * bp = bps->hw_bps[i];
                 if (bp == NULL) continue;
-                cb_found = 1;
                 if (bp->access_types == (CTX_BP_ACCESS_DATA_READ | CTX_BP_ACCESS_VIRTUAL)) {
                     if (skip_read_only_breakpoint(ctx, dr6, bp)) continue;
                 }
-                ctx->stopped_by_cb = ext->triggered_hw_bps;
-                ctx->stopped_by_cb[j++] = bp;
-                ctx->stopped_by_cb[j] = NULL;
+                ext->triggered_hw_bps[cb_cnt++] = bp;
             }
         }
         dr6 = 0;
         if (context_write_reg(ctx, get_DR_definition(6), 0, sizeof(dr6), &dr6) < 0) return -1;
+        if (cb_cnt > 0) {
+            ctx->stopped_by_cb = ext->triggered_hw_bps;
+            ctx->stopped_by_cb[cb_cnt] = NULL;
+        }
     }
-    *triggered = cb_found;
+    *triggered = cb_cnt > 0;
     return 0;
 }
 

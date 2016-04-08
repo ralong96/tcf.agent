@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2015 Stanislav Yakovlev and others.
+ * Copyright (c) 2013, 2016 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -32,6 +32,7 @@
 #  include <sys/auxv.h>
 #  include <asm/hwcap.h>
 #endif
+#include <sys/ptrace.h>
 #include <tcf/framework/errors.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
@@ -87,8 +88,6 @@ static RegisterDefinition * pc_def = NULL;
 static RegisterDefinition * lr_def = NULL;
 static RegisterDefinition * cpsr_def = NULL;
 
-#include <sys/ptrace.h>
-
 #if !defined(PTRACE_GETHBPREGS)
 #define PTRACE_GETHBPREGS (enum __ptrace_request)29
 #endif
@@ -125,6 +124,8 @@ typedef struct ContextExtensionARM {
     ContextBreakpoint * hw_bps[MAX_HW_BPS];
     unsigned hw_bps_generation;
 
+    ContextAddress skip_wp_addr;
+    unsigned skip_wp_set;
     unsigned armed;
 #endif
 } ContextExtensionARM;
@@ -169,10 +170,18 @@ static int read_reg(Context *ctx, RegisterDefinition * def, size_t size, Context
 
 static void clear_bp(ContextBreakpoint * bp) {
     unsigned i;
-    Context * ctx = bp->ctx;
-    ContextExtensionARM * bps = EXT(ctx);
+    ContextExtensionARM * bps = EXT(bp->ctx);
     for (i = 0; i < MAX_HW_BPS; i++) {
-        if (bps->hw_bps[i] == bp) bps->hw_bps[i] = NULL;
+        if (bps->hw_bps[i] == bp) {
+            LINK * l;
+            bps->hw_bps[i] = NULL;
+            for (l = context_root.next; l != &context_root; l = l->next) {
+                Context * ctx = ctxl2ctxp(l);
+                if (bp->ctx == context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT)) {
+                    EXT(ctx)->skip_wp_set &= ~(1u << i);
+                }
+            }
+        }
     }
 }
 
@@ -196,17 +205,6 @@ static int get_bp_info(Context * ctx) {
     if (bps->wp_cnt > MAX_HWP) bps->wp_cnt = MAX_HWP;
     if (bps->bp_cnt > MAX_HBP) bps->bp_cnt = MAX_HBP;
     bps->info_ok = 1;
-    return 0;
-}
-
-static int is_triggered(Context * ctx, ContextBreakpoint * cb) {
-    if (ctx->stopped_by_cb != NULL) {
-        unsigned i = 0;
-        while (ctx->stopped_by_cb[i] != NULL) {
-            if (ctx->stopped_by_cb[i] == cb) return 1;
-            i++;
-        }
-    }
     return 0;
 }
 
@@ -245,7 +243,7 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                 /* Skipping the breakpoint */
                 *step_over_hw_bp = 1;
             }
-            else if (bps->arch >= ARM_DEBUG_ARCH_V7_ECP14 && i >= bps->bp_cnt && is_triggered(ctx, cb)) {
+            else if (bps->arch >= ARM_DEBUG_ARCH_V7_ECP14 && (ext->skip_wp_set & (1u << i))) {
                 /* Skipping the watchpoint */
                 *step_over_hw_bp = 1;
             }
@@ -303,8 +301,10 @@ static int enable_hw_stepping_mode(Context * ctx, int mode) {
 
 static int disable_hw_stepping_mode(Context * ctx) {
     ContextExtensionARM * ext = EXT(ctx);
-    ext->hw_stepping = 0;
-    ext->hw_bps_regs_generation--;
+    if (ext->hw_stepping) {
+        ext->hw_stepping = 0;
+        ext->hw_bps_regs_generation--;
+    }
     return 0;
 }
 
@@ -395,45 +395,52 @@ int cpu_bp_on_suspend(Context * ctx, int * triggered) {
     unsigned cb_cnt = 0;
     ContextExtensionARM * ext = EXT(ctx);
     ContextExtensionARM * bps = EXT(context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT));
-    int i;
 
     if (ctx->exiting) return 0;
 
-    if (bps->bp_cnt > 0) {
+    if (bps->bp_cnt > 0 || bps->wp_cnt > 0) {
+        int i;
         ContextAddress pc = 0;
-        if (read_reg(ctx, pc_def, pc_def->size, &pc) < 0) return -1;
-        for (i = 0; i < bps->bp_cnt; i++) {
-            ContextBreakpoint * cb = bps->hw_bps[i];
-            if (cb != NULL && cb->address == pc && (ext->armed & (1u << i))) {
-                ext->triggered_hw_bps[cb_cnt++] = cb;
-            }
-        }
-    }
 
-    if (bps->wp_cnt > 0) {
-        siginfo_t siginfo;
-        pid_t pid = id2pid(ctx->id, NULL);
-        if (ptrace(PTRACE_GETSIGINFO, pid, 0, &siginfo) < 0) return -1;
-        if (siginfo.si_signo == SIGTRAP && (siginfo.si_code & 0xffff) == 0x0004 && siginfo.si_errno < 0) {
-            /* Watchpoint */
-            for (i = bps->bp_cnt; i < bps->bp_cnt + bps->wp_cnt; i++) {
+        if (read_reg(ctx, pc_def, pc_def->size, &pc) < 0) return -1;
+        if (ext->skip_wp_addr != pc) ext->skip_wp_set = 0;
+
+        if (bps->bp_cnt > 0) {
+            for (i = 0; i < bps->bp_cnt; i++) {
                 ContextBreakpoint * cb = bps->hw_bps[i];
-                if (cb != NULL && (ext->armed & (1u << i))) {
-                    if (bps->wp_cnt > 1) {
-                        ContextAddress addr = (ContextAddress)siginfo.si_addr;
-                        if (addr < cb->address || addr >= cb->address + cb->length) continue;
-                    }
+                if (cb != NULL && cb->address == pc && (ext->armed & (1u << i))) {
                     ext->triggered_hw_bps[cb_cnt++] = cb;
                 }
             }
         }
+
+        if (bps->wp_cnt > 0) {
+            siginfo_t siginfo;
+            pid_t pid = id2pid(ctx->id, NULL);
+            if (ptrace(PTRACE_GETSIGINFO, pid, 0, &siginfo) < 0) return -1;
+            if (siginfo.si_signo == SIGTRAP && (siginfo.si_code & 0xffff) == 0x0004 && siginfo.si_errno < 0) {
+                /* Watchpoint */
+                for (i = bps->bp_cnt; i < bps->bp_cnt + bps->wp_cnt; i++) {
+                    ContextBreakpoint * cb = bps->hw_bps[i];
+                    if (cb != NULL && (ext->armed & (1u << i))) {
+                        if (bps->wp_cnt > 1) {
+                            ContextAddress addr = (ContextAddress)siginfo.si_addr;
+                            if (addr < cb->address || addr >= cb->address + cb->length) continue;
+                        }
+                        ext->triggered_hw_bps[cb_cnt++] = cb;
+                        ext->skip_wp_set |= 1u << i;
+                        ext->skip_wp_addr = pc;
+                    }
+                }
+            }
+        }
+        if (cb_cnt > 0) {
+            ctx->stopped_by_cb = ext->triggered_hw_bps;
+            ctx->stopped_by_cb[cb_cnt] = NULL;
+        }
     }
 
     *triggered = cb_cnt > 0;
-    if (cb_cnt > 0) {
-        ctx->stopped_by_cb = ext->triggered_hw_bps;
-        ctx->stopped_by_cb[cb_cnt] = NULL;
-    }
     return 0;
 }
 
@@ -1001,8 +1008,8 @@ static void ini_reg_defs(void) {
 }
 
 void ini_cpudefs_mdep(void) {
-    ini_reg_defs();
     context_extension_offset = context_extension(sizeof(ContextExtensionARM));
+    ini_reg_defs();
 }
 
 #endif
