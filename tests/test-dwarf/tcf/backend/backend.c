@@ -794,7 +794,6 @@ static void loc_var_func(void * args, Symbol * sym) {
     int type_class = 0;
     Symbol * type = NULL;
     Symbol * index_type = NULL;
-    Symbol * base_type = NULL;
     int cpp_ref = 0; /* '1' if the symbol is C++ reference */
     int indirect = 0;
     int ref_size_ok = 0;
@@ -1158,6 +1157,7 @@ static void loc_var_func(void * args, Symbol * sym) {
     if (type != NULL) {
         int type_sym_class = 0;
         int type_type_class = 0;
+        Symbol * base_type = NULL;
         Symbol * org_type = NULL;
         Symbol * type_container = NULL;
         int container_class = 0;
@@ -1375,6 +1375,16 @@ static void loc_var_func(void * args, Symbol * sym) {
             if (length != org_length) {
                 errno = ERR_OTHER;
                 error("Invalid length of typedef");
+            }
+        }
+        else if (length > 0 && size_ok) {
+            ContextAddress base_type_size = 0;
+            if (get_symbol_size(base_type, &base_type_size) < 0) {
+                error_sym("get_symbol_size", base_type);
+            }
+            if (base_type_size * length > size) {
+                errno = ERR_OTHER;
+                error("Invalid size of base type");
             }
         }
         if (get_symbol_lower_bound(sym, &lower_bound) < 0) {
@@ -1929,6 +1939,33 @@ static void next_region(void) {
             }
             else {
                 error("get_dwarf_stack_frame_info 1");
+            }
+        }
+
+        if (unit_range != NULL) {
+            static char unit_id[256];
+            const char * unit_name = unit_range->mUnit->mObject->mName;
+            Symbol * unit_sym = NULL;
+            if (unit_name != NULL) {
+                if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, pc, unit_name, &unit_sym) < 0) {
+                    error("find_symbol_by_name");
+                }
+                if (unit_sym == NULL) {
+                    errno = set_errno(ERR_OTHER, "Cannot find compilation unit by name");
+                    error("find_symbol_by_name");
+                }
+                if (strcmp(unit_id, symbol2id(unit_sym)) != 0) {
+                    int i;
+                    int count = 0;
+                    Symbol ** children = NULL;
+                    strlcpy(unit_id, symbol2id(unit_sym), sizeof(unit_id));
+                    if (get_symbol_children(unit_sym, &children, &count) < 0) {
+                        error_sym("get_symbol_children", unit_sym);
+                    }
+                    for (i = 0; i < count; i++) {
+                        loc_var_func(unit_range, children[i]);
+                    }
+                }
             }
         }
 

@@ -389,10 +389,10 @@ static int is_frame_based_object(Symbol * sym) {
 
     switch (sym->sym_class) {
     case SYM_CLASS_VALUE:
+        return 0;
     case SYM_CLASS_BLOCK:
     case SYM_CLASS_NAMESPACE:
     case SYM_CLASS_COMP_UNIT:
-        return 0;
     case SYM_CLASS_FUNCTION:
         /* Keep frame reference to allow get_symbol_children() to return
          * frame-based symbols for parameters and local vars */
@@ -3501,7 +3501,7 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
         return 0;
     }
     if (unpack(sym) < 0) return -1;
-    if (obj != NULL && obj->mTag != TAG_variant_part && obj->mTag != TAG_variant) {
+    if (obj != NULL && obj->mTag != TAG_variant_part && obj->mTag != TAG_variant && obj->mTag != TAG_compile_unit) {
         obj = get_original_type(obj);
     }
     if (obj != NULL) {
