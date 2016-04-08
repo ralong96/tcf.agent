@@ -271,6 +271,7 @@ int main(int argc, char ** argv) {
     ini_asyncreq();
     PRE_THREADING_HOOK;
 
+#if !defined(_WRS_KERNEL)
 #if ENABLE_RCBP_TEST
     for (ind = 1; ind < argc; ind++) {
         char * s = argv[ind];
@@ -280,6 +281,7 @@ int main(int argc, char ** argv) {
             exit(0);
         }
     }
+#endif
 #endif
 
 #if ENABLE_SignalHandlers
