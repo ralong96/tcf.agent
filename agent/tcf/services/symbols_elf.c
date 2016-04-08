@@ -2642,7 +2642,7 @@ static U8_T read_string_length(ObjectInfo * obj);
 static int get_object_size(ObjectInfo * ref, ObjectInfo * obj, unsigned dimension, U8_T * byte_size, U8_T * bit_size) {
     U8_T n = 0, m = 0;
     obj = find_definition(obj);
-    if (obj->mTag != TAG_string_type) {
+    if (obj->mTag != TAG_string_type && dimension == 0) {
         if (get_variable_num_prop(ref, obj, AT_byte_size, &n)) {
             *byte_size = n;
             return 1;
