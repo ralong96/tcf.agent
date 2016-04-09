@@ -173,14 +173,7 @@ static void clear_bp(ContextBreakpoint * bp) {
     ContextExtensionARM * bps = EXT(bp->ctx);
     for (i = 0; i < MAX_HW_BPS; i++) {
         if (bps->hw_bps[i] == bp) {
-            LINK * l;
             bps->hw_bps[i] = NULL;
-            for (l = context_root.next; l != &context_root; l = l->next) {
-                Context * ctx = ctxl2ctxp(l);
-                if (bp->ctx == context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT)) {
-                    EXT(ctx)->skip_wp_set &= ~(1u << i);
-                }
-            }
         }
     }
 }
@@ -245,6 +238,7 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
             }
             else if (bps->arch >= ARM_DEBUG_ARCH_V7_ECP14 && (ext->skip_wp_set & (1u << i))) {
                 /* Skipping the watchpoint */
+                assert(i >= bps->bp_cnt);
                 *step_over_hw_bp = 1;
             }
             else {
