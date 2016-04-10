@@ -824,6 +824,7 @@ static void loc_var_func(void * args, Symbol * sym) {
     }
     if (name != NULL) {
         int found_next = 0;
+        int search_in_scope = 0;
         Symbol * find_sym = NULL;
         name = tmp_strdup(name);
         if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, name, &find_sym) < 0) {
@@ -846,6 +847,14 @@ static void loc_var_func(void * args, Symbol * sym) {
             }
         }
         if (get_symbol_object(sym) != NULL && symcmp(sym, find_sym) != 0) {
+            ObjectInfo * obj = get_symbol_object(sym);
+            if (unit_range == NULL) search_in_scope = 0;
+            else if (unit_range->mUnit != obj->mCompUnit) search_in_scope = 0;
+            else if (obj->mFlags & DOIF_pub_mark) search_in_scope = 0;
+            else if (obj == get_symbol_object(find_sym)) search_in_scope = 0;
+            else search_in_scope = 1;
+        }
+        if (search_in_scope) {
             /* 'sym' is eclipsed in the current scope by a nested declaration */
             Symbol * find_container = NULL;
             if (!found_next) {
@@ -940,15 +949,23 @@ static void loc_var_func(void * args, Symbol * sym) {
         assert(loc_info->value_cmds.cnt > 0);
         assert(loc_info->code_size == 0 || (loc_info->code_addr <= pc && loc_info->code_addr + loc_info->code_size > pc));
         if (set_trap(&trap)) {
+            uint64_t loc_addr = 0;
             loc_state = evaluate_location_expression(elf_ctx, frame_info,
                 loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, NULL, 0);
             if (loc_state->stk_pos == 1) {
-                if (loc_state->stk[0] != addr) str_fmt_exception(ERR_OTHER,
-                    "ID 0x%" PRIX64 ": invalid location expression result 0x%" PRIX64 " != 0x%" PRIX64,
-                    get_symbol_object(sym)->mID, loc_state->stk[0], addr);
+                loc_addr = loc_state->stk[0];
+                addr_ok = 1;
+            }
+            else if (loc_state->pieces_cnt == 1 &&
+                    loc_state->pieces->implicit_pointer == 0 && loc_state->pieces->optimized_away == 0 &&
+                    loc_state->pieces->reg == NULL && loc_state->pieces->value == NULL && loc_state->pieces->bit_offs == 0) {
+                loc_addr = loc_state->pieces->addr;
                 addr_ok = 1;
             }
             clear_trap(&trap);
+            if (addr_ok && loc_addr != addr) str_fmt_exception(ERR_OTHER,
+                "ID 0x%" PRIX64 ": invalid location expression result 0x%" PRIX64 " != 0x%" PRIX64,
+                get_symbol_object(sym)->mID, loc_addr, addr);
         }
         else {
             error("evaluate_location_expression");
@@ -989,27 +1006,21 @@ static void loc_var_func(void * args, Symbol * sym) {
             /* Comp unit with code ranges */
             ok = 1;
         }
-        if (!ok && obj->mTag == TAG_subprogram && (obj->mFlags & DOIF_declaration) != 0) {
-            ok = 1;
-        }
         if (!ok && symbol_class == SYM_CLASS_REFERENCE && addr_ok && type == NULL && name == NULL) {
             /* GCC C++ 4.1 produces entries like this */
             ok = 1;
         }
-        if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-            if (errcmp(err, "No object location info found in DWARF") == 0) ok = 1;
-        }
-        if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-            if (errcmp(err, "Object does not have memory address") == 0) ok = 1;
-        }
-        if (!ok && obj != NULL && obj->mCompUnit->mLanguage == LANG_ADA95) {
-            if (errcmp(err, "Cannot get object address: the object is located in a register") == 0) ok = 1;
-        }
-        if (!ok && obj != NULL && type_class == TYPE_CLASS_ARRAY) {
+        if (!ok && type_class == TYPE_CLASS_ARRAY) {
             if (errcmp(err, "Cannot get array upper bound. No object location info found") == 0) ok = 1;
         }
-        if (!ok && obj != NULL && obj->mTag == TAG_dwarf_procedure) {
-            ok = 1;
+        if (!ok && obj != NULL) {
+            if (!ok && obj->mTag == TAG_dwarf_procedure) ok = 1;
+            if (!ok && obj->mTag == TAG_subprogram) ok = 1;
+            if (obj->mCompUnit->mLanguage == LANG_ADA95) {
+                if (!ok && errcmp(err, "No object location info found in DWARF") == 0) ok = 1;
+                if (!ok && errcmp(err, "Object does not have memory address") == 0) ok = 1;
+                if (!ok && errcmp(err, "Cannot get object address: the object is located in a register") == 0) ok = 1;
+            }
         }
         if (!ok) {
             errno = err;
@@ -1041,7 +1052,13 @@ static void loc_var_func(void * args, Symbol * sym) {
     if (get_symbol_frame(sym, &ctx, &frame) < 0) {
         error_sym("get_symbol_frame", sym);
     }
-    if (symbol_class != SYM_CLASS_COMP_UNIT && size_ok && (!cpp_ref || ref_size_ok)) {
+    if (size_ok &&
+            (!cpp_ref || ref_size_ok) &&
+            (symbol_class == SYM_CLASS_VALUE ||
+            symbol_class == SYM_CLASS_REFERENCE ||
+            symbol_class == SYM_CLASS_FUNCTION ||
+            symbol_class == SYM_CLASS_VARIANT_PART ||
+            symbol_class == SYM_CLASS_VARIANT)) {
         Value v;
         char expr[300];
         RegisterDefinition * reg = NULL;
@@ -1107,49 +1124,54 @@ static void loc_var_func(void * args, Symbol * sym) {
             }
         }
     }
-    if (name != NULL) {
+    if (name != NULL && !cpp_ref &&
+            (symbol_class == SYM_CLASS_VALUE ||
+            symbol_class == SYM_CLASS_REFERENCE ||
+            symbol_class == SYM_CLASS_FUNCTION ||
+            symbol_class == SYM_CLASS_VARIANT_PART ||
+            symbol_class == SYM_CLASS_VARIANT)) {
         Symbol * find_sym = NULL;
-        if (find_symbol_by_name(elf_ctx, frame, pc, name, &find_sym) == 0 &&
-                symcmp(sym, find_sym) == 0 &&
-                symbol_class != SYM_CLASS_COMP_UNIT &&
-                !cpp_ref) {
+        if (find_symbol_by_name(elf_ctx, frame, pc, name, &find_sym) == 0 && symcmp(sym, find_sym) == 0) {
             Value v;
+            unsigned p = 0;
+            ContextAddress a0 = addr;
             char * expr = (char *)tmp_alloc(strlen(name) + 300);
-            if (size_ok) {
-                sprintf(expr, "$\"%s\"", esc(name));
+            if (!elf_file->elf64) a0 &= 0xffffffffu;
+            sprintf(expr, "$\"%s\"", esc(name));
+            if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
+                if (addr_ok && size_ok) error_sym("evaluate_expression", sym);
+            }
+            for (p = 0; p < 2; p++) {
+                ContextAddress a1 = 0;
+                switch (p) {
+                case 0:
+                    sprintf(expr, "&$\"%s\"", esc(name));
+                    break;
+                case 1:
+                    if (sym_container == NULL) continue;
+                    if (find_symbol_in_scope(elf_ctx, frame, pc, sym_container, name, &find_sym) < 0) continue;
+                    if (symcmp(sym, find_sym) != 0) continue;
+                    sprintf(expr, "&${%s}::$\"%s\"", symbol2id(sym_container), esc(name));
+                    break;
+                }
                 if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
+                    if (!addr_ok) continue;
                     error_sym("evaluate_expression", sym);
                 }
-            }
-            if (addr_ok) {
-                unsigned p = 0;
-                ContextAddress a0 = addr;
-                if (!elf_file->elf64) a0 &= 0xffffffffu;
-                for (p = 0; p < 2; p++) {
-                    ContextAddress a1 = 0;
-                    switch (p) {
-                    case 0:
-                        sprintf(expr, "&$\"%s\"", esc(name));
-                        break;
-                    case 1:
-                        if (unit_range == NULL) continue;
-                        sprintf(expr, "&${%s}::$\"%s\"", symbol2id(sym_container), esc(name));
-                        break;
-                    }
-                    if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
-                        error_sym("evaluate_expression", sym);
-                    }
-                    if (v.size != (elf_file->elf64 ? 8 : 4)) {
-                        errno = ERR_INV_ADDRESS;
-                        error_sym("evaluate_expression", sym);
-                    }
-                    if (value_to_address(&v, &a1) < 0) {
-                        error_sym("value_to_address", sym);
-                    }
-                    if (a0 != a1 && !indirect) {
-                        errno = ERR_INV_ADDRESS;
-                        error_sym("value_to_address", sym);
-                    }
+                if (!addr_ok) {
+                    set_errno(ERR_OTHER, "Expression expected to return error");
+                    error_sym("evaluate_expression", sym);
+                }
+                if (v.size != (elf_file->elf64 ? 8 : 4)) {
+                    errno = ERR_INV_ADDRESS;
+                    error_sym("evaluate_expression", sym);
+                }
+                if (value_to_address(&v, &a1) < 0) {
+                    error_sym("value_to_address", sym);
+                }
+                if (a0 != a1 && !indirect) {
+                    errno = ERR_INV_ADDRESS;
+                    error_sym("value_to_address", sym);
                 }
             }
         }
@@ -1504,16 +1526,7 @@ static void test_public_names(void) {
                     }
                 }
             }
-            if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, obj->mName, &sym2) < 0) {
-                error("find_symbol_by_name");
-            }
-            if (get_symbol_object(sym1) != get_symbol_object(sym2)) {
-                /* Something else with same name found in the top frame.
-                 * Cannot call loc_var_func() - it will fail. */
-            }
-            else {
-                loc_var_func(NULL, sym2);
-            }
+            loc_var_func(NULL, sym1);
         }
         if ((n % 10) == 0) {
             tmp_gc();
@@ -1532,7 +1545,6 @@ static void test_public_names(void) {
                 if (sym_info.name && sym_info.section_index != SHN_UNDEF && sym_info.type != STT_FILE) {
                     Symbol * sym = NULL;
                     Symbol * sym1 = NULL;
-                    Symbol * sym2 = NULL;
                     if (elf_tcf_symbol(elf_ctx, &sym_info, &sym) < 0) {
                         error("elf_tcf_symbol");
                     }
@@ -1569,16 +1581,7 @@ static void test_public_names(void) {
                     if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, sym_info.name, &sym1) < 0) {
                         error("find_symbol_by_name");
                     }
-                    if (find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, sym_info.name, &sym2) < 0) {
-                        error("find_symbol_by_name");
-                    }
-                    if (get_symbol_object(sym1) != get_symbol_object(sym2)) {
-                        /* Something else with same name found in the top frame.
-                         * Cannot call loc_var_func() - it will fail. */
-                    }
-                    else {
-                        loc_var_func(NULL, sym2);
-                    }
+                    loc_var_func(NULL, sym1);
                 }
                 clear_trap(&trap);
             }
