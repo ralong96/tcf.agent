@@ -1957,6 +1957,10 @@ static void next_region(void) {
                     errno = set_errno(ERR_OTHER, "Cannot find compilation unit by name");
                     error("find_symbol_by_name");
                 }
+                if (get_symbol_object(unit_sym) != unit_range->mUnit->mObject) {
+                    errno = set_errno(ERR_OTHER, "Wrong result searching compilation unit by name");
+                    error("find_symbol_by_name");
+                }
                 if (strcmp(unit_id, symbol2id(unit_sym)) != 0) {
                     int i;
                     int count = 0;

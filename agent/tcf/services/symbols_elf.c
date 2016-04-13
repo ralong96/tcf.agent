@@ -1336,6 +1336,9 @@ static void find_in_dwarf(const char * name) {
         CompUnit * unit = addr.unit;
         find_in_object_tree(unit->mObject, 2, &addr, name);
         if (unit->mBaseTypes != NULL) find_in_object_tree(unit->mBaseTypes->mObject, 2, NULL, name);
+        if (unit->mObject->mName != NULL && equ_symbol_names(unit->mObject->mName, name)) {
+            add_obj_to_find_symbol_buf(unit->mObject, 1);
+        }
     }
 }
 
