@@ -869,7 +869,7 @@ static void loc_var_func(void * args, Symbol * sym) {
             if (get_symbol_container(find_sym, &find_container) < 0) {
                 error_sym("get_symbol_container", find_sym);
             }
-            if (symcmp(sym_container, find_container) != 0) {
+            if (get_symbol_object(sym_container) != get_symbol_object(find_container)) {
                 errno = ERR_OTHER;
                 error("Invalid result of find_symbol_in_scope()");
             }
@@ -891,7 +891,7 @@ static void loc_var_func(void * args, Symbol * sym) {
                 if (get_symbol_container(find_next, &find_container) < 0) {
                     error("get_symbol_container");
                 }
-                if (symcmp(sym_container, find_container) != 0) {
+                if (get_symbol_object(sym_container) != get_symbol_object(find_container)) {
                     errno = ERR_OTHER;
                     error("Invalid result of find_next_symbol()");
                 }
