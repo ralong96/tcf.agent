@@ -805,7 +805,7 @@ static void evaluate_expression(void) {
         case OP_call4:
         case OP_call_ref:
         default:
-            {
+            if (state->client_op != NULL) {
                 LocationExpressionState * s = state;
                 Trap trap;
                 get_state(s);
@@ -815,6 +815,9 @@ static void evaluate_expression(void) {
                 }
                 set_state(s);
                 if (trap.error) exception(trap.error);
+            }
+            else {
+                str_fmt_exception(ERR_UNSUPPORTED, "Unsupported location expression op 0x%02x", op);
             }
         }
     }

@@ -3542,15 +3542,6 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
     return 0;
 }
 
-static void dwarf_location_operation(uint8_t op) {
-    str_fmt_exception(ERR_UNSUPPORTED, "Unsupported location expression op 0x%02x", op);
-}
-
-static int dwarf_location_callback(LocationExpressionState * state) {
-    state->client_op = dwarf_location_operation;
-    return evaluate_vm_expression(state);
-}
-
 static LocationExpressionCommand * add_location_command(LocationInfo * l, int op) {
     LocationCommands * cmds = &l->value_cmds;
     LocationExpressionCommand * cmd = NULL;
@@ -3592,7 +3583,7 @@ static void add_dwarf_location_command(LocationInfo * l, PropertyValue * v) {
     cmd->args.loc.code_size = info->expr_size;
     cmd->args.loc.reg_id_scope = v->mObject->mCompUnit->mRegIdScope;
     cmd->args.loc.addr_size = v->mObject->mCompUnit->mDesc.mAddressSize;
-    cmd->args.loc.func = dwarf_location_callback;
+    cmd->args.loc.func = evaluate_vm_expression;
 }
 
 static void add_member_location_command(LocationInfo * info, ObjectInfo * obj) {
