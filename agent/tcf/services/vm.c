@@ -466,8 +466,11 @@ static void evaluate_expression(void) {
             state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
             break;
         case OP_skip:
-            code_pos += (int16_t)read_u2();
+            {
+            size_t offs = (int16_t)read_u2();
+            code_pos += offs;
             if (code_pos > code_len) inv_dwarf("Invalid command");
+            }
             break;
         case OP_lit0:
         case OP_lit1:
