@@ -1082,8 +1082,12 @@ static void sort_find_symbol_buf(void) {
     /* Remove duplicate entries */
     qsort(buf, cnt, sizeof(Symbol *), symbol_equ_comparator);
     for (pos = 1, dup = 0; pos < cnt; pos++) {
-        if (symbol_equ_comparator(buf + pos, buf + dup) == 0) continue;
-        buf[++dup] = buf[pos];
+        if (symbol_equ_comparator(buf + pos, buf + dup) == 0) {
+            if (symbol_prt_comparator(buf + pos, buf + dup) > 0) buf[dup] = buf[pos];
+        }
+        else {
+            buf[++dup] = buf[pos];
+        }
     }
     cnt = dup + 1;
     /* Final sort */
