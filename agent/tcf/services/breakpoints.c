@@ -1507,6 +1507,7 @@ static void done_condition_evaluation(EvaluationRequest * req) {
     for (i = 0; i < req->bp_cnt; i++) {
         Context * ctx = req->bp_arr[i].ctx;
         BreakpointInfo * bp = req->bp_arr[i].bp;
+        if (ctx->exited || ctx->exiting) continue;
         assert(ctx->stopped);
         if (!req->bp_arr[i].condition_ok) continue;
         if (inc_bp_hit_count(bp, req->ctx) <= bp->ignore_count) continue;
