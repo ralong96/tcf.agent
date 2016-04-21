@@ -1277,6 +1277,7 @@ static void add_namespace(PubNamesTable * tbl, ObjectInfo * ns) {
     while (obj != NULL) {
         if ((obj->mFlags & DOIF_pub_mark) == 0 && obj->mDefinition == NULL && obj->mName != NULL) {
             if (ns->mTag == TAG_namespace ||
+                    ns->mCompUnit->mLanguage == LANG_ADA95 ||
                     (obj->mTag != TAG_variable && obj->mTag != TAG_subprogram) ||
                     (obj->mFlags & DOIF_external) != 0) {
                 add_pub_name(tbl, obj);
