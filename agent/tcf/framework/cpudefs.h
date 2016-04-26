@@ -129,7 +129,7 @@ typedef struct LocationPiece {
     RegisterDefinition * reg;
     void * value;
     size_t size;
-    unsigned bit_offs;
+    unsigned bit_offs; /* bit numbering is right-to-left (LSB-to-MSB) for little-endian, and left-to-right for big-endian */
     unsigned bit_size;
     unsigned implicit_pointer;  /* >0 if the value is result of implicit pointer dereference */
 } LocationPiece;

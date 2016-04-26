@@ -113,6 +113,8 @@ static int expression_frame = STACK_NO_FRAME;
 static ContextAddress expression_addr = 0;
 static int expression_has_func_call = 0;
 
+#define bit_mask(v, n) (1u << ((v)->big_endian ? 7 - (n) % 8 : (n) % 8))
+
 #ifndef ENABLE_FuncCallInjection
 #  define ENABLE_FuncCallInjection (ENABLE_Symbols && SERVICE_RunControl && SERVICE_Breakpoints && ENABLE_DebugContext)
 #endif
@@ -811,8 +813,13 @@ static void reg2value(int mode, Context * ctx, int frame, RegisterDefinition * d
                 v->loc->pieces_cnt = v->loc->pieces_max = bit_cnt;
                 while (i < bit_cnt) {
                     v->loc->pieces[i].reg = def;
-                    v->loc->pieces[i].bit_offs = bits[i];
                     v->loc->pieces[i].bit_size = 1;
+                    if ((def->big_endian && !def->left_to_right) || (!def->big_endian && def->left_to_right)) {
+                        v->loc->pieces[i].bit_offs = (bits[i] & ~7) | (7 - (bits[i] & 7));
+                    }
+                    else {
+                        v->loc->pieces[i].bit_offs = bits[i];
+                    }
                     i++;
                 }
                 v->size = def->size;
@@ -862,8 +869,8 @@ static void reg2value(int mode, Context * ctx, int frame, RegisterDefinition * d
                 assert(p->reg == def);
                 assert(p->bit_size == 1);
                 assert(p->bit_offs / 8 < def->size);
-                if ((value[bit / 8] & (1 << (bit % 8))) == 0) continue;
-                ((uint8_t *)v->value)[i / 8] |= (1 << (i % 8));
+                if ((value[bit / 8] & bit_mask(v, bit)) == 0) continue;
+                ((uint8_t *)v->value)[i / 8] |= bit_mask(v, i);
             }
         }
     }
@@ -887,6 +894,32 @@ static void set_value_endianness(Value * v, Symbol * sym, Symbol * type) {
     }
 }
 
+static void bit_sign_extend(Value * v, unsigned bit_cnt) {
+    if (bit_cnt > 0 && bit_cnt < v->size * 8) {
+        uint8_t * buf = (uint8_t *)v->value;
+        if (v->big_endian) {
+            unsigned offs = (unsigned)v->size * 8 - bit_cnt;
+            if (buf[offs / 8] & (1 << (7 - offs % 8))) {
+                /* Negative integer number */
+                while (offs > 0) {
+                    offs--;
+                    buf[offs / 8] |= 1 << (7 - offs % 8);
+                }
+            }
+        }
+        else {
+            unsigned offs = bit_cnt - 1;
+            if (buf[offs / 8] & (1 << (offs % 8))) {
+                /* Negative integer number */
+                while (offs < v->size * 8 - 1) {
+                    offs++;
+                    buf[offs / 8] |= 1 << (offs % 8);
+                }
+            }
+        }
+    }
+}
+
 static void sign_extend(Value * v, LocationExpressionState * loc) {
     ContextAddress type_size = 0;
     assert(v->value != NULL);
@@ -906,33 +939,11 @@ static void sign_extend(Value * v, LocationExpressionState * loc) {
         /* Extend sign */
         unsigned i;
         unsigned bit_cnt = 0;
-        uint8_t * buf = (uint8_t *)v->value;
         for (i = 0; i < loc->pieces_cnt; i++) {
             LocationPiece * piece = loc->pieces + i;
             bit_cnt += piece->bit_size ? piece->bit_size : piece->size * 8;
         }
-        if (bit_cnt > 0 && bit_cnt < v->size * 8) {
-            if (v->big_endian) {
-                unsigned offs = (unsigned)v->size * 8 - bit_cnt;
-                if (buf[offs / 8] & (1 << (7 - offs % 8))) {
-                    /* Negative integer number */
-                    while (offs > 0) {
-                        offs--;
-                        buf[offs / 8] |= 1 << (7 - offs % 8);
-                    }
-                }
-            }
-            else {
-                unsigned offs = bit_cnt - 1;
-                if (buf[offs / 8] & (1 << (offs % 8))) {
-                    /* Negative integer number */
-                    while (offs < v->size * 8 - 1) {
-                        offs++;
-                        buf[offs / 8] |= 1 << (offs % 8);
-                    }
-                }
-            }
-        }
+        bit_sign_extend(v, bit_cnt);
     }
 }
 
@@ -2352,6 +2363,24 @@ static void op_field(int mode, Value * v) {
     }
 }
 
+static unsigned get_bit_stride(Symbol * type) {
+    for (;;) {
+        Symbol * next = NULL;
+        SymbolProperties props;
+        memset(&props, 0, sizeof(props));
+        if (get_symbol_props(type, &props) < 0) {
+            error(errno, "Cannot get symbol properties");
+        }
+        if (props.bit_stride) return props.bit_stride;
+        if (get_symbol_type(type, &next) < 0) {
+            error(errno, "Cannot retrieve symbol type");
+        }
+        if (next == type) break;
+        type = next;
+    }
+    return 0;
+}
+
 static void op_index(int mode, Value * v) {
 #if ENABLE_Symbols
     Value i;
@@ -2403,11 +2432,10 @@ static void op_index(int mode, Value * v) {
 
     if (mode == MODE_NORMAL) {
         int64_t index = to_int(mode, &i);
-        SymbolProperties props;
+        unsigned bit_stride = 0;
         ContextAddress byte_offs = 0;
         ContextAddress bit_offs = 0;
         int64_t lower_bound = 0;
-        memset(&props, 0, sizeof(props));
         if (v->type_class == TYPE_CLASS_ARRAY) {
             if (get_symbol_lower_bound(v->type, &lower_bound) < 0) {
                 error(errno, "Cannot get array lower bound");
@@ -2415,17 +2443,15 @@ static void op_index(int mode, Value * v) {
             if (index < lower_bound) {
                 error(ERR_INV_EXPRESSION, "Invalid index");
             }
-            if (get_symbol_props(v->type, &props) < 0) {
-                error(errno, "Cannot get array type properties");
-            }
+            bit_stride = get_bit_stride(v->type);
         }
-        if (props.bit_stride > 0) {
-            bit_offs = (ContextAddress)(index - lower_bound) * props.bit_stride;
+        if (bit_stride > 0) {
+            bit_offs = (ContextAddress)(index - lower_bound) * bit_stride;
         }
         else {
             byte_offs = (ContextAddress)(index - lower_bound) * size;
         }
-        if (v->remote && props.bit_stride == 0) {
+        if (v->remote && bit_stride == 0) {
             assert(bit_offs == 0);
             v->address += byte_offs;
         }
@@ -2435,24 +2461,20 @@ static void op_index(int mode, Value * v) {
             }
             load_value(v);
             v->value = (char *)v->value + byte_offs;
-            if (props.bit_stride != 0) {
+            if (bit_stride > 0) {
                 unsigned x;
                 uint8_t * buf = (uint8_t *)tmp_alloc_zero((size_t)size);
                 uint8_t * val = (uint8_t *)v->value;
+                unsigned buf_offs = v->big_endian ? (unsigned)(size * 8 - bit_stride) : 0;
                 v->value = buf;
-                for (x = 0; x < props.bit_stride; x++) {
+                for (x = 0; x < bit_stride; x++) {
                     unsigned y = (unsigned)(x + bit_offs);
-                    if (val[y / 8] & (1 << (y % 8))) buf[x / 8] |= 1 << (x % 8);
+                    unsigned z = (unsigned)(x + buf_offs);
+                    if (val[y / 8] & bit_mask(v, y)) buf[z / 8] |= bit_mask(v, z);
                 }
                 if (type_class == TYPE_CLASS_INTEGER) {
                     /* Sign extension */
-                    unsigned sign_offs = props.bit_stride - 1;
-                    int sign = (buf[sign_offs / 8] & (1 << (sign_offs % 8))) != 0;
-                    if (sign) {
-                        for (x = props.bit_stride; x < size * 8; x++) {
-                            buf[x / 8] |= 1 << (x % 8);
-                        }
-                    }
+                    bit_sign_extend(v, bit_stride);
                 }
             }
         }

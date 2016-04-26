@@ -781,6 +781,24 @@ static void test_implicit_pointer(Symbol * sym) {
     }
 }
 
+static unsigned get_bit_stride(Symbol * type) {
+    for (;;) {
+        Symbol * next = NULL;
+        SymbolProperties props;
+        memset(&props, 0, sizeof(props));
+        if (get_symbol_props(type, &props) < 0) {
+            error_sym("get_symbol_props", type);
+        }
+        if (props.bit_stride) return props.bit_stride;
+        if (get_symbol_type(type, &next) < 0) {
+            error_sym("get_symbol_type", type);
+        }
+        if (next == type) break;
+        type = next;
+    }
+    return 0;
+}
+
 static void loc_var_func(void * args, Symbol * sym) {
     int frame = 0;
     Context * ctx = NULL;
@@ -1182,6 +1200,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         Symbol * base_type = NULL;
         Symbol * org_type = NULL;
         Symbol * type_container = NULL;
+        unsigned type_bit_stride = 0;
         int container_class = 0;
         int base_type_class = 0;
         ContextAddress type_length = 0;
@@ -1399,7 +1418,8 @@ static void loc_var_func(void * args, Symbol * sym) {
                 error("Invalid length of typedef");
             }
         }
-        else if (length > 0 && size_ok) {
+        type_bit_stride = get_bit_stride(type);
+        if (length > 0 && size_ok && type_bit_stride % 8 == 0) {
             ContextAddress base_type_size = 0;
             if (get_symbol_size(base_type, &base_type_size) < 0) {
                 error_sym("get_symbol_size", base_type);
