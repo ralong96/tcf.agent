@@ -186,6 +186,9 @@ void set_value(Value * v, void * data, size_t size, int big_endian) {
     v->sym_list = NULL;
     v->size = (ContextAddress)size;
     v->big_endian = big_endian;
+    v->binary_scale = 0;
+    v->decimal_scale = 0;
+    v->bit_stride = 0;
     v->value = tmp_alloc(size);
     if (data == NULL) memset(v->value, 0, size);
     else memcpy(v->value, data, size);
@@ -205,8 +208,6 @@ static void set_int_value(Value * v, size_t size, uint64_t n) {
     case 8: buf.u64 = n; break;
     default: assert(0);
     }
-    v->binary_scale = 0;
-    v->decimal_scale = 0;
     set_value(v, &buf, size, big_endian);
 }
 
@@ -220,8 +221,6 @@ static void set_fp_value(Value * v, size_t size, double n) {
     case 8: buf.d = n; break;
     default: assert(0);
     }
-    v->binary_scale = 0;
-    v->decimal_scale = 0;
     set_value(v, &buf, size, big_endian);
 }
 
@@ -1000,8 +999,31 @@ static void check_hidden_redirection(Value * v) {
     }
 }
 
-static void set_value_scale(Value * v) {
-    if (v->type != NULL && (v->type_class == TYPE_CLASS_CARDINAL || v->type_class == TYPE_CLASS_INTEGER)) {
+static void set_value_props(Value * v) {
+    v->bit_stride = 0;
+    v->binary_scale = 0;
+    v->decimal_scale = 0;
+    if (v->type == NULL) return;
+    if (v->type_class == TYPE_CLASS_ARRAY) {
+        Symbol * type = v->type;
+        for (;;) {
+            SymbolProperties props;
+            Symbol * next = NULL;
+            if (get_symbol_props(type, &props) < 0) {
+                error(errno, "Cannot get symbol properties");
+            }
+            if (props.bit_stride) {
+                v->bit_stride = props.bit_stride;
+                break;
+            }
+            if (get_symbol_type(type, &next) < 0) {
+                error(errno, "Cannot retrieve symbol type");
+            }
+            if (next == type) break;
+            type = next;
+        }
+    }
+    if (v->type_class == TYPE_CLASS_CARDINAL || v->type_class == TYPE_CLASS_INTEGER) {
         Symbol * type = v->type;
         for (;;) {
             SymbolProperties props;
@@ -1072,7 +1094,7 @@ static int sym2value(int mode, Symbol * sym, Value * v) {
             v->remote = 1;
         }
         v->constant = sym_class == SYM_CLASS_VALUE;
-        set_value_scale(v);
+        set_value_props(v);
         break;
     case SYM_CLASS_FUNCTION:
         {
@@ -2160,7 +2182,7 @@ static void op_deref(int mode, Value * v) {
     if (get_symbol_size(v->type, &v->size) < 0) {
         error(errno, "Cannot retrieve symbol size");
     }
-    set_value_scale(v);
+    set_value_props(v);
 #else
     error(ERR_UNSUPPORTED, "Symbols service not available");
 #endif
@@ -2328,7 +2350,7 @@ static void op_field(int mode, Value * v) {
         if (sym_class == SYM_CLASS_REFERENCE && mode == MODE_NORMAL) {
             check_hidden_redirection(v);
         }
-        set_value_scale(v);
+        set_value_props(v);
 #else
         error(ERR_UNSUPPORTED, "Symbols service not available");
 #endif
@@ -2361,24 +2383,6 @@ static void op_field(int mode, Value * v) {
     else {
         error(ERR_INV_EXPRESSION, "Composite type expected");
     }
-}
-
-static unsigned get_bit_stride(Symbol * type) {
-    for (;;) {
-        Symbol * next = NULL;
-        SymbolProperties props;
-        memset(&props, 0, sizeof(props));
-        if (get_symbol_props(type, &props) < 0) {
-            error(errno, "Cannot get symbol properties");
-        }
-        if (props.bit_stride) return props.bit_stride;
-        if (get_symbol_type(type, &next) < 0) {
-            error(errno, "Cannot retrieve symbol type");
-        }
-        if (next == type) break;
-        type = next;
-    }
-    return 0;
 }
 
 static void op_index(int mode, Value * v) {
@@ -2432,7 +2436,6 @@ static void op_index(int mode, Value * v) {
 
     if (mode == MODE_NORMAL) {
         int64_t index = to_int(mode, &i);
-        unsigned bit_stride = 0;
         ContextAddress byte_offs = 0;
         ContextAddress bit_offs = 0;
         int64_t lower_bound = 0;
@@ -2443,15 +2446,14 @@ static void op_index(int mode, Value * v) {
             if (index < lower_bound) {
                 error(ERR_INV_EXPRESSION, "Invalid index");
             }
-            bit_stride = get_bit_stride(v->type);
         }
-        if (bit_stride > 0) {
-            bit_offs = (ContextAddress)(index - lower_bound) * bit_stride;
+        if (v->bit_stride > 0) {
+            bit_offs = (ContextAddress)(index - lower_bound) * v->bit_stride;
         }
         else {
             byte_offs = (ContextAddress)(index - lower_bound) * size;
         }
-        if (v->remote && bit_stride == 0) {
+        if (v->remote && v->bit_stride == 0) {
             assert(bit_offs == 0);
             v->address += byte_offs;
         }
@@ -2461,20 +2463,20 @@ static void op_index(int mode, Value * v) {
             }
             load_value(v);
             v->value = (char *)v->value + byte_offs;
-            if (bit_stride > 0) {
+            if (v->bit_stride > 0) {
                 unsigned x;
                 uint8_t * buf = (uint8_t *)tmp_alloc_zero((size_t)size);
                 uint8_t * val = (uint8_t *)v->value;
-                unsigned buf_offs = v->big_endian ? (unsigned)(size * 8 - bit_stride) : 0;
+                unsigned buf_offs = v->big_endian ? (unsigned)(size * 8 - v->bit_stride) : 0;
                 v->value = buf;
-                for (x = 0; x < bit_stride; x++) {
+                for (x = 0; x < v->bit_stride; x++) {
                     unsigned y = (unsigned)(x + bit_offs);
                     unsigned z = (unsigned)(x + buf_offs);
                     if (val[y / 8] & bit_mask(v, y)) buf[z / 8] |= bit_mask(v, z);
                 }
                 if (type_class == TYPE_CLASS_INTEGER) {
                     /* Sign extension */
-                    bit_sign_extend(v, bit_stride);
+                    bit_sign_extend(v, v->bit_stride);
                 }
             }
         }
@@ -2486,7 +2488,7 @@ static void op_index(int mode, Value * v) {
     v->size = size;
     v->type = type;
     v->type_class = type_class;
-    set_value_scale(v);
+    set_value_props(v);
 #else
     error(ERR_UNSUPPORTED, "Symbols service not available");
 #endif
@@ -2863,6 +2865,7 @@ static void op_funccall(int mode, Value * v) {
     else {
         set_value(v, NULL, (size_t)v->size, 0);
     }
+    set_value_props(v);
 }
 
 #else
@@ -4469,6 +4472,14 @@ static void command_evaluate_cache_client(void * x) {
             cnt++;
         }
 #endif
+        if (value.bit_stride != 0) {
+            if (cnt > 0) write_stream(&c->out, ',');
+            json_write_string(&c->out, "BitStride");
+            write_stream(&c->out, ':');
+            json_write_ulong(&c->out, value.bit_stride);
+            cnt++;
+        }
+
         if (value.binary_scale != 0) {
             if (cnt > 0) write_stream(&c->out, ',');
             json_write_string(&c->out, "BinaryScale");

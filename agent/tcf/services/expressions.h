@@ -77,6 +77,7 @@ struct Value {
     int function;               /* 1 if the value represents a function */
     int binary_scale;           /* The exponent of the base two scale factor to be applied to the value */
     int decimal_scale;          /* The exponent of the base ten scale factor to be applied to the value */
+    unsigned bit_stride;        /* if > 0, bit stride of the value */
     Symbol ** sym_list;         /* Symbol list, if applicable, NULL terminated */
     Context * ctx;              /* Debug context of the value */
 
