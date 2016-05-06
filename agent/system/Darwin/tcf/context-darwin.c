@@ -216,7 +216,7 @@ int context_continue(Context * ctx) {
         errno = err;
         return -1;
     }
-    ctx->pending_signals &= ~(1 << signal);
+    sigset_set(&ctx->pending_signals, signal, 0);
     if (syscall_never_returns(ctx)) {
         EXT(ctx)->syscall_enter = 0;
         EXT(ctx)->syscall_exit = 0;
