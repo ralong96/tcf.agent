@@ -13,7 +13,8 @@
  *     Wind River Systems - initial API and implementation
  *******************************************************************************/
 
-#define ADDR_TO_LINE_HOOK do {} while(0)
-#define LINE_TO_ADDR_HOOK_0 do {} while(0)
-#define LINE_TO_ADDR_HOOK_1 do {} while(0)
-#define LINE_TO_ADDR_HOOK_2 do {} while(0)
+#define ADDR_TO_LINE_HOOK do {} while(0);
+#define LINE_TO_ADDR_HOOK_0 do {} while(0);
+#define LINE_TO_ADDR_HOOK_1 do {} while(0);
+#define LINE_TO_ADDR_HOOK_2 do {} while(0);
+#define LINE_TO_ADDR_HOOK_BP do {} while(0);
