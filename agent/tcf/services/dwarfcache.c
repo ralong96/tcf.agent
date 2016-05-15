@@ -1827,6 +1827,12 @@ void read_dwarf_object_property(Context * Ctx, int Frame, ObjectInfo * Obj, U2_T
                     break;
                 }
             }
+            if (Obj->mTag == TAG_label) {
+                /* By definition, label size is 0 */
+                Value->mForm = FORM_UDATA;
+                Value->mValue = 0;
+                break;
+            }
         }
         exception(ERR_SYM_NOT_FOUND);
     }

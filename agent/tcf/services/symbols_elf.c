@@ -650,6 +650,7 @@ static ObjectInfo * get_object_type(ObjectInfo * obj) {
                 break;
             }
             return get_object_type(get_object_ref_prop(obj, AT_discr));
+        case TAG_label:
         case TAG_variant:
             return NULL;
         }
