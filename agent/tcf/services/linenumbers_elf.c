@@ -223,9 +223,13 @@ static void unit_line_to_address(Context * ctx, MemoryRegion * mem, CompUnit * u
                                 U4_T next_line = text_next ? text_next->mLine : state->mLine + 1;
                                 U4_T next_column = text_next ? text_next->mColumn : 0;
                                 if (next_line > line || (next_line == line && next_column > column)) {
+                                    UNIT_TO_LINE_ADDR_LOCALS_HOOK
                                     assert(state->mLine <= line);
                                     assert(state->mLine < line || state->mColumn <= column);
+                                    UNIT_TO_LINE_ADDR_HOOK
+                                    {
                                     call_client(ctx, unit, state, code_next, text_next, addr, client, args);
+                                    }
                                 }
                             }
                         }
