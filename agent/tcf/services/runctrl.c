@@ -818,10 +818,12 @@ static void cancel_step_mode(Context * ctx) {
         channel_unlock_with_msg(ext->step_channel, RUN_CONTROL);
         ext->step_channel = NULL;
     }
+#if SERVICE_Breakpoints
     if (ext->step_bp_info != NULL) {
         destroy_eventpoint(ext->step_bp_info);
         ext->step_bp_info = NULL;
     }
+#endif
     if (ext->step_code_area != NULL) {
         free_code_area(ext->step_code_area);
         ext->step_code_area = NULL;
@@ -1797,6 +1799,7 @@ static int update_step_machine_state(Context * ctx) {
             break;
         }
 
+#if SERVICE_Breakpoints
         if (step_bp_addr) {
             if (!do_reverse || ext->step_line_cnt > 1) {
                 ext->step_continue_mode = RM_RESUME;
@@ -1817,6 +1820,7 @@ static int update_step_machine_state(Context * ctx) {
             destroy_eventpoint(ext->step_bp_info);
             ext->step_bp_info = NULL;
         }
+#endif
 
         if (ext->step_set_frame_level && get_frame_info(ctx, STACK_TOP_FRAME, &info) < 0) return -1;
         if (ext->step_set_frame_level && ext->step_frame_fp == info->fp && ext->step_inlined <= info->inlined) {
@@ -2187,6 +2191,7 @@ static void check_step_breakpoint_instances(InputStream * inp, void * args) {
 }
 
 static int check_step_breakpoint(Context * ctx) {
+#if SERVICE_Breakpoints
     /* Return error if step machine breakpoint cannot be planted */
     int error = 0;
     char * status = NULL;
@@ -2201,6 +2206,9 @@ static int check_step_breakpoint(Context * ctx) {
     if (!error) return 0;
     errno = error;
     return -1;
+#else
+    return 0;
+#endif
 }
 
 #if EN_STEP_OVER
