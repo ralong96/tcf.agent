@@ -191,7 +191,7 @@ void json_write_char(OutputStream * out, char ch) {
         write_escape_seq(out, ch);
     }
     else {
-        write_stream(out, ch);
+        write_stream(out, ch & 0xff);
     }
 }
 
