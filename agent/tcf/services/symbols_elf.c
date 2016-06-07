@@ -413,8 +413,6 @@ static int is_frame_based_object(Symbol * sym) {
                     continue;
                 case TAG_base_type:
                 case TAG_fund_type:
-                case TAG_class_type:
-                case TAG_union_type:
                 case TAG_enumeration_type:
                 case TAG_subroutine_type:
                 case TAG_ptr_to_member_type:
@@ -423,6 +421,8 @@ static int is_frame_based_object(Symbol * sym) {
                 case TAG_reference_type:
                 case TAG_rvalue_reference_type:
                 case TAG_structure_type:
+                case TAG_class_type:
+                case TAG_union_type:
                     if (obj->mCompUnit->mLanguage == LANG_C89) return 0;
                     if (obj->mCompUnit->mLanguage == LANG_C) return 0;
                     break;
@@ -448,6 +448,18 @@ static int is_frame_based_object(Symbol * sym) {
 static int is_thread_based_object(Symbol * sym) {
     /* Variables can be thread local */
     if (sym->sym_class == SYM_CLASS_REFERENCE) return 1;
+    if (sym->sym_class == SYM_CLASS_TYPE && sym->obj != NULL) {
+        /* Thread local static members of a class */
+        ObjectInfo * obj = sym->obj;
+        switch (obj->mTag) {
+        case TAG_structure_type:
+        case TAG_class_type:
+        case TAG_union_type:
+            if (obj->mCompUnit->mLanguage == LANG_C89) break;
+            if (obj->mCompUnit->mLanguage == LANG_C) break;
+            return 1;
+        }
+    }
     return 0;
 }
 
