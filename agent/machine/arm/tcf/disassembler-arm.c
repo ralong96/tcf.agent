@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2016 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -173,7 +173,6 @@ static void add_modifed_immediate_constant(uint32_t n) {
  * Permitted values of the size of the offset are any of the constants
  * described in Modified immediate constants in A32 instructions.
  */
-
 static void add_modifed_immediate_address(uint32_t n, uint32_t addr, uint32_t add, uint32_t alignment) {
     uint32_t rot = ((n >> 8) & 0xf) * 2;
     uint32_t val = n & 0xff;
@@ -182,7 +181,8 @@ static void add_modifed_immediate_address(uint32_t n, uint32_t addr, uint32_t ad
         add_char('-');
         add_dec_uint32(val);
         add_addr((alignment * (addr / alignment)) - val);
-    } else {
+    }
+    else {
         add_dec_uint32(val);
         add_addr((alignment * (addr / alignment)) + val);
     }
@@ -244,7 +244,6 @@ static void add_addressing_mode(uint32_t instr) {
             /* Special case [reg,#-0] : P==1, W==0, U==0, IMM==0 */
             add_str(", #-0");
         }
-
         add_char(']');
         if (W) add_char('!');
     }
@@ -282,7 +281,6 @@ static void add_auto_inc_mode(uint32_t instr, int no_ia) {
 /**
  * al_reg_align - determine all lanes register alignment.
  */
-
 static uint32_t al_reg_align(uint32_t type, uint32_t size, uint32_t index_align) {
     uint32_t a = index_align & 0x1;
     uint32_t align = 0;
@@ -301,7 +299,6 @@ static uint32_t al_reg_align(uint32_t type, uint32_t size, uint32_t index_align)
 /**
  * count_bits - count the number of bits in 32-bit value <v>.
  */
-
 static int count_bits(uint32_t v) {
     int ix = 0;
     int nbits = 0;
@@ -312,7 +309,6 @@ static int count_bits(uint32_t v) {
 /**
  * ix_reg_align - determine indexed register alignment.
  */
-
 static uint32_t ix_reg_align(uint32_t type, uint32_t size, uint32_t index_align) {
     uint32_t align = 0;
     if ((type == 0) && (size == 1) && ((index_align & 0x01) == 1)) align = 1;
@@ -384,16 +380,16 @@ static uint64_t adv_simd_expand_imm(uint32_t instr) {
         }
         if ((cmode & 1) == 0 && op == 1) {
             for (i = 0; i < 8; i++) {
-                if (imm8 & (1 << i)) imm64 |= ((uint64_t) 0xff << (i * 8));
+                if (imm8 & (1 << i)) imm64 |= ((uint64_t)0xff << (i * 8));
             }
             return imm64;
         }
         if ((cmode & 1) == 1 && op == 0) {
-            if (imm8 & (1 << 7)) imm64 |= ((uint64_t) 1 << 31);
-            if (imm8 & (1 << 6)) imm64 |= ((uint64_t) 0x1f << 25);
-            else imm64 |= ((uint64_t) 1 << 30);
-            imm64 |= (imm8 & (uint64_t) 0x3f) << 19;
-            return imm64 | ((uint64_t) (imm64 << 32));
+            if (imm8 & (1 << 7)) imm64 |= ((uint64_t)1 << 31);
+            if (imm8 & (1 << 6)) imm64 |= ((uint64_t)0x1f << 25);
+            else imm64 |= ((uint64_t)1 << 30);
+            imm64 |= (imm8 & (uint64_t)0x3f) << 19;
+            return imm64 | ((uint64_t)(imm64 << 32));
         }
         break;
     }
@@ -491,12 +487,12 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
                 else {
                     if ((instr >> 8) & 1) {
                         /* Encoding A1 */
-                        add_str((instr >> 24 & 1) ? "vmls" : "vmla");
+                        add_str((instr >> 24) & 1 ? "vmls" : "vmla");
                         fmt = 'i';
                     }
                     else {
                         /* Encoding A2 */
-                        add_str((instr >> 9 & 1) ? "vmls" : "vmla");
+                        add_str((instr >> 9) & 1 ? "vmls" : "vmla");
                         fmt = ((U == 1) ? 'u' : 's');
                     }
                 }
@@ -835,13 +831,13 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         case 1:
         case 2:
             /* bit 9 gives encoding A1 (vmla) or encoding A2 (vmlal) */
-            add_str((instr >> 9 & 1) ? "vmlal" : "vmla");
+            add_str((instr >> 9) & 1 ? "vmlal" : "vmla");
             break;
         case 4:
         case 5:
         case 6:
             /* bit 9 gives encoding A1 (vmls) or encoding A2 (vmlsl) */
-            add_str((instr >> 9 & 1) ? "vmlsl" : "vmls");
+            add_str((instr >> 9) & 1 ? "vmlsl" : "vmls");
             break;
         case 3:
             add_str("vqdmlal");
@@ -2010,7 +2006,8 @@ static void disassemble_unconditional_instr(uint32_t addr, uint32_t instr) {
                 /* do not add the coma if there was no AIF. */
                 if (((instr >> 6) & 0x7) != 0) {
                     add_str(", #");
-                } else {
+                }
+                else {
                     add_char('#');
                 }
                 add_dec_uint32(mode);
@@ -2557,7 +2554,7 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
             add_reg_name(rn);
             if (P) {
                 if (imm8 != 0) {
-                    add_str(",#");
+                    add_str(", #");
                     add_char(U ? '+' : '-');
                     add_dec_uint32(imm8);
                 }
@@ -2569,9 +2566,9 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
                 if (W) add_char('!');
             }
             else {
-                if (imm8 == 0 && U == 1) add_char(']');
-                else {
-                    add_str("], #");
+                add_char(']');
+                if (imm8 != 0 || !U) {
+                    add_str(", #");
                     add_char(U ? '+' : '-');
                     add_dec_uint32(imm8);
                 }
@@ -2693,7 +2690,8 @@ static void disassemble_media_instr(uint32_t instr, const char * cond) {
                     add_str(instr & (1 << 6) ? "asr" : "lsl");
                     add_str(" #");
                     add_dec_uint32(imm);
-                } else if (imm == 0 && ((instr & (1 << 6)) != 0)) {
+                }
+                else if (imm == 0 && ((instr & (1 << 6)) != 0)) {
                     add_str(", asr #");
                     add_dec_uint32(32);
                 }
@@ -2763,7 +2761,8 @@ static void disassemble_media_instr(uint32_t instr, const char * cond) {
                     add_str(instr & (1 << 6) ? "asr" : "lsl");
                     add_str(" #");
                     add_dec_uint32(imm);
-                } else if (imm ==0 && ((instr & (1 << 6)) != 0)) {
+                }
+                else if (imm ==0 && ((instr & (1 << 6)) != 0)) {
                     add_str(", asr #");
                     add_dec_uint32(32);
                 }
