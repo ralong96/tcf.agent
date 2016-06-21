@@ -44,6 +44,15 @@ static const char * reg_names[] = {
     "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc"
 };
 
+static const char * proc_modes [] = {
+    "UNDEFINED", "UNDEFINED", "UNDEFINED", "UNDEFINED", "UNDEFINED",
+    "UNDEFINED", "UNDEFINED", "UNDEFINED", "UNDEFINED", "UNDEFINED",
+    "UNDEFINED", "UNDEFINED", "UNDEFINED", "UNDEFINED", "UNDEFINED",
+    "UNDEFINED", "usr", "fiq", "irq", "svc", "UNDEFINED",
+    "UNDEFINED", "mon", "abc", "UNDEFINED", "UNDEFINED",
+    "hyp", "und", "UNDEFINED", "UNDEFINED", "UNDEFINED", "sys"
+};
+
 static void add_char(char ch) {
     if (buf_pos >= sizeof(buf) - 1) return;
     buf[buf_pos++] = ch;
@@ -59,17 +68,6 @@ static void add_dec_uint32(uint32_t n) {
     size_t i = 0;
     do {
         s[i++] = (char)('0' + n % 10);
-        n = n / 10;
-    }
-    while (n != 0);
-    while (i > 0) add_char(s[--i]);
-}
-
-static void add_dec_uint64(uint64_t n) {
-    char s[64];
-    size_t i = 0;
-    do {
-        s[i++] = (char)('0' + (int)(n % 10));
         n = n / 10;
     }
     while (n != 0);
@@ -158,6 +156,38 @@ static void add_modifed_immediate_constant(uint32_t n) {
     add_dec_uint32(val);
 }
 
+/**
+ * Add the label of an instruction or literal data item whose address is to be
+ * loaded into <Rd>. The assembler calculates the required value of the offset
+ * from the Align(PC, 4) value of the ADR instruction to this label.
+ *
+ * If the offset is zero or positive, encoding A1 is used, with imm32 equal
+ * to the offset.
+ *
+ * If the offset is negative, encoding A2 is used, with imm32 equal to the size
+ * of the offset.
+ *
+ * That is, the use of encoding A2 indicates that the required offset is minus
+ * the value of imm32.
+ *
+ * Permitted values of the size of the offset are any of the constants
+ * described in Modified immediate constants in A32 instructions.
+ */
+
+static void add_modifed_immediate_address(uint32_t n, uint32_t addr, uint32_t add, uint32_t alignment) {
+    uint32_t rot = ((n >> 8) & 0xf) * 2;
+    uint32_t val = n & 0xff;
+    val = (val >> rot) | (val << (32 - rot));
+    if (add == 0) {
+        add_char('-');
+        add_dec_uint32(val);
+        add_addr((alignment * (addr / alignment)) - val);
+    } else {
+        add_dec_uint32(val);
+        add_addr((alignment * (addr / alignment)) + val);
+    }
+}
+
 static void add_shift(uint32_t instr, int no_shift_name) {
     uint8_t rm = (instr & 0x000f);
     uint32_t shift_imm = (instr >> 7) & 0x1f;
@@ -210,6 +240,11 @@ static void add_addressing_mode(uint32_t instr) {
             add_char(U ? '+' : '-');
             add_dec_uint32(offs);
         }
+        else if (W == 0 && U ==0 && offs == 0) {
+            /* Special case [reg,#-0] : P==1, W==0, U==0, IMM==0 */
+            add_str(", #-0");
+        }
+
         add_char(']');
         if (W) add_char('!');
     }
@@ -243,6 +278,55 @@ static void add_auto_inc_mode(uint32_t instr, int no_ia) {
     case 3: add_str("ib"); break;
     }
 }
+
+/**
+ * al_reg_align - determine all lanes register alignment.
+ */
+
+static uint32_t al_reg_align(uint32_t type, uint32_t size, uint32_t index_align) {
+    uint32_t a = index_align & 0x1;
+    uint32_t align = 0;
+    if ((type == 0) && (size == 1) && (a == 1)) align = 1;
+    else if ((type == 0) && (size == 2) && (a == 1)) align = 2;
+    else if ((type == 1) && (size == 0) && (a == 1)) align = 1;
+    else if ((type == 1) && (size == 1) && (a == 1)) align = 2;
+    else if ((type == 1) && (size == 2) && (a == 1)) align = 3;
+    else if ((type == 3) && (size == 0) && (a == 1)) align = 2;
+    else if ((type == 3) && (size == 1) && (a == 1)) align = 3;
+    else if ((type == 3) && (size == 2) && (a == 1)) align = 3;
+    else if ((type == 3) && (size == 3) && (a == 1)) align = 4;
+    return align;
+}
+
+/**
+ * count_bits - count the number of bits in 32-bit value <v>.
+ */
+
+static int count_bits(uint32_t v) {
+    int ix = 0;
+    int nbits = 0;
+    while (ix < 32) {nbits += ((v >> ix++) & 0x00000001);}
+    return nbits;
+}
+
+/**
+ * ix_reg_align - determine indexed register alignment.
+ */
+
+static uint32_t ix_reg_align(uint32_t type, uint32_t size, uint32_t index_align) {
+    uint32_t align = 0;
+    if ((type == 0) && (size == 1) && ((index_align & 0x01) == 1)) align = 1;
+    else if ((type == 0) && (size == 2) && ((index_align & 0x03) == 3)) align = 2;
+    else if ((type == 1) && (size == 0) && ((index_align & 0x01) == 1)) align = 1;
+    else if ((type == 1) && (size == 1) && ((index_align & 0x01) == 1)) align = 2;
+    else if ((type == 1) && (size == 2) && ((index_align & 0x01) == 1)) align = 3;
+    else if ((type == 3) && (size == 0) && ((index_align & 0x01) == 1)) align = 2;
+    else if ((type == 3) && (size == 1) && ((index_align & 0x01) == 1)) align = 3;
+    else if ((type == 3) && (size == 2) && ((index_align & 0x03) == 1)) align = 3;
+    else if ((type == 3) && (size == 2) && ((index_align & 0x03) == 2)) align = 4;
+    return align;
+}
+
 
 static uint32_t vfp_expand_imm32(uint32_t n) {
     uint32_t v = 0;
@@ -300,16 +384,16 @@ static uint64_t adv_simd_expand_imm(uint32_t instr) {
         }
         if ((cmode & 1) == 0 && op == 1) {
             for (i = 0; i < 8; i++) {
-                if (imm8 & (1 << i)) imm64 |= 0xff << i * 8;
+                if (imm8 & (1 << i)) imm64 |= ((uint64_t) 0xff << (i * 8));
             }
             return imm64;
         }
         if ((cmode & 1) == 1 && op == 0) {
-            if (imm8 & (1 << 7)) imm64 |= 1 << 31;
-            if (imm8 & (1 << 6)) imm64 |= 0x1f << 25;
-            else imm64 |= 1 << 30;
-            imm64 |= (imm8 & 0x3f) << 19;
-            return imm64 | (imm64 << 32);
+            if (imm8 & (1 << 7)) imm64 |= ((uint64_t) 1 << 31);
+            if (imm8 & (1 << 6)) imm64 |= ((uint64_t) 0x1f << 25);
+            else imm64 |= ((uint64_t) 1 << 30);
+            imm64 |= (imm8 & (uint64_t) 0x3f) << 19;
+            return imm64 | ((uint64_t) (imm64 << 32));
         }
         break;
     }
@@ -325,10 +409,12 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         int N = (instr & (1 << 7)) != 0;
         int Q = (instr & (1 << 6)) != 0;
         int M = (instr & (1 << 5)) != 0;
+        uint32_t A = (instr >> 8) & 0xf;
         uint32_t vd = (instr >> 12) & 0xf;
         uint32_t vn = (instr >> 16) & 0xf;
         uint32_t vm = instr & 0xf;
         int no_dt = 0;
+        int no_sz = 0;
         char fmt = 0;
         if (D) vd |= 0x10;
         if (N) vn |= 0x10;
@@ -336,7 +422,6 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         if (instr & (1 << 23)) {
         }
         else {
-            uint32_t A = (instr >> 8) & 0xf;
             uint32_t B = (instr >> 4) & 1;
             switch (A) {
             case 0:
@@ -348,6 +433,7 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
                 }
                 else {
                     no_dt = 1;
+                    no_sz = 1;
                     if (!U) {
                         switch (sz) {
                         case 0: add_str("vand"); break;
@@ -390,21 +476,41 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
                     add_str(U ? "vsub" : "vadd");
                 }
                 else {
-                    add_str(U ? "vceq" : "vtst");
+                    if (U) add_str("vceq");
+                    else {
+                        add_str("vtst");
+                        no_dt = 1;
+                        no_sz = 0;
+                    }
                 }
                 break;
             case 9:
-                add_str(B ? "vmul" : "vmla");
+                if ((U == 1) && (sz == 0)) fmt = 'p';
+                else fmt = 'i';
+                if (B) add_str("vmul");
+                else {
+                    if ((instr >> 8) & 1) {
+                        /* Encoding A1 */
+                        add_str((instr >> 24 & 1) ? "vmls" : "vmla");
+                        fmt = 'i';
+                    }
+                    else {
+                        /* Encoding A2 */
+                        add_str((instr >> 9 & 1) ? "vmls" : "vmla");
+                        fmt = ((U == 1) ? 'u' : 's');
+                    }
+                }
                 break;
             case 10:
                 add_str(B ? "vpmin" : "vpmax");
                 break;
             case 11:
-                fmt = 'i';
+                fmt = 's';
                 if (!B) {
                     add_str(U ? "vqrdmulh" : "vqdmulh");
                 }
                 else if (!U) {
+                    fmt = 'i';
                     add_str("vpadd");
                 }
                 break;
@@ -475,6 +581,9 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
                 add_char('.');
                 if (fmt) add_char(fmt);
                 else add_char(U ? 'u' : 's');
+            }
+            if (!no_sz) {
+                if (no_dt) add_char('.');
                 add_dec_uint32(8 << sz);
             }
             add_char(' ');
@@ -482,10 +591,20 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
             add_dec_uint32(Q ? vd / 2 : vd);
             add_str(", ");
             add_char(Q ? 'q' : 'd');
-            add_dec_uint32(Q ? vn / 2 : vn);
+            if (A == 4 || A == 5) {
+                add_dec_uint32(Q ? vm / 2 : vm);
+            }
+            else {
+                add_dec_uint32(Q ? vn / 2 : vn);
+            }
             add_str(", ");
             add_char(Q ? 'q' : 'd');
-            add_dec_uint32(Q ? vm / 2 : vm);
+            if (A == 4 || A == 5) {
+                add_dec_uint32(Q ? vn / 2 : vn);
+            }
+            else {
+                add_dec_uint32(Q ? vm / 2 : vm);
+            }
             return;
         }
     }
@@ -501,7 +620,9 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         if ((instr & 0x00000900) == 0x00000100 || (instr & 0x00000d00) == 0x00000900) {
             add_str(op ? "vbic" : "vorr");
         }
-        else if (op && (instr & 0x00000e00) == 0x00000e00) {
+        else if (op && ((cmode == 0) || (cmode == 2) || (cmode == 4) ||
+                        (cmode == 6) || (cmode == 8) || (cmode == 10) ||
+                        (cmode == 12) || (cmode == 13))) {
             add_str("vmvn");
         }
         else {
@@ -514,8 +635,8 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         add_char(' ');
         add_char(Q ? 'q' : 'd');
         add_dec_uint32(vd);
-        add_str(", #");
-        add_dec_uint64(adv_simd_expand_imm(instr));
+        add_str(", #0x");
+        add_hex_uint64(adv_simd_expand_imm(instr));
         return;
     }
 
@@ -602,11 +723,13 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
                 else if (A == 8) {
                     if (!U) add_char('i');
                     else add_char('s');
+                    size *= 2;
                 }
                 else if (A != 4) {
                     add_char(U ? 'u' : 's');
+                    if (A == 9) size *= 2;
                 }
-                add_dec_uint32(8 << size);
+                add_dec_uint32(size << 3);
             }
             add_char(' ');
             if ((B && A != 8 && A != 9) || A == 10) {
@@ -618,7 +741,7 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
                 add_dec_uint32(vd);
             }
             add_str(", ");
-            if (B) {
+            if (B || A == 9 || A == 8) {
                 add_char('q');
                 add_dec_uint32(vm / 2);
             }
@@ -656,9 +779,9 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         }
         if (buf_pos > 0) {
             uint32_t size = (instr >> 20) & 0x3;
-            uint32_t vn = (instr >> 16) & 0xf;
-            uint32_t vd = (instr >> 12) & 0xf;
-            uint32_t vm = instr & 0xf;
+            uint32_t vn = ((instr >> 3) & 0x10) + ((instr >> 16) & 0xf);
+            uint32_t vd = ((instr >> 18) & 0x10) + ((instr >> 12) & 0xf);
+            uint32_t vm = ((instr >> 1) & 0x10) + (instr & 0xf);
             if (instr & (1 << 22)) vd |= 0x10;
             add_char('.');
             if (A == 4 || A == 6) {
@@ -711,12 +834,14 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         case 0:
         case 1:
         case 2:
-            add_str("vmla");
+            /* bit 9 gives encoding A1 (vmla) or encoding A2 (vmlal) */
+            add_str((instr >> 9 & 1) ? "vmlal" : "vmla");
             break;
         case 4:
         case 5:
         case 6:
-            add_str("vmls");
+            /* bit 9 gives encoding A1 (vmls) or encoding A2 (vmlsl) */
+            add_str((instr >> 9 & 1) ? "vmlsl" : "vmls");
             break;
         case 3:
             add_str("vqdmlal");
@@ -920,15 +1045,22 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
                 else if ((B & 0x1e) == 0x1e) add_char('s');
             }
             else if (A == 1) {
-                add_char(instr & (1 << 10) ? 'f' : 's');
+                if (B == 4 || B == 5) add_char('i');
+                else add_char(instr & (1 << 10) ? 'f' : 's');
             }
             else if (A == 2) {
                 if ((B & 0x1f) == 8) {
                     add_char('i');
                     size++;
                 }
-                else if ((B & 0x1f) == 9) add_char('s');
-                else if ((B & 0x1e) == 0xa) add_char(instr & (1 << 7) ? 'u' : 's');
+                else if ((B & 0x1f) == 9) {
+                    add_char('s');
+                    size++;
+                }
+                else if ((B & 0x1e) == 0xa) {
+                    add_char(instr & (1 << 6) ? 'u' : 's');
+                    size++;
+                }
                 else if ((B & 0x1f) == 0xc) add_char('i');
             }
             else {
@@ -938,15 +1070,19 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         }
         add_char(' ');
         if (A == 2 && (B & 0x1f) == 8) add_char('d');
+        else if (A == 2 && (B & 0x1f) == 9) add_char('d');
+        else if (A == 2 && (B & 0x1e) == 0xa) add_char('d');
         else if (A == 2 && (B & 0x1f) == 0x18) add_char('d');
-        else if (A == 2 && (B & 0x1f) == 0x18) add_char('q');
+        else if (A == 2 && (B & 0x1f) == 0x1c) add_char('q');
+        else if (A == 2 && (B & 0x1f) == 0xc) add_char('q');
         else add_char(Q ? 'q' : 'd');
         if (buf[buf_pos - 1] == 'q') vd /= 2;
         add_dec_uint32(vd);
         add_str(", ");
         if (A == 2 && (B & 0x1f) == 8) add_char('q');
+        else if (A == 2 && (B & 0x1e) == 0xa) add_char('q');
         else if (A == 2 && (B & 0x1f) == 0x18) add_char('q');
-        else if (A == 2 && (B & 0x1f) == 0x18) add_char('d');
+        else if (A == 2 && (B & 0x1f) == 0x1c) add_char('d');
         else add_char(Q ? 'q' : 'd');
         if (buf[buf_pos - 1] == 'q') vm /= 2;
         add_dec_uint32(vm);
@@ -973,7 +1109,7 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
         add_str(".8 ");
         add_char('d');
         add_dec_uint32(vd);
-        add_str(", ");
+        add_str(", {");
         add_char('d');
         add_dec_uint32(vn);
         if (len > 0) {
@@ -981,7 +1117,7 @@ static void disassemble_advanced_simd_data_processing(uint32_t instr) {
             add_char('d');
             add_dec_uint32(vn + len);
         }
-        add_str(", ");
+        add_str("}, ");
         add_char('d');
         add_dec_uint32(vm);
         return;
@@ -1040,37 +1176,35 @@ static void disassemble_advanced_simd_load_store(uint32_t instr) {
                 int a = (instr & (1 << 4)) != 0;
                 if (!L) return;
                 size = (instr >> 6) & 3;
-                if (a) {
-                    if (size == 2) return;
-                    if (size == 3) align = size + 2;
-                    else align = size + n;
-                }
+                /*
+                 * VLD1 (single element to all lanes):
+                 * if size == '11' || (size == '00' && a == '1') then UNDEFINED;
+                 */
+                if (n == 0 && (size == 3 || (size == 0 && a == 1))) return;
                 all_lanes = 1;
+                align = al_reg_align(n, size, index_align);
+                if (n == 3 && size == 3) size -= 1;
             }
             else {
                 /* single structure to one lane */
                 switch (size) {
                 case 0:
-                    if (index_align & 1) {
-                        if (n == 0) return;
-                        align = n;
-                    }
+                    if (index_align & 1 && n == 0) return;
                     index = index_align >> 1;
                     break;
                 case 1:
                     double_spaced = (index_align & 2) != 0;
                     if (n == 0 && double_spaced) return;
                     index = index_align >> 2;
-                    if (index_align & 1) align = n + 1;
                     break;
                 case 2:
                     double_spaced = (index_align & 4) != 0;
                     if (n == 0 && double_spaced) return;
                     index = index_align >> 3;
-                    if (index_align & 3) align = n + 2;
                     break;
                 }
-                if (n == 2 && align) return;
+                align = ix_reg_align(n, size, index_align);
+                if (n == 2 && align != 0) return;
             }
             add_str(L ? "vld" : "vst");
             add_dec_uint32(n + 1);
@@ -1082,24 +1216,28 @@ static void disassemble_advanced_simd_load_store(uint32_t instr) {
                 int T = (instr & (1 << 5)) != 0;
                 if (!T) {
                     if (n > 0) {
-                        add_str("-d");
-                        add_dec_uint32(vd + n);
+                        uint32_t ix = 0;
+                        for (ix = 0 ; ix < n ; ix ++) {
+                            add_str("[],d");
+                            add_dec_uint32(vd + ix + 1);
+                        }
                     }
                 }
                 else {
                     if (n == 0) {
-                        add_str("-d");
+                        add_str("[],d");
                         add_dec_uint32(vd + 1);
                     }
                     else {
                         /* double-spaced register transfer */
                         unsigned i;
                         for (i = 1; i <= n; i++) {
-                            add_str(",d");
+                            add_str("[],d");
                             add_dec_uint32(vd + i * 2);
                         }
                     }
                 }
+                add_str("[]");
             }
             else {
                 unsigned i;
@@ -1151,10 +1289,16 @@ static void disassemble_advanced_simd_load_store(uint32_t instr) {
             case 0:
             case 2:
             case 3:
-                add_str("-d");
+                /* nregs = 4, inc = 1 */
+                add_str(",d");
+                add_dec_uint32(vd + 1);
+                add_str(",d");
+                add_dec_uint32(vd + 2);
+                add_str(",d");
                 add_dec_uint32(vd + 3);
                 break;
             case 1:
+                /* nregs = 4, inc = 2 */
                 add_str(",d");
                 add_dec_uint32(vd + 2);
                 add_str(",d");
@@ -1163,6 +1307,7 @@ static void disassemble_advanced_simd_load_store(uint32_t instr) {
                 add_dec_uint32(vd + 6);
                 break;
             case 5:
+                /* nregs = 3, inc = 2 */
                 add_str(",d");
                 add_dec_uint32(vd + 2);
                 add_str(",d");
@@ -1170,15 +1315,24 @@ static void disassemble_advanced_simd_load_store(uint32_t instr) {
                 break;
             case 4:
             case 6:
+                /* nregs = 3, inc = 1 */
+                add_str(",d");
+                add_dec_uint32(vd + 1);
+                add_str(",d");
+                add_dec_uint32(vd + 2);
+                break;
             case 9:
-                add_str("-d");
+                /* nregs = 2, inc = 2 */
+                add_str(",d");
                 add_dec_uint32(vd + 2);
                 break;
             case 7:
+                /* nregs = 1 */
                 break;
             case 8:
             case 10:
-                add_str("-d");
+                /* nregs = 2, inc = 1 */
+                add_str(",d");
                 add_dec_uint32(vd + 1);
                 break;
             default:
@@ -1216,6 +1370,9 @@ static void disassemble_vfp_other_data_processing_instr(uint32_t instr, const ch
     int sz = (instr & (1 << 8)) != 0;
     uint32_t vd = (instr >> 12) & 0xf;
     uint32_t vm = instr & 0xf;
+    uint32_t imm4i = ((instr & 0xf) << 1) + ((instr >> 5) & 1);
+    uint32_t sx = ((instr >> 7) & 1);
+    uint32_t fbits = 0;
 
     if (sz) {
         if (instr & (1 << 5)) vm |= 0x10;
@@ -1252,6 +1409,7 @@ static void disassemble_vfp_other_data_processing_instr(uint32_t instr, const ch
             /* VCMP, VCMPE */
             add_str("vcmp");
             if (T) add_char('e');
+            add_str(cond);
             add_str(sz ? ".f64 d" : ".f32 s");
             add_dec_uint32(vd);
             if (instr & (1 << 16)) {
@@ -1309,10 +1467,8 @@ static void disassemble_vfp_other_data_processing_instr(uint32_t instr, const ch
             add_str(sz ? ", d" : ", s");
             add_dec_uint32(vd);
             add_str(", #");
-            vm = (instr & 0xf) * 2;
-            if (instr & (1 << 5)) vm++;
-            vm = (op2 & 1 ? 32 : 16) - vm;
-            add_dec_uint32(vm);
+            fbits = sx ? (32 - imm4i) : (16 - imm4i);
+            add_dec_uint32(fbits);
             return;
         case 12:
         case 13:
@@ -1346,10 +1502,8 @@ static void disassemble_vfp_other_data_processing_instr(uint32_t instr, const ch
             add_str(sz ? ", d" : ", s");
             add_dec_uint32(vd);
             add_str(", #");
-            vm = (instr & 0xf) * 2;
-            if (instr & (1 << 5)) vm++;
-            vm = (op2 & 1 ? 32 : 16) - vm;
-            add_dec_uint32(vm);
+            fbits = sx ? (32 - imm4i) : (16 - imm4i);
+            add_dec_uint32(fbits);
             return;
         }
         add_str(cond);
@@ -1383,6 +1537,9 @@ static void disassemble_vfp_other_data_processing_instr(uint32_t instr, const ch
 
 static void disassemble_vfp_data_processing_instr(uint32_t instr, const char * cond) {
     uint32_t op1 = (instr >> 20) & 0xf;
+    uint32_t op = 0;
+    uint32_t mode = (instr >> 8) & 0xf;
+    uint32_t dest = (instr >> 25) & 0x7;
     uint32_t vn = (instr >> 16) & 0xf;
     uint32_t vd = (instr >> 12) & 0xf;
     uint32_t vm = instr & 0xf;
@@ -1390,11 +1547,15 @@ static void disassemble_vfp_data_processing_instr(uint32_t instr, const char * c
     switch (op1) {
     case 0:
     case 4:
-        add_str(instr & (1 << 6) ? "vmls" : "vmla");
+        if (dest == 1 && mode == 9) op = (instr >> 24) & 1;
+        else if (dest == 1 && (mode == 8 || mode == 10)) op = (instr >> 9) & 1;
+        else if (dest == 1 && mode == 13) op = (instr >> 21) & 1;
+        else if (dest == 7 && (mode == 10 || mode == 11)) op = (instr >> 6) & 1;
+        add_str(op ? "vmls" : "vmla");
         break;
     case 1:
     case 5:
-        add_str(instr & (1 << 6) ? "vnmls" : "vnmla");
+        add_str(instr & (1 << 6) ? "vnmla" : "vnmls");
         break;
     case 2:
     case 6:
@@ -1529,6 +1690,10 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
                     add_char(U ? '+' : '-');
                     add_dec_uint32(imm8 << 2);
                 }
+                else if (U == 0 && imm8 == 0) {
+                    /* Special case [<reg>,#-0] : P==1, W==0, U==0, IMM==0 */
+                    add_str(", #-0");
+                }
                 add_char(']');
             }
             else if (P == U && W) {
@@ -1540,7 +1705,8 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
                 uint32_t dm = 0;
                 if (D) dn |= 0x10;
                 dm = dn + (V ? imm8 / 2 : imm8) - 1;
-                if (W && rn == 13) {
+                if ((L == 1 && P == 0 && U == 1 && W == 1 && rn == 13) ||
+                    (L == 0 && P == 1 && U == 0 && W == 1 && rn == 13)) {
                     add_str(L ? "vpop" : "vpush");
                     add_str(cond);
                     add_str(" {");
@@ -1567,7 +1733,7 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
         else if (!P && !U && D && !W) {
             add_str(L ? "mrrc" : "mcrr");
             add_str(cond_code == 15 ? "2" : cond);
-            add_char(' ');
+            add_str(" p");
             add_dec_uint32((instr >> 8) & 0xf);
             add_str(", ");
             add_dec_uint32((instr >> 4) & 0xf);
@@ -1575,7 +1741,7 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
             add_reg_name((instr >> 12) & 0xf);
             add_str(", ");
             add_reg_name((instr >> 16) & 0xf);
-            add_str(", cr");
+            add_str(", c");
             add_dec_uint32(instr & 0xf);
         }
         else if (!P && !U && !D && !W) {
@@ -1587,9 +1753,9 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
             if (cond_code == 15) add_char('2');
             if (D) add_char('l');
             if (cond_code != 15) add_str(cond);
-            add_char(' ');
+            add_str(" p");
             add_dec_uint32((instr >> 8) & 0xf);
-            add_str(", cr");
+            add_str(", c");
             add_dec_uint32((instr >> 12) & 0xf);
             add_str(", [");
             if ((instr & 0x000f0000) == 0x000f0000 && !P && U && !W) {
@@ -1598,19 +1764,24 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
                 add_char('}');
             }
             else {
-                add_reg_name((instr & 0x000f0000) >> 16);
+                uint32_t rn = (instr & 0x000f0000) >> 16;
+                add_reg_name(rn);
                 if (P) {
                     if (imm != 0) {
                         add_str(", #");
                         add_char(U ? '+' : '-');
                         add_dec_uint32(imm << 2);
                     }
+                    else if (U == 0 && imm == 0) {
+                        /* Special case [reg,#-0] : P==1, U==0, IMM==0 */
+                        add_str(", #-0");
+                    }
                     add_char(']');
-                    if (W && imm) add_char('!');
+                    if (W) add_char('!');
                 }
                 else if (W) {
                     add_char(']');
-                    if (imm != 0) {
+                    if (imm != 0 || U == 0) {
                         add_str(", #");
                         add_char(U ? '+' : '-');
                         add_dec_uint32(imm << 2);
@@ -1629,7 +1800,8 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
         if (buf_pos > 0) return;
     }
 
-    if ((instr & 0x0f900f50) == 0x0e800b10) {
+    if (((instr & 0x0f900f5f) == 0x0e800b10) &&
+        ((instr & 0xf0000000) != 0xf0000000)) {
         /* VDUP (ARM core register) */
         int Q = instr & (1 << 21);
         uint32_t vd = (instr >> 16) & 0xf;
@@ -1684,7 +1856,8 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
         }
     }
 
-    if ((instr & 0x0f900f10) == 0x0e000b10) {
+    if (((instr & 0x0f900f1f) == 0x0e000b10) &&
+        ((instr & 0xf0000000) != 0xf0000000)) {
         /* VMOV (ARM core register to scalar) */
         uint32_t size = 0;
         uint32_t dn = (instr >> 16) & 0xf;
@@ -1694,16 +1867,16 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
         if (instr & (1 << 22)) {
             size = 8;
             x = (instr >> 5) & 3;
-            if (instr & (1 << 22)) x |= 4;
+            if (instr & (1 << 21)) x |= 4;
         }
         else if (instr & (1 << 5)) {
             size = 16;
             if (instr & (1 << 6)) x |= 1;
-            if (instr & (1 << 22)) x |= 2;
+            if (instr & (1 << 21)) x |= 2;
         }
         else {
             size = 32;
-            if (instr & (1 << 22)) x |= 1;
+            if (instr & (1 << 21)) x |= 1;
         }
         if (instr & (1 << 7)) dn |= 0x10;
         if (size != 0) {
@@ -1730,16 +1903,16 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
         if (instr & (1 << 22)) {
             size = 8;
             x = (instr >> 5) & 3;
-            if (instr & (1 << 22)) x |= 4;
+            if (instr & (1 << 21)) x |= 4;
         }
         else if (instr & (1 << 5)) {
             size = 16;
             if (instr & (1 << 6)) x |= 1;
-            if (instr & (1 << 22)) x |= 2;
+            if (instr & (1 << 21)) x |= 2;
         }
         else {
             size = 32;
-            if (instr & (1 << 22)) x |= 1;
+            if (instr & (1 << 21)) x |= 1;
         }
         if (instr & (1 << 7)) dn |= 0x10;
         if (size != 0) {
@@ -1758,7 +1931,8 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
         return;
     }
 
-    if ((instr & 0x0fe00f10) == 0x0e000a10) {
+    if ((instr & 0x0fe00f10) == 0x0e000a10 &&
+        ((instr & 0xf0000000) != 0xf0000000)) {
         int L = (instr & (1 << 20)) != 0;
         uint32_t dn = (instr >> 15) & 0x1e;
         add_str("vmov");
@@ -1783,15 +1957,15 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
         int A = (instr & (1 << 20)) != 0;
         add_str(A ? "mrc" : "mcr");
         add_str(cond_code == 15 ? "2" : cond);
-        add_char(' ');
+        add_str(" p");
         add_dec_uint32((instr >> 8) & 0xf);
         add_str(", ");
         add_dec_uint32((instr >> 21) & 0x7);
         add_str(", ");
         add_reg_name((instr >> 12) & 0xf);
-        add_str(", cr");
+        add_str(", c");
         add_dec_uint32((instr >> 16) & 0xf);
-        add_str(", cr");
+        add_str(", c");
         add_dec_uint32(instr & 0xf);
         if (instr & 0x000000e0) {
             add_str(", ");
@@ -1803,15 +1977,15 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
     if ((instr & 0x0f000010) == 0x0e000000) {
         add_str("cdp");
         add_str(cond_code == 15 ? "2" : cond);
-        add_char(' ');
+        add_str(" p");
         add_dec_uint32((instr >> 8) & 0xf);
         add_str(", ");
         add_dec_uint32((instr >> 20) & 0xf);
-        add_str(", cr");
+        add_str(", c");
         add_dec_uint32((instr >> 12) & 0xf);
-        add_str(", cr");
+        add_str(", c");
         add_dec_uint32((instr >> 16) & 0xf);
-        add_str(", cr");
+        add_str(", c");
         add_dec_uint32(instr & 0xf);
         if (instr & 0x000000e0) {
             add_str(", ");
@@ -1833,7 +2007,12 @@ static void disassemble_unconditional_instr(uint32_t addr, uint32_t instr) {
             if (instr & (1 << 7)) add_char('i');
             if (instr & (1 << 6)) add_char('f');
             if (instr & (1 << 17)) {
-                add_str(", #");
+                /* do not add the coma if there was no AIF. */
+                if (((instr >> 6) & 0x7) != 0) {
+                    add_str(", #");
+                } else {
+                    add_char('#');
+                }
                 add_dec_uint32(mode);
             }
         }
@@ -1889,16 +2068,21 @@ static void disassemble_unconditional_instr(uint32_t addr, uint32_t instr) {
         int U = (instr & (1 << 23)) != 0;
         int R = (instr & (1 << 22)) != 0;
         int reg = (instr & (1 << 25)) != 0;
+        int rn = (instr & 0x000f0000) >> 16;
         add_str("pld");
         if (!R) add_char('w');
         add_str(" [");
-        add_reg_name((instr & 0x000f0000) >> 16);
+        add_reg_name(rn);
         if (!reg) {
             uint32_t offs = instr & 0xfff;
             if (offs) {
                 add_str(", #");
                 add_char(U ? '+' : '-');
                 add_dec_uint32(offs);
+            }
+            else if (U ==0 && offs == 0) {
+                /* Special case [reg,#-0] : P==1, W==0, U==0, IMM==0 */
+                add_str(", #-0");
             }
         }
         else {
@@ -1921,9 +2105,18 @@ static void disassemble_unconditional_instr(uint32_t addr, uint32_t instr) {
         case 5:
             add_str("dmb");
             break;
-        case 6:
+        case 6: {
+            uint32_t option = (instr & 0x0000000f);
             add_str("isb");
+            add_char(' ');
+            if (option == 15) add_str("sy");
+            else {
+                add_char('#');
+                add_dec_uint32(option);
+            }
+            return;
             break;
+        }
         default:
             return;
         }
@@ -1947,8 +2140,8 @@ static void disassemble_unconditional_instr(uint32_t addr, uint32_t instr) {
         add_auto_inc_mode(instr, 0);
         add_str(" sp");
         if (instr & (1 << 21)) add_char('!');
-        add_str(", #");
-        add_dec_uint32(instr & 0x1f);
+        add_str(", ");
+        add_str(proc_modes[instr & 0x1f]);
         return;
     }
 
@@ -1981,7 +2174,7 @@ static void disassemble_unconditional_instr(uint32_t addr, uint32_t instr) {
     }
 }
 
-static void disassemble_data_instr(uint32_t instr, const char * cond) {
+static void disassemble_data_instr(uint32_t instr, const char * cond, uint32_t addr) {
     uint32_t op_code = (instr >> 21) & 0xf;
     int I = (instr & (1 << 25)) != 0;
     int S = (instr & (1 << 20)) != 0;
@@ -1991,6 +2184,20 @@ static void disassemble_data_instr(uint32_t instr, const char * cond) {
 
     if ((instr & 0xffffffff) == 0xe1a00000) {
         add_str("nop");
+        return;
+    }
+
+    if ((((instr & 0x03ff0000) == 0x028f0000) ||
+        (((instr & 0x03ff0000) == 0x024f0000))) &&
+        ((instr & 0xf0000000) != 0xf00000000)) {
+        /* ADR{<c>}{<q>} <Rd>, <label> */
+        uint32_t add = (instr >> 23) & 0x1;
+        add_str("adr");
+        add_str(cond);
+        add_char(' ');
+        add_reg_name(rd);
+        add_str(", ");
+        add_modifed_immediate_address(instr & 0x00000fff, addr, add, 4);
         return;
     }
 
@@ -2006,12 +2213,23 @@ static void disassemble_data_instr(uint32_t instr, const char * cond) {
     }
 
     if (buf_pos == 0) {
+        uint32_t shift_type = (instr >> 5) & 3;
+        uint32_t shift_imm = (instr >> 7) & 0x1f;
+        int reg_shift = (instr & 0x00000010) != 0;
+        no_shift_name = 0;
         if (op_code >= 8 && op_code <= 11) {
             if (!S) return;
             S = 0;
         }
-        add_str(op_names[op_code]);
-        no_shift_name = 0;
+        if ((op_code == 13) && (I == 0) && (reg_shift || shift_type != 0 || shift_imm != 0)) {
+            /* use pseudo instructions : asr, lsl, lsr, ror, rrx */
+            if (shift_type == 3 && shift_imm == 0) add_str("rrx");
+            else add_str(shift_names[shift_type]);
+            no_shift_name = 1;
+        }
+        else {
+            add_str(op_names[op_code]);
+        }
     }
 
     if (S) add_char('s');
@@ -2041,6 +2259,14 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
         add_char('b');
         if (instr & 0x00000020) add_char('l');
         add_char('x');
+        add_str(cond);
+        add_char(' ');
+        add_reg_name(instr & 0xf);
+        return;
+    }
+
+    if ((instr & 0x0ffffff0) == 0x012fff20) {
+        add_str("bxj");
         add_str(cond);
         add_char(' ');
         add_reg_name(instr & 0xf);
@@ -2162,7 +2388,7 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
         add_str(L ? "ldrex" : "strex");
         switch (op) {
         case 0: break;
-        case 1: add_char('d'); break;
+        case 1: add_char('d');break;
         case 2: add_char('b'); break;
         case 3: add_char('h'); break;
         }
@@ -2172,6 +2398,14 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
         if (!L) {
             add_str(", ");
             add_reg_name(instr & 0xf);
+            if (op == 1) {
+                add_str(", ");
+                add_reg_name((instr & 0xf) + 1);
+            }
+        }
+        else if (op == 1) {
+            add_str(", ");
+            add_reg_name(((instr >> 12) & 0xf) + 1);
         }
         add_str(", [");
         add_reg_name((instr >> 16) & 0xf);
@@ -2245,10 +2479,48 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
         return;
     }
 
+    if ((instr & 0x0fd00090) == 0x01400080) {
+        uint32_t ra = ((instr >> 12) & 0xf);
+        add_str(((instr >> 21) & 1) ? "smul" : "smlal");
+        add_char(instr & (1 << 5) ? 't' : 'b');
+        add_char(instr & (1 << 6) ? 't' : 'b');
+        add_str(cond);
+        add_char(' ');
+        if ((((instr >> 21) & 1) == 0) || (ra != 0)) {
+            add_reg_name((instr >> 12) & 0xf);
+            add_str(", ");
+        }
+        add_reg_name((instr >> 16) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name((instr >> 8) & 0xf);
+        return;
+    }
+
+    if ((instr & 0x0ff00090) == 0x01200080) {
+        uint32_t ra = ((instr >> 12) & 0xf);
+        add_str(((instr >> 5) & 1) ? "smulw" : "smlaw");
+        add_char(instr & (1 << 6) ? 't' : 'b');
+        add_str(cond);
+        add_char(' ');
+        add_reg_name((instr >> 16) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name((instr >> 8) & 0xf);
+        if ((ra != 0) || (((instr >> 5) & 1) == 0)) {
+            add_str(", ");
+            add_reg_name((instr >> 12) & 0xf);
+        }
+        return;
+    }
+
     if ((instr & 0x0e000090) == 0x00000090) {
         /* Extra load/store instructions */
         int T = (instr & (1 << 24)) == 0 && (instr & (1 << 21));
         uint32_t op2 = (instr >> 5) & 3;
+        int rt2 = -1;
         if (op2 == 2 || (instr & (1 << 20))) {
             add_str("ldr");
         }
@@ -2264,11 +2536,16 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
         else {
             add_char('d');
             T = 0;
+            rt2 = ((instr >> 12) & 0xf) + 1;
         }
         if (T) add_char('t');
         add_str(cond);
         add_char(' ');
         add_reg_name((instr >> 12) & 0xf);
+        if (rt2 != -1) {
+            add_str(", ");
+            add_reg_name(rt2);
+        }
         add_str(", ");
         if (instr & (1 << 22)) {
             int P = (instr & (1 << 24)) != 0;
@@ -2279,18 +2556,25 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
             add_char('[');
             add_reg_name(rn);
             if (P) {
-                if (W || imm8 != 0) {
+                if (imm8 != 0) {
                     add_str(",#");
                     add_char(U ? '+' : '-');
                     add_dec_uint32(imm8);
+                }
+                else if (W == 0 && U ==0 && imm8 == 0) {
+                    /* Special case [reg,#-0] : P==1, W==0, U==0, IMM==0 */
+                    add_str(", #-0");
                 }
                 add_char(']');
                 if (W) add_char('!');
             }
             else {
-                add_str("], #");
-                add_char(U ? '+' : '-');
-                add_dec_uint32(imm8);
+                if (imm8 == 0 && U == 1) add_char(']');
+                else {
+                    add_str("], #");
+                    add_char(U ? '+' : '-');
+                    add_dec_uint32(imm8);
+                }
             }
         }
         else if (T) {
@@ -2323,6 +2607,28 @@ static void disassemble_misc_instr(uint32_t instr, const char * cond) {
                 add_reg_name(instr & 0xf);
             }
         }
+        return;
+    }
+
+    if ((instr & 0x0f900ff0) == 0x01000050) {
+        add_char('q');
+        if ((instr >> 22) & 1) add_char('d');
+        add_str(((instr >> 21) & 1) ? "sub" : "add");
+        add_str(cond);
+        add_char(' ');
+        add_reg_name((instr >> 12) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name((instr >> 16) & 0xf);
+        return;
+    }
+
+    if ((instr & 0x0ffffff0) == 0x01600070) {
+        add_str("smc");
+        add_str(cond);
+        add_str(" #");
+        add_dec_uint32(instr & 0xf);
         return;
     }
 }
@@ -2387,7 +2693,11 @@ static void disassemble_media_instr(uint32_t instr, const char * cond) {
                     add_str(instr & (1 << 6) ? "asr" : "lsl");
                     add_str(" #");
                     add_dec_uint32(imm);
+                } else if (imm == 0 && ((instr & (1 << 6)) != 0)) {
+                    add_str(", asr #");
+                    add_dec_uint32(32);
                 }
+                return;
             }
             if (((instr >> 5) & 7) == 5) {
                 /* Select Bytes */
@@ -2439,14 +2749,24 @@ static void disassemble_media_instr(uint32_t instr, const char * cond) {
             add_char(' ');
             add_reg_name((instr >> 12) & 0xf);
             add_str(", #");
-            add_dec_uint32((instr >> 16) & 0x1f);
+            if ((instr & (1 << 22)) == 0) {
+                add_dec_uint32(((instr >> 16) & 0x1f) + 1);
+            }
+            else {
+                add_dec_uint32((instr >> 16) & 0x1f);
+            }
             add_str(", ");
             add_reg_name(instr & 0xf);
-            if (imm) {
-                add_str(", ");
-                add_str(instr & (1 << 6) ? "asr" : "lsl");
-                add_str(" #");
-                add_dec_uint32(imm);
+            if ((instr & (1 << 5)) == 0) {
+                if (imm) {
+                    add_str(", ");
+                    add_str(instr & (1 << 6) ? "asr" : "lsl");
+                    add_str(" #");
+                    add_dec_uint32(imm);
+                } else if (imm ==0 && ((instr & (1 << 6)) != 0)) {
+                    add_str(", asr #");
+                    add_dec_uint32(32);
+                }
             }
             return;
         }
@@ -2473,8 +2793,8 @@ static void disassemble_media_instr(uint32_t instr, const char * cond) {
             }
             add_reg_name(instr & 0xf);
             if (rt) {
-                add_str(", ");
-                add_dec_uint32(rt);
+                add_str(", ror #");
+                add_dec_uint32(rt * 8);
             }
             return;
 
@@ -2520,6 +2840,96 @@ static void disassemble_media_instr(uint32_t instr, const char * cond) {
         add_dec_uint32(msb - lsb + 1);
         return;
     }
+
+    if ((instr & 0x0fb000d0) == 0x07000010) {
+        uint32_t L = (instr >> 22) & 1;
+        uint32_t ra = (instr >> 12) & 0xf;
+        add_str((ra == 15 && !L) ? "smua" : "smla");
+        if (L) add_char('l');
+        add_char('d');
+        if ((instr >> 5) & 1) add_char('x');
+        add_str(cond);
+        add_char(' ');
+        if (L) {
+            add_reg_name((instr >> 12) & 0xf);
+            add_str(", ");
+        }
+        add_reg_name((instr >> 16) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name((instr >> 8) & 0xf);
+        if (!L && (ra != 15)) {
+            add_str(", ");
+            add_reg_name(ra);
+        }
+        return;
+    }
+
+    if ((instr & 0x0fb000d0) == 0x07000050) {
+        uint32_t L = (instr >> 22) & 1;
+        uint32_t ra = (instr >> 12) & 0xf;
+        add_str((ra == 15 && !L) ? "smus" : "smls");
+        if (L) add_char('l');
+        add_char('d');
+        if ((instr >> 5) & 1) add_char('x');
+        add_str(cond);
+        add_char(' ');
+        if (L) {
+            add_reg_name((instr >> 12) & 0xf);
+            add_str(", ");
+        }
+        add_reg_name((instr >> 16) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name((instr >> 8) & 0xf);
+        if (!L && (ra != 15)) {
+            add_str(", ");
+            add_reg_name(ra);
+        }
+        return;
+    }
+
+    if ((instr & 0x0ff00010) == 0x07500010) {
+        uint32_t R = (instr >> 5) & 1;
+        uint32_t ra = (instr >> 12) & 0xf;
+        uint32_t mode = ((instr >> 6) & 3);
+
+        if (mode == 0) add_str((ra == 15) ? "smmul" : "smmla");
+        else if (mode == 3) add_str("smmls");
+
+        if (R) add_char('r');
+        add_str(cond);
+        add_char(' ');
+        add_reg_name((instr >> 16) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name((instr >> 8) & 0xf);
+        if ((mode != 0) || (ra != 15)) {
+            add_str(", ");
+            add_reg_name(ra);
+        }
+        return;
+    }
+
+    if ((instr & 0x0ff00010) == 0x07800010) {
+        uint32_t ra = (instr >> 12) & 0xf;
+        add_str((ra == 15) ? "usad8" : "usada8");
+        add_str(cond);
+        add_char(' ');
+        add_reg_name((instr >> 16) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name((instr >> 8) & 0xf);
+        if (ra != 15) {
+            add_str(", ");
+            add_reg_name((instr >> 12) & 0xf);
+        }
+        return;
+    }
 }
 
 static void disassemble_load_store_instr(uint32_t instr, const char * cond) {
@@ -2536,6 +2946,8 @@ static void disassemble_load_store_instr(uint32_t instr, const char * cond) {
         add_char('}');
         return;
     }
+    /* POP : if BitCount(register_list) < 2 then SEE LDM / LDMIA / LDMFD; */
+
     if ((instr & 0x0fff0fff) == 0x049d0004) {
         add_str("pop");
         add_str(cond);
@@ -2544,6 +2956,12 @@ static void disassemble_load_store_instr(uint32_t instr, const char * cond) {
         add_char('}');
         return;
     }
+
+    if ((instr & 0x0ff000d0) == 0x07000010) {
+        add_str("smlad");
+        return;
+    }
+
     add_str(L ? "ldr" : "str");
     if (B) add_char('b');
     if (T) add_char('t');
@@ -2573,6 +2991,8 @@ static void disassemble_load_store_instr(uint32_t instr, const char * cond) {
 }
 
 static void disassemble_branch_and_block_data_transfer(uint32_t addr, uint32_t instr, const char * cond) {
+    int bitcount = count_bits((instr & 0x0000ffff));
+
     if ((instr & 0x0e000000) == 0x0a000000) { /* Branch */
         int L = (instr & 0x01000000) != 0;
         int32_t offset = instr & 0x00ffffff;
@@ -2596,11 +3016,11 @@ static void disassemble_branch_and_block_data_transfer(uint32_t addr, uint32_t i
 
     if ((instr & 0x0c000000) == 0x08000000) {
         unsigned i, j;
-        if ((instr & 0x0fff0000) == 0x092d0000) {
+        if ((instr & 0x0fff0000) == 0x092d0000  && (bitcount > 1)) {
             add_str("push");
             add_str(cond);
         }
-        else if ((instr & 0x0fff0000) == 0x08bd0000) {
+        else if (((instr & 0x0fff0000) == 0x08bd0000) && (bitcount > 1)) {
             add_str("pop");
             add_str(cond);
         }
@@ -2668,7 +3088,7 @@ DisassemblyResult * disassemble_arm(uint8_t * code,
     }
 
     if (buf_pos == 0 && (instr & 0x0c000000) == 0x00000000) {
-        disassemble_data_instr(instr, cond_name);
+        disassemble_data_instr(instr, cond_name, (uint32_t)addr);
     }
 
     dr.text = buf;
