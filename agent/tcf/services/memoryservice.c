@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -47,7 +47,7 @@ static TCFBroadcastGroup * broadcast_group = NULL;
 #define CMD_SET     2
 #define CMD_FILL    3
 
-#define BUF_SIZE    (128 * MEM_USAGE_FACTOR)
+#define BUF_SIZE    (512 * MEM_USAGE_FACTOR)
 
 typedef struct MemoryCommandArgs {
     char token[256];
