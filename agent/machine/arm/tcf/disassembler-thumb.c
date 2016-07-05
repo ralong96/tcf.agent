@@ -966,9 +966,11 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
         if (sh == 1 && imm2 == 0 && imm3 == 0) {
             /* SSAT16, USAT16 : nothing to add. */
             return;
-        } else if (sh == 1) {
+        }
+        else if (sh == 1) {
             add_str(", asr #");
-        } else {
+        }
+        else {
             add_str(", lsl #");
         }
         add_dec_uint32((imm3 << 2) + imm2);
@@ -1615,8 +1617,10 @@ static void disassemble_thumb7(void) {
 
         if (((instr & 0xf84d) == 0xf84d) &&
             (((suffix & 0x0bff) == 0x0b04) || ((suffix & 0x0dff) == 0x0d04))) {
-            if ((suffix & 0x0bff) == 0x0b04) add_str("pop.w {");
-            else add_str("push.w {");
+            if ((suffix & 0x0bff) == 0x0b04) add_str("pop");
+            else add_str("push");
+            if (it_cond_name) add_str(it_cond_name);
+            add_str(".w {");
             add_reg_name((suffix >> 12) & 0xf);
             add_char('}');
             return;
