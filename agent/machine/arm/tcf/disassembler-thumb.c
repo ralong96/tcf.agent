@@ -151,7 +151,7 @@ static void add_branch_address(int32_t offset) {
     add_char(' ');
     if (offset < 0) {
         add_char('-');
-        add_dec_uint32(-offset);
+        add_dec_uint32((-offset & 0xffffffff));
     }
     else {
         add_char('+');
@@ -198,6 +198,7 @@ static void disassemble_thumb0(void) {
     add_reg_name((instr >> 3) & 7);
     if (imm || op) {
         add_str(", #");
+        if (op >= 1 && imm == 0) imm = 32;
         add_dec_uint32(imm);
     }
 }
@@ -247,6 +248,7 @@ static void disassemble_thumb2(void) {
         add_reg_name(instr & 7);
         add_str(", ");
         add_reg_name((instr >> 3) & 7);
+        if (op == 9) add_str(", #0");
         return;
     }
 
@@ -420,22 +422,25 @@ static void disassemble_thumb5(void) {
         add_str(instr & (1 << 4) ? "id" : "ie");
         if (it_cond_name) add_str(it_cond_name);
         add_char(' ');
-        if (instr & (1 << 0)) add_char('f');
-        if (instr & (1 << 1)) add_char('i');
         if (instr & (1 << 2)) add_char('a');
+        if (instr & (1 << 1)) add_char('i');
+        if (instr & (1 << 0)) add_char('f');
         return;
     }
 
     if ((instr & 0xf500) == 0xb100) {
         uint32_t offs = (instr >> 3) & 0x1f;
         if (instr & (1 << 9)) offs |= 0x20;
+        offs = offs << 1;
         add_str("cb");
         if (instr & (1 << 11)) add_char('n');
         add_char('z');
         add_char(' ');
         add_reg_name(instr & 7);
-        add_str(", ");
-        add_hex_uint32(instr_addr + 4 + (offs << 1));
+        add_str(", +");
+        add_dec_uint32(offs);
+        add_char(' ');
+        add_addr(instr_addr + offs + 4);
         return;
     }
 
@@ -542,7 +547,10 @@ static void disassemble_thumb6(void) {
         if (it_cond_name) add_str(it_cond_name);
         add_char(' ');
         add_reg_name(rn);
-        if ((regs & (1 << rn)) == 0) add_char('!');
+        if (((regs & (1 << rn)) == 0) ||
+            ((instr & (1 << 11)) == 0)) {
+            add_char('!');
+        }
         add_str(", {");
         for (reg = 0; reg < 8; reg++) {
             if ((regs & (1 << reg)) == 0) continue;
@@ -555,6 +563,8 @@ static void disassemble_thumb6(void) {
 }
 
 static void disassemble_load_store_32(uint16_t suffix) {
+    int W = (instr & (1u << 5)) != 0;
+
     if ((instr & (1 << 6)) == 0) {
         /* Load/store multiple */
         unsigned i, j;
@@ -678,7 +688,6 @@ static void disassemble_load_store_32(uint16_t suffix) {
             uint32_t imm = (suffix & 0xff) << 2;
             int P = (instr & (1u << 8)) != 0;
             int U = (instr & (1u << 7)) != 0;
-            int W = (instr & (1u << 5)) != 0;
             add_reg_name(instr & 0xf);
             if (P) {
                 if (imm != 0 || W) {
@@ -703,6 +712,7 @@ static void disassemble_load_store_32(uint16_t suffix) {
             add_char(U ? '+' : '-');
             add_dec_uint32(imm);
             add_char(']');
+            if (W) add_char('!');
             add_addr(U ? instr_addr + imm + 4 : instr_addr - imm + 4);
         }
         return;
@@ -727,27 +737,45 @@ static void disassemble_load_store_32(uint16_t suffix) {
 
 static void disassemble_data_processing_32(uint16_t suffix) {
     uint32_t op_code = (instr >> 5) & 0xf;
+    uint32_t shift_imm = ((suffix >> 10) & 0x1c) | ((suffix >> 6) & 3);
+    uint32_t shift_type = (suffix >> 4) & 3;
     int I = (instr & (1 << 9)) == 0;
     int S = (instr & (1 << 4)) != 0;
     uint32_t rn = instr & 0xf;
     uint32_t rd = (suffix >> 8) & 0xf;
     int no_rd = 0;
     int no_rn = 0;
+    int no_S = 0;
+    int no_shift = 0;
 
     switch (op_code) {
     case 0:
-        if (rd == 15) {
-            if (!S) return;
-            S = 0;
-            no_rd = 1;
-        }
-        add_str(rd == 15 ? "tst" : "and");
+        add_str(((rd == 15) && S) ? "tst" : "and");
+        no_S = rd == 15 && S;
+        no_rd = no_S;
         break;
     case 1:
         add_str("bic");
         break;
     case 2:
-        add_str(rn == 15 ? "mov" : "orr");
+        /*
+         * ASR<c>.W {<Rd>,} <Rm>, <Rs>
+         * is equivalent to
+         * MOV{<c>}{<q>} <Rd>, <Rm>, ASR <Rs>
+         * and is always the preferred disassembly.
+         */
+        if (!I && (shift_type != 0 || shift_imm != 0) && (rn == 15)) {
+            no_shift = 1;
+            if (shift_type == 3 && shift_imm == 0) {
+                add_str("rrx");
+            }
+            else {
+                add_str(shift_names[shift_type]);
+            }
+        }
+        else {
+            add_str(rn == 15 ? "mov" : "orr");
+        }
         no_rn = rn == 15;
         break;
     case 3:
@@ -755,23 +783,20 @@ static void disassemble_data_processing_32(uint16_t suffix) {
         no_rn = rn == 15;
         break;
     case 4:
-        if (rd == 15) {
-            if (!S) return;
-            S = 0;
-            no_rd = 1;
-        }
-        add_str(rd == 15 ? "teq" : "eor");
+        add_str((rd == 15 && S)? "teq" : "eor");
+        no_S = rd == 15 && S;
+        no_rd = no_S;
         break;
     case 6:
         add_str("pkh");
         break;
     case 8:
-        if (rd == 15) {
-            if (!S) return;
+        if (rd == 15 && S) {
+            add_str("cmn");
             S = 0;
             no_rd = 1;
         }
-        add_str(rd == 15 ? "cmn" : "add");
+        else add_str("add");
         break;
     case 10:
         add_str("adc");
@@ -780,12 +805,9 @@ static void disassemble_data_processing_32(uint16_t suffix) {
         add_str("sbc");
         break;
     case 13:
-        if (rd == 15) {
-            if (!S) return;
-            S = 0;
-            no_rd = 1;
-        }
-        add_str(rd == 15 ? "cmp" : "sub");
+        add_str((rd == 15 && S) ? "cmp" : "sub");
+        if (rd == 15 && S) no_rd = 1;
+        no_S = no_rd;
         break;
     case 14:
         add_str("rsb");
@@ -794,9 +816,15 @@ static void disassemble_data_processing_32(uint16_t suffix) {
         return;
     }
 
-    if (S) add_char('s');
+    if (S && !no_S) add_char('s');
     if (it_cond_name) add_str(it_cond_name);
-    if (op_code != 14 && (op_code != 4 || rd != 15) && (op_code != 3 || rn == 15)) add_str(".w");
+    if ((op_code != 14) && (op_code != 6) && (op_code != 4 || (rd != 15 || !S)) &&
+        (op_code != 3 || rn == 15)) add_str(".w");
+    if (op_code == 6) {
+        /* add bt/tb */
+        if ((suffix >> 5) & 1) add_str("tb");
+        else add_str("bt");
+    }
     add_char(' ');
 
     if (!no_rd) {
@@ -811,19 +839,21 @@ static void disassemble_data_processing_32(uint16_t suffix) {
 
     if (!I) {
         uint8_t rm = (suffix & 0xf);
-        uint32_t shift_imm = ((suffix >> 10) & 0x1c) | ((suffix >> 6) & 3);
-        uint32_t shift_type = (suffix >> 4) & 3;
 
         add_reg_name(rm);
         if (shift_type != 0 || shift_imm != 0) {
             if (shift_type == 3 && shift_imm == 0) {
-                add_str(", ");
-                add_str("rrx");
+                if (!no_shift) {
+                    add_str(", ");
+                    add_str("rrx");
+                }
             }
             else {
                 add_str(", ");
-                add_str(shift_names[shift_type]);
-                add_char(' ');
+                if (!no_shift) {
+                    add_str(shift_names[shift_type]);
+                    add_char(' ');
+                }
                 add_char('#');
                 if (shift_type >= 1 && shift_imm == 0) shift_imm = 32;
                 add_dec_uint32(shift_imm);
@@ -839,6 +869,7 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
     uint32_t op_code = (instr >> 4) & 0x1f;
     uint32_t rn = instr & 0xf;
     uint32_t imm = suffix & 0xff;
+    int sat_inst = 0;
 
     imm |= (suffix & 0x7000) >> 4;
     if (instr & (1 << 10)) imm |= 0x800;
@@ -858,9 +889,11 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
         break;
     case 16:
         add_str("ssat");
+        sat_inst = 1;
         break;
     case 18:
         add_str(suffix & 0x70c0 ? "ssat" : "ssat16");
+        sat_inst = 1;
         break;
     case 20:
         add_str("sbfx");
@@ -870,9 +903,11 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
         break;
     case 24:
         add_str("usat");
+        sat_inst = 1;
         break;
     case 26:
         add_str(suffix & 0x70c0 ? "usat" : "usat16");
+        sat_inst = 1;
         break;
     case 28:
         add_str("ubfx");
@@ -885,17 +920,30 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
     if (it_cond_name) add_str(it_cond_name);
     add_char(' ');
     add_reg_name((suffix >> 8) & 0xf);
+
+    if (sat_inst) {
+        /* SSAT, SSAT16, USAT, USAT16 */
+        uint32_t sat_imm = suffix & 0x1f;
+        add_str(", #");
+        if (op_code == 16 || op_code == 18) add_dec_uint32(sat_imm + 1);
+        else  add_dec_uint32(sat_imm);
+    }
+
     if (op_code == 4) {
         imm |= rn << 12;
     }
     else if (op_code == 22 && rn == 15) {
         /* Nothing */
     }
+    else if (op_code == 12) {
+        imm = ((instr & 0xf) << 12) + (((instr >> 10) & 1) << 11) +
+              (((suffix >> 12) & 0x7) << 8) + (suffix & 0xff);
+    }
     else {
         add_str(", ");
         add_reg_name(rn);
     }
-    add_str(", #");
+    if (!sat_inst) add_str(", #");
     if (op_code == 22) {
         imm = (suffix >> 12) & 7;
         imm = (imm << 2) | ((suffix >> 6) & 3);
@@ -909,6 +957,21 @@ static void disassemble_data_processing_pbi_32(uint16_t suffix) {
         add_dec_uint32(imm);
         add_str(", #");
         add_dec_uint32((suffix & 0x1f) + 1);
+    }
+    else if (sat_inst) {
+        /* SSAT, SSAT16, USAT, USAT16 */
+        uint32_t sh = (instr >> 5) & 1;
+        uint32_t imm3 = (suffix >> 12) & 7;
+        uint32_t imm2 = (suffix >> 6) & 3;
+        if (sh == 1 && imm2 == 0 && imm3 == 0) {
+            /* SSAT16, USAT16 : nothing to add. */
+            return;
+        } else if (sh == 1) {
+            add_str(", asr #");
+        } else {
+            add_str(", lsl #");
+        }
+        add_dec_uint32((imm3 << 2) + imm2);
     }
     else {
         add_dec_uint32(imm);
@@ -925,8 +988,8 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
             int S = (instr & (1 << 10)) != 0;
             int32_t offset = suffix & 0x7ff;
             offset |= (instr & 0x3f) << 11;
-            if (J2) offset |= 1 << 17;
-            if (J1) offset |= 1 << 18;
+            if (J1) offset |= 1 << 17;
+            if (J2) offset |= 1 << 18;
             if (S) offset |= 0xfff80000;
             offset = offset << 1;
             add_char('b');
@@ -962,23 +1025,21 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
             /* Change Processor State, and hints */
             uint32_t imod = (suffix >> 9) & 3;
             int M = (suffix & (1 << 8)) != 0;
+            /* hint instructions if imod == 00 && M == 0 */
             if (imod || M) {
-                uint32_t mode = instr & 0x1f;
+                uint32_t mode = suffix & 0x1f;
                 add_str("cps");
+                if (imod >= 2) add_str(imod == 2 ? "ie" : "id");
                 if (imod >= 2) {
-                    add_str(imod == 2 ? "ie" : "id");
-                    add_str(".w");
-                    add_char(' ');
-                    if (instr & (1 << 7)) add_char('a');
-                    if (instr & (1 << 6)) add_char('i');
-                    if (instr & (1 << 5)) add_char('f');
-                    if (M) {
-                        add_str(", #");
-                        add_dec_uint32(mode);
-                    }
+                    add_str(M ? " " : ".w ");
+                    if (suffix & (1 << 7)) add_char('a');
+                    if (suffix & (1 << 6)) add_char('i');
+                    if (suffix & (1 << 5)) add_char('f');
+                    if (((suffix >> 5) & 0x7) != 0 && M) add_str(", ");
                 }
-                else {
-                    add_str(".w #");
+                else add_char(' ');
+                if (M) {
+                    add_char('#');
                     add_dec_uint32(mode);
                 }
                 return;
@@ -996,7 +1057,7 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
                 return;
             }
             if ((suffix & 0x00f0) == 0x00f0) {
-                add_str("bdg");
+                add_str("dbg");
                 if (it_cond_name) add_str(it_cond_name);
                 add_str(" #");
                 add_dec_uint32(suffix & 0xf);
@@ -1015,18 +1076,33 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
             case 5: add_str("dmb"); break;
             case 6: add_str("isb"); break;
             }
-            if (op >= 4 && op <= 6) {
+            if (op >= 4 && op < 6) {
                 if (it_cond_name) add_str(it_cond_name);
                 add_char(' ');
                 switch (suffix & 0xf) {
                 case 15: add_str("sy"); break;
                 case 14: add_str("st"); break;
+                case 13: add_str("ld"); break;
                 case 11: add_str("ish"); break;
                 case 10: add_str("ishst"); break;
+                case 9: add_str("ishld"); break;
                 case 7: add_str("nsh"); break;
                 case 6: add_str("nshst"); break;
+                case 5: add_str("nshld"); break;
                 case 3: add_str("osh"); break;
                 case 2: add_str("oshst"); break;
+                case 1: add_str("oshld"); break;
+                default:
+                    add_str(" #");
+                    add_dec_uint32(suffix & 0xf);
+                }
+                return;
+            }
+            if (op == 6) {
+                if (it_cond_name) add_str(it_cond_name);
+                add_char(' ');
+                switch (suffix & 0xf) {
+                case 15: add_str("sy"); break;
                 default:
                     add_str(" #");
                     add_dec_uint32(suffix & 0xf);
@@ -1037,6 +1113,8 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
         }
         if (op == 0x3c) {
             /* Branch and Exchange Jazelle */
+            add_str("bxj ");
+            add_reg_name(instr & 0x0f);
             return;
         }
         if (op == 0x3d) {
@@ -1090,7 +1168,7 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
             add_str("b");
             w = 1;
         }
-        else if ((suffix & 0xf800) == 0xe800) {
+        else if ((suffix & 0xd000) == 0xc000) {
             add_str("blx");
         }
         else {
@@ -1104,12 +1182,12 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
 }
 
 static void disassemble_memory_hints(uint16_t suffix) {
-    if ((instr & 0xff50) == 0xf810) {
+    if ((instr & 0xfe50) == 0xf810) {
         int U = instr & (1 << 7);
         int W = instr & (1 << 5);
         uint32_t rn = instr & 0xf;
         uint32_t imm = suffix & 0xfff;
-        add_str("pld");
+        add_str(((instr >>8) & 1) ? "pli" : "pld");
         if (W) add_char('w');
         add_str(" [");
         add_reg_name(rn);
@@ -1134,6 +1212,7 @@ static void disassemble_memory_hints(uint16_t suffix) {
         if (imm != 0 || !U) {
             add_str(", #");
             if (!U) add_char('-');
+            else add_char('+');
             add_dec_uint32(imm);
         }
         add_char(']');
@@ -1300,6 +1379,7 @@ static void disassemble_multiply_32(uint16_t suffix) {
     uint32_t ra = (suffix >> 12) & 0xf;
     uint32_t op2 = (suffix >> 4) & 3;
     int no_ra = 0;
+    int no_size = 0;
     switch (op1) {
     case 0:
         if (op2 == 0) {
@@ -1315,6 +1395,7 @@ static void disassemble_multiply_32(uint16_t suffix) {
         if (ra != 15) add_str("smla");
         else add_str("smul");
         no_ra = ra == 15;
+        no_size = ra == 15;
         add_char(suffix & (1 << 5) ? 't' : 'b');
         add_char(suffix & (1 << 4) ? 't' : 'b');
         break;
@@ -1323,6 +1404,7 @@ static void disassemble_multiply_32(uint16_t suffix) {
             if (ra != 15) add_str("smlad");
             else add_str("smuad");
             no_ra = ra == 15;
+            no_size = 1;
             if (suffix & (1 << 4)) add_char('x');
         }
         break;
@@ -1331,6 +1413,7 @@ static void disassemble_multiply_32(uint16_t suffix) {
             if (ra != 15) add_str("smlaw");
             else add_str("smulw");
             no_ra = ra == 15;
+            no_size = 1;
             add_char(suffix & (1 << 4) ? 't' : 'b');
         }
         break;
@@ -1339,6 +1422,7 @@ static void disassemble_multiply_32(uint16_t suffix) {
             if (ra != 15) add_str("smlsd");
             else add_str("smusd");
             no_ra = ra == 15;
+            no_size = 1;
             if (suffix & (1 << 4)) add_char('x');
         }
         break;
@@ -1347,6 +1431,7 @@ static void disassemble_multiply_32(uint16_t suffix) {
             if (ra != 15) add_str("smmla");
             else add_str("smmul");
             no_ra = ra == 15;
+            no_size = 1;
             if (suffix & (1 << 4)) add_char('r');
         }
         break;
@@ -1354,13 +1439,15 @@ static void disassemble_multiply_32(uint16_t suffix) {
         if (op2 < 2) {
             add_str("smmls");
             if (suffix & (1 << 4)) add_char('r');
+            no_size = 1;
         }
         break;
     case 7:
         if (op2 == 0) {
-            if (ra != 15) add_str("usad8");
-            else add_str("usada8");
+            if (ra != 15) add_str("usada8");
+            else add_str("usad8");
             no_ra = ra == 15;
+            no_size = no_ra;
         }
         break;
     }
@@ -1369,6 +1456,7 @@ static void disassemble_multiply_32(uint16_t suffix) {
         uint32_t rd = (suffix >> 8) & 0xf;
         uint32_t rm = (suffix >> 0) & 0xf;
         if (it_cond_name) add_str(it_cond_name);
+        if (op2 == 0 && ra == 15 && no_size == 0) add_str(".w");
         add_char(' ');
         add_reg_name(rd);
         add_str(", ");
@@ -1411,6 +1499,7 @@ static void disassemble_long_multiply_32(uint16_t suffix) {
         }
         else if ((op2 >> 1) == 6) {
             add_str("smlald");
+            if (suffix & (1 << 4)) add_char('x');
         }
         break;
     case 5:
@@ -1499,23 +1588,51 @@ static void disassemble_thumb7(void) {
     }
 
     if ((instr & 0xfe00) == 0xf800) {
+        uint32_t rn = (instr & 0xf);
         int T = 0;
-        if ((instr & 0x0070) == 0x0010 && (suffix & 0xf000) == 0xf000) {
-            /* Memory hints */
+        /*
+         * PLD = 0xf890f000
+         *       0xf810fc00
+         *       0xf81ff000
+         *       0xf810f000
+         * PLI = 0xf990f000
+         *       0xf910fc00
+         *       0xf91ff000
+         *       0xf910f000
+         */
+        if ((((instr & 0xffd0) == 0xf890) && ((suffix & 0xf000) == 0xf000)) ||
+            (((instr & 0xffd0) == 0xf810) && ((suffix & 0xff00) == 0xfc00)) ||
+            (((instr & 0xff7f) == 0xf81f) && ((suffix & 0xf000) == 0xf000)) ||
+            (((instr & 0xffd0) == 0xf810) && ((suffix & 0xffc0) == 0xf000)) ||
+            (((instr & 0xfff0) == 0xf990) && ((suffix & 0xf000) == 0xf000)) ||
+            (((instr & 0xfff0) == 0xf910) && ((suffix & 0xff00) == 0xfc00)) ||
+            (((instr & 0xff7f) == 0xf91f) && ((suffix & 0xf000) == 0xf000)) ||
+            (((instr & 0xfff0) == 0xf910) && ((suffix & 0xffc0) == 0xf000))) {
+            /* Memory hints (PLI/PLD) */
             disassemble_memory_hints(suffix);
             return;
         }
 
+        if (((instr & 0xf84d) == 0xf84d) &&
+            (((suffix & 0x0bff) == 0x0b04) || ((suffix & 0x0dff) == 0x0d04))) {
+            if ((suffix & 0x0bff) == 0x0b04) add_str("pop.w {");
+            else add_str("push.w {");
+            add_reg_name((suffix >> 12) & 0xf);
+            add_char('}');
+            return;
+        }
+
         /* Load/Store single data item */
+
         T = (suffix & 0x0f00) == 0x0e00 && (instr & (1 << 7)) == 0;
         add_str(instr & (1 << 4) ? "ldr" : "str");
         if ((instr &  (1 << 6)) == 0) {
             if (instr & (1 << 8)) add_char('s');
             add_char(instr & (1 << 5) ? 'h' : 'b');
         }
-        if (T) add_char('t');
+        if (T && rn != 15) add_char('t');
         if (it_cond_name) add_str(it_cond_name);
-        if (!T) add_str(".w");
+        if (!T || rn == 15) add_str(".w");
         add_char(' ');
         add_reg_name((suffix >> 12) & 0xf);
         add_str(", [");
