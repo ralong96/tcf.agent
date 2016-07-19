@@ -1414,7 +1414,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
 
     if (get_sym_context(ctx, frame, ip) < 0) error = errno;
 
-    if (error == 0 && sym_ip != 0) {
+    if (error == 0 && (sym_frame != STACK_NO_FRAME || sym_ip != 0)) {
 
         if (error == 0) {
             /* Search the name in the current compilation unit */
@@ -1548,7 +1548,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                 if (set_trap(&trap)) {
                     DWARFCache * cache = get_dwarf_cache(get_dwarf_file(file));
                     find_by_name_in_pub_names(cache, name);
-                    find_by_name_in_sym_table(file, name, sym_ip != 0);
+                    find_by_name_in_sym_table(file, name, sym_frame != STACK_NO_FRAME || sym_ip != 0);
                     clear_trap(&trap);
                 }
                 else {
@@ -1633,7 +1633,7 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
     find_symbol_list = NULL;
     if (get_sym_context(ctx, frame, ip) < 0) error = errno;
 
-    if (error == 0 && scope == NULL && sym_ip != 0) {
+    if (error == 0 && scope == NULL && (sym_frame != STACK_NO_FRAME || sym_ip != 0)) {
         Trap trap;
         if (set_trap(&trap)) {
             ELF_File * file = NULL;
@@ -1910,7 +1910,7 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * call_
     /* Note: get_frame_info() destroys sym context, so it must be called before get_sym_context() */
     if (frame != STACK_NO_FRAME && get_frame_info(ctx, frame, &info) < 0) exception(errno);
     if (get_sym_context(ctx, frame, 0) < 0) exception(errno);
-    if (sym_ip != 0) {
+    if (sym_frame != STACK_NO_FRAME || sym_ip != 0) {
         UnitAddress ip;
         LocalVarsCallBack cb;
         memset(&cb, 0, sizeof(LocalVarsCallBack));
