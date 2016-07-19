@@ -515,8 +515,6 @@ static void read_subscr_data(U2_T Form, ObjectInfo * Array) {
     dio_SetPos(OrgPos);
 }
 
-static void add_object_addr_ranges(ObjectInfo * info);
-
 static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
     static ObjectInfo * Info;
     static U8_T Sibling;
@@ -591,9 +589,6 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             case TAG_mod_pointer:
             case TAG_const_type:
             case TAG_volatile_type:
-                if (Tag == TAG_subprogram && (Info->mFlags & DOIF_specification) && (Info->mFlags & DOIF_low_pc)) {
-                    add_object_addr_ranges(Info);
-                }
                 if (Info->mType == NULL) {
                     /* NULL here means "void" */
                     Info->mType = add_object_info(OBJECT_ID_VOID(sCompUnit));
@@ -1114,21 +1109,39 @@ static void load_addr_ranges(ELF_Section * debug_info) {
     for (idx = 1; idx < file->section_cnt; idx++) {
         ObjectInfo * info = sCache->mObjectHashTable[idx].mCompUnits;
         while (info != NULL) {
-            if (info->mFlags & DOIF_low_pc) {
-                add_object_addr_ranges(info);
+            if (info->mFlags & DOIF_low_pc) add_object_addr_ranges(info);
+
+            if ((info->mFlags & DOIF_aranges) == 0 && (info->mFlags & DOIF_ranges) == 0 && info->u.mCode.mHighPC.mAddr == 0) {
+                /* Unit does not have PC ranges data. As a workaround, add line info ranges */
+                unsigned i;
+                CompUnit * unit = info->mCompUnit;
+                if (set_trap(&trap)) {
+                    load_line_numbers(unit);
+                    if (unit->mStatesCnt >= 2) {
+                        for (i = 0; i < unit->mStatesCnt - 1; i++) {
+                            LineNumbersState * x = unit->mStates + i;
+                            LineNumbersState * y = unit->mStates + i + 1;
+                            if (x->mSection != y->mSection) continue;
+                            if (x->mAddress == y->mAddress) continue;
+                            if (x->mFlags & LINE_EndSequence) continue;
+                            add_addr_range(unit->mTextSection, unit, x->mAddress, y->mAddress - x->mAddress);
+                        }
+                    }
+                    clear_trap(&trap);
+                }
             }
-            else if ((info->mFlags & DOIF_aranges) == 0) {
-                /* No address range at the compile unit level is specified.
-                 * The address ranges are defined by the underlying scopes. */
+
+            {
+                /* Workaround for GCC bug - certain ranges are missing in both ".debug_aranges" and the unit info.
+                 * Add address ranges of the underlying scopes. */
                 ObjectInfo * obj = info->mChildren;
                 assert(info->mFlags & DOIF_children_loaded);
                 while (obj != NULL) {
-                    if (obj->mFlags & DOIF_low_pc) {
-                        add_object_addr_ranges(obj);
-                    }
+                    if (obj->mFlags & DOIF_low_pc) add_object_addr_ranges(obj);
                     obj = obj->mSibling;
                 }
             }
+
             info = info->mSibling;
         }
     }
