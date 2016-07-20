@@ -1548,7 +1548,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                 if (set_trap(&trap)) {
                     DWARFCache * cache = get_dwarf_cache(get_dwarf_file(file));
                     find_by_name_in_pub_names(cache, name);
-                    find_by_name_in_sym_table(file, name, sym_frame != STACK_NO_FRAME || sym_ip != 0);
+                    find_by_name_in_sym_table(file, name, 0);
                     clear_trap(&trap);
                 }
                 else {
