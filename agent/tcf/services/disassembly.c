@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2016 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -339,29 +339,13 @@ static void disassemble_cache_client(void * x) {
             }
         }
 #endif
-        if (sym_addr_ok && sym_size_ok && sym_addr <= args->addr && sym_addr + sym_size > args->addr) {
-            buf_addr = sym_addr;
-            if (sym_addr + sym_size > args->addr + args->size) {
-                buf_size = args->addr + args->size - sym_addr;
-                if (isa.max_instruction_size > 0) {
-                    mem_size = (size_t)(buf_size + isa.max_instruction_size);
-                }
-                else {
-                    mem_size = (size_t)(buf_size + MAX_INSTRUCTION_SIZE);
-                }
-            }
-            else {
-                buf_size = sym_size;
-                mem_size = (size_t)sym_size;
-            }
-        }
-        else if (sym_addr_ok && sym_addr < args->addr) {
+        if (sym_addr_ok && sym_addr <= args->addr) {
             if (get_isa(ctx, sym_addr, &isa) < 0) {
                 error = errno;
             }
             else {
                 buf_addr = sym_addr;
-                buf_size = args->addr + args->size - sym_addr;
+                buf_size = args->addr + args->size - buf_addr;
                 if (isa.max_instruction_size > 0) {
                     mem_size = (size_t)(buf_size + isa.max_instruction_size);
                 }
@@ -392,18 +376,45 @@ static void disassemble_cache_client(void * x) {
             }
         }
 
-        if (!error) {
+        while (!error) {
+            if (sym_addr_ok && sym_size_ok &&
+                    sym_addr <= buf_addr && sym_addr + sym_size > buf_addr &&
+                    sym_addr + sym_size <= buf_addr + buf_size) {
+                buf_size = sym_addr + sym_size - buf_addr;
+                mem_size = (size_t)buf_size;
+            }
             mem_buf = (uint8_t *)tmp_alloc(mem_size);
-            if (context_read_mem(ctx, buf_addr, mem_buf, mem_size) < 0) error = errno;
-            if (error) {
+            if (context_read_mem(ctx, buf_addr, mem_buf, mem_size) == 0) break;
+            error = errno;
 #if ENABLE_ExtendedMemoryErrorReports
+            {
                 MemoryErrorInfo info;
-                if (context_get_mem_error_info(&info) == 0 && info.size_valid > 0) {
-                    mem_size = info.size_valid;
+                if (context_get_mem_error_info(&info) == 0) {
+                    ContextAddress addr_valid = buf_addr + info.size_valid;
+                    ContextAddress addr_error = addr_valid + info.size_error;
+                    if (addr_valid < buf_addr || args->addr < addr_valid) {
+                        mem_size = info.size_valid;
+                        error = 0;
+                        break;
+                    }
+                    if (addr_error < buf_addr || args->addr < addr_error) break;
+                    buf_addr = addr_error;
+                    buf_size = args->addr + args->size - buf_addr;
+                    if (get_isa(ctx, buf_addr, &isa) < 0) {
+                        error = errno;
+                        break;
+                    }
+                    if (isa.max_instruction_size > 0) {
+                        mem_size = (size_t)(buf_size + isa.max_instruction_size);
+                    }
+                    else {
+                        mem_size = (size_t)(buf_size + MAX_INSTRUCTION_SIZE);
+                    }
+                    /* Continue after unredable range */
                     error = 0;
                 }
-#endif
             }
+#endif
         }
     }
 
