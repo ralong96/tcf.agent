@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -39,7 +39,7 @@
 extern int memory_map_get(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map);
 
 /*
- * Functions that are used by context implementation to notify memory map services about map changes.
+ * Functions that are used by context implementation to notify memory map service about map changes.
  */
 extern void memory_map_event_module_loaded(Context * ctx);
 extern void memory_map_event_code_section_ummapped(Context * ctx, ContextAddress addr, ContextAddress size);
@@ -48,6 +48,11 @@ extern void memory_map_event_mapping_changed(Context * ctx);
 
 /*
  * Memory map listener.
+ *
+ * Note: calling 'module_loaded', 'code_section_ummapped' and 'module_unloaded' instead of 'mapping_changed'
+ * is optional optimization. In some cases, it allows clients to handle memory map changes faster.
+ * If a context cannot distinguish module loading/unloading from other memory map changes,
+ * it will call 'mapping_changed' for any change.
  */
 typedef struct MemoryMapEventListener {
     void (*module_loaded)(Context * ctx, void * client_data);
