@@ -219,6 +219,7 @@ typedef struct CodeArea {
     int epilogue_begin;
     int op_index;
     int discriminator;
+    ContextAddress next_stmt_address; /* Address of next statement - in source text order */
 } CodeArea;
 
 #define STACK_NO_FRAME      (-1)

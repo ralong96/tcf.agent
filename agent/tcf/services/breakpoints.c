@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1673,8 +1673,10 @@ static void plant_breakpoint_address_iterator(CodeArea * area, void * x) {
     bp_line_cnt++;
     if (args->bp->location == NULL) {
         ContextAddress addr = area->start_address;
-        if ((addr == area->end_address || area->start_line != args->bp->line) &&
-            area->next_address != 0) addr = area->next_address;
+        if (addr == area->end_address || area->start_line != args->bp->line) {
+            if (area->next_stmt_address != 0) addr = area->next_stmt_address;
+            else if (area->next_address != 0) addr = area->next_address;
+        }
 #ifdef  BREAKPOINT_ADDR_ADJUST
         /* Adjust breakpoint address <addr> if needed */
         BREAKPOINT_ADDR_ADJUST;

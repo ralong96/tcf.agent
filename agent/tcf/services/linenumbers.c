@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -54,6 +54,8 @@ static void read_code_area_props(InputStream * inp, const char * name, void * ar
     else if (strcmp(name, "EpilogueBegin") == 0) area->epilogue_begin = json_read_boolean(inp);
     else if (strcmp(name, "OpIndex") == 0) area->op_index = json_read_long(inp);
     else if (strcmp(name, "Discriminator") == 0) area->discriminator = json_read_long(inp);
+    else if (strcmp(name, "NStmtAddr") == 0) area->next_stmt_address = (ContextAddress)json_read_uint64(inp);
+    else json_skip_object(inp);
 }
 
 void read_code_area(InputStream * inp, CodeArea * area) {
@@ -155,6 +157,12 @@ void write_code_area(OutputStream * out, CodeArea * area, CodeArea * prev) {
         json_write_string(out, "Discriminator");
         write_stream(out, ':');
         json_write_long(out, area->discriminator);
+    }
+    if (area->next_stmt_address != 0) {
+        write_stream(out, ',');
+        json_write_string(out, "NStmtAddr");
+        write_stream(out, ':');
+        json_write_uint64(out, area->next_stmt_address);
     }
     write_stream(out, '}');
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -125,11 +125,34 @@ static LineNumbersState * get_next_in_code(CompUnit * unit, LineNumbersState * s
     return next;
 }
 
+static LineNumbersState * get_next_statement(CompUnit * unit, LineNumbersState * state) {
+    /* Select addreess most suitable for breakpoint planting.
+     * DWARF 3 standard says:
+     * "is_stmt: A boolean indicating that the current instruction is a recommended
+     * breakpoint location. A recommended breakpoint location is intended to
+     * "represent" a line, a statement and/or a semantically distinct subpart of a
+     * statement."
+     */
+    LineNumbersState * next = state;
+    if (next == NULL) return NULL;
+    if (next->mFlags & LINE_IsStmt) return next;
+    for (;;) {
+        U4_T index = next->mStatesIndexPos + 1;
+        if (index >= unit->mStatesCnt) break;
+        next = unit->mStatesIndex[index];
+        if (next->mFile != state->mFile) break;
+        if (next->mLine != state->mLine) break;
+        if (next->mFlags & LINE_IsStmt) return next;
+    }
+    return NULL;
+}
+
 static void call_client(Context * ctx, CompUnit * unit, LineNumbersState * state,
                         LineNumbersState * code_next, LineNumbersState * text_next,
                         ContextAddress state_addr, LineNumbersCallBack * client, void * args) {
     CodeArea area;
     FileInfo * file_info = unit->mFiles + state->mFile;
+    LineNumbersState * text_next_stmt = get_next_statement(unit, text_next);
 
     if (code_next == NULL) return;
     assert(state->mSection == code_next->mSection);
@@ -169,6 +192,16 @@ static void call_client(Context * ctx, CompUnit * unit, LineNumbersState * state
             ELF_Section * s = NULL;
             if (text_next->mSection) s = unit->mFile->sections + text_next->mSection;
             area.next_address = elf_map_to_run_time_address(ctx, unit->mFile, s, text_next->mAddress);
+        }
+    }
+    if (text_next_stmt != NULL) {
+        if (text_next_stmt->mSection == state->mSection) {
+            area.next_stmt_address = text_next_stmt->mAddress - state->mAddress + state_addr;
+        }
+        else {
+            ELF_Section * s = NULL;
+            if (text_next_stmt->mSection) s = unit->mFile->sections + text_next_stmt->mSection;
+            area.next_stmt_address = elf_map_to_run_time_address(ctx, unit->mFile, s, text_next_stmt->mAddress);
         }
     }
     area.isa = state->mISA;
