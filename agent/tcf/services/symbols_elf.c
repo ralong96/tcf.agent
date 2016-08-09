@@ -2274,6 +2274,7 @@ int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
         case EM_COLDFIRE   : *isa = "COLDFIRE"; break;
         case EM_X86_64     : *isa = "X86_64"; break;
         case EM_MICROBLAZE : *isa = "MicroBlaze"; break;
+        case EM_V800       : *isa = "V800"; break;
         case EM_V850       : *isa = "V850"; break;
         case EM_AARCH64    : *isa = "A64"; break;
         }

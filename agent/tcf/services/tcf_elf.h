@@ -69,6 +69,7 @@
 #define EM_MIPS_RS4_BE 10 /* MIPS RS4000 Big-Endian */
 #define EM_PPC         20 /* PowerPC */
 #define EM_PPC64       21 /* PowerPC64 */
+#define EM_V800        36 /* NEC V800 */
 #define EM_ARM         40 /* ARM */
 #define EM_SH          42 /* Hitachi Super-H */
 #define EM_SPARCV9     43 /* SPARC Version 9 */
@@ -368,6 +369,9 @@ typedef struct {
 #endif
 #ifndef EM_PPC64
 #define EM_PPC64 21
+#endif
+#ifndef EM_V800
+#define EM_V800 36 /* NEC V800 */
 #endif
 #ifndef EM_V850
 #define EM_V850 87 /* NEC/Renesas RH850 */

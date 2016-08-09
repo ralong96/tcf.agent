@@ -223,6 +223,7 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
                 regs->regs[n].offset = 27; /* RA */
             }
             break;
+        case EM_V800:
         case EM_V850:
             min_reg_cnt = 32;
             if (n == 0) { /* Always same - reads as zero */
