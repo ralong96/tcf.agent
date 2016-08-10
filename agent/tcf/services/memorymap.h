@@ -39,6 +39,15 @@
 extern int memory_map_get(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map);
 
 /*
+ * Override memory_map_get() function for given context.
+ * This is used by OS awareness modules to amend memory map of a CPU core
+ * using data from OS kernel introspection.
+ */
+typedef int MemoryMapOverrideCallBack(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map);
+extern int memory_map_override(Context * ctx, MemoryMapOverrideCallBack * cb);
+extern int memory_map_get_original(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map);
+
+/*
  * Functions that are used by context implementation to notify memory map service about map changes.
  */
 extern void memory_map_event_module_loaded(Context * ctx);

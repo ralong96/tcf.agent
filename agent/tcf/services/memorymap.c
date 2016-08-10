@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,6 +27,7 @@
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
 #include <tcf/framework/json.h>
+#include <tcf/framework/cache.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/contextquery.h>
@@ -43,6 +44,7 @@ typedef struct ContextExtensionMM {
     ErrorReport * error;
     MemoryMap target_map;
     MemoryMap client_map;
+    MemoryMapOverrideCallBack * ovr_cb;
 } ContextExtensionMM;
 
 typedef struct ClientMap {
@@ -264,21 +266,18 @@ static void event_context_disposed(Context * ctx, void * args) {
     release_error_report(ext->error);
 }
 
-int memory_map_get(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map) {
+int memory_map_get_original(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map) {
     ContextExtensionMM * ext = EXT(ctx);
     assert(ctx == get_mem_context(ctx));
 #if ENABLE_DebugContext
     if (!ext->valid) {
         context_clear_memory_map(&ext->target_map);
         release_error_report(ext->error);
+        ext->error = NULL;
         if (context_get_memory_map(ctx, &ext->target_map) < 0) {
             ext->error = get_error_report(errno);
-            ext->valid = get_error_code(errno) != ERR_CACHE_MISS;
         }
-        else {
-            ext->error = NULL;
-            ext->valid = 1;
-        }
+        ext->valid = cache_miss_count() == 0;
     }
 #endif
     if (ext->error != NULL) {
@@ -287,6 +286,24 @@ int memory_map_get(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_m
     }
     *client_map = &ext->client_map;
     *target_map = &ext->target_map;
+    return 0;
+}
+
+int memory_map_get(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map) {
+    ContextExtensionMM * ext = EXT(ctx);
+    if (memory_map_get_original(ctx, client_map, target_map) < 0) return -1;
+    if (ext->ovr_cb != NULL) return ext->ovr_cb(ctx, client_map, target_map);
+    return 0;
+}
+
+int memory_map_override(Context * ctx, MemoryMapOverrideCallBack * cb) {
+    ContextExtensionMM * ext = EXT(ctx);
+    assert(ctx == get_mem_context(ctx));
+    if (cb != NULL && ext->ovr_cb != NULL) {
+        set_errno(ERR_OTHER, "Only one memory map extension is allowed per debug context");
+        return -1;
+    }
+    ext->ovr_cb = cb;
     return 0;
 }
 
