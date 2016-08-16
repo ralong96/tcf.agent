@@ -403,12 +403,26 @@ int set_errno(int no, const char * msg) {
             m->text = loc_strdup(msg);
         }
         else {
-            const char * text0 = tmp_strdup(msg);
-            const char * text1 = errno_to_str(no);
-            size_t len = strlen(text0) + strlen(text1) + 4;
-            char * text2 = (char *)loc_alloc(len);
-            snprintf(text2, len, "%s. %s", text0, text1);
-            m->text = text2;
+            size_t msg_len = strlen(msg);
+            if (msg_len == 0) {
+                m->text = loc_strdup(errno_to_str(no));
+            }
+            else {
+                const char * text0 = tmp_strdup(msg);
+                const char * text1 = errno_to_str(no);
+                if (text0[msg_len - 1] == '.' || text0[msg_len - 1] == '\n') {
+                    size_t len = msg_len + strlen(text1) + 2;
+                    char * text2 = (char *)loc_alloc(len);
+                    snprintf(text2, len, "%s %s", text0, text1);
+                    m->text = text2;
+                }
+                else {
+                    size_t len = msg_len + strlen(text1) + 3;
+                    char * text2 = (char *)loc_alloc(len);
+                    snprintf(text2, len, "%s. %s", text0, text1);
+                    m->text = text2;
+                }
+            }
         }
         errno = err;
     }
