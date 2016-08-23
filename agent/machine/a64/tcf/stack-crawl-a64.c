@@ -560,12 +560,15 @@ static int loads_and_stores(void) {
         return 0;
     }
 
-    if ((instr & 0x3a800000) == 0x28800000) {
-        /* Load/store register pair (post-indexed) - bit 24 = 0 */
-        /* Load/store register pair (pre-indexed) - bit 24 = 1 */
+    if ((instr & 0x3a000000) == 0x28000000) {
+        /* Load/store register pair (post-indexed) - bit 24 = 0, 23 = 1 */
+        /* Load/store register pair (pre-indexed) - bit 24 = 1, 23 = 1 */
+        /* Load/store register pair (signed offset) - bit 24 = 1, 23 = 0 */
+        /* Load/store register pair (with non-temporal hint) - bit 24 = 0, 23 = 0 */
         uint32_t opc = (instr >> 30) & 3;
         int V = (instr & (1 << 26)) != 0;
         int L = (instr & (1 << 22)) != 0;
+        int S = (instr & (1 << 23)) != 0;
         int px = (instr & (1 << 24)) != 0;
         uint64_t imm = (instr >> 15) & 0x7f;
         uint32_t rn = (instr >> 5) & 0x1f;
@@ -587,13 +590,14 @@ static int loads_and_stores(void) {
         }
         if (imm & 0x40) imm |= ~(uint64_t)0x3f;
         if (chk_loaded(rn) < 0) reg_data[rn].o = 0;
-        if (px && reg_data[rn].o) {
+        if (S && px && reg_data[rn].o) {
             assert(reg_data[rn].o == REG_VAL_OTHER);
             reg_data[rn].v += imm << shift;
         }
         if (!V) {
+            uint64_t addr = reg_data[rn].v;
+            if (!S) addr += imm << shift;
             if (L) {
-                uint64_t addr = reg_data[rn].v;
                 reg_data[rt1].o = 0;
                 reg_data[rt2].o = 0;
                 if (reg_data[rn].o) {
@@ -611,7 +615,6 @@ static int loads_and_stores(void) {
                 }
             }
             else if (reg_data[rn].o) {
-                uint64_t addr = reg_data[rn].v;
                 if (opc >= 2) { /* 64-bit */
                     store_reg(addr, rt1);
                     addr += (uint64_t)1 << shift;
@@ -619,7 +622,7 @@ static int loads_and_stores(void) {
                 }
             }
         }
-        if (!px && reg_data[rn].o) {
+        if (S && !px && reg_data[rn].o) {
             assert(reg_data[rn].o == REG_VAL_OTHER);
             reg_data[rn].v += imm << shift;
         }
