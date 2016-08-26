@@ -827,6 +827,7 @@ static void loc_var_func(void * args, Symbol * sym) {
     LocationExpressionState * loc_state = NULL;
     UnitAddressRange * unit_range = (UnitAddressRange *)args;
     Symbol * sym_container = NULL;
+    int out_of_body = 0;
 
     if (get_symbol_class(sym, &symbol_class) < 0) {
         error_sym("get_symbol_class", sym);
@@ -840,7 +841,9 @@ static void loc_var_func(void * args, Symbol * sym) {
     if (get_symbol_name(sym, &name) < 0) {
         error_sym("get_symbol_name", sym);
     }
-    if (name != NULL) {
+    /* Check for out-of-body definition */
+    out_of_body = sym_container != NULL && get_symbol_object(sym)->mParent != get_symbol_object(sym_container);
+    if (!out_of_body && name != NULL) {
         int found_next = 0;
         int search_in_scope = 0;
         Symbol * find_sym = NULL;
@@ -875,6 +878,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         if (search_in_scope) {
             /* 'sym' is eclipsed in the current scope by a nested declaration */
             Symbol * find_container = NULL;
+            int find_container_class = 0;
             if (!found_next) {
                 find_symbol_by_name(elf_ctx, STACK_TOP_FRAME, 0, name, &find_sym);
                 errno = ERR_OTHER;
@@ -887,9 +891,14 @@ static void loc_var_func(void * args, Symbol * sym) {
             if (get_symbol_container(find_sym, &find_container) < 0) {
                 error_sym("get_symbol_container", find_sym);
             }
-            if (get_symbol_object(sym_container) != get_symbol_object(find_container)) {
-                errno = ERR_OTHER;
-                error("Invalid result of find_symbol_in_scope()");
+            if (get_symbol_class(find_container, &find_container_class) < 0) {
+                error_sym("get_symbol_class", find_container);
+            }
+            if (find_container_class != SYM_CLASS_NAMESPACE) {
+                if (get_symbol_object(sym_container) != get_symbol_object(find_container)) {
+                    errno = ERR_OTHER;
+                    error("Invalid result of find_symbol_in_scope()");
+                }
             }
             for (;;) {
                 Symbol * find_next = NULL;
@@ -909,9 +918,14 @@ static void loc_var_func(void * args, Symbol * sym) {
                 if (get_symbol_container(find_next, &find_container) < 0) {
                     error("get_symbol_container");
                 }
-                if (get_symbol_object(sym_container) != get_symbol_object(find_container)) {
-                    errno = ERR_OTHER;
-                    error("Invalid result of find_next_symbol()");
+                if (get_symbol_class(find_container, &find_container_class) < 0) {
+                    error_sym("get_symbol_class", find_container);
+                }
+                if (find_container_class != SYM_CLASS_NAMESPACE) {
+                    if (get_symbol_object(sym_container) != get_symbol_object(find_container)) {
+                        errno = ERR_OTHER;
+                        error("Invalid result of find_next_symbol()");
+                    }
                 }
             }
             if (symcmp(sym, find_sym) != 0) {

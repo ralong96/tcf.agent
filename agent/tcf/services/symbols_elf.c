@@ -1197,6 +1197,29 @@ static void find_by_name_in_pub_names(DWARFCache * cache, const char * name) {
     }
 }
 
+static int get_object_scope(ObjectInfo * obj, ObjectInfo ** container) {
+    ObjectInfo * parent = get_dwarf_parent(obj);
+    if (parent != NULL && parent->mTag == TAG_compile_unit) {
+        if (obj->mFlags & DOIF_abstract_origin) {
+            ObjectInfo * org = get_object_ref_prop(obj, AT_abstract_origin);
+            if (org == NULL) return -1;
+            obj = org;
+        }
+        if (obj->mFlags & DOIF_specification) {
+            ObjectInfo * spc = get_object_ref_prop(obj, AT_specification_v2);
+            if (spc == NULL) return -1;
+            obj = spc;
+        }
+        parent = get_dwarf_parent(obj);
+    }
+    if (parent == NULL && obj->mTag >= TAG_fund_type && obj->mTag < TAG_fund_type + 0x100) {
+        /* Virtual DWARF object that is created by the DWARF reader. */
+        parent = obj->mCompUnit->mObject;
+    }
+    *container = parent;
+    return 0;
+}
+
 static int find_in_object_tree(ObjectInfo * parent, unsigned level,
                                 UnitAddress * ip, const char * name) {
     ObjectInfo * children = get_dwarf_children(parent);
@@ -1236,7 +1259,10 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
     while (obj != NULL) {
         if (obj->mTag != TAG_GNU_call_site) {
             if (obj->mName != NULL && equ_symbol_names(obj->mName, name)) {
-                add_obj_to_find_symbol_buf(find_definition(obj), level);
+                /* Skip out-of-body definitions */
+                ObjectInfo * container = NULL;
+                if (get_object_scope(obj, &container) < 0) exception(errno);
+                if (container == parent) add_obj_to_find_symbol_buf(find_definition(obj), level);
             }
             if (parent->mTag == TAG_subprogram && ip != 0) {
                 if (!obj_ptr_chk) {
@@ -3327,27 +3353,9 @@ int get_symbol_container(const Symbol * sym, Symbol ** container) {
                 return -1;
             }
         }
-        parent = get_dwarf_parent(obj);
-        if (parent != NULL && parent->mTag == TAG_compile_unit) {
-            if (obj->mFlags & DOIF_abstract_origin) {
-                ObjectInfo * org = get_object_ref_prop(obj, AT_abstract_origin);
-                if (org == NULL) return -1;
-                obj = org;
-            }
-            if (obj->mFlags & DOIF_specification) {
-                ObjectInfo * spc = get_object_ref_prop(obj, AT_specification_v2);
-                if (spc == NULL) return -1;
-                obj = spc;
-            }
-            parent = get_dwarf_parent(obj);
-        }
+        if (get_object_scope(obj, &parent) < 0) return -1;
         if (parent != NULL) {
             object2symbol(NULL, parent, container);
-            return 0;
-        }
-        if (obj->mTag >= TAG_fund_type && obj->mTag < TAG_fund_type + 0x100) {
-            /* Virtual DWARF object that is created by the DWARF reader. */
-            object2symbol(NULL, obj->mCompUnit->mObject, container);
             return 0;
         }
         if (obj->mTag == TAG_compile_unit) {
