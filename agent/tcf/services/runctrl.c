@@ -138,6 +138,7 @@ static int run_ctrl_lock_cnt = 0;
 static int stop_all_timer_cnt = 0;
 static int stop_all_timer_posted = 0;
 static int run_safe_events_posted = 0;
+static int sync_run_state_event_posted = 0;
 
 static AbstractCache safe_events_cache;
 
@@ -2382,7 +2383,9 @@ static void sync_run_state(void) {
 static void sync_run_state_cache_client(void * args) {
     sync_run_state();
     cache_exit();
-    if (run_safe_events_posted || run_ctrl_lock_cnt > 0) return;
+    assert(sync_run_state_event_posted > 0);
+    sync_run_state_event_posted--;
+    if (run_safe_events_posted || sync_run_state_event_posted > 0 || run_ctrl_lock_cnt > 0) return;
     send_event_context_suspended();
 }
 
@@ -2422,6 +2425,7 @@ static void run_safe_events(void * arg) {
     if (run_safe_events_posted > 0) return;
 
     if (run_ctrl_lock_cnt == 0) {
+        sync_run_state_event_posted++;
         post_event(sync_run_state_event, NULL);
         return;
     }
@@ -2636,6 +2640,20 @@ void set_context_state_name(Context * ctx, const char * name) {
 
         write_stream(out, MARKER_EOM);
     }
+}
+
+int is_run_ctrl_idle(void) {
+    if (safe_event_list == NULL && run_ctrl_lock_cnt == 0 &&
+            run_safe_events_posted == 0 && sync_run_state_event_posted == 0) {
+        LINK * l = context_root.next;
+        while (l != &context_root) {
+            ContextExtensionRC * ext = EXT(ctxl2ctxp(l));
+            if (ext->run_ctrl_ctx_lock_cnt > 0) return 0;
+            l = l->next;
+        }
+        return 1;
+    }
+    return 0;
 }
 
 void add_run_control_event_listener(RunControlEventListener * listener, void * args) {

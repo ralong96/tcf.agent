@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -186,6 +186,13 @@ extern int get_stepping_mode(Context * ctx);
  * The name is only applicable if the context is not intercepted.
  */
 extern void set_context_state_name(Context * ctx, const char * name);
+
+/**
+ * Check that no safe events are pending, run control is not locked,
+ * and no temporary suspended contexts are waiting to be resumed.
+ * Clients might want to delay disconnecting from a target until run control is idle.
+ */
+extern int is_run_ctrl_idle(void);
 
 /* RunControl event listener */
 typedef struct RunControlEventListener {
