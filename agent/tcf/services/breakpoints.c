@@ -1896,12 +1896,20 @@ static void replant_breakpoints_cache_client(void * args) {
     EvaluationRequest * req = *(EvaluationRequest **)args;
     Context * ctx = req->ctx;
     unsigned i;
+    LINK * l;
 
-    check_all_stopped(ctx);
+    assert(!list_is_empty(&req->link_active));
+    l = evaluations_active.next;
+    while (l != &evaluations_active) {
+        EvaluationRequest * r = link_active2erl(l);
+        check_all_stopped(r->ctx);
+        l = l->next;
+    }
+
     if (req->loc_active.bp_cnt > LOC_EVALUATION_BP_MAX) {
         clear_instruction_refs(ctx, NULL);
         if (!ctx->exiting && !ctx->exited && !EXT(ctx)->empty_bp_grp) {
-            LINK * l = breakpoints.next;
+            l = breakpoints.next;
             while (l != &breakpoints) {
                 run_bp_evaluation(evaluate_bp_location, link_all2bp(l), ctx, -1);
                 l = l->next;
