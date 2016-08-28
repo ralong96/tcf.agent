@@ -967,6 +967,7 @@ static void loc_var_func(void * args, Symbol * sym) {
             return;
         }
         if (symbol_class == SYM_CLASS_TYPE && errcmp(err, "Wrong object kind") == 0) return;
+        if (out_of_body && errcmp(err, "Object location is relative to owner") == 0) return;
         errno = err;
         error_sym("get_symbol_value", sym);
     }
