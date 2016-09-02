@@ -63,6 +63,21 @@ void read_code_area(InputStream * inp, CodeArea * area) {
     json_read_struct(inp, read_code_area_props, area);
 }
 
+static int client_supports_line_info_extensions(void) {
+    /* Older TCF agents don't allow extensions in line area info.
+     * See also Bug 500746 */
+    int i;
+    int rc = 0;
+    Channel * c = cache_channel();
+    if (c == NULL) return 1; /* Local client */
+    for (i = 0; i < c->peer_service_cnt; i++) {
+        char * nm = c->peer_service_list[i];
+        if (strcmp(nm, "SymbolsProxyV2") == 0) return 1;
+        if (strcmp(nm, "RunControl") == 0) rc = 1;
+    }
+    return !rc;
+}
+
 void write_code_area(OutputStream * out, CodeArea * area, CodeArea * prev) {
     write_stream(out, '{');
     json_write_string(out, "SAddr");
@@ -158,7 +173,7 @@ void write_code_area(OutputStream * out, CodeArea * area, CodeArea * prev) {
         write_stream(out, ':');
         json_write_long(out, area->discriminator);
     }
-    if (area->next_stmt_address != 0) {
+    if (area->next_stmt_address != 0 && client_supports_line_info_extensions()) {
         write_stream(out, ',');
         json_write_string(out, "NStmtAddr");
         write_stream(out, ':');

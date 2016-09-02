@@ -81,6 +81,7 @@ void ini_services(Protocol * proto, TCFBroadcastGroup * bcg) {
 #endif
 #if ENABLE_SymbolsProxy
     protocol_get_service(proto, "SymbolsProxyV1");
+    protocol_get_service(proto, "SymbolsProxyV2");
 #endif
 #if SERVICE_LineNumbers
     ini_line_numbers_service(proto);
