@@ -23,8 +23,12 @@ INCDIRS = . system/$(OPSYS) machine/$(MACHINE)
 SRCDIRS = . system/$(OPSYS)/tcf machine/$(MACHINE)/tcf tcf tcf/framework tcf/services tcf/main
 BINDIR  = obj/$(OPSYS)/$(MACHINE)/$(CONF)
 
+ifndef MKDIR
 MKDIR   = mkdir -p $(1)
+endif
+ifndef RMDIR
 RMDIR   = rm -rf $(1)
+endif
 
 ifeq ($(CONF),Debug)
   OPTS += -g
