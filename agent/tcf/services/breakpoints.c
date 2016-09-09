@@ -556,7 +556,7 @@ static void free_instruction(BreakInstruction * bi) {
     loc_free(bi);
 }
 
-static BreakInstruction * plant_at_canonical_address(BreakInstruction * v_bi);
+static BreakInstruction ** plant_at_canonical_address(BreakInstruction * v_bi);
 
 static void validate_bi_refs(BreakInstruction * bi) {
     unsigned i = 0;
@@ -592,7 +592,16 @@ static void flush_instructions(void) {
         BreakInstruction * bi = link_all2bi(l);
         list_init(&bi->link_lst);
         l = l->next;
-        if (!bi->valid) {
+        if (bi->address_error) {
+            assert(bi->no_addr);
+            assert(!bi->planted);
+            if (!bi->valid) {
+                validate_bi_refs(bi);
+                bi->planted_as_sw_bp = 0;
+                bi->hardware = 0;
+            }
+        }
+        else if (!bi->valid) {
             bi->planted_as_sw_bp = 0;
             bi->hardware = 1;
             if (bi->no_addr == 0) {
@@ -634,7 +643,8 @@ static void flush_instructions(void) {
         }
         if (bi->stepping_over_bp) continue;
         if (bi->planted) {
-            if (bi->dirty || bi->address_error) {
+            assert(!bi->address_error);
+            if (bi->dirty) {
                 remove_instruction(bi);
             }
             else if (bi->ref_cnt == 0 && bi->virtual_addr) {
@@ -654,8 +664,7 @@ static void flush_instructions(void) {
             }
 #endif  /* _WRS_KERNEL */
         }
-        if (bi->planted || bi->ref_cnt == 0 || bi->address_error ||
-                bi->cb.ctx->exiting || bi->cb.ctx->exited) {
+        if (bi->planted || bi->ref_cnt == 0 || bi->cb.ctx->exiting || bi->cb.ctx->exited) {
             list_remove(&bi->link_lst);
         }
     }
@@ -677,17 +686,17 @@ static void flush_instructions(void) {
         BreakInstruction * bi = link_lst2bi(l);
         l = l->next;
         if (bi->virtual_addr) {
+            assert(bi->ref_cnt > 0);
             if (!bi->planted) plant_instruction(bi);
             if (!bi->planted && bi->unsupported && bi->cb.length == 1) {
-                BreakInstruction * ca = plant_at_canonical_address(bi);
-                if (ca != NULL) {
-                    bi->planted_as_sw_bp = 1;
+                unsigned i;
+                BreakInstruction ** ca_lst = plant_at_canonical_address(bi);
+                bi->planted_as_sw_bp = 1;
+                for (i = 0; i < bi->ref_cnt; i++) {
+                    BreakInstruction * ca = ca_lst[i];
                     assert(!ca->hardware);
                     assert(!ca->virtual_addr);
-                    if (ca->address_error) {
-                        if (!ca->valid) validate_bi_refs(ca);
-                    }
-                    else if (list_is_empty(&ca->link_lst)) {
+                    if (list_is_empty(&ca->link_lst)) {
                         list_add_last(&ca->link_lst, &lst);
                     }
                 }
@@ -701,11 +710,11 @@ static void flush_instructions(void) {
     while (l != &lst) {
         BreakInstruction * bi = link_lst2bi(l);
         l = l->next;
-        assert(!bi->no_addr);
         assert(!bi->hardware);
         assert(!bi->virtual_addr);
-        assert(!bi->address_error);
         if (!bi->valid) validate_bi_refs(bi);
+        if (bi->address_error) continue;
+        assert(!bi->no_addr);
         if (bi->stepping_over_bp) continue;
         if (bi->ref_cnt == 0) continue;
         if (!bi->planted) plant_instruction(bi);
@@ -716,6 +725,7 @@ static void flush_instructions(void) {
     while (l != &instructions) {
         BreakInstruction * bi = link_all2bi(l);
         l = l->next;
+        assert(bi->valid);
         list_init(&bi->link_lst);
         if (bi->ref_cnt > 0) continue;
         if (bi->stepping_over_bp) continue;
@@ -1209,11 +1219,11 @@ static void plant_breakpoint(Context * ctx, BreakpointInfo * bp, ContextAddress 
     link_breakpoint_instruction(bp, ctx, addr, size, ctx, 1, addr, NULL);
 }
 
-static BreakInstruction * plant_at_canonical_address(BreakInstruction * v_bi) {
+static BreakInstruction ** plant_at_canonical_address(BreakInstruction * v_bi) {
     Context * ctx = v_bi->cb.ctx;
     ContextAddress addr = v_bi->cb.address;
     ContextAddress size = v_bi->cb.length;
-    BreakInstruction * c_bi = NULL;
+    BreakInstruction ** c_bi = (BreakInstruction **)tmp_alloc_zero(v_bi->ref_cnt * sizeof(BreakInstruction *));
     ContextAddress mem_addr = 0;
     Context * mem = NULL;
     int error = 0;
@@ -1225,13 +1235,13 @@ static BreakInstruction * plant_at_canonical_address(BreakInstruction * v_bi) {
         BreakpointInfo * bp = v_bi->refs[i].bp;
         assert(v_bi->refs[i].ctx == ctx);
         if (error) {
-            c_bi = address_expression_error(ctx, bp, error);
+            c_bi[i] = address_expression_error(ctx, bp, error);
         }
         else {
-            c_bi = link_breakpoint_instruction(bp, ctx, addr, size, mem, 0, mem_addr, NULL);
-            assert(c_bi->ref_cnt > 0);
-            assert(c_bi->virtual_addr == 0);
-            assert(c_bi->ref_cnt > 1 || c_bi->refs[0].bp == bp);
+            c_bi[i] = link_breakpoint_instruction(bp, ctx, addr, size, mem, 0, mem_addr, NULL);
+            assert(c_bi[i]->ref_cnt > 0);
+            assert(c_bi[i]->virtual_addr == 0);
+            assert(c_bi[i]->ref_cnt > 1 || c_bi[i]->refs[0].bp == bp);
         }
     }
     return c_bi;
