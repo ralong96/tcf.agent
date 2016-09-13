@@ -309,6 +309,21 @@ static void set_reg(uint32_t r, int sf, uint64_t v) {
     reg_data[r].o = REG_VAL_OTHER;
 }
 
+static void set_reg_extended(uint32_t r, uint64_t v, int data_bits, int reg_bits, int data_sign) {
+    if (data_bits < 64) {
+        uint64_t data_mask = ((uint64_t)1 << data_bits) - 1;
+        v &= data_mask;
+        if (data_sign && data_bits < reg_bits && (v & ((uint64_t)1 << (data_bits - 1))) != 0) {
+            uint64_t reg_mask = 0;
+            if (reg_bits >= 64) reg_mask = ~reg_mask;
+            else reg_mask = ((uint64_t)1 << reg_bits) - 1;
+            v |= reg_mask & ~data_mask;
+        }
+    }
+    reg_data[r].v = v;
+    reg_data[r].o = REG_VAL_OTHER;
+}
+
 static uint64_t decode_bit_mask(int sf, int n, uint32_t imms, uint32_t immr, int immediate, uint64_t * tmask_res) {
     unsigned len = 6;
     unsigned levels = 0;
@@ -640,11 +655,7 @@ static int loads_and_stores(void) {
 
         if (V) {
             if (opc == 0) {
-                switch (size) {
-                case 1: shift = 1; break;
-                case 2: shift = 2; break;
-                case 3: shift = 3; break;
-                }
+                shift = (int)size;
             }
             else {
                 switch (size) {
@@ -706,11 +717,29 @@ static int loads_and_stores(void) {
             }
             else if ((instr & 0x3b200c00) == 0x38200800) {
                 /* Load/store register (register offset) */
-                /*
                 uint32_t option = (instr >> 13) & 7;
                 uint32_t rm = (instr >> 16) & 0x1f;
                 int s = (instr & (1 << 12)) != 0;
-                */
+                int offset_bits = 8 << (option & 3);
+                uint64_t offset = 0;
+                chk_loaded(rn);
+                chk_loaded(rm);
+                offset = reg_data[rm].v;
+                if (offset_bits < 64) {
+                    uint64_t mask = ((uint64_t)1 << offset_bits) - 1;
+                    if ((option & 4) != 0 && (offset & ((uint64_t)1 << (offset_bits - 1))) != 0) {
+                        offset |= ~mask;
+                    }
+                    else {
+                        offset &= mask;
+                    }
+                }
+                if (s) {
+                    offset  = offset << shift;
+                }
+                addr_ok = reg_data[rn].o == REG_VAL_OTHER && reg_data[rm].o == REG_VAL_OTHER;
+                addr = reg_data[rn].v + offset;
+                instr_ok = 1;
             }
             else if ((instr & 0x3b000000) == 0x39000000) {
                 /* Load/store register (unsigned immediate) */
@@ -723,6 +752,16 @@ static int loads_and_stores(void) {
 
             if (instr_ok) {
                 if (!prf && !V) {
+                    int data_sign = 0;
+                    int reg_bits = 64;
+                    if (opc < 2) {
+                        reg_bits = size == 3 ? 64 : 32;
+                        data_sign = 0;
+                    }
+                    else {
+                        reg_bits = opc == 3 ? 32 : 64;
+                        data_sign = 1;
+                    }
                     if (addr_ok) {
                         if (opc == 0) { /* store */
                             switch (shift) {
@@ -735,18 +774,19 @@ static int loads_and_stores(void) {
                             uint8_t v8 = 0;
                             uint16_t v16 = 0;
                             uint32_t v32 = 0;
+                            reg_data[rt].o = 0;
                             switch (shift) {
                             case 0:
-                                if (read_byte(addr, &v8) == 0) set_reg(rt, 0, v8);
+                                if (read_byte(addr, &v8) == 0) set_reg_extended(rt, v8, 8, reg_bits, data_sign);
                                 break;
                             case 1:
-                                if (read_u16(addr, &v16) == 0) set_reg(rt, 0, v16);
+                                if (read_u16(addr, &v16) == 0) set_reg_extended(rt, v16, 16, reg_bits, data_sign);
                                 break;
                             case 2:
-                                if (read_u32(addr, &v32) == 0) set_reg(rt, 0, v32);
+                                if (read_u32(addr, &v32) == 0) set_reg_extended(rt, v32, 32, reg_bits, data_sign);
                                 break;
                             case 3:
-                                load_reg_lazy(addr, rt);
+                                if (reg_bits == 64) load_reg_lazy(addr, rt);
                                 break;
                             }
                         }
@@ -959,7 +999,6 @@ static int trace_instructions(void) {
         unsigned t = 0;
         BranchData * b = NULL;
         if (chk_loaded(31) < 0) return -1;
-        if (chk_loaded(30) < 0) return -1;
         trace(LOG_STACK, "Stack crawl: pc 0x%" PRIX64 ", sp 0x%" PRIX64,
             pc_data.o ? pc_data.v : (uint64_t)0,
             reg_data[31].o ? reg_data[31].v : (uint64_t)0);
@@ -967,10 +1006,10 @@ static int trace_instructions(void) {
             int error = 0;
             trace_return = 0;
             trace_branch = 0;
-            if (!pc_data.o) {
+            if (pc_data.o != REG_VAL_OTHER) {
                 error = set_errno(ERR_OTHER, "PC value not available");
             }
-            else if (!pc_data.v) {
+            else if (pc_data.v == 0) {
                 error = set_errno(ERR_OTHER, "PC == 0");
             }
             else if (trace_a64() < 0) {
