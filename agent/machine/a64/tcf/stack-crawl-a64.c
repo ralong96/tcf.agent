@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014, 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2014, 2016 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -29,6 +29,8 @@
 #include <tcf/services/stacktrace.h>
 #include <machine/a64/tcf/stack-crawl-a64.h>
 
+#define MAX_INST 200
+
 #define MEM_HASH_SIZE       61
 #define BRANCH_LIST_SIZE    12
 #define REG_DATA_SIZE       32
@@ -36,6 +38,10 @@
 #define REG_VAL_ADDR         1
 #define REG_VAL_STACK        2
 #define REG_VAL_OTHER        3
+
+#define REG_ID_FP   29
+#define REG_ID_LR   30
+#define REG_ID_SP   31
 
 typedef struct {
     uint64_t v;
@@ -255,7 +261,7 @@ static int store_reg(uint64_t addr, int r) {
     return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0);
 }
 
-#if 0 /* Not used yret */
+#if 0 /* Not used yet */
 static int store_invalid(uint64_t addr) {
     return mem_hash_write(addr, 0, 0);
 }
@@ -300,7 +306,7 @@ static int search_reg_value(StackFrame * frame, RegisterDefinition * def, uint64
 
 static void set_reg(uint32_t r, int sf, uint64_t v) {
     if (!sf) {
-        if (r == 31) return;
+        if (r == REG_ID_SP) return;
         /* 32-bit value is zero-extended */
         /* See: Write to general-purpose register from either a 32-bit and 64-bit value */
         v = v & (uint64_t)0xffffffffu;
@@ -491,7 +497,7 @@ static int branch_exception_system(void) {
         int32_t imm = instr & 0x3ffffff;
         if (instr & (1u << 31)) {
             /* bl */
-            set_reg(30, 1, pc_data.v + 4);
+            set_reg(REG_ID_LR, 1, pc_data.v + 4);
             return 0;
         }
         if (imm & 0x02000000) imm |= 0xfc000000;
@@ -525,7 +531,7 @@ static int branch_exception_system(void) {
                 trace_branch = 1;
                 break;
             case 1: /* blr */
-                set_reg(30, 1, pc_data.v + 4);
+                set_reg(REG_ID_LR, 1, pc_data.v + 4);
                 break;
             case 2: /* ret */
                 if (chk_loaded(rn) < 0) return -1;
@@ -992,17 +998,17 @@ static int trace_a64(void) {
 
 static int trace_instructions(void) {
     unsigned i;
-    RegData org_sp = reg_data[31];
-    RegData org_lr = reg_data[30];
     RegData org_pc = pc_data;
+    RegData org_regs[REG_DATA_SIZE];
+    memcpy(org_regs, reg_data, sizeof(org_regs));
     for (;;) {
         unsigned t = 0;
         BranchData * b = NULL;
-        if (chk_loaded(31) < 0) return -1;
+        if (chk_loaded(REG_ID_SP) < 0) return -1;
         trace(LOG_STACK, "Stack crawl: pc 0x%" PRIX64 ", sp 0x%" PRIX64,
             pc_data.o ? pc_data.v : (uint64_t)0,
-            reg_data[31].o ? reg_data[31].v : (uint64_t)0);
-        for (t = 0; t < 200; t++) {
+            reg_data[REG_ID_SP].o ? reg_data[REG_ID_SP].v : (uint64_t)0);
+        for (t = 0; t < MAX_INST; t++) {
             int error = 0;
             trace_return = 0;
             trace_branch = 0;
@@ -1016,7 +1022,7 @@ static int trace_instructions(void) {
                 error = errno;
             }
             if (!error && trace_return) {
-                if (chk_loaded(31) < 0 || !reg_data[31].o) {
+                if (chk_loaded(REG_ID_SP) < 0 || !reg_data[REG_ID_SP].o) {
                     error = set_errno(ERR_OTHER, "Stack crawl: invalid SP value");
                 }
             }
@@ -1038,9 +1044,47 @@ static int trace_instructions(void) {
     for (i = 0; i < REG_DATA_SIZE; i++) reg_data[i].o = 0;
     cpsr_data.o = 0;
     pc_data.o = 0;
-    if (org_sp.v != 0 && org_lr.v != 0 && org_pc.v != org_lr.v) {
-        reg_data[31] = org_sp;
-        pc_data = org_lr;
+    if (org_pc.o) {
+        if (stk_frame->frame == 0) {
+            uint32_t instr = 0;
+            if (read_u32(org_pc.v, &instr) == 0) {
+                if ((instr & 0xffe07fff) == 0xa9a07bfd) {
+                    /* Prologue: stp x29,x30,[sp, #-xxx]! */
+                    memcpy(reg_data, org_regs, sizeof(org_regs));
+                    pc_data = org_regs[REG_ID_LR];
+                    return 0;
+                }
+                if (instr == 0xd65f03c0) {
+                    /* Epilogue: ret */
+                    memcpy(reg_data, org_regs, sizeof(org_regs));
+                    pc_data = org_regs[REG_ID_LR];
+                    return 0;
+                }
+            }
+            if (read_u32(org_pc.v - 4, &instr) == 0 && (instr & 0xffe07fff) == 0xa9a07bfd) {
+                /* Prologue, prev instruction: stp x29,x30,[sp, #-xxx]! */
+                uint32_t imm = (instr >> 15) & 0x7f;
+                memcpy(reg_data, org_regs, sizeof(org_regs));
+                reg_data[REG_ID_SP].v += (0x80 - imm) << 3;
+                pc_data = org_regs[REG_ID_LR];
+                return 0;
+            }
+        }
+        if (org_regs[REG_ID_FP].o && org_regs[REG_ID_FP].v != 0) {
+            /* Retrieve chained fp and return address.
+             * See page 16 & 30 of the following document:
+             * http://infocenter.arm.com/help/topic/com.arm.doc.ihi0055b/IHI0055B_aapcs64.pdf
+             */
+            if (read_u64(org_regs[REG_ID_FP].v, &reg_data[REG_ID_FP].v) == 0 && read_u64(org_regs[REG_ID_FP].v + 8, &pc_data.v) == 0) {
+                reg_data[REG_ID_FP].o = REG_VAL_OTHER;
+                pc_data.o = REG_VAL_OTHER;
+                /* Not a real CFA value, just an estimate to make step over and step out working */
+                stk_frame->fp = org_regs[REG_ID_FP].v + 16;
+            }
+        }
+    }
+    if (pc_data.o == 0 && org_regs[REG_ID_SP].v != 0 && org_regs[REG_ID_LR].v != 0 && org_pc.v != org_regs[REG_ID_LR].v) {
+        pc_data = org_regs[REG_ID_LR];
     }
     return 0;
 }
