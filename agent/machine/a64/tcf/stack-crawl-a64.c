@@ -1079,7 +1079,7 @@ static int trace_instructions(void) {
                 reg_data[REG_ID_FP].o = REG_VAL_OTHER;
                 pc_data.o = REG_VAL_OTHER;
                 /* Not a real CFA value, just an estimate to make step over and step out working */
-                stk_frame->fp = org_regs[REG_ID_FP].v + 16;
+                stk_frame->fp = (ContextAddress)(org_regs[REG_ID_FP].v + 16);
             }
         }
     }
