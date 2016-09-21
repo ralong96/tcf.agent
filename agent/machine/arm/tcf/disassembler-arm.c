@@ -2184,9 +2184,7 @@ static void disassemble_data_instr(uint32_t instr, const char * cond, uint32_t a
         return;
     }
 
-    if ((((instr & 0x03ff0000) == 0x028f0000) ||
-        (((instr & 0x03ff0000) == 0x024f0000))) &&
-        ((instr & 0xf0000000) != 0xf00000000)) {
+    if ((instr & 0x03ff0000) == 0x028f0000 || (instr & 0x03ff0000) == 0x024f0000) {
         /* ADR{<c>}{<q>} <Rd>, <label> */
         uint32_t add = (instr >> 23) & 0x1;
         add_str("adr");
