@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -80,20 +80,34 @@ static void free_frame(StackFrame * frame) {
     errno = error;
 }
 
+static int get_frame_debug_info(StackFrame * frame, StackTracingInfo ** info) {
+    uint64_t ip = 0;
+    Context * ctx = frame->ctx;
+    if (read_reg_value(frame, get_PC_definition(ctx), &ip) < 0) {
+        if (frame->is_top_frame) return -1;
+        return 0;
+    }
+    if (ip > 0 && !frame->is_top_frame) {
+        StackTrace * stk = EXT(ctx);
+        StackFrame * up = stk->frames + (frame->frame - 1);
+        if (up->is_walked) {
+            /* Workaround for missing frame info for return address of a function that never returns */
+            ip--;
+        }
+    }
+    return get_stack_tracing_info(ctx, (ContextAddress)ip, info);
+}
+
 int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
 #if ENABLE_Symbols
     int error = 0;
-    uint64_t ip = 0;
     Context * ctx = frame->ctx;
     StackTracingInfo * info = NULL;
     int frame_idx = frame->frame;
 
     memset(down, 0, sizeof(StackFrame));
 
-    if (read_reg_value(frame, get_PC_definition(ctx), &ip) < 0) {
-        if (frame->is_top_frame) error = errno;
-    }
-    else if (get_stack_tracing_info(ctx, (ContextAddress)(frame->is_top_frame ? ip : ip - 1), &info) < 0) {
+    if (get_frame_debug_info(frame, &info) < 0) {
         error = errno;
     }
     else if (info != NULL) {
