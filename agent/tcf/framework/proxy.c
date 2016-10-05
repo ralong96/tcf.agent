@@ -397,11 +397,17 @@ void proxy_create(Channel * c1, Channel * c2) {
     TCFBroadcastGroup * bcg = broadcast_group_alloc();
     Proxy * proxy = (Proxy *)loc_alloc_zero(2 * sizeof *proxy);
     int i;
+    int c2_peer_service_cnt = 0;
+    char ** c2_peer_service_list = NULL;
+    int c2_connected = 0;
 
     static int instance;
 
     assert(c1->state == ChannelStateRedirectReceived);
-    assert(c2->state == ChannelStateStartWait);
+    assert(c2->state == ChannelStateStartWait || c2->state == ChannelStateRedirectReceived);
+
+    /* Allow redirections of two channels that are already connected */
+    if (c2->state == ChannelStateRedirectReceived) c2_connected = 1;
 
     /* Host */
     channel_lock_with_msg(c1, channel_lock_msg);
@@ -424,11 +430,31 @@ void proxy_create(Channel * c1, Channel * c2) {
         if (strcmp(nm, "ZeroCopy") == 0) continue;
         protocol_get_service(proxy[1].proto, nm);
     }
+
+    if (c2_connected) {
+        /* Save the list of target services to restore them once the channel 
+         * is opened again. */
+        c2_peer_service_list = loc_alloc(c2->peer_service_cnt * sizeof(char *));
+        c2_peer_service_cnt= c2->peer_service_cnt;
+        for (i = 0; i < c2->peer_service_cnt; i++) {
+            char * nm = c2->peer_service_list[i];
+            c2_peer_service_list[i] = loc_strdup(nm);
+            if (strcmp(nm, "ZeroCopy") == 0) continue;
+            protocol_get_service(proxy[0].proto, nm);
+        }
+    }
     c1->state = ChannelStateHelloReceived;
     notify_channel_closed(c1);
     protocol_release(c1->protocol);
     c1->client_data = NULL;
-    assert(c2->protocol == NULL);
+    if (!c2_connected) {
+        assert(c2->protocol == NULL);
+    } else {
+        c2->state = ChannelStateHelloReceived;
+        notify_channel_closed(c2);
+        protocol_release(c2->protocol);
+        c2->client_data = NULL;
+    }
 
     c1->connecting = proxy_connecting;
     c1->connected = proxy_connected;
@@ -446,7 +472,23 @@ void proxy_create(Channel * c1, Channel * c2) {
 
     channel_set_broadcast_group(c1, bcg);
     channel_set_broadcast_group(c2, bcg);
-    channel_start(c2);
+    if (c2_connected) {
+        /* restore the target peer services list */
+        c2->peer_service_cnt = c2_peer_service_cnt;
+        c2->peer_service_list = c2_peer_service_list;
+
+        /* emulate proxy_connecting() code */
+        for (i = 0; i < redirection_listeners_cnt; i++) {
+            redirection_listeners[i](c1, c2);
+        }
+        c2->disable_zero_copy = !c1->out.supports_zero_copy;
+
+        /* indicate target channel is connected */
+        send_hello_message(c2);
+    }
+    else {
+        channel_start(c2);
+    }
 }
 
 Channel * proxy_get_host_channel(Channel * c) {
