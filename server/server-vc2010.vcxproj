@@ -201,11 +201,14 @@
     <ClCompile Include="..\agent\tcf\services\linenumbers_elf.c" />
     <ClCompile Include="..\agent\tcf\services\memorymap.c" />
     <ClCompile Include="..\agent\tcf\services\pathmap.c" />
+    <ClCompile Include="..\agent\tcf\services\portforward_service.c" />
+    <ClCompile Include="..\agent\tcf\services\portforward_proxy.c" />
     <ClCompile Include="..\agent\tcf\services\symbols.c" />
     <ClCompile Include="..\agent\tcf\services\symbols_common.c" />
     <ClCompile Include="..\agent\tcf\services\symbols_elf.c" />
     <ClCompile Include="..\agent\tcf\services\tcf_elf.c" />
     <ClCompile Include="..\agent\tcf\services\vm.c" />
+    <ClCompile Include="..\agent\tcf\main\framework.c" />
     <ClCompile Include="..\agent\tcf\main\main.c" />
     <ClCompile Include="tcf\main\server.c" />
     <ClCompile Include="..\agent\tcf\main\services.c" />
@@ -259,9 +262,12 @@
     <ClInclude Include="..\agent\tcf\services\linenumbers.h" />
     <ClInclude Include="..\agent\tcf\services\memorymap.h" />
     <ClInclude Include="..\agent\tcf\services\pathmap.h" />
+    <ClCompile Include="..\agent\tcf\services\portforward_service.h" />
+    <ClCompile Include="..\agent\tcf\services\portforward_proxy.h" />
     <ClInclude Include="..\agent\tcf\services\symbols.h" />
     <ClInclude Include="..\agent\tcf\services\tcf_elf.h" />
     <ClInclude Include="..\agent\tcf\services\vm.h" />
+    <ClInclude Include="..\agent\tcf\main\framework.h" />
     <ClInclude Include="..\agent\tcf\main\server.h" />
     <ClInclude Include="..\agent\tcf\main\services.h" />
     <ClInclude Include="..\agent\tcf\framework\asyncreq.h" />

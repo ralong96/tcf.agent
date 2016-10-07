@@ -345,6 +345,8 @@
     <ClCompile Include="tcf\services\memorymap.c" />
     <ClCompile Include="tcf\services\memoryservice.c" />
     <ClCompile Include="tcf\services\pathmap.c" />
+    <ClInclude Include="tcf\services\portforward_proxy.c" />
+    <ClInclude Include="tcf\services\portforward_service.c" />
     <ClCompile Include="tcf\services\processes.c" />
     <ClCompile Include="tcf\services\profiler.c" />
     <ClCompile Include="tcf\services\profiler_sst.c" />
@@ -394,6 +396,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="tcf\main\framework.c" />
     <ClCompile Include="tcf\main\server.c" />
     <ClCompile Include="tcf\main\services.c" />
     <ClCompile Include="tcf\main\test.c" />
@@ -515,6 +518,8 @@
     <ClInclude Include="tcf\services\memorymap.h" />
     <ClInclude Include="tcf\services\memoryservice.h" />
     <ClInclude Include="tcf\services\pathmap.h" />
+    <ClInclude Include="tcf\services\portforward_proxy.h" />
+    <ClInclude Include="tcf\services\portforward_service.h" />
     <ClInclude Include="tcf\services\processes.h" />
     <ClInclude Include="tcf\services\profiler.h" />
     <ClInclude Include="tcf\services\profiler_sst.h" />
@@ -528,6 +533,8 @@
     <ClInclude Include="tcf\services\terminals.h" />
     <ClInclude Include="tcf\services\vm.h" />
     <ClInclude Include="tcf\main\cmdline.h" />
+    <ClInclude Include="tcf\main\framework-ext.h" />
+    <ClInclude Include="tcf\main\framework.h" />
     <ClInclude Include="tcf\main\server.h" />
     <ClInclude Include="tcf\main\services-ext.h" />
     <ClInclude Include="tcf\main\services.h" />

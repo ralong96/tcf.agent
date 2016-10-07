@@ -876,6 +876,22 @@
 				>
 			</File>
 			<File
+				RelativePath=".\tcf\services\portforward_proxy.c"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\services\portforward_proxy.h"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\services\portforward_service.c"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\services\portforward_service.h"
+				>
+			</File>
+			<File
 				RelativePath=".\tcf\services\processes.c"
 				>
 			</File>
@@ -1206,6 +1222,18 @@
 						Name="VCCLCompilerTool"
 					/>
 				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\tcf\main\framework-ext.h"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\main\framework.c"
+				>
+			</File>
+			<File
+				RelativePath=".\tcf\main\framework.h"
+				>
 			</File>
 			<File
 				RelativePath=".\tcf\main\server.c"
