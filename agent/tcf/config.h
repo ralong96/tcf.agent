@@ -121,6 +121,15 @@
 #if !defined(SERVICE_Profiler)
 #define SERVICE_Profiler        (SERVICE_RunControl)
 #endif
+#if !defined(SERVICE_PortForward)
+#define SERVICE_PortForward     0
+#endif
+#if !defined(SERVICE_PortServer)
+#define SERVICE_PortServer      0
+#endif
+#if !defined(ENABLE_PortForwardProxy)
+#define ENABLE_PortForwardProxy SERVICE_PortServer
+#endif
 
 #if !defined(ENABLE_Plugins)
 #  if TARGET_UNIX && defined(PATH_Plugins)
@@ -330,6 +339,11 @@
 
 #if !defined(ENABLE_AllStopMode)
 #  define ENABLE_AllStopMode 0
+#endif
+
+#if SERVICE_PortServer || SERVICE_PortForward
+#  undef SERVICE_Streams
+#  define SERVICE_Streams 1
 #endif
 
 #endif /* D_config */

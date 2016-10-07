@@ -60,6 +60,8 @@
 #define SERVICE_ContextQuery    0
 #define SERVICE_Disassembly     0
 #define SERVICE_Profiler        0
+#define SERVICE_PortForward     0
+#define SERVICE_PortServer      0
 
 #define ENABLE_ZeroCopy         0
 #define ENABLE_Trace            1
@@ -96,5 +98,6 @@
 #define ENABLE_ProfilerSST                      0
 #define ENABLE_ContextIdHashTable               0
 #define ENABLE_SignalHandlers                   0
+#define ENABLE_PortForwardProxy                 0
 
 #endif /* D_config */

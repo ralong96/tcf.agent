@@ -45,6 +45,8 @@
 #include <tcf/services/disassembly.h>
 #include <tcf/services/profiler.h>
 #include <tcf/services/profiler_sst.h>
+#include <tcf/services/portforward_proxy.h>
+#include <tcf/services/portforward_service.h>
 #include <tcf/main/services.h>
 
 #include <tcf/main/services-ext.h>
@@ -132,6 +134,12 @@ void ini_services(Protocol * proto, TCFBroadcastGroup * bcg) {
 #endif
 #if ENABLE_Plugins
     plugins_load(proto, bcg);
+#endif
+#if SERVICE_PortForward
+    ini_port_forward_service(proto, bcg);
+#endif
+#if SERVICE_PortServer
+    ini_port_server_service(NULL, proto, bcg);
 #endif
 
     ini_diagnostics_service(proto);

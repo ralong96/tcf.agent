@@ -202,4 +202,16 @@
 #  define ENABLE_ProfilerSST    0
 #endif
 
+#if !defined(SERVICE_PortForward)
+#define SERVICE_PortForward     0
+#endif
+
+#if !defined(SERVICE_PortServer)
+#define SERVICE_PortServer      0
+#endif
+
+#if !defined(ENABLE_PortForwardProxy)
+#define ENABLE_PortForwardProxy SERVICE_PortServer
+#endif
+
 #endif /* D_config */
