@@ -32,6 +32,7 @@
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/proxy.h>
 #include <tcf/services/discovery.h>
+#include <tcf/main/framework.h>
 
 static const char * progname;
 
@@ -45,10 +46,7 @@ int main(int argc, char **argv) {
     const char * log_name = NULL;
 #endif
 
-    ini_mdep();
-    ini_trace();
-    ini_events_queue();
-    ini_asyncreq();
+    ini_framework();
 
 #if defined(_WRS_KERNEL)
 

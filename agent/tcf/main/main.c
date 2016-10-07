@@ -37,6 +37,7 @@
 #include <tcf/main/test.h>
 #include <tcf/main/cmdline.h>
 #include <tcf/main/services.h>
+#include <tcf/main/framework.h>
 #include <tcf/main/gdb-rsp.h>
 #include <tcf/main/server.h>
 #include <tcf/main/main_hooks.h>
@@ -265,10 +266,7 @@ int main(int argc, char ** argv) {
     Protocol * proto;
 
     PRE_INIT_HOOK;
-    ini_mdep();
-    ini_trace();
-    ini_events_queue();
-    ini_asyncreq();
+    ini_framework();
     PRE_THREADING_HOOK;
 
 #if !defined(_WRS_KERNEL)

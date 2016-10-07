@@ -39,6 +39,7 @@
 #include <tcf/services/discovery.h>
 #include <tcf/main/logfilter.h>
 #include <tcf/main/main_hooks.h>
+#include <tcf/main/framework.h>
 
 static const char * progname;
 static const char * dest_url = "TCP::1534";
@@ -231,10 +232,7 @@ int main(int argc, char ** argv) {
     ChannelServer * serv;
     int print_server_properties = 0;
 
-    ini_mdep();
-    ini_trace();
-    ini_events_queue();
-    ini_asyncreq();
+    ini_framework();
 
     log_mode = LOG_TCFLOG;
 

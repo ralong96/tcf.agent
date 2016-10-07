@@ -48,6 +48,7 @@ extern "C" {
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/errors.h>
 #include <tcf/services/discovery.h>
+#include <tcf/main/framework.h>
 
 static const char * progname;
 static lua_State *luastate;
@@ -1476,10 +1477,7 @@ int main(int argc, char ** argv) {
 #if !(defined(_WIN32) || defined(__CYGWIN__))
     signal(SIGPIPE, SIG_IGN);
 #endif
-    ini_mdep();
-    ini_trace();
-    ini_events_queue();
-    ini_asyncreq();
+    ini_framework();
 
 #if defined(_WRS_KERNEL)
 
