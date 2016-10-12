@@ -180,6 +180,21 @@
     <ClCompile Include="..\agent\tcf\framework\sigsets.c">
       <Filter>framework</Filter>
     </ClCompile>
+    <ClCompile Include="..\agent\tcf\main\framework.c">
+      <Filter>main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\agent\tcf\services\portforward_proxy.c">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="..\agent\tcf\services\portforward_service.h">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="..\agent\tcf\services\portforward_proxy.h">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="..\agent\tcf\services\portforward_service.c">
+      <Filter>services</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tcf\services\context-proxy.h">
@@ -350,6 +365,12 @@
     </ClInclude>
     <ClInclude Include="..\agent\tcf\framework\sigsets.h">
       <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\agent\tcf\main\framework.h">
+      <Filter>main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\agent\tcf\main\framework-ext.h">
+      <Filter>main</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

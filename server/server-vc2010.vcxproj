@@ -240,6 +240,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\agent\tcf\framework\sigsets.h" />
+    <ClInclude Include="..\agent\tcf\main\framework-ext.h" />
     <ClInclude Include="..\agent\tcf\services\disassembly.h" />
     <ClInclude Include="..\agent\tcf\services\elf-symbols-ext.h" />
     <ClInclude Include="..\agent\tcf\services\elf-symbols.h" />

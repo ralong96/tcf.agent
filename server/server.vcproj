@@ -507,19 +507,19 @@
 				>
 			</File>
 			<File
-				RelativePath="..\agent\tcf\services\portforward_service.c"
-				>
-			</File>
-			<File
-				RelativePath="..\agent\tcf\services\portforward_service.h"
-				>
-			</File>
-			<File
 				RelativePath="..\agent\tcf\services\portforward_proxy.c"
 				>
 			</File>
 			<File
 				RelativePath="..\agent\tcf\services\portforward_proxy.h"
+				>
+			</File>
+			<File
+				RelativePath="..\agent\tcf\services\portforward_service.c"
+				>
+			</File>
+			<File
+				RelativePath="..\agent\tcf\services\portforward_service.h"
 				>
 			</File>
 			<File
@@ -558,6 +558,10 @@
 		<Filter
 			Name="main"
 			>
+			<File
+				RelativePath="..\agent\tcf\main\framework-ext.h"
+				>
+			</File>
 			<File
 				RelativePath="..\agent\tcf\main\framework.c"
 				>

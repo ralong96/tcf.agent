@@ -366,6 +366,9 @@
     <ClCompile Include="machine\a64\tcf\stack-crawl-a64.c">
       <Filter>machine\a64</Filter>
     </ClCompile>
+    <ClCompile Include="tcf\main\framework.c">
+      <Filter>main</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tcf\framework\asyncreq.h">
@@ -701,6 +704,24 @@
     </ClInclude>
     <ClInclude Include="machine\a64\tcf\stack-crawl-a64.h">
       <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\main\framework-ext.h">
+      <Filter>main</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\main\framework.h">
+      <Filter>main</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\services\portforward_proxy.c">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\services\portforward_proxy.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\services\portforward_service.c">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="tcf\services\portforward_service.h">
+      <Filter>services</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

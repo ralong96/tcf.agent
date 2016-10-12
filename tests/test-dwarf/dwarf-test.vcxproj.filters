@@ -225,6 +225,15 @@
     <ClCompile Include="..\..\agent\system\Windows\tcf\pthreads-win32.c">
       <Filter>system</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\main\framework.c">
+      <Filter>main</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\services\portforward_proxy.c">
+      <Filter>services</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\services\portforward_service.c">
+      <Filter>services</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\agent\tcf\framework\asyncreq.h">
@@ -432,5 +441,17 @@
       <Filter>backend</Filter>
     </ClInclude>
     <ClInclude Include="tcf\config.h" />
+    <ClInclude Include="..\..\agent\tcf\main\framework.h">
+      <Filter>main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\main\framework-ext.h">
+      <Filter>main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\services\portforward_proxy.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\services\portforward_service.h">
+      <Filter>services</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

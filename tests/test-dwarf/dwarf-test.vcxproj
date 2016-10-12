@@ -115,6 +115,7 @@
     <ClCompile Include="..\..\agent\tcf\framework\streams.c" />
     <ClCompile Include="..\..\agent\tcf\framework\trace.c" />
     <ClCompile Include="..\..\agent\tcf\framework\waitpid.c" />
+    <ClCompile Include="..\..\agent\tcf\main\framework.c" />
     <ClCompile Include="..\..\agent\tcf\main\main.c" />
     <ClCompile Include="..\..\agent\tcf\main\server.c" />
     <ClCompile Include="..\..\agent\tcf\main\services.c" />
@@ -141,6 +142,8 @@
     <ClCompile Include="..\..\agent\tcf\services\memorymap.c" />
     <ClCompile Include="..\..\agent\tcf\services\memoryservice.c" />
     <ClCompile Include="..\..\agent\tcf\services\pathmap.c" />
+    <ClCompile Include="..\..\agent\tcf\services\portforward_proxy.c" />
+    <ClCompile Include="..\..\agent\tcf\services\portforward_service.c" />
     <ClCompile Include="..\..\agent\tcf\services\processes.c" />
     <ClCompile Include="..\..\agent\tcf\services\registers.c" />
     <ClCompile Include="..\..\agent\tcf\services\runctrl.c" />
@@ -166,6 +169,10 @@
     <ClInclude Include="..\..\agent\tcf\framework\channel_pipe.h" />
     <ClInclude Include="..\..\agent\tcf\framework\channel_tcp.h" />
     <ClInclude Include="..\..\agent\tcf\framework\context.h" />
+    <ClInclude Include="..\..\agent\tcf\main\framework-ext.h" />
+    <ClInclude Include="..\..\agent\tcf\main\framework.h" />
+    <ClInclude Include="..\..\agent\tcf\services\portforward_proxy.h" />
+    <ClInclude Include="..\..\agent\tcf\services\portforward_service.h" />
     <ClInclude Include="tcf\framework\cpudefs-ext.h" />
     <ClInclude Include="..\..\agent\tcf\framework\cpudefs.h" />
     <ClInclude Include="..\..\agent\tcf\framework\errors.h" />
