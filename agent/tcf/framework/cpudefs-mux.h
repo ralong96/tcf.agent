@@ -27,6 +27,7 @@ static int sys_read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, 
 static int sys_write_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned offs,
         unsigned size, uint8_t * buf);
 static uint8_t * sys_get_break_instruction(Context * ctx, size_t * size);
+extern int sys_crawl_stack_frame(StackFrame * frame, StackFrame * down);
 
 CpuDefsIf sys_cpudefs_if = {
                 sys_get_reg_definitions,
@@ -35,6 +36,9 @@ CpuDefsIf sys_cpudefs_if = {
                 sys_read_reg_bytes,
                 sys_write_reg_bytes,
                 sys_get_break_instruction,
+#if ENABLE_StackCrawlMux
+                sys_crawl_stack_frame,
+#endif
                 };
 
 #define get_reg_definitions     sys_get_reg_definitions

@@ -9,7 +9,11 @@
 #include <tcf/config.h>
 
 extern RegisterDefinition * sys_get_PC_definition(Context * ctx);
+extern int sys_crawl_stack_frame(StackFrame * frame, StackFrame * down);
 
 #if ENABLE_ContextMux
 #define get_PC_definition  sys_get_PC_definition
+#if ENABLE_StackCrawlMux
+#define crawl_stack_frame       sys_crawl_stack_frame
+#endif /* ENABLE_StackCrawlMux */
 #endif /* ENABLE_ContextMux */
