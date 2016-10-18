@@ -1663,6 +1663,7 @@ static void get_debug_structure_address(Context * ctx, Value * v) {
 
 static int expression_identifier_callback(Context * ctx, int frame, char * name, Value * v) {
     if (ctx == NULL) return 0;
+    if (EXT(ctx)->pid == 0) return 0;
     if (strcmp(name, "$loader_brk") == 0) {
         get_debug_structure_address(ctx, v);
         switch (v->size) {
@@ -1689,13 +1690,15 @@ static int expression_identifier_callback(Context * ctx, int frame, char * name,
 static void eventpoint_at_loader(Context * ctx, void * args) {
     enum r_state { RT_CONSISTENT, RT_ADD, RT_DELETE };
     ELF_File * file = NULL;
-    ContextAddress addr = elf_get_debug_structure_address(ctx, &file);
-    unsigned size = file && file->elf64 ? 8 : 4;
+    ContextAddress addr = 0;
+    unsigned size = 0;
     ContextAddress state = 0;
     ContextExtensionLinux * ext = NULL;
 
-
     assert(!is_intercepted(ctx));
+    if (EXT(ctx)->pid == 0) return;
+    addr = elf_get_debug_structure_address(ctx, &file);
+    size = file && file->elf64 ? 8 : 4;
     if (ctx->parent != NULL) ctx = ctx->parent;
     ext = EXT(ctx);
 
@@ -1734,6 +1737,7 @@ static void eventpoint_at_loader(Context * ctx, void * args) {
 #endif /* SERVICE_Expressions && ENABLE_ELF */
 
 static void eventpoint_at_main(Context * ctx, void * args) {
+    if (EXT(ctx)->pid == 0) return;
     EXT(ctx)->crt0_done = 1;
     send_context_changed_event(ctx->mem);
     memory_map_event_mapping_changed(ctx->mem);
