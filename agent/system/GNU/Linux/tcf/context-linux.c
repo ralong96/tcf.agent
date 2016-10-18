@@ -680,6 +680,12 @@ int context_can_resume(Context * ctx, int mode) {
     return 0;
 }
 
+#if ENABLE_MemoryAccessModes
+int context_write_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size) {
+    return context_write_mem(ctx, address, buf, size);
+}
+#endif
+
 int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
     ContextAddress word_addr;
     unsigned word_size = context_word_size(ctx);
@@ -772,6 +778,12 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
     }
     return 0;
 }
+
+#if ENABLE_MemoryAccessModes
+int context_read_mem_ext(Context * ctx, MemoryAccessMode * mode, ContextAddress address, void * buf, size_t size) {
+    return context_read_mem(ctx, address, buf, size);
+}
+#endif
 
 int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
     ContextAddress word_addr;
