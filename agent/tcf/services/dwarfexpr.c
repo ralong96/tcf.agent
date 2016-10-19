@@ -69,16 +69,13 @@ void dwarf_get_expression_list(PropertyValue * Value, DWARFExpressionInfo ** Lis
             else {
                 U2_T Size = dio_ReadU2();
                 U8_T RT_Addr0 = 0;
-                U8_T RT_Addr1 = 0;
                 if (S0 == NULL) S0 = Unit->mTextSection;
-                if (S1 == NULL) S1 = Unit->mTextSection;
                 RT_Addr0 = elf_map_to_run_time_address(Value->mContext, Unit->mFile, S0, Base + Addr0);
-                if (!errno) RT_Addr1 = elf_map_to_run_time_address(Value->mContext, Unit->mFile, S1, Base + Addr1);
                 if (!errno) {
                     DWARFExpressionInfo * Info = (DWARFExpressionInfo *)tmp_alloc_zero(sizeof(DWARFExpressionInfo));
                     Info->object = Value->mObject;
                     Info->code_addr = RT_Addr0;
-                    Info->code_size = RT_Addr1 - RT_Addr0;
+                    Info->code_size = Addr1 - Addr0;
                     Info->section = Cache->mDebugLoc;
                     Info->expr_addr = dio_GetDataPtr();
                     Info->expr_size = Size;
