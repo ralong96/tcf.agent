@@ -815,6 +815,20 @@ void clone_breakpoints_on_process_fork(Context * parent, Context * child) {
     }
 }
 
+void invalidate_breakpoints_on_process_exec(Context * ctx) {
+    Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+    LINK * l = instructions.next;
+    while (l != &instructions) {
+        BreakInstruction * bi = link_all2bi(l);
+        l = l->next;
+        if (!bi->planted) continue;
+        if (!bi->saved_size) continue;
+        if (bi->cb.ctx != mem) continue;
+        if (!bi->virtual_addr) planted_sw_bp_cnt--;
+        bi->planted = 0;
+    }
+}
+
 int unplant_breakpoints(Context * ctx) {
     int error = 0;
     LINK * l = instructions.next;

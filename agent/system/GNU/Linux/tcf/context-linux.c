@@ -1495,6 +1495,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         }
         break;
     case PTRACE_EVENT_EXEC:
+        invalidate_breakpoints_on_process_exec(ctx);
         send_context_changed_event(ctx);
         memory_map_event_mapping_changed(ctx->mem);
         break;
