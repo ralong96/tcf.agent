@@ -18,7 +18,7 @@
  * proxy.
  * The PortForward service proxy allows accessing the PortForward service of
  * a remote peer from the current agent.
- * The PortServer service allows creating a local port to access a remote 
+ * The PortServer service allows creating a local port to access a remote
  * port on the peer using the PortForward service proxy.
  */
 
@@ -575,7 +575,7 @@ static void connect_port_callback(PortConnection * conn, int error) {
         }
         /* Send multiple TCF streams read requests in parallel; this is
          * to limit the performance impact on network with high latency. */
-        for (idx = 0; idx < MAX_STREAM_READ; idx++) 
+        for (idx = 0; idx < MAX_STREAM_READ; idx++)
             read_packet(conn, idx);
     }
 }
@@ -628,8 +628,8 @@ static void done_send_request(void * args) {
              * are in auto connect mode but simply unbind the client from
              * the port. */
             port_connection_unbind(conn);
-            
-            /* Still read packets from the target even if no client is 
+
+            /* Still read packets from the target even if no client is
              * connected. This may have to be revisited. */
             read_packet(conn, idx);
         }
@@ -651,7 +651,7 @@ static void done_send_request(void * args) {
         }
         assert (loop != MAX_STREAM_READ &&
                         (conn->pending_send_req & (1 << next_idx)));
-                
+
 
         conn->send_in_progress = next_idx;
         conn->pending_send_req &= ~(1 << next_idx);

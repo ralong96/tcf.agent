@@ -49,7 +49,7 @@ extern PortServer * create_port_server(Channel * c, PortAttribute * attrs, PortC
 /* Destroy a previously created port server */
 extern int destroy_port_server(PortServer * server);
 
-/* Get information about specified port server. The info structure must 
+/* Get information about specified port server. The info structure must
  * have been preallocated */
 extern int get_port_server_info(PortServer * server, PortServerInfo * info);
 

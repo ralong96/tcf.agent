@@ -432,7 +432,7 @@ void proxy_create(Channel * c1, Channel * c2) {
     }
 
     if (c2_connected) {
-        /* Save the list of target services to restore them once the channel 
+        /* Save the list of target services to restore them once the channel
          * is opened again. */
         c2_peer_service_list = (char **)loc_alloc(c2->peer_service_cnt * sizeof(char *));
         c2_peer_service_cnt= c2->peer_service_cnt;

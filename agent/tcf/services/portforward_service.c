@@ -69,7 +69,7 @@
 #endif
 #endif
 
- 
+
 #define PORTFW_TCP_PORT         0
 #define PORTFW_UDP_PORT         1
 #define PORTFW_SER_PORT         2
@@ -626,7 +626,7 @@ static int serial_connect_req_func(void * reqdata) {
         return -1;
     }
 #endif
-    
+
 #ifdef WIN32
 
     snprintf(com_dev_name, sizeof(com_dev_name), "\\\\.\\%s", dev_name);
@@ -649,7 +649,7 @@ static int serial_connect_req_func(void * reqdata) {
             1,        /* manual reset (required by GetOverlappedResult()) */
             0,        /* non signalled initial state */
             NULL      /* event name */);
-    
+
     if (info->serial.read_overlapped.hEvent == NULL) {
         set_win32_errno(GetLastError());
         CloseHandle (handle);
@@ -810,7 +810,7 @@ static int serial_connect_req_func(void * reqdata) {
         info->serial.fd = -1;
         return -1;
     }
-    
+
     termIo.c_iflag = 0; /* no input procesing */
     termIo.c_oflag = 0; /* no output procesing */
     termIo.c_cflag = CREAD | data_bits_const | CLOCAL;
@@ -828,7 +828,7 @@ static int serial_connect_req_func(void * reqdata) {
     }
 
     termIo.c_lflag = 0; /* no local processing */
-    
+
     /* time out value (<val> * 0.1s) */
     termIo.c_cc[VMIN] = 0;
     termIo.c_cc[VTIME] = 3 * 10;
@@ -866,7 +866,7 @@ static int serial_send_req_func(PortFwConfig * config, void * buffer, size_t len
     DWORD total_write_count = 0;
     HANDLE WriteEvent;
     WriteEvent = config->port_info.serial.write_overlapped.hEvent;
-        
+
     do
         {
         memset (&config->port_info.serial.write_overlapped, 0, sizeof(config->port_info.serial.write_overlapped));
@@ -876,7 +876,7 @@ static int serial_send_req_func(PortFwConfig * config, void * buffer, size_t len
                             (char *)buffer + total_write_count,
                             length - total_write_count, &write_count,
                             &config->port_info.serial.write_overlapped);
-        
+
         /* ...and wait till last char is sent. */
 
         if (status == FALSE) {
@@ -909,7 +909,7 @@ static int serial_send_req_func(PortFwConfig * config, void * buffer, size_t len
     }
     while (ret < 0 && (errno == EINTR));
 #endif
-    return ret; 
+    return ret;
 }
 
 static int serial_recv_req_func(PortFwConfig * config, void * buffer, size_t length) {
@@ -1311,7 +1311,7 @@ static void done_send_request(void * args) {
         async_req_post(&config->send_req);
         return;
     }
-        
+
     config->outbuf_len -= (size_t)rval;
     write_stream_to_port(config);
 }
@@ -1378,7 +1378,7 @@ static void write_port_to_stream_callback(VirtualStream *stream,
 static void connect_callback(PortFwConfig * config, int error) {
     if (error) {
         if (config->verbose) fprintf(stderr, "Error opening %s: %d (%s)\n", config->port_config, error, errno_to_str(error));
-    } 
+    }
     else {
         if (config->verbose) fprintf(stdout, "Successfully opened %s\n", config->port_config);
     }
@@ -1511,7 +1511,7 @@ static void portfw_cmd_create(char * token, Channel * c) {
 
     if (err == 0) {
         return;
-    } 
+    }
     else {
         release_config(config);
     }
