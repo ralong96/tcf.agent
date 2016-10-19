@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2016 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -570,7 +570,6 @@ static void disassemble_load_store_32(uint16_t suffix) {
         unsigned i, j;
         uint32_t op = (instr >> 7) & 3;
         int L = (instr & (1 << 4)) != 0;
-        int W = (instr & (1 << 5)) != 0;
         if (op == 0 || op == 3) {
             if (!L) {
                 add_str("srs");

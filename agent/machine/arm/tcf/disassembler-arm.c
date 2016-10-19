@@ -1620,7 +1620,6 @@ static void disassemble_coprocessor_instr(uint32_t instr, const char * cond, uns
             if (!P && !U && !W) {
                 if (D && (instr & 0x000000d0) == 0x00000010) {
                     /* 64-bit transfers between ARM core and extension registers */
-                    int L = (instr & (1 << 20)) != 0;
                     int C = (instr & (1 << 8)) != 0;
                     uint32_t dn = instr & 0xf;
                     uint32_t sn = dn * 2;

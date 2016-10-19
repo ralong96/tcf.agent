@@ -1046,7 +1046,6 @@ static int trace_instructions(void) {
     pc_data.o = 0;
     if (org_pc.o) {
         if (stk_frame->frame == 0) {
-            uint32_t instr = 0;
             if (read_u32(org_pc.v, &instr) == 0) {
                 if ((instr & 0xffe07fff) == 0xa9a07bfd) {
                     /* Prologue: stp x29,x30,[sp, #-xxx]! */

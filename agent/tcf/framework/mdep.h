@@ -78,6 +78,7 @@
 #include <sys/stat.h>
 #include <sys/utime.h>
 #include <stdio.h>
+#include <time.h>
 #include <io.h>
 
 #if defined(_MSC_VER)

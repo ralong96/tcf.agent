@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -70,14 +70,14 @@ static ErrorMessage msgs[MESSAGE_CNT];
 static int msgs_pos = 0;
 
 static char * msg_buf = NULL;
-static size_t msg_max = 0;
-static size_t msg_len = 0;
+static size_t msg_buf_max = 0;
+static size_t msg_buf_len = 0;
 
 static void realloc_msg_buf(void) {
     assert(is_dispatch_thread());
-    if (msg_max <= msg_len + 128 || msg_max > msg_len + 2048) {
-        msg_max = msg_len + 256;
-        msg_buf = (char *)loc_realloc(msg_buf, msg_max);
+    if (msg_buf_max <= msg_buf_len + 128 || msg_buf_max > msg_buf_len + 2048) {
+        msg_buf_max = msg_buf_len + 256;
+        msg_buf = (char *)loc_realloc(msg_buf, msg_buf_max);
     }
 }
 
@@ -121,7 +121,7 @@ static ErrorMessage * alloc_msg(int source) {
 static char * system_strerror(DWORD error_code, HMODULE module) {
     WCHAR * buf = NULL;
     assert(is_dispatch_thread());
-    msg_len = 0;
+    msg_buf_len = 0;
     if (FormatMessageW(
             FORMAT_MESSAGE_ALLOCATE_BUFFER |
             FORMAT_MESSAGE_FROM_SYSTEM |
@@ -132,20 +132,20 @@ static char * system_strerror(DWORD error_code, HMODULE module) {
             error_code,
             MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), /* Default language */
             (LPWSTR)&buf, 0, NULL)) {
-        msg_len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, NULL, 0, NULL, NULL);
-        if (msg_len > 0) {
+        msg_buf_len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, NULL, 0, NULL, NULL);
+        if (msg_buf_len > 0) {
             realloc_msg_buf();
-            msg_len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, msg_buf, (int)msg_max, NULL, NULL);
+            msg_buf_len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, msg_buf, (int)msg_buf_max, NULL, NULL);
         }
     }
-    if (msg_len == 0) {
+    if (msg_buf_len == 0) {
         realloc_msg_buf();
-        msg_len = snprintf(msg_buf, msg_max, "System error code 0x%08x", (unsigned)error_code);
+        msg_buf_len = snprintf(msg_buf, msg_buf_max, "System error code 0x%08x", (unsigned)error_code);
     }
     if (buf != NULL) LocalFree(buf);
-    while (msg_len > 0 && msg_buf[msg_len - 1] <= ' ') msg_len--;
-    if (msg_len > 0 && msg_buf[msg_len - 1] == '.') msg_len--;
-    msg_buf[msg_len] = 0;
+    while (msg_buf_len > 0 && msg_buf[msg_buf_len - 1] <= ' ') msg_buf_len--;
+    if (msg_buf_len > 0 && msg_buf[msg_buf_len - 1] == '.') msg_buf_len--;
+    msg_buf[msg_buf_len] = 0;
     return msg_buf;
 }
 
@@ -215,7 +215,7 @@ static void append_format_parameter(char * type, char * style, char * param) {
                     char * s = x;
                     while (*s) {
                         realloc_msg_buf();
-                        msg_buf[msg_len++] = *s++;
+                        msg_buf[msg_buf_len++] = *s++;
                     }
                     loc_free(x);
                 }
@@ -240,7 +240,7 @@ static void append_format_parameter(char * type, char * style, char * param) {
     if (param != NULL) {
         while (*param) {
             realloc_msg_buf();
-            msg_buf[msg_len++] = *param++;
+            msg_buf[msg_buf_len++] = *param++;
         }
     }
 }
@@ -249,7 +249,7 @@ static const char * format_error_report_message(const char * fmt, char ** params
     int fmt_pos = 0;
     int in_quotes = 0;
 
-    msg_len = 0;
+    msg_buf_len = 0;
     while (fmt[fmt_pos]) {
         char ch = fmt[fmt_pos++];
         realloc_msg_buf();
@@ -257,10 +257,10 @@ static const char * format_error_report_message(const char * fmt, char ** params
             in_quotes = 0;
         }
         else if (in_quotes) {
-            msg_buf[msg_len++] = ch;
+            msg_buf[msg_buf_len++] = ch;
         }
         else if (ch == '\'' && fmt[fmt_pos] == '\'') {
-            msg_buf[msg_len++] = ch;
+            msg_buf[msg_buf_len++] = ch;
             fmt_pos++;
         }
         else if (ch =='\'') {
@@ -298,11 +298,11 @@ static const char * format_error_report_message(const char * fmt, char ** params
             if (fmt[fmt_pos] == '}') fmt_pos++;
         }
         else {
-            msg_buf[msg_len++] = ch;
+            msg_buf[msg_buf_len++] = ch;
         }
     }
     realloc_msg_buf();
-    msg_buf[msg_len++] = 0;
+    msg_buf[msg_buf_len++] = 0;
     return msg_buf;
 }
 

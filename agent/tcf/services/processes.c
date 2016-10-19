@@ -1157,7 +1157,6 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
         si.hStdOutput = hpipes[1][1];
         si.hStdError  = hpipes[2][1];
         if (args != NULL) {
-            int i = 0;
             int cmd_size = 0;
             int cmd_pos = 0;
 #           define cmd_append(ch) { \

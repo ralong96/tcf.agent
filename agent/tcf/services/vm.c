@@ -726,7 +726,6 @@ static void evaluate_expression(void) {
                     LocationPiece * org_piece = pieces + cnt++;
                     if (org_piece->bit_size == 0) org_piece->bit_size = org_piece->size * 8;
                     if (bit_offs + org_piece->bit_size > offs * 8) {
-                        LocationPiece * piece = NULL;
                         if (state->pieces_cnt >= state->pieces_max) {
                             state->pieces_max += 4;
                             state->pieces = (LocationPiece *)tmp_realloc(state->pieces, state->pieces_max * sizeof(LocationPiece));
@@ -775,14 +774,14 @@ static void evaluate_expression(void) {
                     if (entry_state.pieces_cnt > 0) {
                         size_t i;
                         uint64_t value = 0;
-                        void * value_addr = NULL;
-                        size_t value_size = 0;
+                        void * piece_buf = NULL;
+                        size_t piece_size = 0;
                         read_location_pieces(entry_state.ctx, entry_state.stack_frame,
                             entry_state.pieces, entry_state.pieces_cnt, 0,
-                            &value_addr, &value_size);
-                        if (value_size > sizeof(value)) inv_dwarf("Invalid OP_entry_value expression");
-                        for (i = 0; i < value_size; i++) {
-                            value |= ((uint8_t *)value_addr)[i] << (i * 8);
+                            &piece_buf, &piece_size);
+                        if (piece_size > sizeof(value)) inv_dwarf("Invalid OP_entry_value expression");
+                        for (i = 0; i < piece_size; i++) {
+                            value |= ((uint8_t *)piece_buf)[i] << (i * 8);
                         }
                         s->type_stk[s->stk_pos] = TYPE_CLASS_CARDINAL;
                         s->stk[s->stk_pos++] = value;
