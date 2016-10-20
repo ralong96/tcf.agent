@@ -14,27 +14,15 @@
  *******************************************************************************/
 
 /*
- * Framework initialization code.
+ * Hook definition for LWS callback.  This hook can be used to plug your own
+ * code in the various libwebsockets hooks. For more information about the possible
+ * value for those hooks refer to libwebsockets documentation. The return
+ * value is either ignored or a value different from 0 indicates an error.
+ * The arguments are exactly the same as for libwebsockets hook except for the first
+ * one which provides a pointer to a location where you can store callback specific data.
  */
 
-#include <tcf/config.h>
-
-#include <tcf/framework/mdep.h>
-#include <tcf/framework/trace.h>
-#include <tcf/framework/events.h>
-#include <tcf/framework/asyncreq.h>
-#include <tcf/main/framework.h>
-#include <tcf/framework/channel_lws.h>
-
-#include <tcf/main/framework-ext.h>
-
-void ini_framework(void) {
-    ini_mdep();
-    ini_trace();
-    ini_events_queue();
-    ini_asyncreq();
-#if ENABLE_LibWebSockets
-    ini_lws();
+#ifndef LWS_CALLBACK_USER_HOOK
+#define LWS_CALLBACK_USER_HOOK(arg, wsi, reason, user, in, len) (0)
 #endif
-    ini_ext_framework();
-}
+

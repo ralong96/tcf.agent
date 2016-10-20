@@ -346,4 +346,8 @@
 #  define SERVICE_Streams 1
 #endif
 
+#if !defined(ENABLE_LibWebSockets)
+#  define ENABLE_LibWebSockets    0
+#endif
+
 #endif /* D_config */

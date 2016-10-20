@@ -8,6 +8,11 @@ ifdef MAKE_INC
 include $(MAKE_INC)
 endif
 
+ifdef LIBWEBSOCKETSDIR
+  OPTS += -DENABLE_LibWebSockets=1 "-I$(LIBWEBSOCKETSDIR)/include"
+  LIBS += -L $(LIBWEBSOCKETSDIR)/lib -lwebsockets -lssl
+endif
+
 ifdef LUADIR
   EXECS += $(BINDIR)/tcflua$(EXTEXE)
   OPTS += -DPATH_LUA="$(LUADIR)" "-I$(LUADIR)/include"

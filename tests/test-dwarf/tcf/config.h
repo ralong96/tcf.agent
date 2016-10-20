@@ -99,5 +99,6 @@
 #define ENABLE_ContextIdHashTable               0
 #define ENABLE_SignalHandlers                   0
 #define ENABLE_PortForwardProxy                 0
+#define ENABLE_LibWebSockets                    0
 
 #endif /* D_config */

@@ -14,27 +14,19 @@
  *******************************************************************************/
 
 /*
- * Framework initialization code.
+ * WebSocket channel interface based on libwebsockets
  */
+
+#ifndef D_channel_lws
+#define D_channel_lws
 
 #include <tcf/config.h>
 
-#include <tcf/framework/mdep.h>
-#include <tcf/framework/trace.h>
-#include <tcf/framework/events.h>
-#include <tcf/framework/asyncreq.h>
-#include <tcf/main/framework.h>
-#include <tcf/framework/channel_lws.h>
-
-#include <tcf/main/framework-ext.h>
-
-void ini_framework(void) {
-    ini_mdep();
-    ini_trace();
-    ini_events_queue();
-    ini_asyncreq();
 #if ENABLE_LibWebSockets
-    ini_lws();
-#endif
-    ini_ext_framework();
-}
+#include <tcf/framework/channel.h>
+
+extern void channel_lws_get_properties(Channel * c, char *** prop_names, char *** prop_values, unsigned * prop_cnt);
+extern void ini_lws(void);
+
+#endif /* ENABLE_LibWebSockets */
+#endif /* D_channel_lws */
