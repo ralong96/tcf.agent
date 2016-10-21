@@ -1166,6 +1166,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
                 } \
                 cmd[cmd_pos++] = (ch); \
             }
+            i = 0;
             while (args[i] != NULL) {
                 const char * p = args[i++];
                 if (cmd_pos > 0) cmd_append(' ');
