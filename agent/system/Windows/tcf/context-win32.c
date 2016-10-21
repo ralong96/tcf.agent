@@ -460,7 +460,7 @@ static void break_process_event(void * args) {
                     trace(LOG_CONTEXT, "context: creating remote thread in process %#lx, id %s", ctx, ctx->id);
                     if (debug_state->break_thread_code == NULL) {
                         debug_state->break_thread_code = VirtualAllocEx(ext->handle,
-                            NULL, buf_size, MEM_COMMIT, PAGE_EXECUTE);
+                            NULL, buf_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
                         error = log_error("VirtualAllocEx", debug_state->break_thread_code != NULL);
                     }
 
