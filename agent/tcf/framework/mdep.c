@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -51,13 +51,13 @@ int utf8_locale = 0;
 #ifndef SIO_UDP_NETRESET
 #define SIO_UDP_NETRESET _WSAIOW(IOC_VENDOR,15)
 #endif
-#undef socket
+
 int wsa_socket(int af, int type, int protocol) {
     int res = 0;
 
     SetLastError(0);
     WSASetLastError(0);
-    res = socket(af, type, protocol);
+    res = (socket)(af, type, protocol);
     if (res < 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -71,12 +71,11 @@ int wsa_socket(int af, int type, int protocol) {
     return res;
 }
 
-#undef connect
 int wsa_connect(int socket, const struct sockaddr * addr, int addr_size) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = connect(socket, addr, addr_size);
+    res = (connect)(socket, addr, addr_size);
     if (res != 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -84,38 +83,11 @@ int wsa_connect(int socket, const struct sockaddr * addr, int addr_size) {
     return 0;
 }
 
-#undef bind
-int wsa_bind(int socket, const struct sockaddr * addr, int addr_size) {
+int wsa_accept(int socket, struct sockaddr * addr, int * addr_size) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = bind(socket, addr, addr_size);
-    if (res != 0) {
-        set_win32_errno(WSAGetLastError());
-        return -1;
-    }
-    return 0;
-}
-
-#undef listen
-int wsa_listen(int socket, int size) {
-    int res = 0;
-    SetLastError(0);
-    WSASetLastError(0);
-    res = listen(socket, size);
-    if (res != 0) {
-        set_win32_errno(WSAGetLastError());
-        return -1;
-    }
-    return 0;
-}
-
-#undef recv
-int wsa_recv(int socket, void * buf, size_t size, int flags) {
-    int res = 0;
-    SetLastError(0);
-    WSASetLastError(0);
-    res = recv(socket, (char *)buf, size, flags);
+    res = (accept)(socket, addr, addr_size);
     if (res < 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -123,13 +95,48 @@ int wsa_recv(int socket, void * buf, size_t size, int flags) {
     return res;
 }
 
-#undef recvfrom
+int wsa_bind(int socket, const struct sockaddr * addr, int addr_size) {
+    int res = 0;
+    SetLastError(0);
+    WSASetLastError(0);
+    res = (bind)(socket, addr, addr_size);
+    if (res != 0) {
+        set_win32_errno(WSAGetLastError());
+        return -1;
+    }
+    return 0;
+}
+
+int wsa_listen(int socket, int size) {
+    int res = 0;
+    SetLastError(0);
+    WSASetLastError(0);
+    res = (listen)(socket, size);
+    if (res != 0) {
+        set_win32_errno(WSAGetLastError());
+        return -1;
+    }
+    return 0;
+}
+
+int wsa_recv(int socket, void * buf, size_t size, int flags) {
+    int res = 0;
+    SetLastError(0);
+    WSASetLastError(0);
+    res = (recv)(socket, (char *)buf, size, flags);
+    if (res < 0) {
+        set_win32_errno(WSAGetLastError());
+        return -1;
+    }
+    return res;
+}
+
 int wsa_recvfrom(int socket, void * buf, size_t size, int flags,
                  struct sockaddr * addr, socklen_t * addr_size) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = recvfrom(socket, (char *)buf, size, flags, addr, addr_size);
+    res = (recvfrom)(socket, (char *)buf, size, flags, addr, addr_size);
     if (res < 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -137,12 +144,11 @@ int wsa_recvfrom(int socket, void * buf, size_t size, int flags,
     return res;
 }
 
-#undef send
 int wsa_send(int socket, const void * buf, size_t size, int flags) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = send(socket, (char *)buf, size, flags);
+    res = (send)(socket, (char *)buf, size, flags);
     if (res < 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -150,13 +156,12 @@ int wsa_send(int socket, const void * buf, size_t size, int flags) {
     return res;
 }
 
-#undef sendto
 int wsa_sendto(int socket, const void * buf, size_t size, int flags,
                const struct sockaddr * dest_addr, socklen_t dest_size) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = sendto(socket, (char *)buf, size, flags, dest_addr, dest_size);
+    res = (sendto)(socket, (char *)buf, size, flags, dest_addr, dest_size);
     if (res < 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -164,12 +169,11 @@ int wsa_sendto(int socket, const void * buf, size_t size, int flags,
     return res;
 }
 
-#undef setsockopt
 int wsa_setsockopt(int socket, int level, int opt, const char * value, int size) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = setsockopt(socket, level, opt, value, size);
+    res = (setsockopt)(socket, level, opt, value, size);
     if (res != 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -177,12 +181,23 @@ int wsa_setsockopt(int socket, int level, int opt, const char * value, int size)
     return 0;
 }
 
-#undef getsockname
+int wsa_getsockopt(int socket, int level, int opt, char * value, int * size) {
+    int res = 0;
+    SetLastError(0);
+    WSASetLastError(0);
+    res = (getsockopt)(socket, level, opt, value, size);
+    if (res != 0) {
+        set_win32_errno(WSAGetLastError());
+        return -1;
+    }
+    return 0;
+}
+
 int wsa_getsockname(int socket, struct sockaddr * name, int * size) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = getsockname(socket, name, size);
+    res = (getsockname)(socket, name, size);
     if (res != 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -190,17 +205,52 @@ int wsa_getsockname(int socket, struct sockaddr * name, int * size) {
     return 0;
 }
 
-#undef select
 int wsa_select(int nfds, fd_set * readfds, fd_set * writefds, fd_set * exceptfds, const struct timeval * timeout) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
-    res = select(nfds, readfds, writefds, exceptfds, (PTIMEVAL)timeout);
+    res = (select)(nfds, readfds, writefds, exceptfds, (PTIMEVAL)timeout);
     if (res < 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
     }
     return res;
+}
+
+int wsa_ioctlsocket(int socket, long cmd, unsigned long * args) {
+    int res = 0;
+    SetLastError(0);
+    WSASetLastError(0);
+    res = (ioctlsocket)(socket, cmd, args);
+    if (res != 0) {
+        set_win32_errno(WSAGetLastError());
+        return -1;
+    }
+    return 0;
+}
+
+int wsa_shutdown(int socket, int how) {
+    int res = 0;
+    SetLastError(0);
+    WSASetLastError(0);
+    res = (shutdown)(socket, how);
+    if (res != 0) {
+        set_win32_errno(WSAGetLastError());
+        return -1;
+    }
+    return 0;
+}
+
+int wsa_closesocket(int socket) {
+    int res = 0;
+    SetLastError(0);
+    WSASetLastError(0);
+    res = (closesocket)(socket);
+    if (res != 0) {
+        set_win32_errno(WSAGetLastError());
+        return -1;
+    }
+    return 0;
 }
 
 /* inet_ntop()/inet_pton() are not available before Windows Vista */

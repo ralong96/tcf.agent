@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -49,10 +49,10 @@ extern int inet_pton(int af, const char * src, void * dst);
 /*
  * Windows socket functions don't set errno as expected.
  * Wrappers are provided to workaround the problem.
- * TODO: more socket function wrappers are needed for better error reports on Windows
  */
 #define socket(af, type, protocol) wsa_socket(af, type, protocol)
 #define connect(socket, addr, addr_size) wsa_connect(socket, addr, addr_size)
+#define accept(socket, addr, addr_size) wsa_accept(socket, addr, addr_size)
 #define bind(socket, addr, addr_size) wsa_bind(socket, addr, addr_size)
 #define listen(socket, size) wsa_listen(socket, size)
 #define recv(socket, buf, size, flags) wsa_recv(socket, buf, size, flags)
@@ -60,11 +60,16 @@ extern int inet_pton(int af, const char * src, void * dst);
 #define send(socket, buf, size, flags) wsa_send(socket, buf, size, flags)
 #define sendto(socket, buf, size, flags, dest_addr, dest_size) wsa_sendto(socket, buf, size, flags, dest_addr, dest_size)
 #define setsockopt(socket, level, opt, value, size) wsa_setsockopt(socket, level, opt, value, size)
+#define getsockopt(socket, level, opt, value, size) wsa_getsockopt(socket, level, opt, value, size)
 #define getsockname(socket, name, size) wsa_getsockname(socket, name, size)
-#define select(nfds, readfds, writefds, exceptfds, timeout) wsa_select(nfds, readfds, writefds, exceptfds, timeout);
+#define select(nfds, readfds, writefds, exceptfds, timeout) wsa_select(nfds, readfds, writefds, exceptfds, timeout)
+#define ioctlsocket(socket, cmd, args) wsa_ioctlsocket(socket, cmd, args)
+#define shutdown(socket, how) wsa_shutdown(socket, how)
+#define closesocket(socket) wsa_closesocket(socket)
 
 extern int wsa_socket(int af, int type, int protocol);
 extern int wsa_connect(int socket, const struct sockaddr * addr, int addr_size);
+extern int wsa_accept(int socket, struct sockaddr * addr, int * addr_size);
 extern int wsa_bind(int socket, const struct sockaddr * addr, int addr_size);
 extern int wsa_listen(int socket, int size);
 extern int wsa_recv(int socket, void * buf, size_t size, int flags);
@@ -74,14 +79,22 @@ extern int wsa_send(int socket, const void * buf, size_t size, int flags);
 extern int wsa_sendto(int socket, const void * buf, size_t size, int flags,
                   const struct sockaddr * dest_addr, socklen_t dest_size);
 extern int wsa_setsockopt(int socket, int level, int opt, const char * value, int size);
+extern int wsa_getsockopt(int socket, int level, int opt, char * value, int * size);
 extern int wsa_getsockname(int socket, struct sockaddr * name, int * size);
 extern int wsa_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, const struct timeval * timeout);
+extern int wsa_ioctlsocket(int socket, long cmd, unsigned long * args);
+extern int wsa_shutdown(int socket, int how);
+extern int wsa_closesocket(int socket);
 
 #ifndef SHUT_WR
-#define SHUT_WR SD_SEND
+#  define SHUT_WR SD_SEND
 #endif
 #ifndef SHUT_RDWR
-#define SHUT_RDWR SD_BOTH
+#  define SHUT_RDWR SD_BOTH
+#endif
+
+#if !defined(SOCK_MAXADDRLEN) && defined(_SS_MAXSIZE)
+#  define SOCK_MAXADDRLEN _SS_MAXSIZE
 #endif
 
 #define loc_freeaddrinfo freeaddrinfo

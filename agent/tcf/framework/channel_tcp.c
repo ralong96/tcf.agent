@@ -872,10 +872,7 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
 #if defined(_WIN32) || defined(__CYGWIN__)
         {
             unsigned long opts = 1;
-            if (ioctlsocket((SOCKET)sock, FIONBIO, &opts) != 0) {
-                set_win32_errno(WSAGetLastError());
-                return NULL;
-            }
+            if (ioctlsocket((SOCKET)sock, FIONBIO, &opts) < 0) return NULL;
         }
 #else
         {
