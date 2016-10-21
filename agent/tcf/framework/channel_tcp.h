@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -58,5 +58,10 @@ extern void channel_tcp_network_changed(void);
  * Generate SSL certificate to be used with SSL channels.
  */
 extern void generate_ssl_certificate(void);
+
+/*
+ * Initialize channel TCP library.
+ */
+extern void ini_channel_tcp(void);
 
 #endif /* D_channel_tcp */

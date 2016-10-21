@@ -87,6 +87,8 @@ static unsigned open_listeners_max = 0;
 static ChannelCloseListener * close_listeners = NULL;
 static unsigned close_listeners_cnt = 0;
 static unsigned close_listeners_max = 0;
+static size_t extension_size = 0;
+static int channel_created = 0;
 
 static const int BROADCAST_OK_STATES = (1 << ChannelStateConnected) | (1 << ChannelStateRedirectSent) | (1 << ChannelStateRedirectReceived);
 #define isBoardcastOkay(c) ((1 << (c)->state) & BROADCAST_OK_STATES)
@@ -493,6 +495,31 @@ void channel_connect(PeerServer * ps, ChannelConnectCallBack callback, void * ca
         }
         callback(callback_args, ERR_INV_TRANSPORT, NULL);
     }
+}
+
+/* Allocate a new channel extension */
+ssize_t channel_extension(size_t size) {
+    size_t offs;
+    assert(!channel_created);
+    while ((sizeof(Channel) + extension_size) % sizeof(void *) != 0) extension_size++;
+    offs = sizeof(Channel) + extension_size;
+    extension_size += size;
+    return offs;
+}
+
+/*
+ * Allocate a new transport specific channel structure of size <size>
+ * with channel extensions.
+ */
+Channel * channel_alloc(void) {
+    Channel * c = (Channel *) loc_alloc_zero(sizeof(Channel) + extension_size);
+    channel_created = 1;
+    return c;
+}
+
+/* Release a transport specific channel structure */
+void channel_free(Channel * c) {
+    loc_free(c);
 }
 
 /*

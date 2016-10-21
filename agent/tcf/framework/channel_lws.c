@@ -119,7 +119,7 @@ typedef struct ServerCreateInfo {
 #define link2sci(A)  ((ServerCreateInfo *)((char *)(A) - offsetof(ServerCreateInfo, link)))
 
 typedef struct ChannelWS {
-    Channel chan;           /* Public channel information - must be first */
+    Channel * chan;         /* Public channel information - must be first */
     int magic;              /* Magic number */
     int lock_cnt;           /* Stream lock count, when > 0 channel cannot be deleted */
     int read_pending;       /* Read request is pending */
@@ -185,14 +185,17 @@ typedef struct WSIUserData {
     void * cb_arg;
 } WSIUserData;
 
+static size_t           channel_lws_extension_offset = 0;
 
-#define channel2ws(A)  ((ChannelWS *)((char *)(A) - offsetof(ChannelWS, chan)))
+#define EXT(ctx)        ((ChannelWS **)((char *)(ctx) + channel_lws_extension_offset))
+
+#define channel2ws(A)   (*EXT(A))
 #define inp2channel(A)  ((Channel *)((char *)(A) - offsetof(Channel, inp)))
 #define out2channel(A)  ((Channel *)((char *)(A) - offsetof(Channel, out)))
-#define server2ws(A)   ((ServerWS *)((char *)(A) - offsetof(ServerWS, serv)))
-#define servlink2np(A) ((ServerWS *)((char *)(A) - offsetof(ServerWS, servlink)))
-#define ibuf2ws(A)     ((ChannelWS *)((char *)(A) - offsetof(ChannelWS, ibuf)))
-#define obuf2ws(A)     ((ChannelWS *)((char *)(A) - offsetof(ChannelWS, out_queue)))
+#define server2ws(A)    ((ServerWS *)((char *)(A) - offsetof(ServerWS, serv)))
+#define servlink2np(A)  ((ServerWS *)((char *)(A) - offsetof(ServerWS, servlink)))
+#define ibuf2ws(A)      ((ChannelWS *)((char *)(A) - offsetof(ChannelWS, ibuf)))
+#define obuf2ws(A)      ((ChannelWS *)((char *)(A) - offsetof(ChannelWS, out_queue)))
 
 static void lws_channel_read_done(void * x);
 static void handle_channel_msg(void * x);
@@ -634,15 +637,15 @@ static void delete_channel(ChannelWS * c) {
     assert(c->magic == CHANNEL_MAGIC);
     assert(c->read_pending == 0);
     assert(c->ibuf.handling_msg != HandleMsgTriggered);
-    channel_clear_broadcast_group(&c->chan);
-    list_remove(&c->chan.chanlink);
+    channel_clear_broadcast_group(c->chan);
+    list_remove(&c->chan->chanlink);
     if (list_is_empty(&channel_root) && list_is_empty(&channel_server_root))
         shutdown_set_stopped(&channel_shutdown);
     c->magic = 0;
     output_queue_clear(&c->out_queue);
     output_queue_free_obuf(c->obuf);
     loc_free(c->ibuf.buf);
-    loc_free(c->chan.peer_name);
+    loc_free(c->chan->peer_name);
     loc_free(c->data->addr_buf);
     if (c->data->prop_cnt) {
         for (ix = 0; ix < c->data->prop_cnt; ix++) {
@@ -653,6 +656,7 @@ static void delete_channel(ChannelWS * c) {
         loc_free(c->data->prop_values);
     }
     loc_free(c->data);
+    channel_free(c->chan);
     loc_free(c);
 }
 
@@ -679,7 +683,7 @@ static int lws_is_closed(Channel * channel) {
     assert(is_dispatch_thread());
     assert(c->magic == CHANNEL_MAGIC);
     assert(c->lock_cnt > 0);
-    return c->chan.state == ChannelStateDisconnected;
+    return c->chan->state == ChannelStateDisconnected;
 }
 
 static void done_write_request(void * args) {
@@ -697,8 +701,8 @@ static void done_write_request(void * args) {
     output_queue_done(&c->out_queue, error, size);
     if (error) c->out_errno = error;
     if (output_queue_is_empty(&c->out_queue) &&
-        c->chan.state == ChannelStateDisconnected) lws_shutdown(c);
-    lws_unlock(&c->chan);
+        c->chan->state == ChannelStateDisconnected) lws_shutdown(c);
+    lws_unlock(c->chan);
 }
 
 static void post_write_request(OutputBuffer * bf) {
@@ -719,7 +723,7 @@ static void post_write_request(OutputBuffer * bf) {
         res = lws_callback_on_writable(c->data->wsi);
         if (res >= 0) {
             posted = 1;
-            lws_lock(&c->chan);
+            lws_lock(c->chan);
         }
     }
 
@@ -727,7 +731,7 @@ static void post_write_request(OutputBuffer * bf) {
         c->outbuf.written = -1;
         c->outbuf.error = ECONNRESET;
         post_event(done_write_request, c);
-        lws_lock(&c->chan);
+        lws_lock(c->chan);
     }
     pthread_mutex_unlock(&c->data->mutex);
 }
@@ -736,21 +740,21 @@ static void lws_flush_with_flags(ChannelWS * c, int flags) {
     unsigned char * p = c->obuf->buf;
     assert(is_dispatch_thread());
     assert(c->magic == CHANNEL_MAGIC);
-    assert(c->chan.out.end == p + sizeof(c->obuf->buf));
+    assert(c->chan->out.end == p + sizeof(c->obuf->buf));
     assert(c->out_bin_block == NULL);
-    assert(c->chan.out.cur >= p);
-    assert(c->chan.out.cur <= p + sizeof(c->obuf->buf));
-    if (c->chan.out.cur == p) return;
-    if (c->chan.state != ChannelStateDisconnected && c->out_errno == 0) {
-        c->obuf->buf_len = c->chan.out.cur - p;
+    assert(c->chan->out.cur >= p);
+    assert(c->chan->out.cur <= p + sizeof(c->obuf->buf));
+    if (c->chan->out.cur == p) return;
+    if (c->chan->state != ChannelStateDisconnected && c->out_errno == 0) {
+        c->obuf->buf_len = c->chan->out.cur - p;
         c->out_queue.post_io_request = post_write_request;
         trace(LOG_PROTOCOL, "Outbuf add size:%d",c->obuf->buf_len);
 
         output_queue_add_obuf(&c->out_queue, c->obuf);
         c->obuf = output_queue_alloc_obuf();
-        c->chan.out.end = c->obuf->buf + sizeof(c->obuf->buf);
+        c->chan->out.end = c->obuf->buf + sizeof(c->obuf->buf);
     }
-    c->chan.out.cur = c->obuf->buf;
+    c->chan->out.cur = c->obuf->buf;
     c->out_eom_cnt = 0;
 }
 
@@ -758,10 +762,10 @@ static void lws_flush_event(void * x) {
     ChannelWS * c = (ChannelWS *)x;
     assert(c->magic == CHANNEL_MAGIC);
     if (--c->out_flush_cnt == 0) {
-        int congestion_level = c->chan.congestion_level;
+        int congestion_level = c->chan->congestion_level;
         if (congestion_level > 0) usleep(congestion_level * 2500);
         lws_flush_with_flags(c, 0);
-        lws_unlock(&c->chan);
+        lws_unlock(c->chan);
     }
     else if (c->out_eom_cnt > 3) {
         lws_flush_with_flags(c, 0);
@@ -769,23 +773,23 @@ static void lws_flush_event(void * x) {
 }
 
 static void lws_bin_block_start(ChannelWS * c) {
-    *c->chan.out.cur++ = ESC;
-    *c->chan.out.cur++ = 3;
+    *c->chan->out.cur++ = ESC;
+    *c->chan->out.cur++ = 3;
 #if BUF_SIZE > 0x4000
-    *c->chan.out.cur++ = 0;
+    *c->chan->out.cur++ = 0;
 #endif
-    *c->chan.out.cur++ = 0;
-    *c->chan.out.cur++ = 0;
-    c->out_bin_block = c->chan.out.cur;
+    *c->chan->out.cur++ = 0;
+    *c->chan->out.cur++ = 0;
+    c->out_bin_block = c->chan->out.cur;
 }
 
 static void lws_bin_block_end(ChannelWS * c) {
-    size_t len = c->chan.out.cur - c->out_bin_block;
+    size_t len = c->chan->out.cur - c->out_bin_block;
     if (len == 0) {
 #if BUF_SIZE > 0x4000
-        c->chan.out.cur -= 5;
+        c->chan->out.cur -= 5;
 #else
-        c->chan.out.cur -= 4;
+        c->chan->out.cur -= 4;
 #endif
     }
     else {
@@ -804,22 +808,22 @@ static void lws_bin_block_end(ChannelWS * c) {
 static void lws_write_stream(OutputStream * out, int byte) {
     ChannelWS * c = channel2ws(out2channel(out));
     assert(c->magic == CHANNEL_MAGIC);
-    if (!c->chan.out.supports_zero_copy || c->chan.out.cur >= c->chan.out.end - 32 || byte < 0) {
+    if (!c->chan->out.supports_zero_copy || c->chan->out.cur >= c->chan->out.end - 32 || byte < 0) {
         if (c->out_bin_block != NULL) lws_bin_block_end(c);
-        if (c->chan.out.cur == c->chan.out.end) lws_flush_with_flags(c, MSG_MORE);
+        if (c->chan->out.cur == c->chan->out.end) lws_flush_with_flags(c, MSG_MORE);
         if (byte < 0 || byte == ESC) {
             char esc = 0;
-            *c->chan.out.cur++ = ESC;
+            *c->chan->out.cur++ = ESC;
             if (byte == ESC) esc = 0;
             else if (byte == MARKER_EOM) esc = 1;
             else if (byte == MARKER_EOS) esc = 2;
             else assert(0);
-            if (c->chan.out.cur == c->chan.out.end) lws_flush_with_flags(c, MSG_MORE);
-            *c->chan.out.cur++ = esc;
+            if (c->chan->out.cur == c->chan->out.end) lws_flush_with_flags(c, MSG_MORE);
+            *c->chan->out.cur++ = esc;
             if (byte == MARKER_EOM) {
                 c->out_eom_cnt++;
                 if (c->out_flush_cnt < 2) {
-                    if (c->out_flush_cnt++ == 0) lws_lock(&c->chan);
+                    if (c->out_flush_cnt++ == 0) lws_lock(c->chan);
                     /*post_event_with_delay(lws_flush_event, c, 0);*/
                     post_event(lws_flush_event, c);
                 }
@@ -830,7 +834,7 @@ static void lws_write_stream(OutputStream * out, int byte) {
     else if (c->out_bin_block == NULL) {
         lws_bin_block_start(c);
     }
-    *c->chan.out.cur++ = (char)byte;
+    *c->chan->out.cur++ = (char)byte;
 }
 
 static void lws_write_block_stream(OutputStream * out, const char * bytes, size_t size) {
@@ -958,12 +962,12 @@ static void send_eof_and_close(Channel * channel, int err) {
         cancel_event(handle_channel_msg, c, 0);
         c->ibuf.handling_msg = HandleMsgIdle;
     }
-    write_stream(&c->chan.out, MARKER_EOS);
-    write_errno(&c->chan.out, err);
-    write_stream(&c->chan.out, MARKER_EOM);
+    write_stream(&c->chan->out, MARKER_EOS);
+    write_errno(&c->chan->out, err);
+    write_stream(&c->chan->out, MARKER_EOM);
     lws_flush_with_flags(c, 0);
     if (output_queue_is_empty(&c->out_queue)) lws_shutdown(c);
-    c->chan.state = ChannelStateDisconnected;
+    c->chan->state = ChannelStateDisconnected;
     lws_post_read(&c->ibuf, c->ibuf.buf, c->ibuf.buf_size);
     notify_channel_closed(channel);
     if (channel->disconnected) {
@@ -988,24 +992,24 @@ static void handle_channel_msg(void * x) {
 
     has_msg = ibuf_start_message(&c->ibuf);
     if (has_msg <= 0) {
-        if (has_msg < 0 && c->chan.state != ChannelStateDisconnected) {
-            trace(LOG_PROTOCOL, "Socket is shutdown by remote peer, channel %#lx %s", c, c->chan.peer_name);
-            channel_close(&c->chan);
+        if (has_msg < 0 && c->chan->state != ChannelStateDisconnected) {
+            trace(LOG_PROTOCOL, "Socket is shutdown by remote peer, channel %#lx %s", c, c->chan->peer_name);
+            channel_close(c->chan);
         }
     }
     else if (set_trap(&trap)) {
-        if (c->chan.receive) {
-            c->chan.receive(&c->chan);
+        if (c->chan->receive) {
+            c->chan->receive(c->chan);
         }
         else {
-            handle_protocol_message(&c->chan);
+            handle_protocol_message(c->chan);
             assert(c->out_bin_block == NULL);
         }
         clear_trap(&trap);
     }
     else {
         trace(LOG_ALWAYS, "Exception in message handler: %s", errno_to_str(trap.error));
-        send_eof_and_close(&c->chan, trap.error);
+        send_eof_and_close(c->chan, trap.error);
     }
 }
 
@@ -1055,7 +1059,7 @@ static void lws_channel_read_done(void * x) {
         total_length = c->inbuf ? c->inbuf->len : 0;
 
         if (c->inbuf && c->inbuf->error) {
-            if (c->chan.state != ChannelStateDisconnected) {
+            if (c->chan->state != ChannelStateDisconnected) {
                 trace(LOG_ALWAYS, "Can't read from Web Socket: %s", errno_to_str(c->inbuf->error));
             }
             total_length = 0; /* Treat error as EOF */
@@ -1085,14 +1089,14 @@ static void lws_channel_read_done(void * x) {
             loc_free(old_buf);
         }
     }
-    if (c->chan.state != ChannelStateDisconnected) {
+    if (c->chan->state != ChannelStateDisconnected) {
         ibuf_read_done(&c->ibuf, read_length);
     }
     else if (total_length > 0) {
         lws_post_read(&c->ibuf, c->ibuf.buf, c->ibuf.buf_size);
     }
     else {
-        lws_unlock(&c->chan);
+        lws_unlock(c->chan);
     }
 }
 
@@ -1101,13 +1105,13 @@ static void start_channel(Channel * channel) {
 
     assert(is_dispatch_thread());
     assert(c->magic == CHANNEL_MAGIC);
-    notify_channel_created(&c->chan);
-    if (c->chan.connecting) {
-        c->chan.connecting(&c->chan);
+    notify_channel_created(c->chan);
+    if (c->chan->connecting) {
+        c->chan->connecting(c->chan);
     }
     else {
         trace(LOG_PROTOCOL, "channel server connecting");
-        send_hello_message(&c->chan);
+        send_hello_message(c->chan);
     }
     ibuf_trigger_read(&c->ibuf);
 }
@@ -1116,28 +1120,30 @@ static ChannelWS * create_channel(int is_ssl, int server) {
     ChannelWS * c;
 
     c = (ChannelWS *)loc_alloc_zero(sizeof *c);
+    c->chan = channel_alloc();
+    channel2ws(c->chan) = c;
     c->magic = CHANNEL_MAGIC;
     c->is_ssl = is_ssl;
-    c->chan.inp.read = lws_read_stream;
-    c->chan.inp.peek = lws_peek_stream;
+    c->chan->inp.read = lws_read_stream;
+    c->chan->inp.peek = lws_peek_stream;
     c->obuf = output_queue_alloc_obuf();
-    c->chan.out.cur = c->obuf->buf;
-    c->chan.out.end = c->obuf->buf + sizeof(c->obuf->buf);
-    c->chan.out.write = lws_write_stream;
-    c->chan.out.write_block = lws_write_block_stream;
-    c->chan.out.splice_block = lws_splice_block_stream;
-    list_add_last(&c->chan.chanlink, &channel_root);
+    c->chan->out.cur = c->obuf->buf;
+    c->chan->out.end = c->obuf->buf + sizeof(c->obuf->buf);
+    c->chan->out.write = lws_write_stream;
+    c->chan->out.write_block = lws_write_block_stream;
+    c->chan->out.splice_block = lws_splice_block_stream;
+    list_add_last(&c->chan->chanlink, &channel_root);
     shutdown_set_normal(&channel_shutdown);
-    c->chan.state = ChannelStateStartWait;
-    c->chan.incoming = server;
-    c->chan.start_comm = start_channel;
-    c->chan.check_pending = channel_check_pending;
-    c->chan.message_count = channel_get_message_count;
-    c->chan.lock = lws_lock;
-    c->chan.unlock = lws_unlock;
-    c->chan.is_closed = lws_is_closed;
-    c->chan.close = send_eof_and_close;
-    ibuf_init(&c->ibuf, &c->chan.inp);
+    c->chan->state = ChannelStateStartWait;
+    c->chan->incoming = server;
+    c->chan->start_comm = start_channel;
+    c->chan->check_pending = channel_check_pending;
+    c->chan->message_count = channel_get_message_count;
+    c->chan->lock = lws_lock;
+    c->chan->unlock = lws_unlock;
+    c->chan->is_closed = lws_is_closed;
+    c->chan->close = send_eof_and_close;
+    ibuf_init(&c->ibuf, &c->chan->inp);
     c->ibuf.post_read = lws_post_read;
     c->ibuf.wait_read = lws_wait_read;
     c->ibuf.trigger_message = lws_trigger_message;
@@ -1202,7 +1208,7 @@ static void set_peer_addr(ChannelWS * c, struct sockaddr * addr, int addr_len) {
             &((struct sockaddr_in *)addr)->sin_addr,
             nbuf, sizeof(nbuf)),
             ntohs(((struct sockaddr_in *)addr)->sin_port));
-    c->chan.peer_name = loc_strdup(name);
+    c->chan->peer_name = loc_strdup(name);
 }
 
 
@@ -1475,10 +1481,10 @@ static void server_lws_connect_done(void * x) {
     c= create_channel(si->is_ssl, 1);
     data->c = c;
     c->data = data;
-    lws_lock(&c->chan);
+    lws_lock(c->chan);
     pthread_mutex_unlock(&data->mutex);
     set_peer_addr(c, data->addr_buf, data->addr_len);
-    si->serv.new_conn(&si->serv, &c->chan);
+    si->serv.new_conn(&si->serv, c->chan);
 }
 
 static void channel_lws_connect_done(void * x) {
@@ -1506,9 +1512,9 @@ static void channel_lws_connect_done(void * x) {
         else {
             args->data->c = c;
             c->data = args->data;
-            lws_lock(&c->chan);
+            lws_lock(c->chan);
             set_peer_addr(c, args->data->addr_buf, args->data->addr_len);
-            args->callback(args->callback_args, 0, &c->chan);
+            args->callback(args->callback_args, 0, c->chan);
         }
     }
     loc_free(args->host);
@@ -1571,7 +1577,7 @@ void channel_lws_get_properties(Channel * c, char *** prop_names, char *** prop_
     *prop_cnt = ((ChannelWS *)c1)->data->prop_cnt;
 }
 
-void ini_lws() {
+void ini_channel_lws() {
     static int initialized = 0;
     pthread_t thread;
 #if ENABLE_Epoll
@@ -1585,6 +1591,7 @@ void ini_lws() {
 #endif
 
     if (initialized) return;
+    channel_lws_extension_offset = channel_extension(sizeof(ChannelWS *));
 #if ENABLE_Epoll
     epoll_fd = epoll_create1(0);
     epoll_events = (uint32_t *)loc_alloc_zero(getdtablesize() * sizeof(uint32_t));

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -33,5 +33,10 @@ extern ChannelServer * channel_pipe_server(PeerServer * server);
  * On error returns NULL and sets errno.
  */
 extern void channel_pipe_connect(PeerServer * server, ChannelConnectCallBack callback, void * callback_args);
+
+/*
+ * Initialize channel PIPE library.
+ */
+void ini_channel_pipe(void);
 
 #endif /* D_channel_pipe */

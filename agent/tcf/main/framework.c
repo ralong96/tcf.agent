@@ -25,6 +25,8 @@
 #include <tcf/framework/asyncreq.h>
 #include <tcf/main/framework.h>
 #include <tcf/framework/channel_lws.h>
+#include <tcf/framework/channel_tcp.h>
+#include <tcf/framework/channel_pipe.h>
 
 #include <tcf/main/framework-ext.h>
 
@@ -33,8 +35,10 @@ void ini_framework(void) {
     ini_trace();
     ini_events_queue();
     ini_asyncreq();
+    ini_channel_tcp();
+    ini_channel_pipe();
 #if ENABLE_LibWebSockets
-    ini_lws();
+    ini_channel_lws();
 #endif
     ini_ext_framework();
 }
