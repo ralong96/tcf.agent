@@ -1533,4 +1533,3 @@ void generate_ssl_certificate(void) {
 void ini_channel_tcp() {
     channel_tcp_extension_offset = channel_extension(sizeof(ChannelTCP *));
 }
-

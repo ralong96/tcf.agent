@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -497,8 +497,13 @@ void channel_connect(PeerServer * ps, ChannelConnectCallBack callback, void * ca
     }
 }
 
-/* Allocate a new channel extension */
-ssize_t channel_extension(size_t size) {
+/*
+ * Register an extension of struct Channel.
+ * Return offset of extension data area.
+ * Additional memory of given size will be allocated in each Channel struct.
+ * Client are allowed to call this function only during initialization.
+ */
+size_t channel_extension(size_t size) {
     size_t offs;
     assert(!channel_created);
     while ((sizeof(Channel) + extension_size) % sizeof(void *) != 0) extension_size++;
@@ -508,24 +513,26 @@ ssize_t channel_extension(size_t size) {
 }
 
 /*
- * Allocate a new transport specific channel structure of size <size>
- * with channel extensions.
+ * Allocate a buffer to store the channel. This routine will take care of
+ * allocating the various channel extensions defined using the
+ * channel_extension() API.
  */
 Channel * channel_alloc(void) {
-    Channel * c = (Channel *) loc_alloc_zero(sizeof(Channel) + extension_size);
+    Channel * c = (Channel *)loc_alloc_zero(sizeof(Channel) + extension_size);
     channel_created = 1;
     return c;
 }
 
-/* Release a transport specific channel structure */
+/*
+ * Release a buffer allocated using channel_alloc().
+ */
 void channel_free(Channel * c) {
     loc_free(c);
 }
 
 /*
- * Add support for a new channel transport
+ * Add a channel transport
  */
-
 void add_channel_transport(const char * transportname, ChannelServerCreate create, ChannelConnect connect) {
      assert(transportname != NULL);
      assert(create != NULL);

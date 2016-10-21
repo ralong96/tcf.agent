@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -156,35 +156,32 @@ typedef void (*ChannelConnectCallBack)(void * /* callback_args */, int /* error 
 extern void channel_connect(PeerServer * server, ChannelConnectCallBack callback, void * callback_args);
 
 /*
- * Add a new channel transport
+ * Add a channel transport
  */
-
 typedef ChannelServer * (*ChannelServerCreate)(PeerServer * /* ps */);
 typedef void (*ChannelConnect)(PeerServer * /* ps */,  ChannelConnectCallBack /* callback */, void * /* callback_args */);
 extern void add_channel_transport(const char * transportname, ChannelServerCreate create, ChannelConnect connect);
 
 /*
  * Register an extension of struct Channel.
- * Return offset of extension data area (note that this offset may be negative).
+ * Return offset of extension data area.
  * Additional memory of given size will be allocated in each Channel struct.
  * Client are allowed to call this function only during initialization.
  */
-extern ssize_t channel_extension(size_t size);
+extern size_t channel_extension(size_t size);
 
 /*
  * Allocate a buffer to store the channel. This routine will take care of
  * allocating the various channel extensions defined using the
  * channel_extension() API.
- * On error returns NULL and sets errno.
  */
-
 extern Channel * channel_alloc(void);
 
 /*
  * Release a buffer allocated using channel_alloc().
  */
-
 extern void channel_free(Channel * c);
+
 /*
  * Start communication of a newly created channel.
  */

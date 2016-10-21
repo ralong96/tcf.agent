@@ -25,4 +25,3 @@
 #ifndef LWS_CALLBACK_USER_HOOK
 #define LWS_CALLBACK_USER_HOOK(arg, wsi, reason, user, in, len) (0)
 #endif
-
