@@ -25,7 +25,7 @@
 #if ENABLE_LibWebSockets
 #include <tcf/framework/channel.h>
 
-extern void channel_lws_get_properties(Channel * c, char *** prop_names, char *** prop_values, unsigned * prop_cnt);
+extern void channel_lws_get_properties(Channel * channel, char *** prop_names, char *** prop_values, unsigned * prop_cnt);
 extern void ini_channel_lws(void);
 
 #endif /* ENABLE_LibWebSockets */

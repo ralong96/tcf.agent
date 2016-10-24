@@ -286,7 +286,7 @@ static void lws_channel_event_read (void * args) {
              * call to trigger the deletion of the channel. The original
              * lock was done when the channel was established
              */
-            post_event((EventCallBack *)lws_unlock, c);
+            post_event((EventCallBack *)lws_unlock, c->chan);
         }
     }
     pthread_mutex_unlock(&buf->data->mutex);
@@ -1564,17 +1564,17 @@ static void trace_lws(int level,  const char *line) {
     trace(LOG_PROTOCOL, line);
 }
 
-void channel_lws_get_properties(Channel * c, char *** prop_names, char *** prop_values, unsigned * prop_cnt) {
-    ChannelWS * c1 = (ChannelWS *)c;
+void channel_lws_get_properties(Channel * channel, char *** prop_names, char *** prop_values, unsigned * prop_cnt) {
+    ChannelWS * c = channel2ws(channel);
     assert(is_dispatch_thread());
-    if(c1->magic != CHANNEL_MAGIC) {
+    if(c->magic != CHANNEL_MAGIC) {
         *prop_cnt = 0;
         return;
     }
-    assert(c1->lock_cnt > 0);
-    *prop_names = ((ChannelWS *)c1)->data->prop_names;
-    *prop_values = ((ChannelWS *)c1)->data->prop_values;
-    *prop_cnt = ((ChannelWS *)c1)->data->prop_cnt;
+    assert(c->lock_cnt > 0);
+    *prop_names = c->data->prop_names;
+    *prop_values = c->data->prop_values;
+    *prop_cnt = c->data->prop_cnt;
 }
 
 void ini_channel_lws() {
