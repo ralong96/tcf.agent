@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "server-vc2012", "server-vc2012.vcxproj", "{B11C12A6-FD70-46CA-B993-9286067E698B}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "server-vc2015", "server-vc2015.vcxproj", "{B11C12A6-FD70-46CA-B993-9286067E698B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
