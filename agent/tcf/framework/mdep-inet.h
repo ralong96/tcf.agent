@@ -43,8 +43,11 @@ extern const char * loc_gai_strerror(int ecode);
 
 #define MSG_MORE 0
 
+#if defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0600
+/* inet_ntop()/inet_pton() are not available before Windows Vista */
 extern const char * inet_ntop(int af, const void * src, char * dst, socklen_t size);
 extern int inet_pton(int af, const char * src, void * dst);
+#endif
 
 /*
  * Windows socket functions don't set errno as expected.

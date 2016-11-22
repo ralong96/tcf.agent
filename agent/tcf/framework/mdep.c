@@ -253,6 +253,7 @@ int wsa_closesocket(int socket) {
     return 0;
 }
 
+#if defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0600
 /* inet_ntop()/inet_pton() are not available before Windows Vista */
 const char * inet_ntop(int af, const void * src, char * dst, socklen_t size) {
     char * str = NULL;
@@ -285,6 +286,7 @@ int inet_pton(int af, const char * src, void * dst) {
     if ((((struct in_addr *)dst)->s_addr = inet_addr(src)) == INADDR_NONE) return 0;
     return 1;
 }
+#endif
 
 #endif /* defined(_WIN32) || defined(__CYGWIN__)*/
 
