@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -600,7 +600,6 @@ static void event_handler(void * arg) {
         stopped_ctx->stopped = 1;
         stopped_ctx->stopped_by_bp = info->bp_info_ok;
         stopped_ctx->stopped_by_exception = 0;
-        assert(get_regs_PC(stopped_ctx) == info->addr);
         if (stopped_ctx->stopped_by_bp && !is_breakpoint_address(stopped_ctx, info->addr)) {
             /* Break instruction that is not planted by us */
             stopped_ctx->stopped_by_bp = 0;
