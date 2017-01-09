@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -57,10 +57,6 @@
 #include <system/GNU/Linux/tcf/regset.h>
 #if ENABLE_ContextMux
 #include <tcf/framework/context-mux.h>
-#endif
-
-#if !defined(TRAP_OFFSET)
-#define TRAP_OFFSET -1
 #endif
 
 #if !defined(PTRACE_SETOPTIONS)
@@ -1565,7 +1561,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     ctx->stopped_by_exception = stopped_by_exception;
     ctx->stopped = 1;
 
-    pc0 = get_regs_PC(ctx);
+    get_PC(ctx, &pc0);
 
 #if defined(__powerpc__) || defined(__powerpc64__)
     /* Don't retrieve registers from an exiting process,
@@ -1573,7 +1569,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     if (event != PTRACE_EVENT_EXIT)
 #endif
     memset(ext->regs_valid, 0, sizeof(REG_SET));
-    pc1 = get_regs_PC(ctx);
+    get_PC(ctx, &pc1);
 
     if (syscall) {
         if (!ext->syscall_enter) {
@@ -1620,9 +1616,18 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
 
     cpu_bp_on_suspend(ctx, &cb_found);
     if (signal == SIGTRAP && event == 0 && !syscall) {
-        ctx->stopped_by_bp = is_breakpoint_address(ctx, pc1 + TRAP_OFFSET);
-        if (ctx->stopped_by_bp) set_regs_PC(ctx, pc1 + TRAP_OFFSET);
-        else ctx->stopped_by_bp = is_breakpoint_address(ctx, pc1);
+        int offs = 0;
+#ifdef TRAP_OFFSET
+        offs = -(TRAP_OFFSET);
+#else
+        size_t break_size = 0;
+        get_break_instruction(ctx, &break_size);
+        offs = break_size;
+#endif
+        ctx->stopped_by_bp = is_breakpoint_address(ctx, pc1 - offs);
+        if (offs != 0 && ctx->stopped_by_bp && set_PC(ctx, pc1 - offs) < 0) {
+            trace(LOG_ALWAYS, "Cannot adjust PC after breakpoint: %s", errno_to_str(errno));
+        }
         ext->end_of_step = !ctx->stopped_by_cb && !ctx->stopped_by_bp && ext->pending_step;
     }
     ext->pending_step = 0;

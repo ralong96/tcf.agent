@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -613,14 +613,11 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         ctx->stopped_by_exception = stopped_by_exception;
         ctx->stopped = 1;
 
+        get_PC(ctx, &pc0);
         if (EXT(ctx)->regs_error) {
             release_error_report(EXT(ctx)->regs_error);
             EXT(ctx)->regs_error = NULL;
         }
-        else {
-            pc0 = get_regs_PC(ctx);
-        }
-
         if (ptrace(PTRACE_GETREGS, EXT(ctx)->pid, 0, (int)EXT(ctx)->regs) < 0) {
             assert(errno != 0);
             if (errno == ESRCH) {
@@ -639,18 +636,23 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             trace(LOG_ALWAYS, "error: ptrace(PTRACE_GETREGS) failed; id %s, error %d %s",
                 ctx->id, errno, errno_to_str(errno));
         }
-        else {
-            pc1 = get_regs_PC(ctx);
-        }
+        get_PC(ctx, &pc1);
 
         trace(LOG_EVENTS, "event: pid %d stopped at PC = %#lx", pid, pc1);
 
         if (signal == SIGTRAP && event == 0 && !syscall) {
+#ifdef TRAP_OFFSET
+            offs = -(TRAP_OFFSET);
+#else
             size_t break_size = 0;
             get_break_instruction(ctx, &break_size);
-            ctx->stopped_by_bp = !EXT(ctx)->regs_error && is_breakpoint_address(ctx, pc1 - break_size);
+            offs = break_size;
+#endif
+            ctx->stopped_by_bp = !EXT(ctx)->regs_error && is_breakpoint_address(ctx, pc1 - offs);
+            if (offs != 0 && ctx->stopped_by_bp && set_PC(ctx, pc1 - offs) < 0) {
+                trace(LOG_ALWAYS, "Cannot adjust PC after breakpoint: %s", errno_to_str(errno));
+            }
             EXT(ctx)->end_of_step = !ctx->stopped_by_bp && EXT(ctx)->pending_step;
-            if (ctx->stopped_by_bp) set_regs_PC(ctx, pc1 - break_size);
         }
         EXT(ctx)->pending_step = 0;
         send_context_stopped_event(ctx);
