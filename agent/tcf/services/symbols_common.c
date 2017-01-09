@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -79,7 +79,6 @@ int get_symbol_address(const Symbol * sym, ContextAddress * address) {
 }
 
 int get_symbol_offset(const Symbol * sym, ContextAddress * offset) {
-    LocationInfo * loc_info = NULL;
     if (get_location_info(sym, &loc_info) < 0) return -1;
     if (loc_info->args_cnt == 1) {
         /* Relative location. Only static offset can be returned.

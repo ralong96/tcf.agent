@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2014 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -77,8 +77,8 @@ static size_t context_extension_offset = 0;
 #define link_core2prf(x) ((ProfilerSST *)((char *)(x) - offsetof(ProfilerSST, link_core)))
 #define EXT(ctx) ((ContextExtensionPrfSST *)((char *)(ctx) + context_extension_offset))
 
-static ContextAddress * buf;
-static unsigned buf_pos;
+static ContextAddress * stk_buf;
+static unsigned stk_buf_pos;
 
 static void get_stack_trace(ProfilerSST * prf) {
     StackFrame * info = NULL;
@@ -92,37 +92,37 @@ static void get_stack_trace(ProfilerSST * prf) {
     if (info == NULL) return;
     reg_pc = get_PC_definition(prf->ctx);
     if (read_reg_value(info, reg_pc, &pc) < 0) return;
-    buf = (ContextAddress *)tmp_alloc(sizeof(ContextAddress) * buf_max);
-    buf[buf_pos++] = (ContextAddress)pc;
-    while (buf_pos < buf_max) {
+    stk_buf = (ContextAddress *)tmp_alloc(sizeof(ContextAddress) * buf_max);
+    stk_buf[stk_buf_pos++] = (ContextAddress)pc;
+    while (stk_buf_pos < buf_max) {
         frame = get_prev_frame(prf->ctx, frame);
         get_frame_info(prf->ctx, frame, &info);
         if (info == NULL) break;
         if (read_reg_value(info, reg_pc, &pc) < 0) break;
-        buf[buf_pos++] = (ContextAddress)pc;
+        stk_buf[stk_buf_pos++] = (ContextAddress)pc;
     }
 }
 
 static SampleStackTrace * find_stack_trace(ProfilerSST * prf) {
     SampleStackTrace * stk = NULL;
-    if (buf_pos > 0) {
+    if (stk_buf_pos > 0) {
         unsigned i = 0;
         unsigned h = 0;
-        for (i = 0; i < buf_pos; i++) {
-            h = (h + (unsigned)(buf[i] >> 4)) % STRACE_HASH_SIZE;
+        for (i = 0; i < stk_buf_pos; i++) {
+            h = (h + (unsigned)(stk_buf[i] >> 4)) % STRACE_HASH_SIZE;
         }
         stk = prf->strace_hash[h];
         while (stk != NULL) {
-            if (stk->len == buf_pos && memcmp(stk->pc, buf, buf_pos * sizeof(ContextAddress)) == 0) {
+            if (stk->len == stk_buf_pos && memcmp(stk->pc, stk_buf, stk_buf_pos * sizeof(ContextAddress)) == 0) {
                 return stk;
             }
             stk = stk->next;
         }
-        stk = (SampleStackTrace *)loc_alloc_zero(sizeof(SampleStackTrace) + sizeof(ContextAddress) * (buf_pos - 1));
-        memcpy(stk->pc, buf, buf_pos * sizeof(ContextAddress));
+        stk = (SampleStackTrace *)loc_alloc_zero(sizeof(SampleStackTrace) + sizeof(ContextAddress) * (stk_buf_pos - 1));
+        memcpy(stk->pc, stk_buf, stk_buf_pos * sizeof(ContextAddress));
         stk->next = prf->strace_hash[h];
         prf->strace_hash[h] = stk;
-        stk->len = buf_pos;
+        stk->len = stk_buf_pos;
     }
     return stk;
 }
@@ -155,20 +155,23 @@ static void add_to_sample_array(ProfilerSST * prf, ContextAddress pc, SampleStac
 
 static void add_sample_cache_client(void * x) {
     ProfilerSST * prf = *(ProfilerSST **)x;
-    buf_pos = 0;
-    buf = NULL;
+    int error = 0;
+    stk_buf_pos = 0;
+    stk_buf = NULL;
     if (prf->frame_cnt > 1) {
         if (!prf->ctx->stopped) {
             prf->stop_pending = 1;
             context_stop(prf->ctx);
         }
+        else if (get_PC(prf->ctx, &prf->pc) < 0) {
+            error = errno;
+        }
         else {
-            prf->pc = get_regs_PC(prf->ctx);
             get_stack_trace(prf);
         }
     }
     cache_exit();
-    if (!prf->disposed && !prf->stop_pending) {
+    if (error == 0 && !prf->disposed && !prf->stop_pending) {
         SampleStackTrace * stk = find_stack_trace(prf);
         add_to_sample_array(prf, prf->pc, stk);
     }
