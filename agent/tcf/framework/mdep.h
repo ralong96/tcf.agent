@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -42,6 +42,7 @@
 #elif defined(_MSC_VER)
 #  pragma warning(disable:4054) /* 'type cast' : from function pointer '...' to data pointer 'void *' */
 #  pragma warning(disable:4055) /* 'type cast' : from data pointer 'void *' to function pointer '...' */
+#  pragma warning(disable:4091) /* 'typedef ': ignored on left of '' when no variable is declared */
 #  pragma warning(disable:4127) /* conditional expression is constant */
 #  pragma warning(disable:4152) /* nonstandard extension, function/data pointer conversion in expression */
 #  pragma warning(disable:4100) /* unreferenced formal parameter */
