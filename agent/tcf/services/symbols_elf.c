@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -211,7 +211,6 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
         sym_ip = addr;
     }
     else if (is_top_frame(ctx, frame)) {
-        unsigned cnt = cache_miss_count();
         if (!ctx->stopped) {
             errno = ERR_IS_RUNNING;
             return -1;
@@ -220,13 +219,7 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
             errno = ERR_ALREADY_EXITED;
             return -1;
         }
-        sym_ip = get_regs_PC(ctx);
-        if (cache_miss_count() > cnt) {
-            /* The value of the PC (0) is incorrect. */
-            /* errno should already be set to a value different from 0 */
-            assert(errno != 0);
-            return -1;
-        }
+        if (get_PC(ctx, &sym_ip) < 0) return -1;
     }
     else {
         U8_T ip = 0;

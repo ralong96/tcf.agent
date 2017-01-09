@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -294,10 +294,10 @@ static int print_not_stopped_contexts(Context * ctx) {
     if (is_all_stopped(ctx)) return 1;
     grp = context_get_group(ctx, CONTEXT_GROUP_STOP);
     for (l = context_root.next; l != &context_root; l = l->next) {
-        Context * ctx = ctxl2ctxp(l);
-        if (context_get_group(ctx, CONTEXT_GROUP_STOP) != grp) continue;
+        Context * c = ctxl2ctxp(l);
+        if (context_get_group(c, CONTEXT_GROUP_STOP) != grp) continue;
         printf("ID %s, stopped %d, exiting %d, exited %d, signal %d\n",
-            ctx->id, ctx->stopped, ctx->exiting, ctx->exited, ctx->signal);
+            c->id, c->stopped, c->exiting, c->exited, c->signal);
     }
     return 0;
 }
@@ -992,11 +992,11 @@ static void write_breakpoint_status(OutputStream * out, BreakpointInfo * bp) {
 #if ENABLE_ExtendedBreakpointStatus
                         if (bi->saved_size == 0) {
                             /* Back-end context breakpoint status */
-                            int cnt = 0;
+                            int st_len = 0;
                             const char ** names = NULL;
                             const char ** values = NULL;
-                            if (context_get_breakpoint_status(&bi->cb, &names, &values, &cnt) == 0) {
-                                while (cnt > 0) {
+                            if (context_get_breakpoint_status(&bi->cb, &names, &values, &st_len) == 0) {
+                                while (st_len > 0) {
                                     if (*values != NULL) {
                                         if (strcmp (*names, "BreakpointType") == 0) bp_type_is_set = 1;
                                         write_stream(out, ',');
@@ -1006,7 +1006,7 @@ static void write_breakpoint_status(OutputStream * out, BreakpointInfo * bp) {
                                     }
                                     names++;
                                     values++;
-                                    cnt--;
+                                    st_len--;
                                 }
                             }
                         }
@@ -1347,8 +1347,8 @@ static void post_location_evaluation_request(Context * ctx, BreakpointInfo * bp)
             int bp_found = 0;
             LINK * l = breakpoints.next;
             while (l != &breakpoints) {
-                BreakpointInfo * bp = link_all2bp(l);
-                if (!is_disabled(bp) && (bp->context_query || check_context_ids_location(bp, grp))) {
+                BreakpointInfo * b = link_all2bp(l);
+                if (!is_disabled(b) && (b->context_query || check_context_ids_location(b, grp))) {
                     bp_found = 1;
                     break;
                 }
@@ -2909,9 +2909,6 @@ int is_breakpoint_address(Context * ctx, ContextAddress address) {
 
 void evaluate_breakpoint(Context * ctx) {
     unsigned i;
-    Context * mem = NULL;
-    ContextAddress mem_addr = 0;
-    BreakInstruction * bi = NULL;
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT);
     EvaluationRequest * req = create_evaluation_request(grp);
     int already_posted = !list_is_empty(&req->link_posted) || !list_is_empty(&req->link_active);
@@ -2921,10 +2918,24 @@ void evaluate_breakpoint(Context * ctx) {
     assert(ctx->stopped);
     assert(ctx->stopped_by_bp || ctx->stopped_by_cb);
     assert(ctx->exited == 0);
+    assert(!is_intercepted(ctx));
 
     if (ctx->stopped_by_bp) {
-        if (context_get_canonical_addr(ctx, get_regs_PC(ctx), &mem, &mem_addr, NULL, NULL) < 0) return;
-        bi = find_instruction(mem, 0, mem_addr, CTX_BP_ACCESS_INSTRUCTION, 1);
+        Context * mem = NULL;
+        ContextAddress mem_addr = 0;
+        ContextAddress pc = 0;
+        BreakInstruction * bi = NULL;
+        if (get_PC(ctx, &pc) < 0 ||
+            context_get_canonical_addr(ctx, pc, &mem, &mem_addr, NULL, NULL) < 0) {
+            int error = set_errno(errno, "Cannot evaluate breakpoint");
+            ctx->pending_intercept = 1;
+            ctx->stopped_by_exception = 1;
+            loc_free(ctx->exception_description);
+            ctx->exception_description = loc_strdup(errno_to_str(error));
+        }
+        else {
+            bi = find_instruction(mem, 0, mem_addr, CTX_BP_ACCESS_INSTRUCTION, 1);
+        }
         if (bi != NULL && bi->planted) {
             assert(bi->valid);
             for (i = 0; i < bi->ref_cnt; i++) {
@@ -2948,7 +2959,7 @@ void evaluate_breakpoint(Context * ctx) {
         int j;
         assert(ctx->stopped_by_cb[0] != NULL);
         for (j = 0; ctx->stopped_by_cb[j]; j++) {
-            bi = (BreakInstruction *)((char *)ctx->stopped_by_cb[j] - offsetof(BreakInstruction, cb));
+            BreakInstruction * bi = (BreakInstruction *)((char *)ctx->stopped_by_cb[j] - offsetof(BreakInstruction, cb));
             assert(bi->planted);
             for (i = 0; i < bi->ref_cnt; i++) {
                 if (bi->refs[i].ctx == grp) {
@@ -2974,13 +2985,13 @@ void evaluate_breakpoint(Context * ctx) {
     else {
         done_condition_evaluation(req);
         for (i = 0; i < req->bp_cnt; i++) {
-            Context * ctx = req->bp_arr[i].ctx;
+            Context * c = req->bp_arr[i].ctx;
             BreakpointInfo * bp = req->bp_arr[i].bp;
             if (bp->status_changed && generation_done == generation_posted) {
                 assert(bp->client_cnt > 0);
                 notify_breakpoint_status(bp);
             }
-            context_unlock(ctx);
+            context_unlock(c);
         }
         req->bp_cnt = 0;
     }
@@ -2999,8 +3010,9 @@ static void safe_restore_breakpoint(void * arg) {
     if (!ctx->exiting && ctx->stopped && !ctx->stopped_by_exception && !ctx->advanced) {
         Context * mem = NULL;
         ContextAddress mem_addr = 0;
-        ContextAddress pc = get_regs_PC(ctx);
-        if (context_get_canonical_addr(ctx, pc, &mem, &mem_addr, NULL, NULL) == 0 &&
+        ContextAddress pc = 0;
+        if (get_PC(ctx, &pc) == 0 &&
+                context_get_canonical_addr(ctx, pc, &mem, &mem_addr, NULL, NULL) == 0 &&
                 bi->cb.ctx == mem && bi->cb.address == mem_addr) {
             if (ext->step_over_bp_cnt < 100) {
                 ext->step_over_bp_cnt++;
@@ -3025,10 +3037,7 @@ static void safe_skip_breakpoint(void * arg) {
     ContextExtensionBP * ext = EXT(ctx);
     BreakInstruction * bi = ext->stepping_over_bp;
     int error = 0;
-#ifndef NDEBUG
-    Context * mem = NULL;
-    ContextAddress mem_addr = 0;
-#endif
+
     assert(bi != NULL);
     assert(bi->stepping_over_bp > 0);
     assert(find_instruction(bi->cb.ctx, 0, bi->cb.address, bi->cb.access_types, bi->cb.length) == bi);
@@ -3037,10 +3046,19 @@ static void safe_skip_breakpoint(void * arg) {
 
     if (ctx->exited || ctx->exiting) return;
 
-    assert(ctx->stopped);
-    assert(!is_intercepted(ctx));
-    assert(context_get_canonical_addr(ctx, get_regs_PC(ctx), &mem, &mem_addr, NULL, NULL) == 0);
-    assert(bi->cb.address == mem_addr);
+#ifndef NDEBUG
+    {
+        Context * mem = NULL;
+        ContextAddress mem_addr = 0;
+        ContextAddress pc = 0;
+        assert(ctx->stopped);
+        assert(!is_intercepted(ctx));
+        if (get_PC(ctx, &pc) == 0) {
+            assert(context_get_canonical_addr(ctx, pc, &mem, &mem_addr, NULL, NULL) == 0);
+            assert(bi->cb.address == mem_addr);
+        }
+    }
+#endif
 
     if (bi->planted && remove_instruction(bi) < 0) error = errno;
     if (error == 0 && safe_context_single_step(ctx) < 0) error = errno;
@@ -3050,11 +3068,10 @@ static void safe_skip_breakpoint(void * arg) {
         ctx->stopped = 1;
         ctx->stopped_by_bp = 0;
         ctx->stopped_by_cb = NULL;
-        ctx->stopped_by_exception = 1;
         ctx->pending_intercept = 1;
+        ctx->stopped_by_exception = 1;
         loc_free(ctx->exception_description);
         ctx->exception_description = loc_strdup(errno_to_str(error));
-        send_context_changed_event(ctx);
     }
 }
 
@@ -3069,6 +3086,7 @@ static void safe_skip_breakpoint(void * arg) {
 int skip_breakpoint(Context * ctx, int single_step) {
     ContextExtensionBP * ext = EXT(ctx);
     Context * mem = NULL;
+    ContextAddress pc = 0;
     ContextAddress mem_addr = 0;
     BreakInstruction * bi;
 
@@ -3080,7 +3098,8 @@ int skip_breakpoint(Context * ctx, int single_step) {
     if (!ctx->stopped_by_bp && ctx->stopped_by_cb == NULL) return 0;
     if (ctx->exited || ctx->exiting) return 0;
 
-    if (context_get_canonical_addr(ctx, get_regs_PC(ctx), &mem, &mem_addr, NULL, NULL) < 0) return -1;
+    if (get_PC(ctx, &pc) < 0) return -1;
+    if (context_get_canonical_addr(ctx, pc, &mem, &mem_addr, NULL, NULL) < 0) return -1;
     bi = find_instruction(mem, 0, mem_addr, CTX_BP_ACCESS_INSTRUCTION, 1);
     if (bi == NULL || bi->planting_error) return 0;
     bi->stepping_over_bp++;

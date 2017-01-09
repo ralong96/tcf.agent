@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -46,7 +46,6 @@ static int get_sym_addr(Context * ctx, int frame, ContextAddress addr, ContextAd
         *sym_addr = addr;
     }
     else if (is_top_frame(ctx, frame)) {
-        unsigned cnt = cache_miss_count();
         if (!ctx->stopped) {
             errno = ERR_IS_RUNNING;
             return -1;
@@ -55,20 +54,15 @@ static int get_sym_addr(Context * ctx, int frame, ContextAddress addr, ContextAd
             errno = ERR_ALREADY_EXITED;
             return -1;
         }
-        *sym_addr = get_regs_PC(ctx);
-        if (cache_miss_count() > cnt) {
-            /* The value of the PC (0) is incorrect. */
-            /* errno should already be set to a value different from 0 */
-            assert(errno != 0);
-            return -1;
-        }
+        if (get_PC(ctx, sym_addr) < 0) return -1;
     }
     else {
         uint64_t ip = 0;
         StackFrame * info = NULL;
         if (get_frame_info(ctx, frame, &info) < 0) return -1;
         if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) return -1;
-        if (!info->is_top_frame && ip > 0) ip--;
+        assert(!info->is_top_frame);
+        if (ip > 0) ip--;
         *sym_addr = (ContextAddress)ip;
     }
     return 0;

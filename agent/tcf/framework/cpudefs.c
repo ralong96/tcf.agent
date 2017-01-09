@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -85,31 +85,54 @@ int write_reg_value(StackFrame * frame, RegisterDefinition * reg_def, uint64_t v
 }
 
 ContextAddress get_regs_PC(Context * ctx) {
-    size_t i;
-    uint8_t buf[8];
     ContextAddress pc = 0;
-    RegisterDefinition * def = get_PC_definition(ctx);
-    if (def == NULL) return 0;
-    assert(def->size <= sizeof(buf));
-    if (context_read_reg(ctx, def, 0, def->size, buf) < 0) return 0;
-    for (i = 0; i < def->size; i++) {
-        pc = pc << 8;
-        pc |= buf[def->big_endian ? i : def->size - i - 1];
-    }
+    if (get_PC(ctx, &pc) < 0) return 0;
     return pc;
 }
 
 void set_regs_PC(Context * ctx, ContextAddress pc) {
+    set_PC(ctx, pc);
+}
+
+int get_PC(Context * ctx, ContextAddress * p) {
+    size_t i;
+    uint8_t buf[8];
+    ContextAddress pc = 0;
+    RegisterDefinition * def = get_PC_definition(ctx);
+    if (def == NULL) {
+        set_errno(ERR_OTHER, "Cannot read PC: no such register");
+        return -1;
+    }
+    if (def->size > sizeof(buf)) {
+        set_errno(ERR_OTHER, "Cannot read PC: register is too large");
+        return -1;
+    }
+    if (context_read_reg(ctx, def, 0, def->size, buf) < 0) return -1;
+    for (i = 0; i < def->size; i++) {
+        pc = pc << 8;
+        pc |= buf[def->big_endian ? i : def->size - i - 1];
+    }
+    *p = pc;
+    return 0;
+}
+
+int set_PC(Context * ctx, ContextAddress pc) {
     size_t i;
     uint8_t buf[8];
     RegisterDefinition * def = get_PC_definition(ctx);
-    if (def == NULL) return;
-    assert(def->size <= sizeof(buf));
+    if (def == NULL) {
+        set_errno(ERR_OTHER, "Cannot write PC: no such register");
+        return -1;
+    }
+    if (def->size > sizeof(buf)) {
+        set_errno(ERR_OTHER, "Cannot write PC: register is too large");
+        return -1;
+    }
     for (i = 0; i < def->size; i++) {
         buf[def->big_endian ? def->size - i - 1 : i] = (uint8_t)pc;
         pc = pc >> 8;
     }
-    context_write_reg(ctx, def, 0, def->size, buf);
+    return context_write_reg(ctx, def, 0, def->size, buf);
 }
 
 int id2frame(const char * id, Context ** ctx, int * frame) {

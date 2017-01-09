@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -622,30 +622,23 @@ static Channel * get_channel(SymbolsCache * syms) {
 static uint64_t get_symbol_ip(Context * ctx, int * frame, ContextAddress addr) {
     uint64_t ip = 0;
     if (*frame == STACK_NO_FRAME) {
-        ip = addr;
+        ip = (uint64_t)addr;
     }
     else if (is_top_frame(ctx, *frame)) {
-        unsigned cnt = cache_miss_count();
-        if (!ctx->stopped) {
-            exception(ERR_IS_RUNNING);
-        }
-        if (ctx->exited) {
-            exception(ERR_ALREADY_EXITED);
-        }
+        ContextAddress pc = 0;
+        if (!ctx->stopped) exception(ERR_IS_RUNNING);
+        if (ctx->exited) exception(ERR_ALREADY_EXITED);
         *frame = get_top_frame(ctx);
-        ip = get_regs_PC(ctx);
-        if (cache_miss_count() > cnt) {
-            /* The value of the PC (0) is incorrect. */
-            /* errno should already be set to a value different from 0 */
-            assert(errno != 0);
-            exception(errno);
-        }
+        if (get_PC(ctx, &pc) < 0) exception(errno);
+        ip = (uint64_t)pc;
     }
     else {
         StackFrame * info = NULL;
         if (get_frame_info(ctx, *frame, &info) < 0) exception(errno);
         if (read_reg_value(info, get_PC_definition(ctx), &ip) < 0) exception(errno);
+        assert(!info->is_top_frame);
         *frame = info->frame;
+        if (ip > 0) ip--;
     }
     return ip;
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -265,11 +265,19 @@ extern int write_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, uns
 extern int write_reg_location(StackFrame * frame, RegisterDefinition * reg_def, LocationExpressionCommand * cmds, unsigned cmds_cnt);
 #endif
 
-/* Get instruction pointer (PC) value */
+/* Get instruction pointer (PC) value.
+* Deprecated: use get_PC() */
 extern ContextAddress get_regs_PC(Context * ctx);
 
-/* Set instruction pointer (PC) value */
+/* Set instruction pointer (PC) value.
+ * Deprecated: use set_PC() */
 extern void set_regs_PC(Context * ctx, ContextAddress y);
+
+/* Get instruction pointer (PC) value, return 0 on success, return -1 and set errno on error */
+extern int get_PC(Context * ctx, ContextAddress * pc);
+
+/* Set instruction pointer (PC) value, return 0 on success, return -1 and set errno on error */
+extern int set_PC(Context * ctx, ContextAddress pc);
 
 /* Get TCF ID of a stack frame */
 extern const char * frame2id(Context * ctx, int frame);
