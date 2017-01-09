@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1713,7 +1713,10 @@ static int update_step_machine_state(Context * ctx) {
                     for (frame_cnt = 0; frame_cnt < RC_STEP_MAX_STACK_FRAMES; frame_cnt++) {
                         n = get_prev_frame(ctx, n);
                         if (n < 0) {
-                            if (cache_miss_count() > 0) return -1;
+                            if (cache_miss_count() > 0) {
+                                errno = ERR_CACHE_MISS;
+                                return -1;
+                            }
                             break;
                         }
                         if (get_frame_info(ctx, n, &info) < 0) return -1;
@@ -1785,7 +1788,10 @@ static int update_step_machine_state(Context * ctx) {
                 for (frame_cnt = 0; frame_cnt < RC_STEP_MAX_STACK_FRAMES; frame_cnt++) {
                     n = get_prev_frame(ctx, n);
                     if (n < 0) {
-                        if (cache_miss_count() > 0) return -1;
+                        if (cache_miss_count() > 0) {
+                            errno = ERR_CACHE_MISS;
+                            return -1;
+                        }
                         break;
                     }
                     if (get_frame_info(ctx, n, &info) < 0) return -1;
@@ -2161,11 +2167,10 @@ static void resume_error(Context * ctx, int error) {
         ctx->stopped = 1;
         ctx->stopped_by_bp = 0;
         ctx->stopped_by_cb = NULL;
-        ctx->stopped_by_exception = 1;
         ctx->pending_intercept = 1;
+        ctx->stopped_by_exception = 1;
         loc_free(ctx->exception_description);
         ctx->exception_description = loc_strdup(errno_to_str(error));
-        send_context_changed_event(ctx);
     }
 }
 
