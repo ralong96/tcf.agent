@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -432,7 +432,7 @@ int main(int argc, char ** argv) {
 #endif
 
     if (ini_server(url, proto, bcg) < 0) {
-        fprintf(stderr, "Cannot create TCF server: %s\n", errno_to_str(errno));
+        fprintf(stderr, "Cannot create listening port: %s\n", errno_to_str(errno));
         exit(1);
     }
     discovery_start();
