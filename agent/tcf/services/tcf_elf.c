@@ -751,37 +751,39 @@ static ELF_File * create_elf_cache(const char * file_name) {
                     }
                 }
             }
-            if (error == 0 && lseek(file->fd, hdr.e_phoff, SEEK_SET) == (off_t)-1) error = errno;
-            if (error == 0) {
-                unsigned cnt = 0;
-                file->pheaders = (ELF_PHeader *)loc_alloc_zero(sizeof(ELF_PHeader) * hdr.e_phnum);
-                file->pheader_cnt = hdr.e_phnum;
-                while (error == 0 && cnt < hdr.e_phnum) {
-                    Elf32_Phdr phdr;
-                    memset(&phdr, 0, sizeof(phdr));
-                    if (error == 0 && sizeof(phdr) < hdr.e_phentsize) error = ERR_INV_FORMAT;
-                    if (error == 0 && read_fully(file->fd, (char *)&phdr, hdr.e_phentsize) < 0) error = errno;
-                    if (error == 0) {
-                        ELF_PHeader * p = file->pheaders + cnt;
-                        if (file->byte_swap) {
-                            SWAP(phdr.p_type);
-                            SWAP(phdr.p_offset);
-                            SWAP(phdr.p_vaddr);
-                            SWAP(phdr.p_paddr);
-                            SWAP(phdr.p_filesz);
-                            SWAP(phdr.p_memsz);
-                            SWAP(phdr.p_flags);
-                            SWAP(phdr.p_align);
+            if (error == 0 && hdr.e_phnum > 0) {
+                if (lseek(file->fd, hdr.e_phoff, SEEK_SET) == (off_t)-1) error = errno;
+                if (error == 0) {
+                    unsigned cnt = 0;
+                    file->pheaders = (ELF_PHeader *)loc_alloc_zero(sizeof(ELF_PHeader) * hdr.e_phnum);
+                    file->pheader_cnt = hdr.e_phnum;
+                    while (error == 0 && cnt < hdr.e_phnum) {
+                        Elf32_Phdr phdr;
+                        memset(&phdr, 0, sizeof(phdr));
+                        if (error == 0 && sizeof(phdr) < hdr.e_phentsize) error = ERR_INV_FORMAT;
+                        if (error == 0 && read_fully(file->fd, (char *)&phdr, hdr.e_phentsize) < 0) error = errno;
+                        if (error == 0) {
+                            ELF_PHeader * p = file->pheaders + cnt;
+                            if (file->byte_swap) {
+                                SWAP(phdr.p_type);
+                                SWAP(phdr.p_offset);
+                                SWAP(phdr.p_vaddr);
+                                SWAP(phdr.p_paddr);
+                                SWAP(phdr.p_filesz);
+                                SWAP(phdr.p_memsz);
+                                SWAP(phdr.p_flags);
+                                SWAP(phdr.p_align);
+                            }
+                            p->type = phdr.p_type;
+                            p->offset = phdr.p_offset;
+                            p->address = phdr.p_vaddr;
+                            p->physical_address = phdr.p_paddr;
+                            p->file_size = phdr.p_filesz;
+                            p->mem_size = phdr.p_memsz;
+                            p->flags = phdr.p_flags;
+                            p->align = phdr.p_align;
+                            cnt++;
                         }
-                        p->type = phdr.p_type;
-                        p->offset = phdr.p_offset;
-                        p->address = phdr.p_vaddr;
-                        p->physical_address = phdr.p_paddr;
-                        p->file_size = phdr.p_filesz;
-                        p->mem_size = phdr.p_memsz;
-                        p->flags = phdr.p_flags;
-                        p->align = phdr.p_align;
-                        cnt++;
                     }
                 }
             }
@@ -865,37 +867,39 @@ static ELF_File * create_elf_cache(const char * file_name) {
                     }
                 }
             }
-            if (error == 0 && lseek(file->fd, hdr.e_phoff, SEEK_SET) == (off_t)-1) error = errno;
-            if (error == 0) {
-                unsigned cnt = 0;
-                file->pheaders = (ELF_PHeader *)loc_alloc_zero(sizeof(ELF_PHeader) * hdr.e_phnum);
-                file->pheader_cnt = hdr.e_phnum;
-                while (error == 0 && cnt < hdr.e_phnum) {
-                    Elf64_Phdr phdr;
-                    memset(&phdr, 0, sizeof(phdr));
-                    if (error == 0 && sizeof(phdr) < hdr.e_phentsize) error = ERR_INV_FORMAT;
-                    if (error == 0 && read_fully(file->fd, (char *)&phdr, hdr.e_phentsize) < 0) error = errno;
-                    if (error == 0) {
-                        ELF_PHeader * p = file->pheaders + cnt;
-                        if (file->byte_swap) {
-                            SWAP(phdr.p_type);
-                            SWAP(phdr.p_offset);
-                            SWAP(phdr.p_vaddr);
-                            SWAP(phdr.p_paddr);
-                            SWAP(phdr.p_filesz);
-                            SWAP(phdr.p_memsz);
-                            SWAP(phdr.p_flags);
-                            SWAP(phdr.p_align);
+            if (error == 0 && hdr.e_phnum > 0) {
+                if (lseek(file->fd, hdr.e_phoff, SEEK_SET) == (off_t)-1) error = errno;
+                if (error == 0) {
+                    unsigned cnt = 0;
+                    file->pheaders = (ELF_PHeader *)loc_alloc_zero(sizeof(ELF_PHeader) * hdr.e_phnum);
+                    file->pheader_cnt = hdr.e_phnum;
+                    while (error == 0 && cnt < hdr.e_phnum) {
+                        Elf64_Phdr phdr;
+                        memset(&phdr, 0, sizeof(phdr));
+                        if (error == 0 && sizeof(phdr) < hdr.e_phentsize) error = ERR_INV_FORMAT;
+                        if (error == 0 && read_fully(file->fd, (char *)&phdr, hdr.e_phentsize) < 0) error = errno;
+                        if (error == 0) {
+                            ELF_PHeader * p = file->pheaders + cnt;
+                            if (file->byte_swap) {
+                                SWAP(phdr.p_type);
+                                SWAP(phdr.p_offset);
+                                SWAP(phdr.p_vaddr);
+                                SWAP(phdr.p_paddr);
+                                SWAP(phdr.p_filesz);
+                                SWAP(phdr.p_memsz);
+                                SWAP(phdr.p_flags);
+                                SWAP(phdr.p_align);
+                            }
+                            p->type = phdr.p_type;
+                            p->offset = phdr.p_offset;
+                            p->address = phdr.p_vaddr;
+                            p->physical_address = phdr.p_paddr;
+                            p->file_size = phdr.p_filesz;
+                            p->mem_size = phdr.p_memsz;
+                            p->flags = phdr.p_flags;
+                            p->align = (U4_T)phdr.p_align;
+                            cnt++;
                         }
-                        p->type = phdr.p_type;
-                        p->offset = phdr.p_offset;
-                        p->address = phdr.p_vaddr;
-                        p->physical_address = phdr.p_paddr;
-                        p->file_size = phdr.p_filesz;
-                        p->mem_size = phdr.p_memsz;
-                        p->flags = phdr.p_flags;
-                        p->align = (U4_T)phdr.p_align;
-                        cnt++;
                     }
                 }
             }
