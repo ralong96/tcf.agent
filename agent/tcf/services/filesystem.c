@@ -661,7 +661,9 @@ static void read_path(InputStream * inp, char * path, int size) {
     }
 #endif
     if (path[0] != '/') {
-        snprintf(buf, sizeof(buf), "%s/%s", get_user_home(), path);
+        const char * home = get_user_home();
+        if (strcmp(home, "/") == 0) home = "";
+        snprintf(buf, sizeof(buf), "%s/%s", home, path);
         strlcpy(path, buf, size);
         for (i = 0; path[i] != 0; i++) {
             if (path[i] == '\\') path[i] = '/';
