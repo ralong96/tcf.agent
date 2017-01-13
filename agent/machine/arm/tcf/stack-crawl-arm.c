@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -42,6 +42,7 @@
 #include <tcf/framework/errors.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
+#include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
 #include <tcf/services/stacktrace.h>
 #include <machine/arm/tcf/stack-crawl-arm.h>
@@ -51,9 +52,10 @@
 #define BRANCH_LIST_SIZE    32
 #define REG_DATA_SIZE       16
 
-#define REG_VAL_ADDR         1
-#define REG_VAL_STACK        2
-#define REG_VAL_OTHER        3
+#define REG_VAL_FRAME        1
+#define REG_VAL_ADDR         2
+#define REG_VAL_STACK        3
+#define REG_VAL_OTHER        4
 
 typedef struct {
     uint32_t v;
@@ -263,6 +265,14 @@ static int chk_loaded(int r) {
     /* Make sure register origin is either 0 or REG_VAL_OTHER */
     if (reg_data[r].o == 0) return 0;
     if (reg_data[r].o == REG_VAL_OTHER) return 0;
+    if (reg_data[r].o == REG_VAL_FRAME) {
+        uint64_t v = 0;
+        RegisterDefinition * def = get_reg_definitions(stk_ctx) + reg_data[r].v;
+        if (read_reg_value(stk_frame, def, &v) < 0) return -1;
+        reg_data[r].v = (uint32_t)v;
+        reg_data[r].o = REG_VAL_OTHER;
+        return 0;
+    }
     return load_reg(reg_data[r].v, r);
 }
 
@@ -293,8 +303,7 @@ static int mem_hash_write(uint32_t addr, uint32_t value, int valid) {
 
 static int store_reg(uint32_t addr, int r) {
     if (chk_loaded(r) < 0) return -1;
-    assert(reg_data[r].o != REG_VAL_ADDR);
-    assert(reg_data[r].o != REG_VAL_STACK);
+    assert(reg_data[r].o == 0 || reg_data[r].o == REG_VAL_OTHER);
     return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0);
 }
 
@@ -411,8 +420,7 @@ static uint32_t calc_shift(uint32_t shift_type, uint32_t shift_imm, uint32_t val
         if (shift_imm == 0) {
             /* Rotate right with extend */
             val = val >> 1;
-            assert(cpsr_data.o != REG_VAL_ADDR);
-            assert(cpsr_data.o != REG_VAL_STACK);
+            assert(cpsr_data.o == REG_VAL_OTHER);
             if (cpsr_data.v & (1 << 29)) val |= 0x80000000;
         }
         else {
@@ -687,6 +695,32 @@ static int trace_thumb_load_store_32(uint16_t instr, uint16_t suffix) {
 
     if ((instr & 0xff60) == 0xe860 || (instr & 0xff40) == 0xe940) {
         /* Load/store register dual */
+        uint32_t rn = instr & 0xf;
+        chk_loaded(rn);
+        if (reg_data[rn].o == REG_VAL_OTHER) {
+            int L = (instr & (1u << 4)) != 0;
+            int W = (instr & (1u << 5)) != 0;
+            int U = (instr & (1u << 7)) != 0;
+            int P = (instr & (1u << 8)) != 0;
+            uint32_t rt1 = (suffix >> 12) & 0xf;
+            uint32_t rt2 = (suffix >> 8) & 0xf;
+            uint32_t imm = suffix & 0xff;
+            uint32_t addr = reg_data[rn].v;
+            if (rn == 15) addr = addr - (addr & 0x3) + 4;
+            if (P) addr = U ? addr + imm * 4 : addr - imm * 4;
+            if (L) {
+                load_reg_lazy(addr, rt1);
+                load_reg_lazy(addr + 4, rt2);
+            }
+            else {
+                store_reg(addr, rt1);
+                store_reg(addr + 4, rt2);
+            }
+            if (W) {
+                if (!P) addr = U ? addr + imm * 4 : addr - imm * 4;
+                reg_data[rn].v = addr;
+            }
+        }
         return 0;
     }
 
@@ -866,8 +900,7 @@ static int trace_thumb_data_processing_32(uint16_t instr, uint16_t suffix) {
 static int trace_thumb(void) {
     uint16_t instr;
 
-    assert(reg_data[15].o != REG_VAL_ADDR);
-    assert(reg_data[15].o != REG_VAL_STACK);
+    assert(reg_data[15].o == REG_VAL_OTHER);
 
     /* Check that the PC is still on Thumb alignment */
     if (reg_data[15].v & 0x1) {
@@ -950,7 +983,7 @@ static int trace_thumb(void) {
      *  ADD Rd, #Offset8
      *  SUB Rd, #Offset8
      */
-    else if((instr & 0xe000) == 0x2000) {
+    else if ((instr & 0xe000) == 0x2000) {
         uint8_t op      = (instr & 0x1800) >> 11;
         uint8_t rd      = (instr & 0x0700) >>  8;
         uint8_t offset8 = (instr & 0x00ff);
@@ -1738,8 +1771,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
                     }
                     else {
                         op2val = op2val >> 1;
-                        assert(cpsr_data.o != REG_VAL_ADDR);
-                        assert(cpsr_data.o != REG_VAL_STACK);
+                        assert(cpsr_data.o == REG_VAL_OTHER);
                         if (cpsr_data.v & (1 << 29)) op2val |= 0x80000000;
                     }
                 }
@@ -1769,7 +1801,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
     if (rd == 15 && cond != 14) {
         /* Conditional branch, trace both directions */
         if (op2origin) {
-            assert(op2origin != REG_VAL_ADDR);
+            assert(op2origin == REG_VAL_OTHER);
             if (opcode == 13) {
                 add_branch(op2val);
             }
@@ -2068,8 +2100,7 @@ static void trace_coprocessor_instr(uint32_t instr) {
 static int trace_arm(void) {
     uint32_t instr;
 
-    assert(reg_data[15].o != REG_VAL_ADDR);
-    assert(reg_data[15].o != REG_VAL_STACK);
+    assert(reg_data[15].o == REG_VAL_OTHER);
 
     /* Check that the PC is still on Arm alignment */
     if (reg_data[15].v & 0x3) {
@@ -2285,6 +2316,7 @@ static int trace_instructions(void) {
 }
 
 static int trace_frame(StackFrame * frame, StackFrame * down) {
+    RegisterDefinition * defs = get_reg_definitions(frame->ctx);
     RegisterDefinition * def = NULL;
     int spsr_id = -1;
 
@@ -2302,7 +2334,7 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
     branch_pos = 0;
     branch_cnt = 0;
 
-    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+    for (def = defs; def->name; def++) {
         uint64_t v = 0;
         if (def->dwarf_id == 128) {
             if (search_reg_value(frame, def, &v) < 0) continue;
@@ -2317,15 +2349,19 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
             case 0x1b: /* und */ spsr_id = 132; break;
             }
         }
-        else if (def->dwarf_id >= 0 && def->dwarf_id <= 15) {
-            if (read_reg_value(frame, def, &v) < 0) continue;
+        else if (def->dwarf_id == 15) {
+            if (read_reg_value(frame, def, &v) < 0) return -1;
             reg_data[def->dwarf_id].v = (uint32_t)v;
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
+        }
+        else if (def->dwarf_id >= 0 && def->dwarf_id <= 14) {
+            reg_data[def->dwarf_id].v = (uint32_t)(def - defs);
+            reg_data[def->dwarf_id].o = REG_VAL_FRAME;
         }
     }
 
     if (spsr_id > 0) {
-        for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+        for (def = defs; def->name; def++) {
             uint64_t v = 0;
             if (def->dwarf_id == spsr_id) {
                 if (search_reg_value(frame, def, &v) < 0) continue;
@@ -2337,7 +2373,7 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
 
     if (trace_instructions() < 0) return -1;
 
-    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+    for (def = defs; def->name; def++) {
         if (def->dwarf_id == 128) {
             if (!cpsr_data.o) continue;
             if (write_reg_value(down, def, cpsr_data.v) < 0) return -1;
@@ -2357,6 +2393,19 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
         }
         else if (def->dwarf_id >= 0 && def->dwarf_id <= 15) {
             int r = def->dwarf_id;
+#if ENABLE_StackRegisterLocations
+            if (r < 13 && (reg_data[r].o == REG_VAL_ADDR || reg_data[r].o == REG_VAL_STACK)) {
+                LocationExpressionCommand * cmds = (LocationExpressionCommand *)tmp_alloc_zero(sizeof(LocationExpressionCommand) * 2);
+                cmds[0].cmd = SFT_CMD_NUMBER;
+                cmds[0].args.num = reg_data[r].v;
+                cmds[1].cmd = SFT_CMD_RD_MEM;
+                cmds[1].args.mem.size = 4;
+                if (write_reg_location(down, def, cmds, 2) == 0) {
+                    down->has_reg_data = 1;
+                    continue;
+                }
+            }
+#endif
             if (chk_loaded(r) < 0) continue;
             if (!reg_data[r].o) continue;
             if (r == 13) frame->fp = reg_data[r].v;
@@ -2364,6 +2413,7 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
         }
     }
 
+    stk_frame = NULL;
     stk_ctx = NULL;
     return 0;
 }

@@ -645,6 +645,7 @@ void write_location_pieces(Context * ctx, StackFrame * frame,
             }
             else {
                 if (write_reg_bytes(frame, piece->reg, 0, piece->reg->size, rbf) < 0) exception(errno);
+                if (!frame->is_top_frame) frame->has_reg_data = 1;
             }
         }
         else if (piece->value) {
