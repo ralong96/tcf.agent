@@ -517,9 +517,12 @@ static int symbol_is_weak(ObjectInfo * obj) {
                         case STT_OBJECT:
                         case STT_FUNC:
                             if (equ_symbol_names(name, sym_info.name)) {
-                                ContextAddress address = 0;
-                                if (elf_symbol_address(sym_ctx, &sym_info, &address)) break;
-                                if (obj->u.mCode.mLowPC != address) {
+                                ContextAddress sym_addr = 0;
+                                ContextAddress obj_addr = 0;
+                                if (elf_symbol_address(sym_ctx, &sym_info, &sym_addr) < 0) break;
+                                obj_addr = elf_map_to_run_time_address(sym_ctx, file, obj->u.mCode.mSection, obj->u.mCode.mLowPC);
+                                if (errno) break;
+                                if (obj_addr != sym_addr) {
                                     clear_trap(&trap);
                                     return 1;
                                 }
