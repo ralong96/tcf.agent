@@ -1661,7 +1661,7 @@ static void check_line_info_cb(CodeArea * area, void * args) {
 static void check_line_info(void) {
     assert(file_has_line_info);
     area_cnt = 0;
-    if (address_to_line(elf_ctx, 0, 0xffffffffffffffff, check_line_info_cb, check_line_info_cb) < 0) {
+    if (address_to_line(elf_ctx, 0, 0xffffffffffffffff, check_line_info_cb, NULL) < 0) {
         error("address_to_line");
     }
     if (area_cnt == 0) {
