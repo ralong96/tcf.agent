@@ -352,22 +352,33 @@ int line_to_address(Context * ctx, const char * file_name, int line, int column,
 int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, LineNumbersCallBack * client, void * args) {
     Trap trap;
 
+    /* TODO: make addr0..addr1 range inclusive */
+    if (addr1 == 0) return 0;
+    addr1--;
+
     if (!set_trap(&trap)) return -1;
     if (ctx == NULL) exception(ERR_INV_CONTEXT);
     if (ctx->exited) exception(ERR_ALREADY_EXITED);
-    while (addr0 < addr1) {
+    while (addr0 <= addr1) {
         ContextAddress range_rt_addr = 0;
-        UnitAddressRange * range = elf_find_unit(ctx, addr0, addr1 - 1, &range_rt_addr);
+        UnitAddressRange * range = elf_find_unit(ctx, addr0, addr1, &range_rt_addr);
         if (range == NULL) break;
+        assert(range->mSize > 0);
+        assert(range->mAddr + range->mSize > range->mAddr || range->mAddr + range->mSize == 0);
+        assert(range_rt_addr + range->mSize > range_rt_addr || range_rt_addr + range->mSize == 0);
+        assert(addr1 >= range_rt_addr);
+        assert(addr0 <= range_rt_addr + range->mSize - 1);
         if (!range->mUnit->mLineInfoLoaded) load_line_numbers(range->mUnit);
         if (range->mUnit->mStatesCnt >= 2) {
             CompUnit * unit = range->mUnit;
             unsigned l = 0;
             unsigned h = unit->mStatesCnt;
-            ContextAddress addr_min = addr0 - range_rt_addr + range->mAddr;
-            ContextAddress addr_max = addr1 - range_rt_addr + range->mAddr;
-            if (addr_min < range->mAddr) addr_min = range->mAddr;
-            if (addr_max > range->mAddr + range->mSize) addr_max = range->mAddr + range->mSize;
+            ContextAddress addr_min = range->mAddr;
+            ContextAddress addr_max = range->mAddr + range->mSize - 1;
+            if (addr0 > range_rt_addr) addr_min = addr0 - range_rt_addr + range->mAddr;
+            if (addr1 < range_rt_addr + range->mSize - 1) addr_max = addr1 - range_rt_addr + range->mAddr;
+            assert(addr_min >= range->mAddr);
+            assert(addr_max <= range->mAddr + range->mSize - 1);
             while (l < h) {
                 unsigned k = (h + l) / 2;
                 LineNumbersState * state = unit->mStates + k;
@@ -377,7 +388,7 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
                 else if (state->mSection < range->mSection) {
                     l = k + 1;
                 }
-                else if (state->mAddress >= addr_max) {
+                else if (state->mAddress > addr_max) {
                     h = k;
                 }
                 else {
@@ -389,7 +400,7 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
                         while (k > 0) {
                             LineNumbersState * prev = unit->mStates + k - 1;
                             if (state->mAddress <= addr_min) break;
-                            if (prev->mAddress >= addr_max) break;
+                            if (prev->mAddress > addr_max) break;
                             state = prev;
                             k--;
                         }
@@ -411,7 +422,7 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
                             }
                             if (k >= unit->mStatesCnt) break;
                             state = unit->mStates + k;
-                            if (state->mAddress >= addr_max) break;
+                            if (state->mAddress > addr_max) break;
                         }
                         break;
                     }

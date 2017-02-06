@@ -1654,6 +1654,22 @@ static void check_addr_ranges(void) {
     }
 }
 
+static void check_line_info_cb(CodeArea * area, void * args) {
+    area_cnt++;
+}
+
+static void check_line_info(void) {
+    assert(file_has_line_info);
+    area_cnt = 0;
+    if (address_to_line(elf_ctx, 0, 0xffffffffffffffff, check_line_info_cb, check_line_info_cb) < 0) {
+        error("address_to_line");
+    }
+    if (area_cnt == 0) {
+        set_errno(ERR_OTHER, "address_to_line(elf_ctx, 0, 0xffffffffffffffff,...) does not work");
+        error("address_to_line");
+    }
+}
+
 static void next_region(void) {
     Symbol * sym = NULL;
     ContextAddress lt_addr;
@@ -2271,9 +2287,12 @@ static void test(void * args) {
     assert(test_posted);
     test_posted = 0;
     if (elf_file_name == NULL || mem_region_pos >= (int)mem_map.region_cnt) {
-        if (file_has_line_info && line_info_cnt == 0) {
-            set_errno(ERR_OTHER, "Line info not accessable");
-            error("address_to_line");
+        if (file_has_line_info) {
+            if (line_info_cnt == 0) {
+                set_errno(ERR_OTHER, "Line info not accessable");
+                error("address_to_line");
+            }
+            check_line_info();
         }
         next_file();
     }

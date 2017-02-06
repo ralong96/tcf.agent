@@ -1303,6 +1303,10 @@ static void read_frame_info_section(Context * ctx, ELF_Section * text_section,
         else if (range->mAddr > IP) {
             h = k;
         }
+        else if (range->mAddr + range->mSize < range->mAddr) {
+            read_frame_fde(IP, range->mOffset);
+            return;
+        }
         else if (range->mAddr + range->mSize <= IP) {
             l = k + 1;
         }
