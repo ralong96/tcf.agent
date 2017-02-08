@@ -1355,8 +1355,8 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                 for (j = 0; j < file->section_cnt; j++) {
                     ELF_Section * s = file->sections + j;
                     if (s == NULL || s->name == NULL || s->size == 0) continue;
-                    if (strcmp(s->name, r->sect_name)) continue;
-                    if (r->addr + s->size - 1 >= addr0) {
+                    if (r->addr + s->size - 1 < addr0) continue;
+                    if (strcmp(s->name, r->sect_name) == 0) {
                         MemoryRegion * x = add_region(res);
                         x->addr = r->addr;
                         x->size = (ContextAddress)s->size;
@@ -1372,6 +1372,10 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
             }
         }
         else if (r->size > 0 && r->addr <= addr1 && r->addr + r->size - 1 >= addr0) {
+            *add_region(res) = *r;
+        }
+        else if (r->size == 0 && r->sect_name != NULL && r->addr <= addr1 && r->addr >= addr0) {
+            /* Special case: section symbol of a zero length section */
             *add_region(res) = *r;
         }
     }
@@ -1570,8 +1574,8 @@ UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, Context
         ContextAddress link_addr_min, link_addr_max;
         MemoryRegion * r = elf_map.regions + i;
         ELF_File * file = NULL;
-        assert(r->size > 0);
         assert(r->addr <= addr_max);
+        if (r->size == 0) continue;
         assert(r->addr + r->size - 1 >= addr_min);
         file = elf_open_memory_region_file(r, &error);
         if (file == NULL) {
@@ -1641,13 +1645,13 @@ ContextAddress elf_run_time_address_in_region(Context * ctx, MemoryRegion * r, E
     /* Note: when debug info is in a separate file, debug file link-time addresses are not same as exec file link-time addresses,
      * because Linux has a habbit of re-linking execs after extracting debug info */
     unsigned i;
-    if (r->size == 0) {
-        errno = ERR_INV_ADDRESS;
-        return 0;
-    }
     errno = 0;
     if (r->sect_name == NULL) {
         ContextAddress rt = 0;
+        if (r->size == 0) {
+            errno = ERR_INV_ADDRESS;
+            return 0;
+        }
         for (i = 0; i < file->pheader_cnt; i++) {
             ELF_PHeader * p = file->pheaders + i;
             if (!is_p_header_region(file, p, r)) continue;
@@ -1731,14 +1735,14 @@ ContextAddress elf_map_to_link_time_address(Context * ctx, ContextAddress addr, 
         MemoryRegion * r = elf_map.regions + i;
         ELF_File * f = NULL;
         ELF_File * d = NULL;
-        assert(r->size > 0);
         assert(r->addr <= addr);
-        assert(r->addr + r->size - 1 >= addr);
         f = elf_open_memory_region_file(r, NULL);
         if (f == NULL) continue;
         d = to_dwarf ? get_dwarf_file(f) : f;
         if (r->sect_name == NULL) {
             unsigned j;
+            if (r->size == 0) continue;
+            assert(r->addr + r->size - 1 >= addr);
             if (exec_sec == NULL && f->type == ET_EXEC) {
                 exec_sec = find_section_by_address(d, addr, to_dwarf);
             }
