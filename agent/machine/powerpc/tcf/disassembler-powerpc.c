@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014 Stanislav Yakovlev and others.
+ * Copyright (c) 2014, 2017 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -861,8 +861,8 @@ DisassemblyResult * disassemble_powerpc(uint8_t * code,
     disassemble_opcode(instr);
 
     if (buf_pos == 0) {
-        snprintf(buf, sizeof(buf), ".word 0x%08x ; opcode %d,%d",
-            instr, bits_uint8(instr, 0, 6), bits_uint32(instr, 21, 10));
+        snprintf(buf, sizeof(buf), ".word 0x%08x ; opcode %u,%u",
+            (unsigned)instr, bits_uint8(instr, 0, 6), (unsigned)bits_uint32(instr, 21, 10));
     }
     else {
         buf[buf_pos] = 0;

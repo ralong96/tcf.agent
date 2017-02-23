@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2016 Xilinx, Inc. and others.
+ * Copyright (c) 2013, 2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -219,8 +219,8 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
             memset(&dd, 0, sizeof(dd));
             if (isa->alignment >= 4 && (addr & 0x3) == 0 && offs <= mem_size + 4) {
                 unsigned i;
-                uint32_t v = 0;
-                for (i = 0; i < 4; i++) v |= (uint32_t)mem_buf[offs + i] << (i * 8);
+                unsigned v = 0;
+                for (i = 0; i < 4; i++) v |= (unsigned)mem_buf[offs + i] << (i * 8);
                 snprintf(buf, sizeof(buf), ".word 0x%08x", v);
                 dd.size = 4;
             }

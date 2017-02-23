@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014, 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2014, 2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -2258,7 +2258,7 @@ DisassemblyResult * disassemble_a64(uint8_t * code,
 
     dr.text = buf;
     if (buf_pos == 0) {
-        snprintf(buf, sizeof(buf), ".word 0x%08x", instr);
+        snprintf(buf, sizeof(buf), ".word 0x%08x", (unsigned)instr);
     }
     else {
         buf[buf_pos] = 0;
