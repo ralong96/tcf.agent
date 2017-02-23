@@ -1209,6 +1209,28 @@ static void loc_var_func(void * args, Symbol * sym) {
             }
         }
     }
+    if (symbol_class != SYM_CLASS_TYPE && addr_ok && size_ok && !cpp_ref && !indirect) {
+        Value v;
+        char expr[300];
+        ContextAddress a0 = addr;
+        ContextAddress a1 = 0;
+        if (!elf_file->elf64) a0 &= 0xffffffffu;
+        sprintf(expr, "&${%s}", symbol2id(sym));
+        if (evaluate_expression(elf_ctx, frame, pc, expr, 0, &v) < 0) {
+            error_sym("evaluate_expression", sym);
+        }
+        if (v.size != (elf_file->elf64 ? 8 : 4)) {
+            errno = ERR_INV_ADDRESS;
+            error_sym("evaluate_expression", sym);
+        }
+        if (value_to_address(&v, &a1) < 0) {
+            error_sym("value_to_address", sym);
+        }
+        if (a0 != a1) {
+            errno = ERR_INV_ADDRESS;
+            error_sym("value_to_address", sym);
+        }
+    }
     if (type != NULL) {
         int type_sym_class = 0;
         int type_type_class = 0;

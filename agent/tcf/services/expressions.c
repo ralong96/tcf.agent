@@ -1110,6 +1110,31 @@ static int sym2value(int mode, Symbol * sym, Value * v) {
         break;
     default:
         v->type = sym;
+        if (mode == MODE_NORMAL) {
+            LocationExpressionState * state = NULL;
+            LocationInfo * loc_info = NULL;
+            StackFrame * frame_info = NULL;
+            if (get_location_info(sym, &loc_info) < 0) {
+                break;
+            }
+            if (expression_frame != STACK_NO_FRAME && get_frame_info(expression_context, expression_frame, &frame_info) < 0) {
+                error(errno, "Cannot get stack frame info");
+            }
+            state = evaluate_location_expression(expression_context, frame_info,
+                loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, NULL, 0);
+            if (state->stk_pos == 1) {
+                v->address = (ContextAddress)state->stk[0];
+                v->remote = 1;
+            }
+            else {
+                if (state->pieces_cnt == 1 && state->pieces->implicit_pointer == 0 &&
+                    state->pieces->reg != NULL && state->pieces->reg->size == state->pieces->size) {
+                    v->reg = state->pieces->reg;
+                }
+                v->loc = state;
+            }
+            v->big_endian = loc_info->big_endian;
+        }
         break;
     }
     v->sym = sym;

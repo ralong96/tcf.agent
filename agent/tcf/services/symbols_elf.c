@@ -71,7 +71,9 @@ struct Symbol {
     int8_t priority;
     int8_t dynsym;
     int8_t weak;
+    int8_t assembly_function;
     ContextAddress address;
+    ContextAddress size;
     Context * ctx;
     int frame;
     unsigned index;
@@ -379,6 +381,7 @@ static int is_frame_based_object(Symbol * sym) {
     if (sym->var != NULL) return 1;
     if (sym->obj != NULL && (sym->obj->mFlags & DOIF_need_frame)) return 1;
     if (sym->ref != NULL && (sym->ref->mFlags & DOIF_need_frame)) return 1;
+    if (sym->assembly_function) return 0;
 
     switch (sym->sym_class) {
     case SYM_CLASS_VALUE:
@@ -539,6 +542,53 @@ static int symbol_is_weak(ObjectInfo * obj) {
     return 0;
 }
 
+static void is_assembly_function(Symbol * sym) {
+    ObjectInfo * obj = sym->obj;
+    Trap trap;
+    sym->assembly_function = 0;
+    if ((obj->mFlags & DOIF_low_pc) == 0) return;
+    if (set_trap(&trap)) {
+        const char * name = get_linkage_name(obj);
+        if (name != NULL) {
+            unsigned h = calc_symbol_name_hash(name);
+            ELF_File * file = obj->mCompUnit->mFile;
+            unsigned m = 0;
+
+            for (m = 1; m < file->section_cnt; m++) {
+                unsigned n;
+                ELF_Section * tbl = file->sections + m;
+                if (tbl->sym_names_hash == NULL) continue;
+                n = tbl->sym_names_hash[h % tbl->sym_names_hash_size];
+                while (n) {
+                    ELF_SymbolInfo sym_info;
+                    unpack_elf_symbol_info(tbl, n, &sym_info);
+                    switch (sym_info.type) {
+                    case STT_FUNC:
+                        if (equ_symbol_names(name, sym_info.name)) {
+                            ContextAddress sym_addr = 0;
+                            ContextAddress obj_addr = 0;
+                            if (elf_symbol_address(sym_ctx, &sym_info, &sym_addr) < 0) break;
+                            obj_addr = elf_map_to_run_time_address(sym_ctx, file, obj->u.mCode.mSection, obj->u.mCode.mLowPC);
+                            if (errno) break;
+                            if (obj_addr == sym_addr) {
+                                clear_trap(&trap);
+                                sym->has_address = 1;
+                                sym->assembly_function = 1;
+                                sym->address = sym_addr;
+                                sym->size = sym_info.size;
+                                return;
+                            }
+                        }
+                        break;
+                    }
+                    n = tbl->sym_names_next[n];
+                }
+            }
+        }
+        clear_trap(&trap);
+    }
+}
+
 static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
     Symbol * sym = alloc_symbol();
     sym->obj = obj;
@@ -612,6 +662,12 @@ static void object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
         break;
     case TAG_variant:
         sym->sym_class = SYM_CLASS_VARIANT;
+        break;
+    case TAG_label:
+        /* LLVM compiler uses TAG_label for assembly functions */
+        is_assembly_function(sym);
+        if (!sym->assembly_function) break;
+        sym->sym_class = SYM_CLASS_FUNCTION;
         break;
     }
     sym->ref = ref;
@@ -2866,7 +2922,7 @@ int get_symbol_type(const Symbol * sym, Symbol ** type) {
         return 0;
     }
     if (sym->sym_class == SYM_CLASS_FUNCTION) {
-        if (obj == NULL) {
+        if (sym->assembly_function || obj == NULL) {
             *type = NULL;
         }
         else {
@@ -3030,6 +3086,10 @@ static void get_object_type_class(ObjectInfo * obj, int * type_class) {
 
 int get_symbol_type_class(const Symbol * sym, int * type_class) {
     assert(sym->magic == SYMBOL_MAGIC);
+    if (sym->assembly_function) {
+        *type_class = TYPE_CLASS_FUNCTION;
+        return 0;
+    }
     if (is_constant_pseudo_symbol(sym)) return get_symbol_type_class(sym->base, type_class);
     if (is_array_type_pseudo_symbol(sym)) {
         if (sym->base->sym_class == SYM_CLASS_FUNCTION) *type_class = TYPE_CLASS_FUNCTION;
@@ -3136,6 +3196,10 @@ static int err_wrong_obj(void) {
 int get_symbol_size(const Symbol * sym, ContextAddress * size) {
     ObjectInfo * obj = sym->obj;
     assert(sym->magic == SYMBOL_MAGIC);
+    if (sym->assembly_function) {
+        *size = sym->size;
+        return 0;
+    }
     if (is_constant_pseudo_symbol(sym)) return get_symbol_size(sym->base, size);
     if (is_array_type_pseudo_symbol(sym)) {
         if (sym->length > 0) {
@@ -4261,7 +4325,7 @@ int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame) {
 
 int get_array_symbol(const Symbol * sym, ContextAddress length, Symbol ** ptr) {
     assert(sym->magic == SYMBOL_MAGIC);
-    if (sym->sym_class != SYM_CLASS_TYPE) return err_wrong_obj();
+    if (sym->sym_class != SYM_CLASS_UNKNOWN && sym->sym_class != SYM_CLASS_TYPE) return err_wrong_obj();
     *ptr = alloc_symbol();
     (*ptr)->ctx = sym->ctx;
     (*ptr)->frame = sym->frame;
