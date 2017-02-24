@@ -2123,16 +2123,16 @@ const char * symbol2id(const Symbol * sym) {
                 tmp_app_hex('.', ref_id);
             }
         }
-        if (tbl_index) {
-            tmp_app_hex('-', tbl_index);
-        }
+        if (sym->has_address) tmp_app_hex('$', sym->address);
+        if (sym->assembly_function) tmp_app_hex('#', sym->size);
+        if (tbl_index) tmp_app_hex('-', tbl_index);
         if (frame != STACK_TOP_FRAME) {
             assert(frame + 3 >= 0);
             tmp_app_hex('+', frame + 3);
         }
-        tmp_app_hex('.', sym->index);
-        tmp_app_hex('.', sym->dimension);
-        tmp_app_hex('.', sym->cardinal);
+        if (sym->index) tmp_app_hex('=', sym->index);
+        if (sym->dimension) tmp_app_hex('!', sym->dimension);
+        if (sym->cardinal) tmp_app_hex('/', sym->cardinal);
         tmp_app_str('.', sym->ctx->id);
     }
     tmp_buf[tmp_len++] = 0;
@@ -2218,6 +2218,16 @@ int id2symbol(const char * id, Symbol ** res) {
             p++;
             ref = obj;
         }
+        if (*p == '$') {
+            p++;
+            sym->has_address = 1;
+            sym->address = (ContextAddress)read_hex(&p);
+        }
+        if (*p == '#') {
+            p++;
+            sym->assembly_function = 1;
+            sym->size = (ContextAddress)read_hex(&p);
+        }
         if (*p == '-') {
             p++;
             tbl_index = (unsigned)read_hex(&p);
@@ -2226,13 +2236,22 @@ int id2symbol(const char * id, Symbol ** res) {
             p++;
             sym->frame = (int)read_hex(&p) - 3;
         }
-        if (*p == '.') p++;
-        sym->index = (unsigned)read_hex(&p);
-        if (*p == '.') p++;
-        sym->dimension = (unsigned)read_hex(&p);
-        if (*p == '.') p++;
-        sym->cardinal = (unsigned)read_hex(&p);
-        if (*p == '.') p++;
+        if (*p == '=') {
+            p++;
+            sym->index = (unsigned)read_hex(&p);
+        }
+        if (*p == '!') {
+            p++;
+            sym->dimension = (unsigned)read_hex(&p);
+        }
+        if (*p == '/') {
+            p++;
+            sym->cardinal = (unsigned)read_hex(&p);
+        }
+        if (*p++ != '.') {
+            errno = ERR_INV_CONTEXT;
+            return -1;
+        }
         sym->ctx = id2ctx(p);
         if (sym->ctx == NULL) {
             errno = ERR_INV_CONTEXT;

@@ -805,6 +805,9 @@ static void loc_var_func(void * args, Symbol * sym) {
     RegisterDefinition * reg = NULL;
     ContextAddress addr = 0;
     ContextAddress size = 0;
+    ContextAddress addr_proxy = 0;
+    ContextAddress size_proxy = 0;
+    Symbol * sym_proxy = NULL;
     int addr_ok = 0;
     int size_ok = 0;
     SYM_FLAGS flags = 0;
@@ -829,6 +832,13 @@ static void loc_var_func(void * args, Symbol * sym) {
     Symbol * sym_container = NULL;
     int out_of_body = 0;
 
+    if (id2symbol(symbol2id(sym), &sym_proxy) < 0) {
+        error_sym("id2symbol", sym);
+    }
+    if (symcmp(sym, sym_proxy) != 0) {
+        errno = ERR_OTHER;
+        error("Invalid result of id2symbol()");
+    }
     if (get_symbol_class(sym, &symbol_class) < 0) {
         error_sym("get_symbol_class", sym);
     }
@@ -1060,6 +1070,22 @@ static void loc_var_func(void * args, Symbol * sym) {
             error_sym("get_symbol_size", sym);
         }
         size_ok = 0;
+    }
+    if (get_symbol_address(sym_proxy, &addr_proxy) < 0) {
+        if (addr_ok) error_sym("get_symbol_address", sym_proxy);
+    }
+    else {
+        errno = ERR_OTHER;
+        if (!addr_ok) error_sym("get_symbol_address", sym_proxy);
+        if (addr != addr_proxy) error_sym("get_symbol_address", sym_proxy);
+    }
+    if (get_symbol_size(sym_proxy, &size_proxy) < 0) {
+        if (size_ok) error_sym("get_symbol_size", sym_proxy);
+    }
+    else {
+        errno = ERR_OTHER;
+        if (!size_ok) error_sym("get_symbol_size", sym_proxy);
+        if (size != size_proxy) error_sym("get_symbol_size", sym_proxy);
     }
     if (cpp_ref) {
         Symbol * base_type = NULL;
