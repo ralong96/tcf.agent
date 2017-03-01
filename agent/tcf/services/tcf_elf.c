@@ -924,14 +924,22 @@ static ELF_File * create_elf_cache(const char * file_name) {
         }
     }
     if (error == 0) {
-        unsigned m = 0;
-        file->section_opd = 0;
-        for (m = 1; m < file->section_cnt; m++) {
-            ELF_Section * tbl = file->sections + m;
-            if (file->machine == EM_PPC64 && strcmp (tbl->name, ".opd") == 0) file->section_opd = m;
-            if (tbl->sym_count == 0) continue;
-            create_symbol_names_hash(tbl);
+        Trap trap;
+        /* unpack_elf_symbol_info() can thow exception */
+        if (set_trap(&trap)) {
+            unsigned m = 0;
+            file->section_opd = 0;
+            for (m = 1; m < file->section_cnt; m++) {
+                ELF_Section * tbl = file->sections + m;
+                if (file->machine == EM_PPC64 && strcmp(tbl->name, ".opd") == 0) file->section_opd = m;
+                if (tbl->sym_count == 0) continue;
+                create_symbol_names_hash(tbl);
+            }
+            clear_trap(&trap);
         }
+        error = trap.error;
+    }
+    if (error == 0) {
         file->debug_info_file = is_debug_info_file(file);
         if (!file->debug_info_file) file->debug_info_file_name = get_debug_info_file_name(file, &error);
         if (file->debug_info_file_name) trace(LOG_ELF, "Debug info file found %s", file->debug_info_file_name);
