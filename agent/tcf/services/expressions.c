@@ -202,6 +202,7 @@ static void set_int_value(Value * v, size_t size, uint64_t n) {
         uint64_t u64;
     } buf;
     switch (size) {
+    case 0: break;
     case 1: buf.u8 = (uint8_t)n; break;
     case 2: buf.u16 = (uint16_t)n; break;
     case 4: buf.u32 = (uint32_t)n; break;
