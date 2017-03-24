@@ -114,7 +114,7 @@ extern int safe_context_single_step(Context * ctx);
 extern void check_all_stopped(Context * ctx);
 
 /*
- * Suspend current ACPM transaction until all pending safe events are precessed.
+ * Suspend current ACPM transaction until pending safe events are precessed.
  */
 extern void wait_safe_events_done(void);
 

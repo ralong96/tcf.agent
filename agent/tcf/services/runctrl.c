@@ -2519,7 +2519,7 @@ static void run_safe_events(void * arg) {
         context_unlock(i->ctx);
         loc_free(i);
     }
-    if (safe_event_list == NULL) cache_notify(&safe_events_cache);
+    cache_notify(&safe_events_cache);
 }
 
 static void check_safe_events(Context * ctx) {
