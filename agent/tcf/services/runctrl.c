@@ -2563,6 +2563,10 @@ void check_all_stopped(Context * ctx) {
     cache_wait(&safe_events_cache);
 }
 
+void wait_safe_events_done(void) {
+    if (safe_event_list != NULL) cache_wait(&safe_events_cache);
+}
+
 int safe_context_single_step(Context * ctx) {
     int res = 0;
     ContextExtensionRC * ext = EXT(ctx);
