@@ -97,6 +97,12 @@
     "Start Target Communication Framework agent."
 #endif
 
+/* Hook before exiting main().  This hook can cleanup temporary
+ * files, etc. */
+#ifndef PRE_EXIT_HOOK
+#define PRE_EXIT_HOOK do {} while(0)
+#endif
+
 static const char * progname;
 static unsigned int idle_timeout;
 static unsigned int idle_count;
@@ -467,6 +473,8 @@ int main(int argc, char ** argv) {
 #if ENABLE_Plugins
     plugins_destroy();
 #endif /* ENABLE_Plugins */
+
+    PRE_EXIT_HOOK;
 
     fprintf(stderr, "\n");
     return 0;
