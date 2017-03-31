@@ -1482,19 +1482,28 @@ static void load_debug_sections(void) {
     }
 
     if (debug_info != NULL) {
+        Trap trap;
         PubNamesTable * tbl = &sCache->mPubNames;
         tbl->mHashSize = tbl->mMax = (unsigned)(debug_info->size / 151) + 16;
         tbl->mHash = (unsigned *)loc_alloc_zero(sizeof(unsigned) * tbl->mHashSize);
         tbl->mNext = (PubNamesInfo *)loc_alloc(sizeof(PubNamesInfo) * tbl->mMax);
         memset(tbl->mNext + tbl->mCnt++, 0, sizeof(PubNamesInfo));
-        for (idx = 1; idx < file->section_cnt; idx++) {
-            ELF_Section * sec = file->sections + idx;
-            if (sec->size == 0) continue;
-            if (sec->name == NULL) continue;
-            if (sec->type == SHT_NOBITS) continue;
-            if (strcmp(sec->name, ".debug_pubnames") == 0 || strcmp(sec->name, ".debug_pubtypes") == 0) {
-                load_pub_names(debug_info, sec);
+        if (set_trap(&trap)) {
+            for (idx = 1; idx < file->section_cnt; idx++) {
+                ELF_Section * sec = file->sections + idx;
+                if (sec->size == 0) continue;
+                if (sec->name == NULL) continue;
+                if (sec->type == SHT_NOBITS) continue;
+                if (strcmp(sec->name, ".debug_pubnames") == 0 || strcmp(sec->name, ".debug_pubtypes") == 0) {
+                    load_pub_names(debug_info, sec);
+                }
             }
+            clear_trap(&trap);
+        }
+        else {
+            trace(LOG_ELF, "Ignoring broken public names sections: %s.", errno_to_str(errno));
+            memset(tbl->mHash, 0, sizeof(unsigned) * tbl->mHashSize);
+            tbl->mCnt = 1;
         }
         for (idx = 1; idx < file->section_cnt; idx++) {
             create_pub_names(idx);
