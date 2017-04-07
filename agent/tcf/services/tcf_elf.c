@@ -558,7 +558,7 @@ static int is_debug_info_file(ELF_File * file) {
     return 0;
 }
 
-static void create_symbol_names_hash(ELF_Section * tbl);
+static int create_symbol_names_hash(ELF_Section * tbl);
 
 static void reopen_file(ELF_File * file) {
     int error = 0;
@@ -924,20 +924,17 @@ static ELF_File * create_elf_cache(const char * file_name) {
         }
     }
     if (error == 0) {
-        Trap trap;
-        /* unpack_elf_symbol_info() can thow exception */
-        if (set_trap(&trap)) {
-            unsigned m = 0;
-            file->section_opd = 0;
-            for (m = 1; m < file->section_cnt; m++) {
-                ELF_Section * tbl = file->sections + m;
-                if (file->machine == EM_PPC64 && strcmp(tbl->name, ".opd") == 0) file->section_opd = m;
-                if (tbl->sym_count == 0) continue;
-                create_symbol_names_hash(tbl);
+        unsigned m = 0;
+        file->section_opd = 0;
+        for (m = 1; m < file->section_cnt; m++) {
+            ELF_Section * tbl = file->sections + m;
+            if (file->machine == EM_PPC64 && strcmp(tbl->name, ".opd") == 0) file->section_opd = m;
+            if (tbl->sym_count == 0) continue;
+            if (create_symbol_names_hash(tbl) < 0) {
+                error = errno;
+                break;
             }
-            clear_trap(&trap);
         }
-        error = trap.error;
     }
     if (error == 0) {
         file->debug_info_file = is_debug_info_file(file);
@@ -1933,28 +1930,47 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
     else if (IS_PPC64_FUNC_OPD(file, info)) info->type = STT_FUNC;
 }
 
-static void create_symbol_names_hash(ELF_Section * tbl) {
-    unsigned i;
+static int create_symbol_names_hash(ELF_Section * tbl) {
+    Trap trap;
     unsigned sym_size = tbl->file->elf64 ? sizeof(Elf64_Sym) : sizeof(Elf32_Sym);
     unsigned sym_cnt = (unsigned)(tbl->size / sym_size);
     tbl->sym_names_hash_size = sym_cnt;
     tbl->sym_names_hash = (unsigned *)loc_alloc_zero(sym_cnt * sizeof(unsigned));
     tbl->sym_names_next = (unsigned *)loc_alloc_zero(sym_cnt * sizeof(unsigned));
-    for (i = 0; i < sym_cnt; i++) {
-        ELF_SymbolInfo sym;
-        unpack_elf_symbol_info(tbl, i, &sym);
-        if (sym.name != NULL) {
-            if (sym.bind == STB_GLOBAL && sym.name[0] == '_' && sym.name[1] == '_') {
-                if (strcmp(sym.name, "__GOTT_BASE__") == 0) tbl->file->vxworks_got = 1;
-                else if (strcmp(sym.name, "__GOTT_INDEX__") == 0) tbl->file->vxworks_got = 1;
-            }
-            if (sym.section_index != SHN_UNDEF && sym.type != STT_FILE) {
-                unsigned h = calc_symbol_name_hash(sym.name) % sym_cnt;
-                tbl->sym_names_next[i] = tbl->sym_names_hash[h];
-                tbl->sym_names_hash[h] = i;
+    /* unpack_elf_symbol_info() can throw exception */
+    if (set_trap(&trap)) {
+        unsigned i;
+        for (i = 0; i < sym_cnt; i++) {
+            ELF_SymbolInfo sym;
+            unpack_elf_symbol_info(tbl, i, &sym);
+            if (sym.name != NULL) {
+                if (sym.bind == STB_GLOBAL && sym.name[0] == '_' && sym.name[1] == '_') {
+                    if (strcmp(sym.name, "__GOTT_BASE__") == 0) tbl->file->vxworks_got = 1;
+                    else if (strcmp(sym.name, "__GOTT_INDEX__") == 0) tbl->file->vxworks_got = 1;
+                }
+                if (sym.section_index != SHN_UNDEF && sym.type != STT_FILE) {
+                    unsigned h = calc_symbol_name_hash(sym.name) % sym_cnt;
+                    tbl->sym_names_next[i] = tbl->sym_names_hash[h];
+                    tbl->sym_names_hash[h] = i;
+                }
             }
         }
+        clear_trap(&trap);
     }
+    else if (tbl->type == SHT_DYNSYM && tbl->file->type != ET_DYN && get_error_code(trap.error) == ERR_INV_FORMAT) {
+        /* Ignore brocken dynsym section if the file is not a dyn executable */
+        trace(LOG_ELF, "Ignoring broken symbol section %s: %s.", tbl->name, errno_to_str(trap.error));
+        tbl->sym_names_hash_size = 0;
+        loc_free(tbl->sym_names_hash);
+        loc_free(tbl->sym_names_next);
+        tbl->sym_names_hash = NULL;
+        tbl->sym_names_next = NULL;
+    }
+    else {
+        errno = trap.error;
+        return -1;
+    }
+    return 0;
 }
 
 static int section_symbol_comparator(const void * x, const void * y) {
