@@ -71,6 +71,11 @@ ifeq ($(OPSYS),Darwin)
   RANLIB = ranlib $@
 endif
 
+ifeq ($(OPSYS),SunOS)
+  LIBS = -lpthread -lsocket -lnsl -lrt
+  RANLIB = ranlib $@
+endif
+
 ifeq ($(OPSYS),GNU/Linux)
   ifeq ($(NO_SSL),)
     LIBS = -lpthread -lssl -lcrypto -lrt
@@ -87,7 +92,10 @@ ifeq ($(OPSYS),GNU/Linux)
 endif
 
 ifneq ($(OPSYS),Windows)
-  OPTS += -D_FILE_OFFSET_BITS=64
+  # Solaris: The procfs used in sysmon.c only works without largefile support
+  ifneq ($(OPSYS),SunOS)
+    OPTS += -D_FILE_OFFSET_BITS=64
+  endif
   OPTS += -Wall
   ifneq ($(CC),g++)
     OPTS += -Wmissing-prototypes

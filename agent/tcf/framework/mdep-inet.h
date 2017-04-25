@@ -152,6 +152,10 @@ extern struct ip_ifc_info * get_ip_ifc(void);
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <net/if.h>
+#if defined (__sun__)
+#include <sys/ioctl.h>
+#include <sys/sockio.h>
+#endif
 
 #define loc_freeaddrinfo freeaddrinfo
 #define loc_getaddrinfo getaddrinfo

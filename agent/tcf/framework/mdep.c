@@ -1077,7 +1077,7 @@ char * canonicalize_file_name(const char * path) {
     return strdup(buf);
 }
 
-#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__sun__)
 
 char * canonicalize_file_name(const char * path) {
     char buf[PATH_MAX];

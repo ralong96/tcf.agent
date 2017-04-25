@@ -73,6 +73,7 @@ int print_trace(int mode, const char * fmt, ...) {
 #if defined(_WIN32) || defined(__CYGWIN__)
 #elif defined(_WRS_KERNEL)
 #elif defined(__SYMBIAN32__)
+#elif defined(__sun__)
 #else
         vsyslog(LOG_MAKEPRI(LOG_DAEMON, LOG_INFO), fmt, ap);
 #endif

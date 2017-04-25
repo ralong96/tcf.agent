@@ -259,6 +259,10 @@
 #  elif defined(__linux__)
 /* Linux implementation of POSIX AIO found to be inefficient */
 #    define ENABLE_AIO          0
+#  elif defined(__sun__)
+/* Solaris has _POSIX_ASYNCHRONOUS_IO, but SIGEV_THREAD does not seem to return */
+/* It should work from Solaris Express 6/06 and newer but fails if compiled on Solaris 8 */
+#    define ENABLE_AIO          0
 #  elif TARGET_SYMBIAN
 /* Symbian impl (OpenC) not desired either */
 #    define ENABLE_AIO          0

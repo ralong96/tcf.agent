@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1006,7 +1006,11 @@ static void command_get_environment(char * token, Channel * c) {
 #include <unistd.h>
 #include <pwd.h>
 #include <grp.h>
+#if defined(__sun__)
+#include <procfs.h>
+#else
 #include <linux/param.h>
+#endif
 
 #define BUF_EOF (-1)
 
@@ -1056,6 +1060,20 @@ static void write_string_array(OutputStream * out, int f) {
     write_stream(out, ']');
 }
 
+#if defined(__sun__)
+#define PROC_CWD_PATH "path/cwd"
+#define PROC_ROOT_PATH "path/root"
+#define PROC_EXE_PATH "path/a.out"
+#define PROC_PSINFO_STAT "psinfo"
+#define JIFFIES_TO_MSEC_FACTOR (1)
+#else
+#define PROC_CWD_PATH "cwd"
+#define PROC_ROOT_PATH "root"
+#define PROC_EXE_PATH "exe"
+#define PROC_PSINFO_STAT "stat"
+#define JIFFIES_TO_MSEC_FACTOR (1000/HZ)
+#endif
+
 static void write_context(OutputStream * out, char * id, char * parent_id, char * dir) {
     char fnm[FILE_PATH_SIZE + 1];
     int sz;
@@ -1064,7 +1082,7 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
     write_stream(out, '{');
 
     if (chdir(dir) >= 0) {
-        if ((sz = readlink("cwd", fnm, FILE_PATH_SIZE)) > 0) {
+        if ((sz = readlink(PROC_CWD_PATH, fnm, FILE_PATH_SIZE)) > 0) {
             fnm[sz] = 0;
             json_write_string(out, "CWD");
             write_stream(out, ':');
@@ -1072,7 +1090,7 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
             write_stream(out, ',');
         }
 
-        if ((sz = readlink("root", fnm, FILE_PATH_SIZE)) > 0) {
+        if ((sz = readlink(PROC_ROOT_PATH, fnm, FILE_PATH_SIZE)) > 0) {
             fnm[sz] = 0;
             json_write_string(out, "Root");
             write_stream(out, ':');
@@ -1080,7 +1098,7 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
             write_stream(out, ',');
         }
 
-        if ((sz = readlink("exe", fnm, FILE_PATH_SIZE)) > 0) {
+        if ((sz = readlink(PROC_EXE_PATH, fnm, FILE_PATH_SIZE)) > 0) {
             fnm[sz] = 0;
             json_write_string(out, "Exe");
             write_stream(out, ':');
@@ -1104,7 +1122,17 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
             write_stream(out, ',');
         }
 
-        f = open("stat", O_RDONLY);
+        f = open(PROC_PSINFO_STAT, O_RDONLY);
+#if defined(__sun__)
+    } else {
+        /* On Solaris, "chdir /proc/<pid>" is only allowed for the owner, */
+        /* but psinfo is readable for all. So, try this as fallback.      */
+        snprintf(fnm, FILE_PATH_SIZE, "/%s/%s", dir, PROC_PSINFO_STAT);
+        fnm[FILE_PATH_SIZE]=0;
+        f = open(fnm, O_RDONLY);
+    }
+    {
+#endif
         if (f >= 0) {
             struct stat st;
             if (fstat(f, &st) == 0) {
@@ -1207,6 +1235,63 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
                 unsigned long rt_priority=0;/* Real-time scheduling priority (see sched_setscheduler(2)). */
                 unsigned long policy = 0;   /* Scheduling policy (see sched_setscheduler(2)). */
 
+#if defined(__sun__)
+                psinfo_t *psinfo = (psinfo_t *) &buf;
+                pid = psinfo->pr_pid;
+                strncpy(comm, psinfo->pr_fname, PRFNSZ);
+                comm[PRFNSZ] = 0;
+                state = psinfo->pr_lwp.pr_sname;
+                ppid = psinfo->pr_ppid;
+                pgrp = psinfo->pr_pgid;
+                session = psinfo->pr_sid;
+                /* 
+                 * Solaris: A number of fields either have no equivalent on Solaris,
+                 * or they are only available from additional files in /proc. See
+                 * http://docs.oracle.com/cd/E19253-01/816-5174/6mbb98ui2/index.html
+                 * - pstatus_t would provide System CPU Time
+                 * - prusage_t would provide page faults
+                 * 
+                 * For an initial port, we don't care about this extra information,
+                 * and focus on the psinfo_t structure only to save some performance.
+                 * Respective flags are still kept here as reference -- they will
+                 * be sent to the client with initialized default values.
+                 */
+                //tty_nr = psinfo->pr_ttydev;
+                //tpgid =
+                //flags = 
+                //minflt =
+                //cminflt =
+                //majflt =
+                //cmajflt =
+                utime = psinfo->pr_time.tv_sec * 1000  + psinfo->pr_time.tv_nsec / 1000;
+                //stime = 
+                cutime = psinfo->pr_ctime.tv_sec * 1000 + psinfo->pr_ctime.tv_nsec / 1000;
+                //cstime =
+                priority = psinfo->pr_lwp.pr_pri;
+                nice = psinfo->pr_lwp.pr_nice;
+                //dummy =
+                //itrealvalue =
+                starttime = psinfo->pr_start.tv_sec * 1000 + psinfo->pr_start.tv_nsec / 1000;
+                vsize = psinfo->pr_size * 1024;
+                rss = psinfo->pr_rssize * 1024;
+                //rlim =
+                //startcode =
+                //endcode =
+                //startstack =
+                //kstkesp =
+                //kstkeip =
+                //signal =
+                //blocked =
+                //sigignore =
+                //sigcatch =
+                //wchan =
+                //nswap =
+                //cnswap =
+                //exit_signal =
+                processor = psinfo->pr_lwp.pr_onpro;
+                //rt_priority =
+                //policy =
+#else
                 pid = (int)strtol(str, &str, 10);
                 while (*str == ' ') str++;
 
@@ -1226,7 +1311,7 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
                     &priority, &nice, &dummy, &itrealvalue, &starttime, &vsize, &rss, &rlim,
                     &startcode, &endcode, &startstack, &kstkesp, &kstkeip, &signal, &blocked, &sigignore, &sigcatch,
                     &wchan, &nswap, &cnswap, &exit_signal, &processor, &rt_priority, &policy);
-
+#endif
                 json_write_string(out, "PID");
                 write_stream(out, ':');
                 json_write_long(out, pid);
@@ -1302,22 +1387,22 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
 
                 json_write_string(out, "UTime");
                 write_stream(out, ':');
-                json_write_uint64(out, (uint64_t)utime * 1000 / HZ);
+                json_write_uint64(out, (uint64_t)utime * JIFFIES_TO_MSEC_FACTOR);
                 write_stream(out, ',');
 
                 json_write_string(out, "STime");
                 write_stream(out, ':');
-                json_write_uint64(out, (uint64_t)stime * 1000 / HZ);
+                json_write_uint64(out, (uint64_t)stime * JIFFIES_TO_MSEC_FACTOR);
                 write_stream(out, ',');
 
                 json_write_string(out, "CUTime");
                 write_stream(out, ':');
-                json_write_uint64(out, (uint64_t)cutime * 1000 / HZ);
+                json_write_uint64(out, (uint64_t)cutime * JIFFIES_TO_MSEC_FACTOR);
                 write_stream(out, ',');
 
                 json_write_string(out, "CSTime");
                 write_stream(out, ':');
-                json_write_uint64(out, (uint64_t)cstime * 1000 / HZ);
+                json_write_uint64(out, (uint64_t)cstime * JIFFIES_TO_MSEC_FACTOR);
                 write_stream(out, ',');
 
                 json_write_string(out, "Priority");
@@ -1335,13 +1420,13 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
                 if (itrealvalue != 0) {
                     json_write_string(out, "ITRealValue");
                     write_stream(out, ':');
-                    json_write_int64(out, (int64_t)itrealvalue * 1000 / HZ);
+                    json_write_int64(out, (int64_t)itrealvalue * JIFFIES_TO_MSEC_FACTOR);
                     write_stream(out, ',');
                 }
 
                 json_write_string(out, "StartTime");
                 write_stream(out, ':');
-                json_write_uint64(out, (uint64_t)starttime * 1000 / HZ);
+                json_write_uint64(out, (uint64_t)starttime * JIFFIES_TO_MSEC_FACTOR);
                 write_stream(out, ',');
 
                 json_write_string(out, "VSize");
@@ -1478,6 +1563,7 @@ static void command_get_context(char * token, Channel * c) {
     if (pid != 0) {
         struct stat st;
         if (parent != 0) {
+            /* Solaris: Not implemented, we don't care about LWP process children */
             snprintf(dir, sizeof(dir), "/proc/%d/task/%d", parent, pid);
         }
         else {
@@ -1514,7 +1600,13 @@ static void command_get_children(char * token, Channel * c) {
     write_stringz(&c->out, token);
 
     pid = id2pid(id, &parent);
-
+    
+#if defined(__sun__)
+    /* Solaris: Process Children (LWP) support is not implemented at this time.  */
+    /* Therefore, we always return null for children, without actually checking. */
+    if (pid != 0) parent = pid;
+#endif
+    
     if (parent != 0) {
         write_errno(&c->out, 0);
         write_stringz(&c->out, "null");
@@ -1523,7 +1615,10 @@ static void command_get_children(char * token, Channel * c) {
         DIR * proc = NULL;
         char dir[FILE_PATH_SIZE];
         if (pid == 0) strcpy(dir, "/proc");
-        else snprintf(dir, sizeof(dir), "/proc/%d/task", pid);
+        else {
+            /* Solaris: LWP is not implemented */
+            snprintf(dir, sizeof(dir), "/proc/%d/task", pid);
+        }
         proc = opendir(dir);
         if (proc == NULL) {
             int err = errno;
@@ -1589,11 +1684,43 @@ static void command_get_command_line(char * token, Channel * c) {
         err = ERR_INV_CONTEXT;
     }
 
+#if defined(__sun__)
+    /* Solaris only saves the first 80 characters of the command-line in psinfo.
+     * Getting the full untruncated command-line requires access to process memory:
+     * http://praveen.kumar.in/2010/02/24/getting-untruncated-command-line-options-passed-to-a-solaris-process/
+     * 
+     * We don't care about these details and just send the first 80 characters, like ps does.
+     */
+    if (err == 0) {
+        snprintf(dir, sizeof(dir), "/proc/%d/psinfo", pid);
+        if ((f = open(dir, O_RDONLY)) < 0) err = errno == ENOENT ? ESRCH : errno;
+    }
+    write_errno(&c->out, err);
+    if (err == 0) {
+        psinfo_t psinfo;
+        ssize_t bytes_read;
+        bytes_read = read(f, &psinfo, sizeof(psinfo_t));
+        if (bytes_read == sizeof(psinfo_t)) {
+            write_stream(&c->out, '[');
+            /* We don't care about tokenizing the command. */
+            /* Solaris seems to ensure that there is no " character in the command. */
+            write_stream(&c->out, '"');
+            write_stringz(&c->out, psinfo.pr_psargs);
+            write_stream(&c->out, '"');
+            write_stream(&c->out, ']');
+            write_stream(&c->out, 0);
+        } else {
+            write_stringz(&c->out, "null");
+        }
+        close(f);
+    }
+    else {
+        write_stringz(&c->out, "null");
+    }
+#else
     if (err == 0 && chdir(dir) < 0) err = errno;
     if (err == 0 && (f = open("cmdline", O_RDONLY)) < 0) err = errno;
-
     write_errno(&c->out, err);
-
     if (err == 0) {
         write_string_array(&c->out, f);
         close(f);
@@ -1602,7 +1729,7 @@ static void command_get_command_line(char * token, Channel * c) {
     else {
         write_stringz(&c->out, "null");
     }
-
+#endif
     write_stream(&c->out, MARKER_EOM);
 }
 
@@ -1621,6 +1748,12 @@ static void command_get_environment(char * token, Channel * c) {
     write_stringz(&c->out, "R");
     write_stringz(&c->out, token);
 
+#if defined(__sun__)
+    /* Solaris: Accessing the environment would require accessing process memory. */
+    /* This is not implemented at this time -> Just return null for any context.  */
+    write_errno(&c->out, ENOENT);
+    write_stringz(&c->out, "null");
+#else
     pid = id2pid(id, &parent);
     if (pid != 0 && parent == 0) {
         struct stat st;
@@ -1645,7 +1778,7 @@ static void command_get_environment(char * token, Channel * c) {
     else {
         write_stringz(&c->out, "null");
     }
-
+#endif
     write_stream(&c->out, MARKER_EOM);
 }
 #endif

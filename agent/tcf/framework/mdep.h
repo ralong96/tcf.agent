@@ -281,10 +281,14 @@ extern int loc_clock_gettime(int, struct timespec *);
 #include <sys/socket.h>
 #include <limits.h>
 #include <inttypes.h>
+#if defined(__sun__)
+#include <string.h>
+#include <sys/stropts.h>
+#endif
 
 #define O_BINARY 0
 
-#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__sun__)
 #  define O_LARGEFILE 0
 extern char ** environ;
 extern char * canonicalize_file_name(const char * path);

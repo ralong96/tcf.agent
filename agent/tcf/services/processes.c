@@ -1422,7 +1422,13 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
         int fd_tty_out = -1;
         char * tty_slave_name = NULL;
 
+#if defined(__sun__)
+        /* Solaris: See STREAMS-based Pseudo-Terminal Subsystem */
+        /* http://docs.oracle.com/cd/E18752_01/html/816-4855/termsub15-44781.html */
+        fd_tty_master = open("/dev/ptmx", O_RDWR);
+#else
         fd_tty_master = posix_openpt(O_RDWR|O_NOCTTY);
+#endif
         if (fd_tty_master < 0 || grantpt(fd_tty_master) < 0 || unlockpt(fd_tty_master) < 0) err = errno;
         if (!err && (tty_slave_name = ptsname(fd_tty_master)) == NULL) err = EINVAL;
         if (!err && (fd_tty_slave = open(tty_slave_name, O_RDWR | O_NOCTTY)) < 0) err = errno;
@@ -1442,10 +1448,15 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
 
                 if (!err && setsid() < 0) err = errno;;
                 if (!err && (fd = open(tty_slave_name, O_RDWR)) < 0) err = errno;
+#if defined(__sun__)
+                if (!err && (ioctl(fd, I_PUSH, "ptem")) < 0) err = errno;
+                if (!err && (ioctl(fd, I_PUSH, "ldterm")) < 0) err = errno;
+#endif
                 while (!err && fd < 3) {
                     int fd0 = fd;
                     if ((fd = dup(fd)) < 0 || close(fd0)) err = errno;
                 }
+
 #if defined(TIOCSCTTY)
                 if (!err && (ioctl(fd, TIOCSCTTY, NULL)) < 0) err = errno;
 #endif
