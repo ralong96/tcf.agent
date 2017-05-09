@@ -815,6 +815,12 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress addr, const cha
     unsigned h;
     Trap trap;
 
+    if (cache_channel() == NULL) {
+        /* This is needed for eventpoints to work without a client connected */
+        errno = ERR_SYM_NOT_FOUND;
+        return -1;
+    }
+
     if (!set_trap(&trap)) return -1;
 
     ip = get_symbol_ip(ctx, &frame, addr);
