@@ -218,7 +218,7 @@ static int mem_hash_index(const uint32_t addr) {
         s++;
         if (s >= MEM_HASH_SIZE) s = 0;
     }
-    while(s != v);
+    while (s != v);
 
     /* Search failed, hash is full and the address not stored */
     errno = ERR_OTHER;
@@ -243,6 +243,7 @@ static int load_reg(uint32_t addr, int r) {
     int valid = 0;
 
     reg_data[r].o = 0;
+    reg_data[r].v = 0;
     /* Check if the value can be found in the hash */
     if (mem_hash_read(addr, &reg_data[r].v, &valid) == 0) {
         if (valid) reg_data[r].o = REG_VAL_OTHER;
@@ -256,6 +257,16 @@ static int load_reg(uint32_t addr, int r) {
 }
 
 static int load_reg_lazy(uint32_t addr, int r) {
+    int valid = 0;
+    if (mem_hash_read(addr, &reg_data[r].v, &valid) == 0) {
+        if (valid) {
+            reg_data[r].o = REG_VAL_OTHER;
+            return 0;
+        }
+        reg_data[r].o = 0;
+        reg_data[r].v = 0;
+        return 0;
+    }
     reg_data[r].o = REG_VAL_ADDR;
     reg_data[r].v = addr;
     return 0;
@@ -386,7 +397,8 @@ static int search_reg_value(StackFrame * frame, RegisterDefinition * def, uint64
         if (read_reg_value(frame, def, v) == 0) return 0;
         if (frame->is_top_frame) break;
         n = get_next_frame(frame->ctx, get_info_frame(frame->ctx, frame));
-        if (get_frame_info(frame->ctx, n, &frame) < 0) break;
+        /* Avoid calling stack tracing recursively, use cached frame info */
+        if (get_cached_frame_info(frame->ctx, n, &frame) < 0) break;
     }
     errno = ERR_OTHER;
     return -1;
@@ -539,7 +551,7 @@ static int trace_ldm_stm(int cond, uint32_t rn, uint32_t regs, int P, int U, int
 
     chk_loaded(rn);
     addr = reg_data[rn].v;
-    addr_valid = reg_data[rn].o != 0;
+    addr_valid = reg_data[rn].o == REG_VAL_OTHER;
 
     /* S indicates that banked registers (untracked) are used, unless
      * this is a load including the PC when the S-bit indicates that
@@ -1500,6 +1512,7 @@ static void trace_arm_ldr_str(uint32_t instr) {
     int L = (instr & (1 << 20)) != 0;
     uint32_t rn = (instr & 0x000f0000) >> 16;
     uint32_t rd = (instr & 0x0000f000) >> 12;
+    RegData rd_org = reg_data[rd];
     uint32_t adr = 0;
 
     chk_loaded(rn);
@@ -1507,8 +1520,11 @@ static void trace_arm_ldr_str(uint32_t instr) {
 
     if (rn == 15) adr += 8;
 
-    if (B || cond != 14 || !reg_data[rn].o) {
+    if (B || !reg_data[rn].o) {
         if (L) reg_data[rd].o = 0;
+    }
+    else if (cond != 14 && rd != 15) {
+        /* Keep current */
     }
     else if (!I && P) {
         uint32_t offs = instr & 0xfff;
@@ -1583,7 +1599,8 @@ static void trace_arm_ldr_str(uint32_t instr) {
     else if (rd == 15) {
         chk_loaded(15);
         add_branch(reg_data[15].v);
-        trace_branch = 1;
+        if (cond == 14) trace_branch = 1;
+        else reg_data[15].v = rd_org.v + 4;
     }
 }
 
@@ -2349,7 +2366,7 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
             case 0x1b: /* und */ spsr_id = 132; break;
             }
         }
-        else if (def->dwarf_id == 15) {
+        else if (def->dwarf_id == 13 || def->dwarf_id == 15) {
             if (read_reg_value(frame, def, &v) < 0) return -1;
             reg_data[def->dwarf_id].v = (uint32_t)v;
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
@@ -2395,7 +2412,15 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
             int r = def->dwarf_id;
 #if ENABLE_StackRegisterLocations
             if (r < 13 && (reg_data[r].o == REG_VAL_ADDR || reg_data[r].o == REG_VAL_STACK)) {
-                LocationExpressionCommand * cmds = (LocationExpressionCommand *)tmp_alloc_zero(sizeof(LocationExpressionCommand) * 2);
+                int valid = 0;
+                uint32_t data = 0;
+                uint32_t addr = reg_data[r].v;
+                LocationExpressionCommand * cmds = NULL;
+                if (mem_hash_read(addr, &data, &valid) == 0) {
+                    if (valid && write_reg_value(down, def, data) < 0) return -1;
+                    continue;
+                }
+                cmds = (LocationExpressionCommand *)tmp_alloc_zero(sizeof(LocationExpressionCommand) * 2);
                 cmds[0].cmd = SFT_CMD_NUMBER;
                 cmds[0].args.num = reg_data[r].v;
                 cmds[1].cmd = SFT_CMD_RD_MEM;

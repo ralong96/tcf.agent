@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014, 2016 Xilinx, Inc. and others.
+ * Copyright (c) 2014, 2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -25,6 +25,7 @@
 #include <tcf/framework/errors.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
+#include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
 #include <tcf/services/stacktrace.h>
 #include <machine/a64/tcf/stack-crawl-a64.h>
@@ -35,9 +36,10 @@
 #define BRANCH_LIST_SIZE    12
 #define REG_DATA_SIZE       32
 
-#define REG_VAL_ADDR         1
-#define REG_VAL_STACK        2
-#define REG_VAL_OTHER        3
+#define REG_VAL_FRAME        1
+#define REG_VAL_ADDR         2
+#define REG_VAL_STACK        3
+#define REG_VAL_OTHER        4
 
 #define REG_ID_FP   29
 #define REG_ID_LR   30
@@ -181,7 +183,7 @@ static int mem_hash_index(const uint64_t addr) {
         s++;
         if (s >= MEM_HASH_SIZE) s = 0;
     }
-    while(s != v);
+    while (s != v);
 
     /* Search failed, hash is full and the address not stored */
     errno = ERR_OTHER;
@@ -219,13 +221,32 @@ static int load_reg(uint64_t addr, int r) {
 }
 
 static int load_reg_lazy(uint64_t addr, int r) {
+    int valid = 0;
+    if (mem_hash_read(addr, &reg_data[r].v, &valid) == 0) {
+        if (valid) {
+            reg_data[r].o = REG_VAL_OTHER;
+            return 0;
+        }
+        reg_data[r].o = 0;
+        reg_data[r].v = 0;
+        return 0;
+    }
     reg_data[r].o = REG_VAL_ADDR;
     reg_data[r].v = addr;
     return 0;
 }
 
 static int chk_loaded(int r) {
-    if (reg_data[r].o != REG_VAL_ADDR && reg_data[r].o != REG_VAL_STACK) return 0;
+    if (reg_data[r].o == 0) return 0;
+    if (reg_data[r].o == REG_VAL_OTHER) return 0;
+    if (reg_data[r].o == REG_VAL_FRAME) {
+        uint64_t v = 0;
+        RegisterDefinition * def = get_reg_definitions(stk_ctx) + reg_data[r].v;
+        if (read_reg_value(stk_frame, def, &v) < 0) return -1;
+        reg_data[r].v = v;
+        reg_data[r].o = REG_VAL_OTHER;
+        return 0;
+    }
     return load_reg(reg_data[r].v, r);
 }
 
@@ -256,8 +277,7 @@ static int mem_hash_write(uint64_t addr, uint64_t value, int valid) {
 
 static int store_reg(uint64_t addr, int r) {
     if (chk_loaded(r) < 0) return -1;
-    assert(reg_data[r].o != REG_VAL_ADDR);
-    assert(reg_data[r].o != REG_VAL_STACK);
+    assert(reg_data[r].o == 0 || reg_data[r].o == REG_VAL_OTHER);
     return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0);
 }
 
@@ -297,7 +317,8 @@ static int search_reg_value(StackFrame * frame, RegisterDefinition * def, uint64
         if (read_reg_value(frame, def, v) == 0) return 0;
         if (frame->is_top_frame) break;
         n = get_next_frame(frame->ctx, get_info_frame(frame->ctx, frame));
-        if (get_frame_info(frame->ctx, n, &frame) < 0) break;
+        /* Avoid calling stack tracing recursively, use cached frame info */
+        if (get_cached_frame_info(frame->ctx, n, &frame) < 0) break;
     }
     errno = ERR_OTHER;
     return -1;
@@ -1089,6 +1110,7 @@ static int trace_instructions(void) {
 }
 
 int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
+    RegisterDefinition * defs = get_reg_definitions(frame->ctx);
     RegisterDefinition * def = NULL;
     unsigned i;
 
@@ -1103,10 +1125,14 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
 
     for (i = 0; i < MEM_CACHE_SIZE; i++) mem_cache[i].size = 0;
 
-    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
-        if (def->dwarf_id >= 0 && def->dwarf_id <= 31) {
+    for (def = defs; def->name; def++) {
+        if (def->dwarf_id == 31) {
             if (read_reg_value(frame, def, &reg_data[def->dwarf_id].v) < 0) continue;
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
+        }
+        else if (def->dwarf_id >= 0 && def->dwarf_id <= 31) {
+            reg_data[def->dwarf_id].v = (uint32_t)(def - defs);
+            reg_data[def->dwarf_id].o = REG_VAL_FRAME;
         }
         else if (strcmp(def->name, "cpsr") == 0) {
             if (read_reg_value(frame, def, &cpsr_data.v) < 0) continue;
@@ -1120,9 +1146,30 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
 
     if (trace_instructions() < 0) return -1;
 
-    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+    for (def = defs; def->name; def++) {
         if (def->dwarf_id >= 0 && def->dwarf_id <= 31) {
             int r = def->dwarf_id;
+#if ENABLE_StackRegisterLocations
+            if (r < 31 && (reg_data[r].o == REG_VAL_ADDR || reg_data[r].o == REG_VAL_STACK)) {
+                int valid = 0;
+                uint64_t data = 0;
+                uint64_t addr = reg_data[r].v;
+                LocationExpressionCommand * cmds = NULL;
+                if (mem_hash_read(addr, &data, &valid) == 0) {
+                    if (valid && write_reg_value(down, def, data) < 0) return -1;
+                    continue;
+                }
+                cmds = (LocationExpressionCommand *)tmp_alloc_zero(sizeof(LocationExpressionCommand) * 2);
+                cmds[0].cmd = SFT_CMD_NUMBER;
+                cmds[0].args.num = reg_data[r].v;
+                cmds[1].cmd = SFT_CMD_RD_MEM;
+                cmds[1].args.mem.size = 8;
+                if (write_reg_location(down, def, cmds, 2) == 0) {
+                    down->has_reg_data = 1;
+                    continue;
+                }
+            }
+#endif
             if (chk_loaded(r) < 0) continue;
             if (!reg_data[r].o) continue;
             if (r == 31) frame->fp = (ContextAddress)reg_data[r].v;
@@ -1138,6 +1185,7 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
         }
     }
 
+    stk_frame = NULL;
     stk_ctx = NULL;
     return 0;
 }
