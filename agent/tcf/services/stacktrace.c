@@ -694,6 +694,38 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     return 0;
 }
 
+int get_cached_frame_info(Context * ctx, int frame, StackFrame ** info) {
+    StackTrace * stack = EXT(ctx);
+
+    *info = NULL;
+    if (ctx == NULL || !context_has_state(ctx)) {
+        errno = ERR_INV_CONTEXT;
+        return -1;
+    }
+    if (!ctx->stopped) {
+        errno = ERR_IS_RUNNING;
+        return -1;
+    }
+
+    if (frame == STACK_TOP_FRAME) {
+        frame = 0;
+    }
+    else if (frame == STACK_BOTTOM_FRAME) {
+        if (!stack->complete) {
+            set_errno(ERR_INV_CONTEXT, "No such stack frame");
+            return -1;
+        }
+        frame = stack->frame_cnt - 1;
+    }
+    else if (frame < 0 || frame >= stack->frame_cnt) {
+        set_errno(ERR_INV_CONTEXT, "No such stack frame");
+        return -1;
+    }
+
+    *info = stack->frames + frame;
+    return 0;
+}
+
 void set_inlined_frame_level(Context * ctx, int level) {
     EXT(ctx)->inlined = level;
 }

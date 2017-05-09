@@ -58,6 +58,13 @@ extern int get_next_frame(Context * ctx, int frame);
 extern int get_frame_info(Context * ctx, int frame, StackFrame ** info);
 
 /*
+ * Get information about given stack frame from stack trace cache.
+ * Don't try to run backtrace if the info is not vailable in the cache.
+ * Return -1 and errno on error.
+ */
+extern int get_cached_frame_info(Context * ctx, int frame, StackFrame ** info);
+
+/*
  * Simulated step into fake stack frame of inlined function.
  * 'cnt' step count.
  * Return -1 and errno on error.
