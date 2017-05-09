@@ -1068,8 +1068,8 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
         }
         if (op == 0x3b) {
             /* Miscellaneous control instructions */
-            uint32_t op = (suffix >> 4) & 0xf;
-            switch (op) {
+            uint32_t op2 = (suffix >> 4) & 0xf;
+            switch (op2) {
             case 0: add_str("leavex"); break;
             case 1: add_str("enterx"); break;
             case 2: add_str("clrex"); break;
@@ -1077,7 +1077,7 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
             case 5: add_str("dmb"); break;
             case 6: add_str("isb"); break;
             }
-            if (op >= 4 && op < 6) {
+            if (op2 >= 4 && op2 < 6) {
                 if (it_cond_name) add_str(it_cond_name);
                 add_char(' ');
                 switch (suffix & 0xf) {
@@ -1099,7 +1099,7 @@ static void disassemble_branches_and_misc_32(uint16_t suffix) {
                 }
                 return;
             }
-            if (op == 6) {
+            if (op2 == 6) {
                 if (it_cond_name) add_str(it_cond_name);
                 add_char(' ');
                 switch (suffix & 0xf) {

@@ -464,10 +464,10 @@ static uint64_t get_cmd_uint64(GdbClient * c, char ** p) {
     char * s = *p;
     uint64_t n = 0;
     while (s < c->cmd_buf + c->cmd_end) {
-        char c = *s;
-        if (c >= '0' && c <= '9') n = (n << 4) + (c - '0');
-        else if (c >= 'A' && c <= 'F') n = (n << 4) + (c - 'A' + 10);
-        else if (c >= 'a' && c <= 'f') n = (n << 4) + (c - 'a' + 10);
+        char ch = *s;
+        if (ch >= '0' && ch <= '9') n = (n << 4) + (ch - '0');
+        else if (ch >= 'A' && ch <= 'F') n = (n << 4) + (ch - 'A' + 10);
+        else if (ch >= 'a' && ch <= 'f') n = (n << 4) + (ch - 'a' + 10);
         else break;
         s++;
     }

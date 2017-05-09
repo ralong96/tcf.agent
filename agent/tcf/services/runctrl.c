@@ -1343,9 +1343,9 @@ static void send_event_context_suspended(void) {
         Context * x = link2ctx(l);
         l = l->next;
         for (i = 0; i < listener_cnt; i++) {
-            Listener * l = listeners + i;
-            if (l->listener->context_intercepted == NULL) continue;
-            l->listener->context_intercepted(x, l->args);
+            Listener * ls = listeners + i;
+            if (ls->listener->context_intercepted == NULL) continue;
+            ls->listener->context_intercepted(x, ls->args);
         }
         assert(x->pending_intercept == 0);
     }
@@ -1428,9 +1428,9 @@ static void send_event_context_exception(Context * ctx) {
     write_stream(out, MARKER_EOM);
 }
 
-int is_all_stopped(Context * ctx) {
+int is_all_stopped(Context * grp) {
     LINK * l;
-    Context * grp = context_get_group(ctx, CONTEXT_GROUP_STOP);
+    grp = context_get_group(grp, CONTEXT_GROUP_STOP);
     for (l = context_root.next; l != &context_root; l = l->next) {
         Context * ctx = ctxl2ctxp(l);
         if (ctx->stopped || ctx->exited || ctx->exiting) continue;

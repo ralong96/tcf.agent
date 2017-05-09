@@ -88,6 +88,7 @@ extern void ini_stack_trace_service(Protocol *, TCFBroadcastGroup *);
 #define get_next_frame(ctx, frame) ((void)(frame), errno = ERR_UNSUPPORTED, STACK_NO_FRAME)
 #define get_prev_frame(ctx, frame) ((void)(frame), errno = ERR_UNSUPPORTED, STACK_NO_FRAME)
 #define get_frame_info(ctx, frame, info) ((void)(frame), errno = ERR_UNSUPPORTED, -1)
+#define get_cached_frame_info(ctx, frame, info) ((void)(frame), errno = ERR_UNSUPPORTED, -1)
 #define set_inlined_frame_level(ctx, level)
 #define get_inlined_frame_level(ctx) 0
 
