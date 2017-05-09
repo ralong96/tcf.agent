@@ -1244,13 +1244,13 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
                 ppid = psinfo->pr_ppid;
                 pgrp = psinfo->pr_pgid;
                 session = psinfo->pr_sid;
-                /* 
+                /*
                  * Solaris: A number of fields either have no equivalent on Solaris,
                  * or they are only available from additional files in /proc. See
                  * http://docs.oracle.com/cd/E19253-01/816-5174/6mbb98ui2/index.html
                  * - pstatus_t would provide System CPU Time
                  * - prusage_t would provide page faults
-                 * 
+                 *
                  * For an initial port, we don't care about this extra information,
                  * and focus on the psinfo_t structure only to save some performance.
                  * Respective flags are still kept here as reference -- they will
@@ -1258,13 +1258,13 @@ static void write_context(OutputStream * out, char * id, char * parent_id, char 
                  */
                 //tty_nr = psinfo->pr_ttydev;
                 //tpgid =
-                //flags = 
+                //flags =
                 //minflt =
                 //cminflt =
                 //majflt =
                 //cmajflt =
                 utime = psinfo->pr_time.tv_sec * 1000  + psinfo->pr_time.tv_nsec / 1000;
-                //stime = 
+                //stime =
                 cutime = psinfo->pr_ctime.tv_sec * 1000 + psinfo->pr_ctime.tv_nsec / 1000;
                 //cstime =
                 priority = psinfo->pr_lwp.pr_pri;
@@ -1600,13 +1600,13 @@ static void command_get_children(char * token, Channel * c) {
     write_stringz(&c->out, token);
 
     pid = id2pid(id, &parent);
-    
+
 #if defined(__sun__)
     /* Solaris: Process Children (LWP) support is not implemented at this time.  */
     /* Therefore, we always return null for children, without actually checking. */
     if (pid != 0) parent = pid;
 #endif
-    
+
     if (parent != 0) {
         write_errno(&c->out, 0);
         write_stringz(&c->out, "null");
@@ -1688,7 +1688,7 @@ static void command_get_command_line(char * token, Channel * c) {
     /* Solaris only saves the first 80 characters of the command-line in psinfo.
      * Getting the full untruncated command-line requires access to process memory:
      * http://praveen.kumar.in/2010/02/24/getting-untruncated-command-line-options-passed-to-a-solaris-process/
-     * 
+     *
      * We don't care about these details and just send the first 80 characters, like ps does.
      */
     if (err == 0) {
