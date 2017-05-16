@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2006, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -212,7 +212,7 @@ U4_T dio_ReadU4(void) {
 }
 
 U8_T dio_ReadU8(void) {
-#if defined(__BYTE_ORDER__)
+#if defined(__BYTE_ORDER__) && !defined(__arm__)
     U8_T x;
     if (sDataPos + 8 > sDataLen) exception(ERR_EOF);
     x = *(U8_T *)(sData + sDataPos);
