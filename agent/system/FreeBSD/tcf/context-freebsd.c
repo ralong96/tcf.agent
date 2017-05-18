@@ -641,6 +641,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         trace(LOG_EVENTS, "event: pid %d stopped at PC = %#lx", pid, pc1);
 
         if (signal == SIGTRAP && event == 0 && !syscall) {
+            int offs = 0;
 #ifdef TRAP_OFFSET
             offs = -(TRAP_OFFSET);
 #else
