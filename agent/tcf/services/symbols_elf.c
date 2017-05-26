@@ -2653,8 +2653,12 @@ void ini_symbols_lib(void) {
 #if ENABLE_SymbolsMux
 static int reader_is_valid(Context * ctx, ContextAddress addr) {
     static MemoryMap map;
+    unsigned i;
     if (elf_get_map(ctx, addr, addr, &map) < 0) return 0;
-    return map.region_cnt > 0;
+    for (i = 0; i < map.region_cnt; i++) {
+        if (elf_open_memory_region_file(map.regions + i, NULL) != NULL) return 1;
+    }
+    return 0;
 }
 #endif
 
