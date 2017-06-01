@@ -12,3 +12,5 @@
  * Contributors:
  *     Stanislav Yakovlev - initial API and implementation
  *******************************************************************************/
+
+#define TRAP_OFFSET 0
