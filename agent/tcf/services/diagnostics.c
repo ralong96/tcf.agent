@@ -300,7 +300,7 @@ static void get_symbol_cache_client(void * x) {
         int cls = 0;
         error = 0;
         if (find_test_symbol(ctx, args->name, &ptr, &cls) < 0) error = errno;
-        addr = (ContextAddress)ptr;
+        addr = (ContextAddress)(uintptr_t)ptr;
     }
 #endif
 

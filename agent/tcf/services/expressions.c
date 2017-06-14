@@ -1278,12 +1278,12 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
         int sym_class = 0;
         if (find_test_symbol(expression_context, name, &ptr, &sym_class) >= 0) {
             if (sym_class == SYM_CLASS_FUNCTION) {
-                set_ctx_word_value(v, (ContextAddress)ptr);
+                set_ctx_word_value(v, (ContextAddress)(uintptr_t)ptr);
                 v->type_class = TYPE_CLASS_POINTER;
                 v->function = 1;
             }
             else {
-                v->address = (ContextAddress)ptr;
+                v->address = (ContextAddress)(uintptr_t)ptr;
                 v->remote = 1;
             }
             return sym_class;
