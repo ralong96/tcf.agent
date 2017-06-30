@@ -1638,7 +1638,7 @@ static void read_discriminant_value(InputStream * inp, void * args) {
         discriminant_lst = (DiscriminantRange *)loc_realloc(discriminant_lst, sizeof(DiscriminantRange) * discriminant_max);
     }
     r = discriminant_lst + discriminant_cnt++;
-    if (peek_stream(inp) == '{') {
+    if (json_peek(inp) == '{') {
         memset(r, 0, sizeof(DiscriminantRange));
         json_read_struct(inp, read_discriminant_range, r);
     }

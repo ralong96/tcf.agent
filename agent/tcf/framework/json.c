@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -37,10 +37,11 @@
 #include <assert.h>
 #include <string.h>
 #include <ctype.h>
-#include <tcf/framework/json.h>
+#include <tcf/framework/events.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/base64.h>
+#include <tcf/framework/json.h>
 
 #include <math.h>
 #if defined(isfinite)
@@ -57,14 +58,16 @@
 #define ENCODING_BINARY     0
 #define ENCODING_BASE64     1
 
-#define ignore_whitespace(ch, inp)  do { while (ch > 0 && isspace(ch)) (ch) = read_stream(inp); } while (0)
+#define read_no_whitespace(ch, inp)  do { int _c_ = read_stream(inp); \
+    while (_c_ > 0 && isspace(_c_)) _c_ = read_stream(inp); (ch) = _c_; } while (0)
 
-#define read_whitespace(inp)  do { int ch = peek_stream(inp); \
-    while (ch > 0 && isspace(ch)) { read_stream(inp); ch = peek_stream(inp); } } while (0)
+#define skip_whitespace(inp)  do { int _c_ = peek_stream(inp); \
+    while (_c_ > 0 && isspace(_c_)) { read_stream(inp); _c_ = peek_stream(inp); } } while (0)
 
-static char * buf = NULL;
-static size_t buf_pos = 0;
-static size_t buf_size = 0;
+static char * tmp_buf = NULL;
+static size_t tmp_buf_pos = 0;
+static size_t tmp_buf_size = 0;
+static unsigned tmp_buf_timer = 0;
 
 static uint8_t char_escaping[256] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -84,18 +87,32 @@ static uint8_t char_escaping[256] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-static void realloc_buf(void) {
-    if (buf == NULL) {
-        buf_size = 0x1000;
-        buf = (char *)loc_alloc(buf_size);
+static void tmp_buf_event(void * args) {
+    if (--tmp_buf_timer == 0) {
+        loc_free(tmp_buf);
+        tmp_buf_size = 0;
+        tmp_buf_pos = 0;
+        tmp_buf = NULL;
     }
     else {
-        buf_size *= 2;
-        buf = (char *)loc_realloc(buf, buf_size);
+        post_event_with_delay(tmp_buf_event, NULL, 1000000);
     }
 }
 
-#define buf_add(ch) { if (buf_pos >= buf_size) realloc_buf(); buf[buf_pos++] = (char)(ch); }
+static void realloc_tmp_buf(void) {
+    if (tmp_buf == NULL) {
+        tmp_buf_size = 0x1000 - MEM_HEAP_LINK_SIZE;
+        tmp_buf = (char *)loc_alloc(tmp_buf_size);
+    }
+    else {
+        tmp_buf_size = (tmp_buf_size << 1) + MEM_HEAP_LINK_SIZE;
+        tmp_buf = (char *)loc_realloc(tmp_buf, tmp_buf_size);
+        if (tmp_buf_timer == 0) post_event_with_delay(tmp_buf_event, NULL, 1000000);
+        tmp_buf_timer = 10;
+    }
+}
+
+#define tmp_buf_add(ch) { if (tmp_buf_pos >= tmp_buf_size) realloc_tmp_buf(); tmp_buf[tmp_buf_pos++] = (char)(ch); }
 
 void json_write_ulong(OutputStream * out, unsigned long n) {
     if (n >= 10) {
@@ -205,13 +222,13 @@ void json_write_string(OutputStream * out, const char * str) {
             const char * ptr = str;
             while (!char_escaping[(unsigned char)*str]) str++;
             if (ptr < str) {
-                unsigned len = str - ptr;
-                if (out->cur + len <= out->end) {
-                    memcpy(out->cur, ptr, len);
-                    out->cur += len;
+                unsigned n = str - ptr;
+                if (out->cur + n <= out->end) {
+                    memcpy(out->cur, ptr, n);
+                    out->cur += n;
                 }
                 else {
-                    out->write_block(out, ptr, len);
+                    out->write_block(out, ptr, n);
                 }
             }
             if (*str == 0) break;
@@ -232,13 +249,13 @@ void json_write_string_len(OutputStream * out, const char * str, size_t len) {
             const char * ptr = str;
             while (str < end && !char_escaping[(unsigned char)*str]) str++;
             if (ptr < str) {
-                unsigned len = str - ptr;
-                if (out->cur + len <= out->end) {
-                    memcpy(out->cur, ptr, len);
-                    out->cur += len;
+                unsigned n = str - ptr;
+                if (out->cur + n <= out->end) {
+                    memcpy(out->cur, ptr, n);
+                    out->cur += n;
                 }
                 else {
-                    out->write_block(out, ptr, len);
+                    out->write_block(out, ptr, n);
                 }
             }
             if (str == end) break;
@@ -313,9 +330,9 @@ static unsigned read_esc_char(InputStream * inp, char * utf8) {
 }
 
 int json_read_string(InputStream * inp, char * str, size_t size) {
+    int ch;
     unsigned i = 0;
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    read_no_whitespace(ch, inp);
     if (ch == 'n') {
         json_test_char(inp, 'u');
         json_test_char(inp, 'l');
@@ -347,16 +364,16 @@ int json_read_string(InputStream * inp, char * str, size_t size) {
 }
 
 char * json_read_alloc_string(InputStream * inp) {
+    int ch;
     char * str;
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    read_no_whitespace(ch, inp);
     if (ch == 'n') {
         json_test_char(inp, 'u');
         json_test_char(inp, 'l');
         json_test_char(inp, 'l');
         return NULL;
     }
-    buf_pos = 0;
+    tmp_buf_pos = 0;
     if (ch != '"') exception(ERR_PROTOCOL);
     for (;;) {
         ch = read_stream(inp);
@@ -366,21 +383,21 @@ char * json_read_alloc_string(InputStream * inp) {
             char utf8[4];
             unsigned l = read_esc_char(inp, utf8);
             unsigned n;
-            for (n = 0; n < l; n++) buf_add(utf8[n]);
+            for (n = 0; n < l; n++) tmp_buf_add(utf8[n]);
         }
         else {
-            buf_add(ch);
+            tmp_buf_add(ch);
         }
     }
-    buf_add(0);
-    str = (char *)loc_alloc(buf_pos);
-    memcpy(str, buf, buf_pos);
+    tmp_buf_add(0);
+    str = (char *)loc_alloc(tmp_buf_pos);
+    memcpy(str, tmp_buf, tmp_buf_pos);
     return str;
 }
 
 int json_read_boolean(InputStream * inp) {
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == 't') {
         json_test_char(inp, 'r');
         json_test_char(inp, 'u');
@@ -402,8 +419,8 @@ int json_read_boolean(InputStream * inp) {
 long json_read_long(InputStream * inp) {
     long res;
     int neg = 0;
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == '-') {
         neg = 1;
         ch = read_stream(inp);
@@ -423,8 +440,8 @@ long json_read_long(InputStream * inp) {
 unsigned long json_read_ulong(InputStream * inp) {
     unsigned long res;
     int neg = 0;
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == '-') {
         neg = 1;
         ch = read_stream(inp);
@@ -444,8 +461,8 @@ unsigned long json_read_ulong(InputStream * inp) {
 int64_t json_read_int64(InputStream * inp) {
     int64_t res;
     int neg = 0;
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == '-') {
         neg = 1;
         ch = read_stream(inp);
@@ -465,8 +482,8 @@ int64_t json_read_int64(InputStream * inp) {
 uint64_t json_read_uint64(InputStream * inp) {
     uint64_t res;
     int neg = 0;
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == '-') {
         neg = 1;
         ch = read_stream(inp);
@@ -489,7 +506,7 @@ double json_read_double(InputStream * inp) {
     double n;
     char * end = buf;
 
-    read_whitespace(inp);
+    skip_whitespace(inp);
     for (;;) {
         int ch = peek_stream(inp);
         switch (ch) {
@@ -522,8 +539,8 @@ double json_read_double(InputStream * inp) {
 }
 
 int json_read_struct(InputStream * inp, JsonStructCallBack * call_back, void * arg) {
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == 'n') {
         json_test_char(inp, 'u');
         json_test_char(inp, 'l');
@@ -540,11 +557,9 @@ int json_read_struct(InputStream * inp, JsonStructCallBack * call_back, void * a
         for (;;) {
             char nm[256];
             json_read_string(inp, nm, sizeof(nm));
-            read_whitespace(inp);
             json_test_char(inp, ':');
             call_back(inp, nm, arg);
-            ch = read_stream(inp);
-            ignore_whitespace(ch, inp);
+            read_no_whitespace(ch, inp);
             if (ch == ',') continue;
             check_char(ch, '}');
             break;
@@ -554,8 +569,8 @@ int json_read_struct(InputStream * inp, JsonStructCallBack * call_back, void * a
 }
 
 char ** json_read_alloc_string_array(InputStream * inp, int * cnt) {
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == 'n') {
         json_test_char(inp, 'u');
         json_test_char(inp, 'l');
@@ -575,27 +590,26 @@ char ** json_read_alloc_string_array(InputStream * inp, int * cnt) {
         char * str;
         char ** arr;
 
-        buf_pos = 0;
+        tmp_buf_pos = 0;
 
         if (json_peek(inp) == ']') {
             read_stream(inp);
         }
         else {
             for (;;) {
-                int ch = read_stream(inp);
                 size_t len = 0;
                 if (len_pos >= len_buf_size) {
                     len_buf_size = len_buf_size == 0 ? 0x100 : len_buf_size * 2;
                     len_buf = (size_t *)loc_realloc(len_buf, len_buf_size * sizeof(size_t));
                 }
-                ignore_whitespace(ch, inp);
+                read_no_whitespace(ch, inp);
                 if (ch == 'n') {
                     json_test_char(inp, 'u');
                     json_test_char(inp, 'l');
                     json_test_char(inp, 'l');
                 }
                 else {
-                    size_t buf_pos0 = buf_pos;
+                    size_t buf_pos0 = tmp_buf_pos;
                     if (ch != '"') exception(ERR_PROTOCOL);
                     for (;;) {
                         ch = read_stream(inp);
@@ -605,27 +619,26 @@ char ** json_read_alloc_string_array(InputStream * inp, int * cnt) {
                             char utf8[4];
                             unsigned l = read_esc_char(inp, utf8);
                             unsigned n;
-                            for (n = 0; n < l; n++) buf_add(utf8[n]);
+                            for (n = 0; n < l; n++) tmp_buf_add(utf8[n]);
                         }
                         else {
-                            buf_add(ch);
+                            tmp_buf_add(ch);
                         }
                     }
-                    len = buf_pos - buf_pos0;
+                    len = tmp_buf_pos - buf_pos0;
                 }
-                buf_add(0);
+                tmp_buf_add(0);
                 len_buf[len_pos++] = len;
-                ch = read_stream(inp);
-                ignore_whitespace(ch, inp);
+                read_no_whitespace(ch, inp);
                 if (ch == ',') continue;
                 check_char(ch, ']');
                 break;
             }
         }
-        buf_add(0);
-        arr = (char **)loc_alloc((len_pos + 1) * sizeof(char *) + buf_pos);
+        tmp_buf_add(0);
+        arr = (char **)loc_alloc((len_pos + 1) * sizeof(char *) + tmp_buf_pos);
         str = (char *)(arr + len_pos + 1);
-        memcpy(str, buf, buf_pos);
+        memcpy(str, tmp_buf, tmp_buf_pos);
         j = 0;
         for (i = 0; i < len_pos; i++) {
             arr[i] = str + j;
@@ -646,8 +659,8 @@ char ** json_read_alloc_string_array(InputStream * inp, int * cnt) {
 * Return 0 if null, 1 otherwise
 */
 int json_read_array(InputStream * inp, JsonArrayCallBack * call_back, void * arg) {
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == 'n') {
         json_test_char(inp, 'u');
         json_test_char(inp, 'l');
@@ -663,8 +676,7 @@ int json_read_array(InputStream * inp, JsonArrayCallBack * call_back, void * arg
     else {
         for (;;) {
             call_back(inp, arg);
-            ch = read_stream(inp);
-            ignore_whitespace(ch, inp);
+            read_no_whitespace(ch, inp);
             if (ch == ',') continue;
             check_char(ch, ']');
             break;
@@ -674,12 +686,12 @@ int json_read_array(InputStream * inp, JsonArrayCallBack * call_back, void * arg
 }
 
 void json_read_binary_start(JsonReadBinaryState * state, InputStream * inp) {
-    int ch = read_stream(inp);
+    int ch;
     state->inp = inp;
     state->rem = 0;
     state->size_start = 0;
     state->size_done = 0;
-    ignore_whitespace(ch, inp);
+    read_no_whitespace(ch, inp);
     if (ch == '(') {
         state->encoding = ENCODING_BINARY;
         state->size_start = json_read_ulong(inp);
@@ -778,21 +790,21 @@ char * json_read_alloc_binary(InputStream * inp, size_t * size) {
 
         json_read_binary_start(&state, inp);
 
-        buf_pos = 0;
+        tmp_buf_pos = 0;
         for (;;) {
             size_t rd;
-            if (buf_pos >= buf_size) realloc_buf();
-            rd = json_read_binary_data(&state, buf + buf_pos, buf_size - buf_pos);
+            if (tmp_buf_pos >= tmp_buf_size) realloc_tmp_buf();
+            rd = json_read_binary_data(&state, tmp_buf + tmp_buf_pos, tmp_buf_size - tmp_buf_pos);
             if (rd == 0) break;
-            buf_pos += rd;
+            tmp_buf_pos += rd;
         }
 
-        assert(state.size_start <= 0 || buf_pos == state.size_start);
+        assert(state.size_start <= 0 || tmp_buf_pos == state.size_start);
 
         json_read_binary_end(&state);
-        data = (char *)loc_alloc(buf_pos);
-        memcpy(data, buf, buf_pos);
-        *size = buf_pos;
+        data = (char *)loc_alloc(tmp_buf_pos);
+        memcpy(data, tmp_buf, tmp_buf_pos);
+        *size = tmp_buf_pos;
     }
     return data;
 }
@@ -910,13 +922,13 @@ void json_splice_binary_offset(OutputStream * out, int fd, size_t size, int64_t 
 static int skip_char(InputStream * inp) {
     int ch = read_stream(inp);
     if (ch < 0) exception(ERR_JSON_SYNTAX);
-    buf_add(ch);
+    tmp_buf_add(ch);
     return ch;
 }
 
 static void skip_object(InputStream * inp) {
     int ch;
-    read_whitespace(inp);
+    skip_whitespace(inp);
     ch = skip_char(inp);
     switch (ch) {
     case 'n':
@@ -939,7 +951,7 @@ static void skip_object(InputStream * inp) {
         for (;;) {
             ch = read_stream(inp);
             if (ch < 0) exception(ERR_JSON_SYNTAX);
-            buf_add(ch);
+            tmp_buf_add(ch);
             if (ch == '"') break;
             if (ch == '\\') skip_char(inp);
         }
@@ -968,9 +980,8 @@ static void skip_object(InputStream * inp) {
         }
         else {
             for (;;) {
-                int ch;
                 skip_object(inp);
-                read_whitespace(inp);
+                skip_whitespace(inp);
                 ch = skip_char(inp);
                 if (ch == ',') continue;
                 check_char(ch, ']');
@@ -985,11 +996,11 @@ static void skip_object(InputStream * inp) {
         else {
             for (;;) {
                 skip_object(inp);
-                read_whitespace(inp);
+                skip_whitespace(inp);
                 ch = skip_char(inp);
                 check_char(ch, ':');
                 skip_object(inp);
-                read_whitespace(inp);
+                skip_whitespace(inp);
                 ch = skip_char(inp);
                 if (ch == ',') continue;
                 check_char(ch, '}');
@@ -1005,7 +1016,7 @@ static void skip_object(InputStream * inp) {
             while (size) {
                 ch = read_stream(inp);
                 if (ch < 0) exception(ERR_JSON_SYNTAX);
-                buf_add(ch);
+                tmp_buf_add(ch);
                 size--;
             }
         }
@@ -1017,23 +1028,32 @@ static void skip_object(InputStream * inp) {
 
 char * json_read_object(InputStream * inp) {
     char * str;
-    buf_pos = 0;
+    tmp_buf_pos = 0;
     skip_object(inp);
-    buf_add(0);
-    str = (char *)loc_alloc(buf_pos);
-    memcpy(str, buf, buf_pos);
+    tmp_buf_add(0);
+    str = (char *)loc_alloc(tmp_buf_pos);
+    memcpy(str, tmp_buf, tmp_buf_pos);
     return str;
 }
 
 void json_skip_object(InputStream * inp) {
-    buf_pos = 0;
+    tmp_buf_pos = 0;
     skip_object(inp);
 }
 
 void json_test_char(InputStream * inp, int x) {
-    int ch = read_stream(inp);
-    if (x != MARKER_EOM) ignore_whitespace(ch, inp);
-    check_char(ch, x);
+    switch (x) {
+    case ':':
+    case ',':
+    case '{':
+    case '}':
+    case '[':
+    case ']':
+    case MARKER_EOA:
+        skip_whitespace(inp);
+        break;
+    }
+    check_char(read_stream(inp), x);
 }
 
 int json_peek(InputStream * inp) {
@@ -1057,8 +1077,8 @@ static void read_errno_param(InputStream * inp, void * x) {
 int read_error_object(InputStream * inp) {
     int no = 0;
     ErrorReport * err = NULL;
-    int ch = read_stream(inp);
-    ignore_whitespace(ch, inp);
+    int ch;
+    read_no_whitespace(ch, inp);
     if (ch == 'n') {
         json_test_char(inp, 'u');
         json_test_char(inp, 'l');
@@ -1073,7 +1093,6 @@ int read_error_object(InputStream * inp) {
         for (;;) {
             char name[256];
             json_read_string(inp, name, sizeof(name));
-            read_whitespace(inp);
             json_test_char(inp, ':');
             if (err == NULL) err = create_error_report();
             if (strcmp(name, "Code") == 0) {
@@ -1095,8 +1114,7 @@ int read_error_object(InputStream * inp) {
                 i->next = err->props;
                 err->props = i;
             }
-            ch = read_stream(inp);
-            ignore_whitespace(ch, inp);
+            read_no_whitespace(ch, inp);
             if (ch == ',') continue;
             check_char(ch, '}');
             break;

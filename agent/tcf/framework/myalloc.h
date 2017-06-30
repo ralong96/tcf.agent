@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -21,6 +21,10 @@
 #define D_myalloc
 
 #include <stdlib.h>
+
+#ifndef MEM_HEAP_LINK_SIZE
+#define MEM_HEAP_LINK_SIZE 0x10
+#endif
 
 extern void * loc_alloc(size_t size);
 extern void * loc_alloc_zero(size_t size);

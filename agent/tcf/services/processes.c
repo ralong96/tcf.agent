@@ -586,16 +586,8 @@ static void read_sigset_bit(InputStream * inp, void * args) {
 
 static void read_sigset(InputStream * inp, SigSet * set, int * not_null) {
     memset(set, 0, sizeof(SigSet));
-    if (json_peek(inp) == 'n') {
-        read_stream(inp);
-        json_test_char(inp, 'u');
-        json_test_char(inp, 'l');
-        json_test_char(inp, 'l');
-        *not_null = 0;
-    }
-    else if (json_peek(inp) == '[') {
-        json_read_array(inp, read_sigset_bit, set);
-        *not_null = 1;
+    if (json_peek(inp) == '[' || json_peek(inp) == 'n') {
+        *not_null = json_read_array(inp, read_sigset_bit, set);
     }
     else {
         unsigned bit;
