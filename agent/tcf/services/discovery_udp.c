@@ -484,9 +484,9 @@ static void udp_send_ack_slaves_one(SlaveInfo * s) {
         app_strz(str);
 
         while (n < slave_cnt) {
-            SlaveInfo * s = slave_info + n++;
-            if (s->last_req_slaves_time + PEER_DATA_RETENTION_PERIOD < timenow) continue;
-            send_packet(ifc, &s->addr);
+            SlaveInfo * sn = slave_info + n++;
+            if (sn->last_req_slaves_time + PEER_DATA_RETENTION_PERIOD < timenow) continue;
+            send_packet(ifc, &sn->addr);
         }
     }
 }

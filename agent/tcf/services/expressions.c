@@ -174,7 +174,7 @@ static void ini_value(Value * v) {
     v->ctx = expression_context;
 }
 
-void set_value(Value * v, void * data, size_t size, int big_endian) {
+void set_value(Value * v, void * data, size_t size, int be) {
     v->sym = NULL;
     v->reg = NULL;
     v->loc = NULL;
@@ -185,7 +185,7 @@ void set_value(Value * v, void * data, size_t size, int big_endian) {
     v->field_cb = NULL;
     v->sym_list = NULL;
     v->size = (ContextAddress)size;
-    v->big_endian = big_endian;
+    v->big_endian = be;
     v->binary_scale = 0;
     v->decimal_scale = 0;
     v->bit_stride = 0;
@@ -2216,7 +2216,7 @@ static void op_deref(int mode, Value * v) {
 
 #if ENABLE_Symbols
 static void evaluate_symbol_location(Symbol * sym, ContextAddress obj_addr,
-        ContextAddress index, LocationExpressionState ** loc, int * big_endian) {
+        ContextAddress index, LocationExpressionState ** loc, int * be) {
     LocationInfo * loc_info = NULL;
     StackFrame * frame_info = NULL;
     uint64_t args[2];
@@ -2230,12 +2230,12 @@ static void evaluate_symbol_location(Symbol * sym, ContextAddress obj_addr,
     }
     *loc = evaluate_location_expression(expression_context, frame_info,
         loc_info->value_cmds.cmds, loc_info->value_cmds.cnt, args, 2);
-    if (big_endian != NULL) *big_endian = loc_info->big_endian;
+    if (be != NULL) *be = loc_info->big_endian;
 }
 
 static void find_field(int mode,
         Symbol * class_sym, ContextAddress obj_addr, const char * name, const char * id,
-        Symbol ** field_sym, LocationExpressionState ** field_loc, int * big_endian) {
+        Symbol ** field_sym, LocationExpressionState ** field_loc, int * be) {
     Symbol ** children = NULL;
     Symbol ** inheritance = NULL;
     int count = 0;
@@ -2260,12 +2260,12 @@ static void find_field(int mode,
         }
         if ((name != NULL && s != NULL && strcmp(s, name) == 0) ||
                 (id != NULL && strcmp(symbol2id(children[i]), id) == 0)) {
-            if (mode == MODE_NORMAL) evaluate_symbol_location(children[i], obj_addr, 0, field_loc, big_endian);
+            if (mode == MODE_NORMAL) evaluate_symbol_location(children[i], obj_addr, 0, field_loc, be);
             *field_sym = children[i];
             return;
         }
         if (sym_class == SYM_CLASS_VARIANT_PART || sym_class == SYM_CLASS_VARIANT) {
-            find_field(mode, children[i], obj_addr, name, id, field_sym, field_loc, big_endian);
+            find_field(mode, children[i], obj_addr, name, id, field_sym, field_loc, be);
             if (*field_sym != NULL) return;
         }
     }
@@ -2277,7 +2277,7 @@ static void find_field(int mode,
             if (x->stk_pos != 1) error(ERR_INV_EXPRESSION, "Cannot evaluate symbol address");
             addr = (ContextAddress)x->stk[0];
         }
-        find_field(mode, inheritance[i], addr, name, id, field_sym, field_loc, big_endian);
+        find_field(mode, inheritance[i], addr, name, id, field_sym, field_loc, be);
         if (*field_sym != NULL) return;
     }
 }
@@ -2299,18 +2299,18 @@ static void op_field(int mode, Value * v) {
         Symbol * sym = NULL;
         int sym_class = 0;
         LocationExpressionState * loc = NULL;
-        int big_endian = 0;
+        int be = 0;
         void * struct_value = NULL;
         ContextAddress struct_size = 0;
 
         if (v->remote) {
-            find_field(mode, v->type, v->address, name, id, &sym, &loc, &big_endian);
+            find_field(mode, v->type, v->address, name, id, &sym, &loc, &be);
         }
         else {
             load_value(v);
             struct_value = v->value;
             struct_size = v->size;
-            find_field(mode, v->type, 0, name, id, &sym, &loc, &big_endian);
+            find_field(mode, v->type, 0, name, id, &sym, &loc, &be);
         }
         if (sym == NULL) {
             error(ERR_SYM_NOT_FOUND, "Invalid field name or ID");
@@ -2352,9 +2352,9 @@ static void op_field(int mode, Value * v) {
                         error(errno, "Cannot get stack frame info");
                     }
                     read_location_pieces(expression_context, frame_info,
-                        loc->pieces, loc->pieces_cnt, big_endian, &value, &size);
+                        loc->pieces, loc->pieces_cnt, be, &value, &size);
                     if (size > v->size) size = (size_t)v->size;
-                    set_value(v, value, size, big_endian);
+                    set_value(v, value, size, be);
                     sign_extend(v, loc);
                 }
                 else {
@@ -2824,23 +2824,23 @@ static void op_funccall(int mode, Value * v) {
             if (read_reg_value(frame_info, call_info->stak_pointer, &sp) < 0) exception(errno);
             sp -= call_info->red_zone_size;
             for (i = 0; i < state->args_cnt; i++) {
-                Value * v = state->args + i;
-                switch (v->type_class) {
+                Value * arg = state->args + i;
+                switch (arg->type_class) {
                 case TYPE_CLASS_CARDINAL:
                 case TYPE_CLASS_INTEGER:
                 case TYPE_CLASS_POINTER:
                 case TYPE_CLASS_ENUMERATION:
-                    arg_vals[FUNCCALL_ARG_ARGS + i] = to_uns(MODE_NORMAL, v);
+                    arg_vals[FUNCCALL_ARG_ARGS + i] = to_uns(MODE_NORMAL, arg);
                     break;
                 default:
-                    if (v->remote) {
-                        arg_vals[FUNCCALL_ARG_ARGS + i] = v->address;
+                    if (arg->remote) {
+                        arg_vals[FUNCCALL_ARG_ARGS + i] = arg->address;
                     }
                     else {
-                        sp -= v->size;
+                        sp -= arg->size;
                         while (sp % 8) sp--;
                         if (context_write_mem(state->ctx, (ContextAddress)sp,
-                                v->value, (size_t)v->size) < 0) exception(errno);
+                                arg->value, (size_t)arg->size) < 0) exception(errno);
                         arg_vals[FUNCCALL_ARG_ARGS + i] = sp;
                     }
                     break;
