@@ -74,6 +74,7 @@ struct Channel {
     int disable_zero_copy;              /* Don't send ZeroCopy in Hello message even if we support it */
     int incoming;                       /* Created by an incoming connect */
     ClientConnection client;
+    int notified_open;
 
     /* Populated by channel implementation */
     void (*start_comm)(Channel *);      /* Start communication */

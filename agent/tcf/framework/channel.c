@@ -215,6 +215,9 @@ void notify_channel_created(Channel * c) {
 void notify_channel_opened(Channel * c) {
     unsigned i;
     assert(!is_channel_closed(c));
+    assert(c->state == ChannelStateConnected);
+    if (c->notified_open) return;
+    c->notified_open = 1;
     for (i = 0; i < open_listeners_cnt; i++) {
         open_listeners[i](c);
     }
@@ -223,7 +226,9 @@ void notify_channel_opened(Channel * c) {
 
 void notify_channel_closed(Channel * c) {
     unsigned i;
-    assert(is_channel_closed(c));
+    assert(c->state != ChannelStateConnected);
+    if (!c->notified_open) return;
+    c->notified_open = 0;
     notify_client_disconnected(&c->client);
     for (i = 0; i < close_listeners_cnt; i++) {
         close_listeners[i](c);
