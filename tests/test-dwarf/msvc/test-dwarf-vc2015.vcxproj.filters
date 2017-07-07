@@ -234,6 +234,9 @@
     <ClCompile Include="..\..\..\agent\tcf\services\portforward_service.c">
       <Filter>services</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\agent\tcf\framework\client.c">
+      <Filter>framework</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\agent\tcf\framework\asyncreq.h">
@@ -452,6 +455,9 @@
     </ClInclude>
     <ClInclude Include="..\..\..\agent\tcf\services\portforward_service.h">
       <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\agent\tcf\framework\client.h">
+      <Filter>framework</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
