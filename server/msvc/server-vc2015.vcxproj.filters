@@ -189,6 +189,21 @@
     <ClCompile Include="..\..\agent\tcf\services\portforward_service.c">
       <Filter>services</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\framework\channel_lws.c">
+      <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\framework\client.c">
+      <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\framework\plugins.c">
+      <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\framework\signames.c">
+      <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\framework\waitpid.c">
+      <Filter>framework</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\tcf\services\context-proxy.h">
@@ -371,6 +386,54 @@
     </ClInclude>
     <ClInclude Include="..\..\agent\tcf\main\framework-ext.h">
       <Filter>main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\channel_lws.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\channel_lws_ext.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\client.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\context-dispatcher.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\context-dispatcher-ext.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\context-ext.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\context-mux.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\context-mux-ext.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\cpudefs-ext.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\cpudefs-mdep-mux.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\cpudefs-mux.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\mdep-fs.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\mdep-inet.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\mdep-threads.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\pid-hash.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\waitpid.h">
+      <Filter>framework</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

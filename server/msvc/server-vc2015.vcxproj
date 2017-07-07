@@ -185,7 +185,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\agent\tcf\framework\channel_lws.c" />
+    <ClCompile Include="..\..\agent\tcf\framework\client.c" />
+    <ClCompile Include="..\..\agent\tcf\framework\plugins.c" />
+    <ClCompile Include="..\..\agent\tcf\framework\signames.c" />
     <ClCompile Include="..\..\agent\tcf\framework\sigsets.c" />
+    <ClCompile Include="..\..\agent\tcf\framework\waitpid.c" />
     <ClCompile Include="..\..\agent\tcf\services\disassembly.c" />
     <ClCompile Include="..\..\agent\tcf\services\elf-symbols.c" />
     <ClCompile Include="..\tcf\services\context-proxy.c" />
@@ -244,7 +249,23 @@
     <ClCompile Include="..\..\agent\system\Windows\tcf\pthreads-win32.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\agent\tcf\framework\channel_lws.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\channel_lws_ext.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\client.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\context-dispatcher-ext.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\context-dispatcher.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\context-ext.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\context-mux-ext.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\context-mux.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\cpudefs-ext.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\cpudefs-mdep-mux.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\cpudefs-mux.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\mdep-fs.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\mdep-inet.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\mdep-threads.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\pid-hash.h" />
     <ClInclude Include="..\..\agent\tcf\framework\sigsets.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\waitpid.h" />
     <ClInclude Include="..\..\agent\tcf\main\framework-ext.h" />
     <ClInclude Include="..\..\agent\tcf\services\disassembly.h" />
     <ClInclude Include="..\..\agent\tcf\services\elf-symbols-ext.h" />
