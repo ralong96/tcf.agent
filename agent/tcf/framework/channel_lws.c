@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2016 Wind River Systems, Inc.
+ * Copyright (c) 2016-2017 Wind River Systems, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -181,7 +181,7 @@ typedef struct SessionData {
 
 typedef struct WSIUserData {
     SessionData * data;         /* session data */
-    ChannelConnectInfo * args;         /* connection args (client connection only) */
+    ChannelConnectInfo * args;  /* connection args (client connection only) */
     void * cb_arg;
 } WSIUserData;
 
@@ -1577,7 +1577,7 @@ void channel_lws_get_properties(Channel * channel, char *** prop_names, char ***
     *prop_cnt = c->data->prop_cnt;
 }
 
-void ini_channel_lws() {
+void ini_channel_lws(void) {
     static int initialized = 0;
     pthread_t thread;
 #if ENABLE_Epoll
@@ -1609,5 +1609,5 @@ void ini_channel_lws() {
     dummy_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     pthread_mutex_init(&lws_list_mutex, NULL);
     pthread_create(&thread, NULL, lws_service_thread, NULL);
-    }
+}
 #endif /* ENABLE_LibWebSockets */
