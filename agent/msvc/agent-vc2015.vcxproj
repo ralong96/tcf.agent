@@ -297,6 +297,7 @@
     <ClCompile Include="..\tcf\framework\channel.c" />
     <ClCompile Include="..\tcf\framework\channel_pipe.c" />
     <ClCompile Include="..\tcf\framework\channel_tcp.c" />
+    <ClCompile Include="..\tcf\framework\client.c" />
     <ClCompile Include="..\tcf\framework\context.c" />
     <ClCompile Include="..\tcf\framework\context-dispatcher.c" />
     <ClCompile Include="..\tcf\framework\cpudefs.c" />
@@ -346,6 +347,7 @@
     <ClCompile Include="..\tcf\services\memorymap.c" />
     <ClCompile Include="..\tcf\services\memoryservice.c" />
     <ClCompile Include="..\tcf\services\pathmap.c" />
+    <ClInclude Include="..\tcf\framework\client.h" />
     <ClInclude Include="..\tcf\services\portforward_proxy.c" />
     <ClInclude Include="..\tcf\services\portforward_service.c" />
     <ClCompile Include="..\tcf\services\processes.c" />

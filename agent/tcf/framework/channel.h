@@ -23,6 +23,7 @@
 #include <tcf/framework/streams.h>
 #include <tcf/framework/link.h>
 #include <tcf/framework/peer.h>
+#include <tcf/framework/client.h>
 #include <tcf/framework/shutdown.h>
 
 extern ShutdownInfo channel_shutdown;
@@ -72,6 +73,7 @@ struct Channel {
     int state;                          /* Current state */
     int disable_zero_copy;              /* Don't send ZeroCopy in Hello message even if we support it */
     int incoming;                       /* Created by an incoming connect */
+    ClientConnection client;
 
     /* Populated by channel implementation */
     void (*start_comm)(Channel *);      /* Start communication */

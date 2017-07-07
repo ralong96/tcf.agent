@@ -369,6 +369,9 @@
     <ClCompile Include="..\tcf\main\framework.c">
       <Filter>main</Filter>
     </ClCompile>
+    <ClCompile Include="..\tcf\framework\client.c">
+      <Filter>framework</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\tcf\framework\asyncreq.h">
@@ -722,6 +725,9 @@
     </ClInclude>
     <ClInclude Include="..\tcf\services\portforward_service.h">
       <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="..\tcf\framework\client.h">
+      <Filter>framework</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -68,10 +68,11 @@ LINK channel_server_root = TCF_LIST_INIT(channel_server_root);
 
 #define BCAST_MAGIC 0x1463e328
 
-#define out2bcast(A)    ((TCFBroadcastGroup *)((char *)(A) - offsetof(TCFBroadcastGroup, out)))
-#define bclink2channel(A) ((Channel *)((char *)(A) - offsetof(Channel, bclink)))
+#define out2bcast(A)        ((TCFBroadcastGroup *)((char *)(A) - offsetof(TCFBroadcastGroup, out)))
+#define bclink2channel(A)   ((Channel *)((char *)(A) - offsetof(Channel, bclink)))
 #define susplink2channel(A) ((Channel *)((char *)(A) - offsetof(Channel, susplink)))
-#define chan2lock(A) ((ChannelLock *)((char *)(A) - offsetof(ChannelLock, link)))
+#define chan2lock(A)        ((ChannelLock *)((char *)(A) - offsetof(ChannelLock, link)))
+#define client2channel(A)   ((Channel *)((char *)(A) - offsetof(Channel, client)))
 
 static ChannelTransport * channel_transport = NULL;
 static unsigned channel_transport_cnt = 0;
@@ -193,8 +194,19 @@ void add_channel_close_listener(ChannelCloseListener listener) {
     close_listeners[close_listeners_cnt++] = listener;
 }
 
+static void client_connection_lcb(ClientConnection * c) {
+    channel_lock(client2channel(c));
+}
+
+static void client_connection_ucb(ClientConnection * c) {
+    channel_unlock(client2channel(c));
+}
+
 void notify_channel_created(Channel * c) {
     unsigned i;
+    assert(client2channel(&c->client) == c);
+    c->client.lock = client_connection_lcb;
+    c->client.unlock = client_connection_ucb;
     for (i = 0; i < create_listeners_cnt; i++) {
         create_listeners[i](c);
     }
@@ -202,13 +214,17 @@ void notify_channel_created(Channel * c) {
 
 void notify_channel_opened(Channel * c) {
     unsigned i;
+    assert(!is_channel_closed(c));
     for (i = 0; i < open_listeners_cnt; i++) {
         open_listeners[i](c);
     }
+    notify_client_connected(&c->client);
 }
 
 void notify_channel_closed(Channel * c) {
     unsigned i;
+    assert(is_channel_closed(c));
+    notify_client_disconnected(&c->client);
     for (i = 0; i < close_listeners_cnt; i++) {
         close_listeners[i](c);
     }

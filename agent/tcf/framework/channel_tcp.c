@@ -92,7 +92,7 @@
 typedef struct ChannelTCP ChannelTCP;
 
 struct ChannelTCP {
-    Channel * chan;         /* Public channel information - must be first */
+    Channel * chan;         /* Public channel information */
     int magic;              /* Magic number */
     int socket;             /* Socket file descriptor */
     struct sockaddr * addr_buf; /* Socket remote address */

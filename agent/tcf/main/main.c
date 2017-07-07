@@ -108,7 +108,7 @@ static unsigned int idle_timeout;
 static unsigned int idle_count;
 
 static void check_idle_timeout(void * args) {
-    if (list_is_empty(&channel_root)) {
+    if (list_is_empty(&client_connection_root)) {
         idle_count++;
         if (idle_count > idle_timeout) {
             trace(LOG_ALWAYS, "No connections for %d seconds, shutting down", idle_timeout);

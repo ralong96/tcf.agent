@@ -60,8 +60,7 @@ typedef struct GdbClient {
     uint8_t * buf;
     AsyncReqInfo req;
     GdbServer * server;
-    Channel channel;
-    int lock_cnt;
+    ClientConnection client;
     int closed;
 
     /* Command packet */
@@ -104,7 +103,7 @@ typedef struct GdbThread {
 
 #define EXT(ctx) ((LINK *)((char *)(ctx) + context_extension_offset))
 
-#define channel2gdb(c)  ((GdbClient *)((char *)(c) - offsetof(GdbClient, channel)))
+#define client2gdb(c)  ((GdbClient *)((char *)(c) - offsetof(GdbClient, client)))
 
 #define ALL_THREADS (~0u)
 
@@ -315,22 +314,24 @@ static void start_client(void * args) {
     }
 }
 
-static void dispose_client(GdbClient * c) {
-    GdbServer * s = c->server;
-
+static void close_client(GdbClient * c) {
     if (!c->closed) {
         c->closed = 1;
         closesocket(c->req.u.sio.sock);
-        notify_channel_closed(&c->channel);
+        notify_client_disconnected(&c->client);
     }
+}
 
-    if (c->lock_cnt > 0) return;
+static void dispose_client(ClientConnection * cc) {
+    GdbClient * c = client2gdb(cc);
+    GdbServer * s = c->server;
+
+    assert(c->closed);
 
     while (!list_is_empty(&c->link_c2t)) {
         free_thread(link_c2t(c->link_c2t.next));
     }
 
-    list_remove(&c->channel.chanlink);
     list_remove(&c->link_s2c);
     loc_free(c->cmd_buf);
     loc_free(c->buf);
@@ -826,41 +827,20 @@ static void recv_done(void * args) {
     GdbClient * c = (GdbClient *)((AsyncReqInfo *)args)->client_data;
     if (c->req.error) {
         trace(LOG_ALWAYS, "GDB Server connection closed: %s", errno_to_str(c->req.error));
-        dispose_client(c);
+        close_client(c);
     }
     else if (c->req.u.sio.rval == 0) {
-        dispose_client(c);
+        close_client(c);
     }
     else {
         if (read_packet(c, c->req.u.sio.rval) < 0) {
             trace(LOG_ALWAYS, "GDB Server connection terminated: %s", errno_to_str(errno));
-            dispose_client(c);
+            close_client(c);
             return;
         }
         c->req.u.sio.rval = 0;
         async_req_post(&c->req);
     }
-}
-
-static void gdb_lock(Channel * channel) {
-    GdbClient * c = channel2gdb(channel);
-    assert(is_dispatch_thread());
-    c->lock_cnt++;
-}
-
-static void gdb_unlock(Channel * channel) {
-    GdbClient * c = channel2gdb(channel);
-    assert(is_dispatch_thread());
-    assert(c->lock_cnt > 0);
-    c->lock_cnt--;
-    if (c->lock_cnt == 0) {
-        dispose_client(c);
-    }
-}
-
-static int gdb_is_closed(Channel * channel) {
-    GdbClient * c = channel2gdb(channel);
-    return c->closed;
 }
 
 static void accept_done(void * args) {
@@ -889,18 +869,15 @@ static void accept_done(void * args) {
     c->req.u.sio.bufsz = c->buf_max;
     c->req.u.sio.flags = 0;
     c->thread_id_cnt = 1;
-    c->channel.lock = gdb_lock;
-    c->channel.unlock = gdb_unlock;
-    c->channel.is_closed = gdb_is_closed;
     list_init(&c->link_c2t);
     list_add_last(&c->link_s2c, &s->link_s2c);
-    list_add_last(&c->channel.chanlink, &channel_root);
-    notify_channel_created(&c->channel);
+    c->client.dispose = dispose_client;
+    notify_client_connected(&c->client);
     async_req_post(&s->req);
 
     if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt)) < 0) {
         trace(LOG_ALWAYS, "GDB Server setsockopt failed: %s", errno_to_str(errno));
-        dispose_client(c);
+        close_client(c);
         return;
     }
 
@@ -912,7 +889,6 @@ static void accept_done(void * args) {
     }
 
     post_event(start_client, c);
-    notify_channel_opened(&c->channel);
 }
 
 static void event_context_created(Context * ctx, void * args) {

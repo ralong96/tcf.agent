@@ -53,7 +53,7 @@ typedef struct ServerPIPE ServerPIPE;
 typedef struct ServerInstance ServerInstance;
 
 struct ChannelPIPE {
-    Channel * chan;           /* Public channel information - must be first */
+    Channel * chan;         /* Public channel information */
     int magic;              /* Magic number */
     int lock_cnt;           /* Stream lock count, when > 0 channel cannot be deleted */
     int fd_inp;
