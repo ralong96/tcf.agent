@@ -1348,6 +1348,9 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
         int p_out[2];
         int p_err[2];
 
+        p_inp[0] = p_inp[1] = -1;
+        p_out[0] = p_out[1] = -1;
+        p_err[0] = p_err[1] = -1;
         if (pipe(p_inp) < 0 || pipe(p_out) < 0 || pipe(p_err) < 0) err = errno;
 
         if (err == 0 && (p_inp[0] < 3 || p_out[1] < 3 || p_err[1] < 3)) {
