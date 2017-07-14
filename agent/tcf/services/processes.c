@@ -489,7 +489,7 @@ static void command_attach(char * token, Channel * c) {
     else {
         AttachDoneArgs * data = (AttachDoneArgs *)loc_alloc_zero(sizeof *data);
         data->c = c;
-        strcpy(data->token, token);
+        strlcpy(data->token, token, sizeof(data->token));
         if (context_attach(pid, attach_done, data, 0) == 0) {
             channel_lock_with_msg(c, PROCESSES[0]);
             return;
@@ -1678,7 +1678,7 @@ static void command_start(char * token, Channel * c, void * x) {
             int mode = params.attach_mode;
             AttachDoneArgs * data = (AttachDoneArgs *)loc_alloc_zero(sizeof *data);
             data->c = c;
-            strcpy(data->token, token);
+            strlcpy(data->token, token, sizeof(data->token));
             data->set_dont_stop = params.set_dont_stop;
             data->set_dont_pass = params.set_dont_pass;
             sigset_copy(&data->sig_dont_stop, &params.sig_dont_stop);

@@ -1577,7 +1577,8 @@ static void command_get_context(char * token, Channel * c) {
 
     if (err == 0 && pid != 0) {
         char bf[256];
-        write_context(&c->out, id, parent == 0 ? NULL : strcpy(bf, pid2id(parent, 0)), dir);
+        if (parent != 0) strlcpy(bf, pid2id(parent, 0), sizeof(bf));
+        write_context(&c->out, id, parent == 0 ? NULL : bf, dir);
         write_stream(&c->out, 0);
     }
     else {

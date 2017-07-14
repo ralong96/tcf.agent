@@ -296,7 +296,7 @@ const char * symbol2id(const Symbol * sym) {
         char base[sizeof(buf)];
         assert(sym->ctx == sym->base->ctx);
         assert(sym->sym_class == SYM_CLASS_TYPE);
-        strcpy(base, symbol2id(sym->base));
+        strlcpy(base, symbol2id(sym->base), sizeof(base));
         snprintf(buf, sizeof(buf), "@P%" PRIX64 ".%s", (uint64_t)sym->length, base);
     }
     else {
@@ -845,7 +845,7 @@ static void add_cache_symbol(Context * ctx, ULONG64 pc, PCSTR name, Symbol * sym
     SymbolCacheEntry * entry = (SymbolCacheEntry *)loc_alloc_zero(sizeof(SymbolCacheEntry));
     assert(!ctx->mem->exited);
     entry->pc = pc;
-    strcpy(entry->name, name);
+    strlcpy(entry->name, name, sizeof(entry->name));
     entry->error = get_error_report(error);
     if (!error) {
         entry->frame_relative = sym->frame > 0;

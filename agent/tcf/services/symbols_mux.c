@@ -211,7 +211,7 @@ const char * symbol2id(const Symbol * sym) {
         buf[1] = 'M';
         buf[2] = (uint8_t)reader->reader_index + '0';
         buf[3] = '.';
-        strcpy(&buf[4], id);
+        strlcpy(&buf[4], id, sizeof(buf) - 4);
         return buf;
     }
     return id;

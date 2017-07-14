@@ -209,7 +209,7 @@ static void command_run_test(char * token, Channel * c) {
 #if ENABLE_RCBP_TEST
         RunTestDoneArgs * data = (RunTestDoneArgs *)loc_alloc_zero(sizeof(RunTestDoneArgs));
         data->c = c;
-        strcpy(data->token, token);
+        strlcpy(data->token, token, sizeof(data->token));
         channel_lock_with_msg(c, DIAGNOSTICS);
         if (run_test_process(run_test_done, data) == 0) return;
         err = errno;

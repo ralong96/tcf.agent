@@ -128,7 +128,7 @@ static OpenFileInfo * create_open_file_info(Channel * ch, char * path, int file,
         }
         if (p == NULL) break;
     }
-    if (path != NULL) strcpy(h->path, path);
+    if (path != NULL) strlcpy(h->path, path, sizeof(h->path));
     h->file = file;
     h->dir = dir;
     h->inp = &ch->inp;
