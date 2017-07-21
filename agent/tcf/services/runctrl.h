@@ -191,6 +191,7 @@ extern int get_stepping_mode(Context * ctx);
  * The name is only applicable if the context is not intercepted.
  */
 extern void set_context_state_name(Context * ctx, const char * name);
+extern const char * get_context_state_name(Context * ctx);
 
 /**
  * Check that no safe events are pending, run control is not locked,

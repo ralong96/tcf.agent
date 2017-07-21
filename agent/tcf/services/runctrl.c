@@ -2651,6 +2651,11 @@ void set_context_state_name(Context * ctx, const char * name) {
     }
 }
 
+const char * get_context_state_name(Context * ctx) {
+    ContextExtensionRC * ext = EXT(ctx);
+    return ext->state_name;
+}
+
 int is_run_ctrl_idle(void) {
     if (safe_event_list == NULL && run_ctrl_lock_cnt == 0 &&
             run_safe_events_posted == 0 && sync_run_state_event_posted == 0) {
