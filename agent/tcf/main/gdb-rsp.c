@@ -42,8 +42,10 @@
 */
 
 #ifndef DEBUG_RSP
-#  define DEBUG_RSP 0
+#  define DEBUG_RSP 1
 #endif
+
+#define ID_ANY ~0u
 
 typedef struct GdbServer {
     LINK link_a2s;
@@ -84,9 +86,9 @@ typedef struct GdbClient {
     unsigned cur_g_pid;
     unsigned cur_g_tid;
     int no_ack_mode;
-    int non_stop;
     int extended;
     int stopped;
+    int waiting;
 } GdbClient;
 
 typedef struct GdbProcess {
@@ -186,11 +188,6 @@ static GdbProcess * add_process(GdbClient * c, Context * ctx) {
     p->ctx = ctx;
     list_init(&p->link_p2t);
     list_add_last(&p->link_c2p, &c->link_c2p);
-    if (!c->non_stop && suspend_debug_context(ctx) < 0) {
-        char * name = ctx->name;
-        if (name == NULL) name = ctx->id;
-        trace(LOG_ALWAYS, "GDB Server: cannot suspend context %s: %s", errno_to_str(errno));
-    }
     return p;
 }
 
@@ -357,6 +354,7 @@ static void dispose_server(GdbServer * s) {
 
 static void lock_threads(GdbClient * c) {
     LINK * l;
+    assert(!c->closed);
     if (c->stopped) return;
     for (l = c->link_c2p.next; l != &c->link_c2p; l = l->next) {
         LINK * m;
@@ -365,6 +363,7 @@ static void lock_threads(GdbClient * c) {
             GdbThread * t = link_p2t(m);
             Context * ctx = t->ctx;
             assert(!t->locked);
+            assert(!t->ctx->exited);
             run_ctrl_ctx_lock(ctx);
             if (suspend_debug_context(ctx) < 0) {
                 char * name = ctx->name;
@@ -387,6 +386,7 @@ static void unlock_threads(GdbClient * c) {
             GdbThread * t = link_p2t(m);
             Context * ctx = t->ctx;
             assert(t->locked);
+            assert(!t->ctx->exited);
             run_ctrl_ctx_unlock(ctx);
             t->locked = 0;
         }
@@ -398,13 +398,13 @@ static void attach_process(GdbProcess * p) {
     GdbClient * c = p->client;
     LINK * l;
     if (p->attached) return;
+    p->attached = 1;
     for (l = context_root.next; l != &context_root; l = l->next) {
         Context * ctx = ctxl2ctxp(l);
         if (!ctx->exited && context_has_state(ctx) && context_get_group(ctx, CONTEXT_GROUP_PROCESS) == p->ctx) {
             add_thread(c, ctx);
         }
     }
-    p->attached = 1;
 }
 
 static void detach_process(GdbProcess * p) {
@@ -418,18 +418,16 @@ static void detach_process(GdbProcess * p) {
 static void start_client(void * args) {
     LINK * l;
     unsigned has_state_cnt = 0;
-    unsigned intercepted_cnt = 0;
     GdbClient * c = (GdbClient *)args;
 
     for (l = context_root.next; l != &context_root; l = l->next) {
         Context * ctx = ctxl2ctxp(l);
         if (!ctx->exited && context_has_state(ctx)) {
-            if (is_intercepted(ctx)) intercepted_cnt++;
             has_state_cnt++;
         }
     }
 
-    if (c->start_timer > 10 || (has_state_cnt > 0 && intercepted_cnt == has_state_cnt)) {
+    if (c->start_timer > 10 || has_state_cnt > 0) {
 
         /* Select initial debug target */
         for (l = context_root.next; l != &context_root; l = l->next) {
@@ -542,18 +540,6 @@ static void add_res_ptid(GdbClient * c, unsigned pid, unsigned tid) {
     add_res_hex(c, tid);
 }
 
-static void add_res_checksum(GdbClient * c) {
-    unsigned i;
-    unsigned char sum = 0;
-    assert(c->res_pos > 0);
-    assert(c->res_buf[0] == '$');
-    for (i = 1; i < c->res_pos; i++) {
-        sum += (unsigned char)c->res_buf[i];
-    }
-    add_res_ch_no_esc(c, '#');
-    add_res_hex8(c, sum);
-}
-
 static int add_res_target_info(GdbClient * c) {
     const char * regs = get_regs(c);
     if (regs == NULL) return -1;
@@ -589,6 +575,22 @@ static void add_res_reg_value(GdbClient * c, GdbThread * t, const char * name, u
         }
         i++;
     }
+}
+
+static int send_res(GdbClient * c) {
+    unsigned i;
+    unsigned char sum = 0;
+    assert(c->res_pos > 0);
+    assert(c->res_buf[0] == '$');
+    for (i = 1; i < c->res_pos; i++) {
+        sum += (unsigned char)c->res_buf[i];
+    }
+    add_res_ch_no_esc(c, '#');
+    add_res_hex8(c, sum);
+#if DEBUG_RSP
+    printf("GDB <- %.*s\n", c->res_pos, c->res_buf);
+#endif
+    return send(c->req.u.sio.sock, c->res_buf, c->res_pos, 0);
 }
 
 static char * get_cmd_word(GdbClient * c, char ** p) {
@@ -672,7 +674,10 @@ static void get_cmd_ptid(GdbClient * c, char ** pp, unsigned * res_pid, unsigned
         s++;
     }
     tid = get_cmd_uint(c, &s);
-    if (neg_pid || pid == 0) {
+    if (neg_pid) {
+        pid = ID_ANY;
+    }
+    else if (pid == 0) {
         LINK * l;
         pid = 0;
         for (l = c->link_c2p.next; l != &c->link_c2p; l = l->next) {
@@ -683,7 +688,10 @@ static void get_cmd_ptid(GdbClient * c, char ** pp, unsigned * res_pid, unsigned
             }
         }
     }
-    if (neg_tid || tid == 0) {
+    if (neg_tid || pid == ID_ANY) {
+        tid = ID_ANY;
+    }
+    else if (tid == 0) {
         GdbProcess * p = find_process_pid(c, pid);
         tid = 0;
         if (p != NULL && !list_is_empty(&p->link_p2t)) {
@@ -911,24 +919,10 @@ static int handle_q_command(GdbClient * c) {
             t = find_thread(c, pid, tid);
             if (t != NULL) {
                 Context * ctx = t->ctx;
-                const char * name = NULL;
-                const char * state = NULL;
-                if (ctx->name != NULL) {
-                    name = ctx->name;
-                }
-                else {
-                    name = ctx->id;
-                }
-                if (ctx->stopped) {
-                    state = context_suspend_reason(ctx);
-                    if (state == NULL) state = "Suspended";
-                }
-                else {
-                    state = get_context_state_name(ctx);
-                    if (state == NULL) state = "Running";
-                }
-                m = name;
-                if (*state) {
+                const char * state = get_context_state_name(ctx);
+                m = ctx->name;
+                if (m == NULL) m = ctx->id;
+                if (state != NULL && *state) {
                     m = tmp_strdup2(m, ": ");
                     m = tmp_strdup2(m, state);
                 }
@@ -990,22 +984,6 @@ static int handle_q_command(GdbClient * c) {
 static int handle_Q_command(GdbClient * c) {
     char * s = c->cmd_buf + 2;
     char * w = get_cmd_word(c, &s);
-    if (strcmp(w, "NonStop") == 0) {
-        if (s + 2 == c->cmd_buf + c->cmd_end) {
-            if (strncmp(s, ":0", 2) == 0) {
-                add_res_str(c, "OK");
-                c->non_stop = 0;
-                return 0;
-            }
-            if (strncmp(s, ":1", 2) == 0) {
-                add_res_str(c, "OK");
-                c->non_stop = 1;
-                return 0;
-            }
-        }
-        add_res_str(c, "E01");
-        return 0;
-    }
     if (strcmp(w, "StartNoAckMode") == 0) {
         add_res_str(c, "OK");
         c->no_ack_mode = 1;
@@ -1029,25 +1007,18 @@ static int handle_H_command(GdbClient * c) {
 }
 
 static int handle_qm_command(GdbClient * c) {
-    if (c->non_stop) {
-#if 0
-        LINK * l;
-        for (l = c->link_c2t.next; l != &c->link_c2t; l = l->next) {
-            GdbThread * t = link_c2t(l);
-            if (is_intercepted(t->ctx)) {
-
-            }
-        }
-#endif
-    }
-    else {
-        GdbThread * t = find_thread(c, c->cur_g_pid, c->cur_g_tid);
-        if (t != NULL) {
+    GdbThread * t = find_thread(c, c->cur_g_pid, c->cur_g_tid);
+    if (t != NULL) {
+        if (is_intercepted(t->ctx)) {
             add_res_str(c, "S00");
-            return 0;
         }
-        add_res_str(c, "W00");
+        else {
+            suspend_debug_context(t->ctx);
+            c->waiting = 1;
+        }
+        return 0;
     }
+    add_res_str(c, "W00");
     return 0;
 }
 
@@ -1060,20 +1031,101 @@ static int handle_v_command(GdbClient * c) {
             GdbProcess * p = find_process_pid(c, pid);
             if (p != NULL) {
                 if (!p->attached) attach_process(p);
-                if (list_is_empty(&p->link_p2t) || c->non_stop) {
-                    add_res_str(c, "OK");
+                if (list_is_empty(&p->link_p2t)) {
+                    add_res_str(c, "N");
                 }
                 else {
                     GdbThread * t = link_p2t(p->link_p2t.next);
-                    lock_threads(c);
-                    c->cur_g_pid = p->pid;
-                    c->cur_g_tid = t->tid;
-                    add_res_str(c, "S00");
+                    if (is_intercepted(t->ctx)) {
+                        c->cur_g_pid = p->pid;
+                        c->cur_g_tid = t->tid;
+                        add_res_str(c, "S00");
+                    }
+                    else {
+                        suspend_debug_context(t->ctx);
+                        c->waiting = 1;
+                    }
                 }
                 return 0;
             }
         }
         add_res_str(c, "E01");
+        return 0;
+    }
+    if (strcmp(w, "Cont?") == 0) {
+        add_res_str(c, "vCont;c;C;s;S;t;r");
+        return 0;
+    }
+    if (strcmp(w, "Cont") == 0) {
+        while (*s++ == ';') {
+            char mode = *s++;
+            unsigned sig = 0;
+            ContextAddress range_fr = 0;
+            ContextAddress range_to = 0;
+            switch (mode) {
+            case 'C':
+            case 'S':
+                sig = get_cmd_uint8(c, &s);
+                break;
+            case 'r':
+                range_fr = (ContextAddress)get_cmd_uint64(c, &s);
+                if (*s == ',') {
+                    s++;
+                    range_to = (ContextAddress)get_cmd_uint64(c, &s);
+                }
+                break;
+            }
+            if (*s == ':') {
+                s++;
+                get_cmd_ptid(c, &s, &c->cur_g_pid, &c->cur_g_tid);
+            }
+            if (c->cur_g_tid == ID_ANY) {
+                GdbProcess * p = find_process_pid(c, c->cur_g_pid);
+                switch (mode) {
+                case 'c':
+                    continue_debug_context(p->ctx, NULL, RM_RESUME, 1, 0, 0);
+                    break;
+                case 't':
+                    suspend_debug_context(p->ctx);
+                    break;
+                }
+            }
+            else {
+                GdbThread * t = find_thread(c, c->cur_g_pid, c->cur_g_tid);
+                if (t != NULL) {
+                    sigset_clear(&t->ctx->pending_signals);
+                    switch (mode) {
+                    case 'c':
+                        continue_debug_context(t->ctx, NULL, RM_RESUME, 1, 0, 0);
+                        break;
+                    case 'C':
+                        sigset_set(&t->ctx->pending_signals, sig, 1);
+                        continue_debug_context(t->ctx, NULL, RM_RESUME, 1, 0, 0);
+                        break;
+                    case 's':
+                        continue_debug_context(t->ctx, NULL, RM_STEP_INTO, 1, 0, 0);
+                        break;
+                    case 'S':
+                        sigset_set(&t->ctx->pending_signals, sig, 1);
+                        continue_debug_context(t->ctx, NULL, RM_STEP_INTO, 1, 0, 0);
+                        break;
+                    case 'r':
+                        continue_debug_context(t->ctx, NULL, RM_STEP_INTO_RANGE, 1, range_fr, range_to);
+                        break;
+                    case 't':
+                        suspend_debug_context(t->ctx);
+                        break;
+                    }
+                }
+            }
+        }
+        if (list_is_empty(&c->link_c2p)) {
+            add_res_str(c, "N");
+        }
+        else {
+            unlock_threads(c);
+            c->waiting = 1;
+        }
         return 0;
     }
     return 0;
@@ -1160,29 +1212,30 @@ static int read_packet(GdbClient * c, unsigned len) {
 #if DEBUG_RSP
                 printf("GDB -> %.*s\n", c->cmd_pos, c->cmd_buf);
 #endif
+                c->waiting = 0;
+                lock_threads(c);
                 c->res_pos = 0;
                 c->xfer_range_offs = 0;
                 c->xfer_range_size = 0;
                 add_res_ch_no_esc(c, '$');
                 if (handle_command(c) < 0) return -1;
-                if (c->xfer_range_offs > 0 || c->xfer_range_size + 1 > c->res_pos) {
-                    unsigned offs = c->xfer_range_offs + 1; /* First byte is '$' */
-                    unsigned size = c->xfer_range_size;
-                    if (offs >= c->res_pos) {
-                        offs = 1;
-                        size = 0;
+                if (!c->waiting || c->res_pos > 1) {
+                    c->waiting = 0;
+                    if (c->xfer_range_offs > 0 || c->xfer_range_size + 1 > c->res_pos) {
+                        unsigned offs = c->xfer_range_offs + 1; /* First byte is '$' */
+                        unsigned size = c->xfer_range_size;
+                        if (offs >= c->res_pos) {
+                            offs = 1;
+                            size = 0;
+                        }
+                        else if (offs + size > c->res_pos) {
+                            size = c->res_pos - offs;
+                        }
+                        memmove(c->res_buf + 1, c->res_buf + offs, size);
+                        c->res_pos = size + 1;
                     }
-                    else if (offs + size > c->res_pos) {
-                        size = c->res_pos - offs;
-                    }
-                    memmove(c->res_buf + 1, c->res_buf + offs, size);
-                    c->res_pos = size + 1;
+                    if (send_res(c) < 0) return -1;
                 }
-                add_res_checksum(c);
-#if DEBUG_RSP
-                printf("GDB <- %.*s\n", c->res_pos, c->res_buf);
-#endif
-                if (send(c->req.u.sio.sock, c->res_buf, c->res_pos, 0) < 0) return -1;
                 c->cmd_pos = 0;
                 c->cmd_end = 0;
                 c->cmd_esc = 0;
@@ -1266,6 +1319,21 @@ static void accept_done(void * args) {
     post_event(start_client, c);
 }
 
+static int is_all_intercepted(GdbClient * c) {
+    LINK * l, * m;
+    for (l = c->link_c2p.next; l != &c->link_c2p; l = l->next) {
+        GdbProcess * p = link_c2p(l);
+        for (m = p->link_p2t.next; m != &p->link_p2t; m = m->next) {
+            GdbThread * t = link_p2t(m);
+            assert(p->attached);
+            assert(!t->ctx->exited);
+            assert(context_has_state(t->ctx));
+            if (!is_intercepted(t->ctx)) return 0;
+        }
+    }
+    return 1;
+}
+
 static void event_context_created(Context * ctx, void * args) {
     if (context_has_state(ctx)) {
         LINK * l, * n;
@@ -1291,6 +1359,17 @@ static void event_context_exited(Context * ctx, void * args) {
             for (m = c->link_c2p.next; m != &c->link_c2p; m = m->next) {
                 GdbProcess * p = link_c2p(m);
                 if (p->ctx == ctx) {
+                    if (c->waiting) {
+                        lock_threads(c);
+                        if (is_all_intercepted(c)) {
+                            c->res_pos = 0;
+                            c->waiting = 0;
+                            add_res_ch_no_esc(c, '$');
+                            add_res_str(c, "W00;process:");
+                            add_res_hex(c, p->pid);
+                            if (send_res(c) < 0) trace(LOG_ALWAYS, "GDB Server send error: %s", errno_to_str(errno));
+                        }
+                    }
                     free_process(p);
                     break;
                 }
@@ -1324,6 +1403,38 @@ static void event_register_definitions_changed(void * args) {
     }
 }
 
+static void event_context_intercepted(Context * ctx, void * args) {
+    LINK * l, *n, *m, *o;
+    for (l = link_a2s.next; l != &link_a2s; l = l->next) {
+        GdbServer * s = link_a2s(l);
+        for (n = s->link_s2c.next; n != &s->link_s2c; n = n->next) {
+            GdbClient * c = link_s2c(n);
+            if (c->waiting) {
+                for (m = c->link_c2p.next; m != &c->link_c2p; m = m->next) {
+                    GdbProcess * p = link_c2p(m);
+                    for (o = p->link_p2t.next; o != &p->link_p2t; o = o->next) {
+                        GdbThread * t = link_p2t(o);
+                        if (t->ctx == ctx) {
+                            if (!c->stopped) {
+                                c->cur_g_pid = t->process->pid;
+                                c->cur_g_tid = t->tid;
+                            }
+                            lock_threads(c);
+                            if (is_all_intercepted(c)) {
+                                c->res_pos = 0;
+                                c->waiting = 0;
+                                add_res_ch_no_esc(c, '$');
+                                add_res_str(c, "S00");
+                                if (send_res(c) < 0) trace(LOG_ALWAYS, "GDB Server send error: %s", errno_to_str(errno));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 static ContextEventListener context_listener = {
     event_context_created,
     event_context_exited,
@@ -1336,6 +1447,11 @@ static ContextEventListener context_listener = {
 static RegistersEventListener registers_listener = {
     NULL,
     event_register_definitions_changed
+};
+
+static RunControlEventListener run_ctrl_listener = {
+    event_context_intercepted,
+    NULL,
 };
 
 int ini_gdb_rsp(const char * conf) {
@@ -1359,6 +1475,7 @@ int ini_gdb_rsp(const char * conf) {
         context_extension_offset = context_extension(sizeof(LINK));
         add_context_event_listener(&context_listener, NULL);
         add_registers_event_listener(&registers_listener, NULL);
+        add_run_control_event_listener(&run_ctrl_listener, NULL);
         ini_done = 1;
     }
     s = (GdbServer *)loc_alloc_zero(sizeof(GdbServer));

@@ -2653,7 +2653,9 @@ void set_context_state_name(Context * ctx, const char * name) {
 
 const char * get_context_state_name(Context * ctx) {
     ContextExtensionRC * ext = EXT(ctx);
-    return ext->state_name;
+    if (ext->intercepted) return get_suspend_reason(ctx);
+    if (ext->state_name) return ext->state_name;
+    return "Running";
 }
 
 int is_run_ctrl_idle(void) {
