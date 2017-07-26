@@ -25,14 +25,17 @@
 #include <assert.h>
 
 #include <tcf/framework/errors.h>
+#include <tcf/framework/exceptions.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/mdep-inet.h>
 #include <tcf/framework/asyncreq.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/trace.h>
 #include <tcf/framework/link.h>
+#include <tcf/framework/json.h>
 #include <tcf/services/runctrl.h>
 #include <tcf/services/registers.h>
+#include <tcf/services/breakpoints.h>
 
 #include <tcf/main/gdb-rsp.h>
 
@@ -42,7 +45,7 @@
 */
 
 #ifndef DEBUG_RSP
-#  define DEBUG_RSP 1
+#  define DEBUG_RSP 0
 #endif
 
 #define ID_ANY ~0u
@@ -94,6 +97,7 @@ typedef struct GdbClient {
 typedef struct GdbProcess {
     LINK link_c2p;
     LINK link_p2t;
+    LINK link_p2b;
     GdbClient * client;
     unsigned pid;
     Context * ctx;
@@ -111,6 +115,14 @@ typedef struct GdbThread {
     int locked;
 } GdbThread;
 
+typedef struct GdbBreakpoint {
+    LINK link_p2b;
+    unsigned type;
+    unsigned kind;
+    uint64_t addr;
+    BreakpointInfo * bp;
+} GdbBreakpoint;
+
 typedef struct MonitorCommand {
     const char * name;
     void (*func)(GdbClient *, const char *);
@@ -120,6 +132,7 @@ typedef struct MonitorCommand {
 #define link_s2c(x) ((GdbClient *)((char *)(x) - offsetof(GdbClient, link_s2c)))
 #define link_c2p(x) ((GdbProcess *)((char *)(x) - offsetof(GdbProcess, link_c2p)))
 #define link_p2t(x) ((GdbThread *)((char *)(x) - offsetof(GdbThread, link_p2t)))
+#define link_p2b(x) ((GdbBreakpoint *)((char *)(x) - offsetof(GdbBreakpoint, link_p2b)))
 
 #define client2gdb(c)  ((GdbClient *)((char *)(c) - offsetof(GdbClient, client)))
 
@@ -187,6 +200,7 @@ static GdbProcess * add_process(GdbClient * c, Context * ctx) {
     p->pid = ++c->process_id_cnt;
     p->ctx = ctx;
     list_init(&p->link_p2t);
+    list_init(&p->link_p2b);
     list_add_last(&p->link_c2p, &c->link_c2p);
     return p;
 }
@@ -249,10 +263,19 @@ static void free_thread(GdbThread * t) {
     loc_free(t);
 }
 
+static void free_breakpoint(GdbBreakpoint * b) {
+    if (b->bp != NULL) destroy_eventpoint(b->bp);
+    list_remove(&b->link_p2b);
+    loc_free(b);
+}
+
 static void free_process(GdbProcess * p) {
     while (!list_is_empty(&p->link_p2t)) {
         assert(p->attached);
         free_thread(link_p2t(p->link_p2t.next));
+    }
+    while (!list_is_empty(&p->link_p2b)) {
+        free_breakpoint(link_p2b(p->link_p2b.next));
     }
     list_remove(&p->link_c2p);
     loc_free(p);
@@ -743,6 +766,10 @@ static void read_reg_attributes(const char * p, char ** name, unsigned * bits, u
     }
 }
 
+static void breakpoint_cb(Context * ctx, void * args) {
+    ctx->pending_intercept = 1;
+}
+
 static void monitor_ps(GdbClient * c, const char * args) {
     LINK * l;
     unsigned cnt = 0;
@@ -1162,6 +1189,116 @@ static int handle_D_command(GdbClient * c) {
     return 0;
 }
 
+static int handle_Z_command(GdbClient * c) {
+    char * s = c->cmd_buf + 2;
+    unsigned type = get_cmd_uint(c, &s);
+    if (*s++ == ',') {
+        uint64_t addr = get_cmd_uint64(c, &s);
+        if (*s++ == ',') {
+            unsigned kind = get_cmd_uint(c, &s);
+            GdbProcess * p = find_process_pid(c, c->cur_g_pid);
+            unsigned size = kind;
+            unsigned mode = 0;
+
+            if (type < 2) {
+                size = 1;
+                mode = CTX_BP_ACCESS_INSTRUCTION;
+            }
+            else if (type == 2) {
+                mode = CTX_BP_ACCESS_DATA_WRITE;
+            }
+            else if (type == 3) {
+                mode = CTX_BP_ACCESS_DATA_READ;
+            }
+            else if (type == 4) {
+                mode = CTX_BP_ACCESS_DATA_READ | CTX_BP_ACCESS_DATA_WRITE;
+            }
+            else {
+                /* not supported */
+                return 0;
+            }
+
+            if (p != NULL) {
+                GdbBreakpoint * b = (GdbBreakpoint *)loc_alloc_zero(sizeof(GdbBreakpoint));
+                static const char * attr_list[] = {
+                    BREAKPOINT_ENABLED,
+                    BREAKPOINT_ACCESSMODE,
+                    BREAKPOINT_LOCATION,
+                    BREAKPOINT_SIZE,
+                    BREAKPOINT_SERVICE
+                };
+                BreakpointAttribute * attrs = NULL;
+                BreakpointAttribute ** ref = &attrs;
+                char str[32];
+                unsigned i;
+
+                for (i = 0; i < sizeof(attr_list) / sizeof(char *); i++) {
+                    ByteArrayOutputStream buf;
+                    BreakpointAttribute * attr = (BreakpointAttribute *)loc_alloc_zero(sizeof(BreakpointAttribute));
+                    OutputStream * out = create_byte_array_output_stream(&buf);
+                    attr->name = loc_strdup(attr_list[i]);
+                    switch (i) {
+                    case 0:
+                        json_write_boolean(out, 1);
+                        break;
+                    case 1:
+                        json_write_long(out, mode);
+                        break;
+                    case 2:
+                        snprintf(str, sizeof(str), "0x%" PRIX64, (uint64_t)addr);
+                        json_write_string(out, str);
+                        break;
+                    case 3:
+                        json_write_long(out, size);
+                        break;
+                    case 4:
+                        json_write_string(out, "GDB-RSP");
+                        break;
+                    }
+                    write_stream(out, 0);
+                    get_byte_array_output_stream_data(&buf, &attr->value, NULL);
+                    *ref = attr;
+                    ref = &attr->next;
+                }
+                b->type = type;
+                b->addr = addr;
+                b->kind = kind;
+                list_add_last(&b->link_p2b, &p->link_p2b);
+                b->bp = create_eventpoint_ext(attrs, p->ctx, breakpoint_cb, NULL);
+                add_res_str(c, "OK");
+                return 0;
+            }
+        }
+    }
+    add_res_str(c, "E01");
+    return 0;
+}
+
+static int handle_z_command(GdbClient * c) {
+    char * s = c->cmd_buf + 2;
+    unsigned type = get_cmd_uint(c, &s);
+    if (*s++ == ',') {
+        uint64_t addr = get_cmd_uint64(c, &s);
+        if (*s++ == ',') {
+            unsigned kind = get_cmd_uint(c, &s);
+            GdbProcess * p = find_process_pid(c, c->cur_g_pid);
+            if (p != NULL) {
+                LINK * l;
+                for (l = p->link_p2b.next; l != &p->link_p2b; l = l->next) {
+                    GdbBreakpoint * b = link_p2b(l);
+                    if (b->type == type && b->addr == addr && b->kind == kind) {
+                        free_breakpoint(b);
+                        add_res_str(c, "OK");
+                        return 0;
+                    }
+                }
+            }
+        }
+    }
+    add_res_str(c, "E01");
+    return 0;
+}
+
 static int handle_command(GdbClient * c) {
     if (c->cmd_end < 2) return 0;
     switch (c->cmd_buf[1]) {
@@ -1180,6 +1317,8 @@ static int handle_command(GdbClient * c) {
     case 'v': return handle_v_command(c);
     case 'T': return handle_T_command(c);
     case 'D': return handle_D_command(c);
+    case 'Z': return handle_Z_command(c);
+    case 'z': return handle_z_command(c);
     }
     return 0;
 }
