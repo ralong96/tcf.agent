@@ -84,6 +84,7 @@ struct BreakpointInfo {
     int client_cnt;
     int instruction_cnt;
     ErrorReport * error;
+    BreakpointAttribute * inv_attr;
     char * type;
     char * location;
     char * condition;
@@ -1898,7 +1899,10 @@ static void validate_bp_attrs(void) {
         BreakpointInfo * bp = link_all2bp(l);
         if (bp->instruction_cnt == 0) {
             ErrorReport * error = NULL;
-            if (bp->context_query != NULL) {
+            if (bp->inv_attr != NULL) {
+                error = get_error_report(set_fmt_errno(ERR_OTHER, "Invalid value of '%s'", bp->inv_attr->name));
+            }
+            else if (bp->context_query != NULL) {
                 if (parse_context_query(bp->context_query) < 0) {
                     error = get_error_report(errno);
                 }
@@ -2160,6 +2164,7 @@ static int set_breakpoint_attributes(BreakpointInfo * bp, BreakpointAttribute * 
     int diff = 0;
     BreakpointAttribute * old_attrs = bp->attrs;
     BreakpointAttribute ** new_ref = &bp->attrs;
+    bp->inv_attr = NULL;
     bp->attrs = NULL;
 
     while (new_attrs != NULL) {
@@ -2170,6 +2175,7 @@ static int set_breakpoint_attributes(BreakpointInfo * bp, BreakpointAttribute * 
         ByteArrayInputStream buf;
         int unsupported_attr = 0;
         char * name = new_attr->name;
+        Trap trap;
 
         new_attrs = new_attr->next;
         new_attr->next = NULL;
@@ -2202,74 +2208,80 @@ static int set_breakpoint_attributes(BreakpointInfo * bp, BreakpointAttribute * 
 
         buf_inp = create_byte_array_input_stream(&buf, new_attr->value, strlen(new_attr->value));
 
-        if (strcmp(name, BREAKPOINT_ID) == 0) {
-            json_read_string(buf_inp, bp->id, sizeof(bp->id));
-        }
-        else if (strcmp(name, BREAKPOINT_TYPE) == 0) {
-            loc_free(bp->type);
-            bp->type = json_read_alloc_string(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_LOCATION) == 0) {
-            loc_free(bp->location);
-            bp->location = json_read_alloc_string(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_ACCESSMODE) == 0) {
-            bp->access_mode = json_read_long(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_SIZE) == 0) {
-            bp->access_size = json_read_long(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_CONDITION) == 0) {
-            loc_free(bp->condition);
-            bp->condition = json_read_alloc_string(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_CONTEXTIDS) == 0) {
-            loc_free(bp->context_ids);
-            bp->context_ids = json_read_alloc_string_array(buf_inp, NULL);
-        }
-        else if (strcmp(name, BREAKPOINT_CONTEXTNAMES) == 0) {
-            loc_free(bp->context_names);
-            bp->context_names = json_read_alloc_string_array(buf_inp, NULL);
-        }
-        else if (strcmp(name, BREAKPOINT_CONTEXT_QUERY) == 0) {
-            loc_free(bp->context_query);
-            bp->context_query = json_read_alloc_string(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_STOP_GROUP) == 0) {
-            loc_free(bp->stop_group);
-            bp->stop_group = json_read_alloc_string_array(buf_inp, NULL);
-        }
-        else if (strcmp(name, BREAKPOINT_TEMPORARY) == 0) {
-            bp->temporary = json_read_boolean(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_SKIP_PROLOGUE) == 0) {
-            bp->skip_prologue = json_read_boolean(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_LINE_OFFSET) == 0) {
-            bp->line_offs_limit = json_read_long(buf_inp);
-            bp->line_offs_check = 1;
-        }
-        else if (strcmp(name, BREAKPOINT_FILE) == 0) {
-            loc_free(bp->file);
-            bp->file = json_read_alloc_string(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_LINE) == 0) {
-            bp->line = json_read_long(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_COLUMN) == 0) {
-            bp->column = json_read_long(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_IGNORECOUNT) == 0) {
-            bp->ignore_count = json_read_ulong(buf_inp);
-        }
-        else if (strcmp(name, BREAKPOINT_ENABLED) == 0) {
-            bp->enabled = json_read_boolean(buf_inp);
-        }
-        else {
-            unsupported_attr = 1;
-        }
+        if (set_trap(&trap)) {
+            if (strcmp(name, BREAKPOINT_ID) == 0) {
+                json_read_string(buf_inp, bp->id, sizeof(bp->id));
+            }
+            else if (strcmp(name, BREAKPOINT_TYPE) == 0) {
+                loc_free(bp->type);
+                bp->type = json_read_alloc_string(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_LOCATION) == 0) {
+                loc_free(bp->location);
+                bp->location = json_read_alloc_string(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_ACCESSMODE) == 0) {
+                bp->access_mode = json_read_long(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_SIZE) == 0) {
+                bp->access_size = json_read_long(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_CONDITION) == 0) {
+                loc_free(bp->condition);
+                bp->condition = json_read_alloc_string(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_CONTEXTIDS) == 0) {
+                loc_free(bp->context_ids);
+                bp->context_ids = json_read_alloc_string_array(buf_inp, NULL);
+            }
+            else if (strcmp(name, BREAKPOINT_CONTEXTNAMES) == 0) {
+                loc_free(bp->context_names);
+                bp->context_names = json_read_alloc_string_array(buf_inp, NULL);
+            }
+            else if (strcmp(name, BREAKPOINT_CONTEXT_QUERY) == 0) {
+                loc_free(bp->context_query);
+                bp->context_query = json_read_alloc_string(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_STOP_GROUP) == 0) {
+                loc_free(bp->stop_group);
+                bp->stop_group = json_read_alloc_string_array(buf_inp, NULL);
+            }
+            else if (strcmp(name, BREAKPOINT_TEMPORARY) == 0) {
+                bp->temporary = json_read_boolean(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_SKIP_PROLOGUE) == 0) {
+                bp->skip_prologue = json_read_boolean(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_LINE_OFFSET) == 0) {
+                bp->line_offs_limit = json_read_long(buf_inp);
+                bp->line_offs_check = 1;
+            }
+            else if (strcmp(name, BREAKPOINT_FILE) == 0) {
+                loc_free(bp->file);
+                bp->file = json_read_alloc_string(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_LINE) == 0) {
+                bp->line = json_read_long(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_COLUMN) == 0) {
+                bp->column = json_read_long(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_IGNORECOUNT) == 0) {
+                bp->ignore_count = json_read_ulong(buf_inp);
+            }
+            else if (strcmp(name, BREAKPOINT_ENABLED) == 0) {
+                bp->enabled = json_read_boolean(buf_inp);
+            }
+            else {
+                unsupported_attr = 1;
+            }
 
-        if (!unsupported_attr) json_test_char(buf_inp, MARKER_EOS);
+            if (!unsupported_attr) json_test_char(buf_inp, MARKER_EOS);
+            clear_trap(&trap);
+        }
+        else if (bp->inv_attr == NULL) {
+            bp->inv_attr = new_attr;
+        }
     }
 
     while (old_attrs != NULL) {
