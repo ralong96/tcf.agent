@@ -159,10 +159,10 @@ const char * context_suspend_reason(Context * ctx) {
     if (ext->suspend_reason.dwFirstChance) {
         if (exception_code == EXCEPTION_SINGLE_STEP) return REASON_STEP;
         if (exception_code == EXCEPTION_BREAKPOINT) return "Break Instruction";
-        snprintf(buf, sizeof(buf), "Exception %#lx", exception_code);
+        snprintf(buf, sizeof(buf), "Exception %#lx", (unsigned long)exception_code);
     }
     else {
-        snprintf(buf, sizeof(buf), "Unhandled exception %#lx", exception_code);
+        snprintf(buf, sizeof(buf), "Unhandled exception %#lx", (unsigned long)exception_code);
     }
     return buf;
 }

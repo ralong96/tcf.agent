@@ -221,7 +221,11 @@ int wsa_ioctlsocket(int socket, long cmd, unsigned long * args) {
     int res = 0;
     SetLastError(0);
     WSASetLastError(0);
+#if defined(__CYGWIN__) && defined(__x86_64__)
+    res = (ioctlsocket)(socket, cmd, (unsigned *)args);
+#else
     res = (ioctlsocket)(socket, cmd, args);
+#endif
     if (res != 0) {
         set_win32_errno(WSAGetLastError());
         return -1;
@@ -1437,7 +1441,7 @@ void become_daemon(char **args) {
 
     if (!CreateProcess(fnm, make_cmd_from_args(args), NULL, NULL, TRUE,
                        DETACHED_PROCESS, NULL, NULL, &startupInfo, &prs_info)) {
-        fprintf(stderr, "CreateProcess failed 0x%lx\n", GetLastError());
+        fprintf(stderr, "CreateProcess failed 0x%lx\n", (unsigned long)GetLastError());
         exit(1);
     }
 
@@ -1445,7 +1449,7 @@ void become_daemon(char **args) {
         /* Make read side non-blocking */
         DWORD pipemode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
         if (!SetNamedPipeHandleState((HANDLE)_get_osfhandle(fdpairs[i*2]), &pipemode, NULL, NULL)) {
-            fprintf(stderr, "SetNamedPipeHandleState failed 0x%lx\n", GetLastError());
+            fprintf(stderr, "SetNamedPipeHandleState failed 0x%lx\n", (unsigned long)GetLastError());
             exit(1);
         }
 
@@ -1465,7 +1469,7 @@ void become_daemon(char **args) {
             }
             else if (GetLastError() != ERROR_NO_DATA) {
                 if (GetLastError() != ERROR_BROKEN_PIPE) {
-                    fprintf(stderr, "SetNamedPipeHandleState failed 0x%lx\n", GetLastError());
+                    fprintf(stderr, "SetNamedPipeHandleState failed 0x%lx\n", (unsigned long)GetLastError());
                 }
                 fdpairs[i*2] = fdpairs[(npairs - 1)*2];
                 fdpairs[i*2 + 1] = fdpairs[(npairs - 1)*2 + 1];

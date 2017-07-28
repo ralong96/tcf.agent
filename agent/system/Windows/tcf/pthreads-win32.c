@@ -488,7 +488,7 @@ static void start_thread(void * x) {
     ThreadArgs a = *(ThreadArgs *)x;
 
     loc_free(x);
-    ExitThread((DWORD)a.start(a.args));
+    ExitThread((DWORD)(uintptr_t)a.start(a.args));
 }
 
 int pthread_create(pthread_t * res, const pthread_attr_t * attr,
@@ -506,13 +506,13 @@ int pthread_create(pthread_t * res, const pthread_attr_t * attr,
         return errno = err;
     }
     if (!CloseHandle(thread)) return set_win32_errno(GetLastError());
-    *res = (pthread_t)thread_id;
+    *res = (pthread_t)(uintptr_t)thread_id;
     return 0;
 }
 
 int pthread_join(pthread_t thread_id, void ** value_ptr) {
     int error = 0;
-    HANDLE thread = OpenThread(SYNCHRONIZE | THREAD_QUERY_INFORMATION, FALSE, (DWORD)thread_id);
+    HANDLE thread = OpenThread(SYNCHRONIZE | THREAD_QUERY_INFORMATION, FALSE, (DWORD)(uintptr_t)thread_id);
 
     if (thread == NULL) return set_win32_errno(GetLastError());
     if (WaitForSingleObject(thread, INFINITE) == WAIT_FAILED) error = set_win32_errno(GetLastError());
@@ -526,7 +526,7 @@ int pthread_detach(pthread_t thread_id) {
 }
 
 pthread_t pthread_self(void) {
-    return (pthread_t)GetCurrentThreadId();
+    return (pthread_t)(uintptr_t)GetCurrentThreadId();
 }
 
 int pthread_equal(pthread_t thread1, pthread_t thread2) {

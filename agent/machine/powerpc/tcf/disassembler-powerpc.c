@@ -38,24 +38,21 @@ static void add_str(const char * s) {
 }
 
 static void add_dec_uint8(uint8_t n) {
-    char buf[32];
-
-    snprintf(buf, sizeof(buf), "%u", (unsigned int)n);
-    add_str(buf);
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "%u", (unsigned int)n);
+    add_str(tmp);
 }
 
 static void add_dec_int16(int16_t n) {
-    char buf[32];
-
-    snprintf(buf, sizeof(buf), "%d", (int)n);
-    add_str(buf);
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "%d", (int)n);
+    add_str(tmp);
 }
 
 static void add_hex_uint16(uint16_t n) {
-    char buf[32];
-
-    snprintf(buf, sizeof(buf), "0x%.4x", (unsigned int)n);
-    add_str(buf);
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "0x%.4x", (unsigned int)n);
+    add_str(tmp);
 }
 
 static void add_dec_uint32(uint32_t n) {
