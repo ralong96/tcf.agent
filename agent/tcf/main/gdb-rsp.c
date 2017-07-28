@@ -36,6 +36,7 @@
 #include <tcf/services/runctrl.h>
 #include <tcf/services/registers.h>
 #include <tcf/services/breakpoints.h>
+#include <tcf/services/memorymap.h>
 
 #include <tcf/main/gdb-rsp.h>
 
@@ -174,6 +175,67 @@ static const char * regs_i386 =
     " <reg name='fooff' bitsize='32' type='int' group='float'/>\n"
     " <reg name='fop' bitsize='32' type='int' group='float'/>\n";
 
+static const char * regs_amd64 =
+    " <flags id='i386_eflags' size='4'>\n"
+    "   <field name='CF' start='0' end='0'/>\n"
+    "   <field name='' start='1' end='1'/>\n"
+    "   <field name='PF' start='2' end='2'/>\n"
+    "   <field name='AF' start='4' end='4'/>\n"
+    "   <field name='ZF' start='6' end='6'/>\n"
+    "   <field name='SF' start='7' end='7'/>\n"
+    "   <field name='TF' start='8' end='8'/>\n"
+    "   <field name='IF' start='9' end='9'/>\n"
+    "   <field name='DF' start='10' end='10'/>\n"
+    "   <field name='OF' start='11' end='11'/>\n"
+    "   <field name='NT' start='14' end='14'/>\n"
+    "   <field name='RF' start='16' end='16'/>\n"
+    "   <field name='VM' start='17' end='17'/>\n"
+    "   <field name='AC' start='18' end='18'/>\n"
+    "   <field name='VIF' start='19' end='19'/>\n"
+    "   <field name='VIP' start='20' end='20'/>\n"
+    "   <field name='ID' start='21' end='21'/>\n"
+    " </flags>\n"
+    " <reg name='rax' bitsize='64' type='int64'/>\n"
+    " <reg name='rbx' bitsize='64' type='int64'/>\n"
+    " <reg name='rcx' bitsize='64' type='int64'/>\n"
+    " <reg name='rdx' bitsize='64' type='int64'/>\n"
+    " <reg name='rsi' bitsize='64' type='int64'/>\n"
+    " <reg name='rdi' bitsize='64' type='int64'/>\n"
+    " <reg name='rbp' bitsize='64' type='data_ptr'/>\n"
+    " <reg name='rsp' bitsize='64' type='data_ptr'/>\n"
+    " <reg name='r8' bitsize='64' type='int64'/>\n"
+    " <reg name='r9' bitsize='64' type='int64'/>\n"
+    " <reg name='r10' bitsize='64' type='int64'/>\n"
+    " <reg name='r11' bitsize='64' type='int64'/>\n"
+    " <reg name='r12' bitsize='64' type='int64'/>\n"
+    " <reg name='r13' bitsize='64' type='int64'/>\n"
+    " <reg name='r14' bitsize='64' type='int64'/>\n"
+    " <reg name='r15' bitsize='64' type='int64'/>\n"
+    " <reg name='rip' bitsize='64' type='code_ptr'/>\n"
+    " <reg name='eflags' bitsize='32' type='i386_eflags'/>\n"
+    " <reg name='cs' bitsize='32' type='int32'/>\n"
+    " <reg name='ss' bitsize='32' type='int32'/>\n"
+    " <reg name='ds' bitsize='32' type='int32'/>\n"
+    " <reg name='es' bitsize='32' type='int32'/>\n"
+    " <reg name='fs' bitsize='32' type='int32'/>\n"
+    " <reg name='gs' bitsize='32' type='int32'/>\n"
+    " <reg name='st0' bitsize='80' type='i387_ext'/>\n"
+    " <reg name='st1' bitsize='80' type='i387_ext'/>\n"
+    " <reg name='st2' bitsize='80' type='i387_ext'/>\n"
+    " <reg name='st3' bitsize='80' type='i387_ext'/>\n"
+    " <reg name='st4' bitsize='80' type='i387_ext'/>\n"
+    " <reg name='st5' bitsize='80' type='i387_ext'/>\n"
+    " <reg name='st6' bitsize='80' type='i387_ext'/>\n"
+    " <reg name='st7' bitsize='80' type='i387_ext'/>\n"
+    " <reg name='fctrl' bitsize='32' type='int' group='float'/>\n"
+    " <reg name='fstat' bitsize='32' type='int' group='float'/>\n"
+    " <reg name='ftag' bitsize='32' type='int' group='float'/>\n"
+    " <reg name='fiseg' bitsize='32' type='int' group='float'/>\n"
+    " <reg name='fioff' bitsize='32' type='int' group='float'/>\n"
+    " <reg name='foseg' bitsize='32' type='int' group='float'/>\n"
+    " <reg name='fooff' bitsize='32' type='int' group='float'/>\n"
+    " <reg name='fop' bitsize='32' type='int' group='float'/>\n";
+
 static const char * regs_arm =
     " <reg name='r0' bitsize='32' type='uint32'/>\n"
     " <reg name='r1' bitsize='32' type='uint32'/>\n"
@@ -192,6 +254,59 @@ static const char * regs_arm =
     " <reg name='lr' bitsize='32'/>\n"
     " <reg name='pc' bitsize='32' type='code_ptr'/>\n"
     " <reg name='cpsr' bitsize='32' regnum='25'/>\n";
+
+static const char * regs_aarch64 =
+    " <reg name='x0' bitsize='64' />\n"
+    " <reg name='x1' bitsize='64' />\n"
+    " <reg name='x2' bitsize='64' />\n"
+    " <reg name='x3' bitsize='64' />\n"
+    " <reg name='x4' bitsize='64' />\n"
+    " <reg name='x5' bitsize='64' />\n"
+    " <reg name='x6' bitsize='64' />\n"
+    " <reg name='x7' bitsize='64' />\n"
+    " <reg name='x8' bitsize='64' />\n"
+    " <reg name='x9' bitsize='64' />\n"
+    " <reg name='x10' bitsize='64' />\n"
+    " <reg name='x11' bitsize='64' />\n"
+    " <reg name='x12' bitsize='64' />\n"
+    " <reg name='x13' bitsize='64' />\n"
+    " <reg name='x14' bitsize='64' />\n"
+    " <reg name='x15' bitsize='64' />\n"
+    " <reg name='x16' bitsize='64' />\n"
+    " <reg name='x17' bitsize='64' />\n"
+    " <reg name='x18' bitsize='64' />\n"
+    " <reg name='x19' bitsize='64' />\n"
+    " <reg name='x20' bitsize='64' />\n"
+    " <reg name='x21' bitsize='64' />\n"
+    " <reg name='x22' bitsize='64' />\n"
+    " <reg name='x23' bitsize='64' />\n"
+    " <reg name='x24' bitsize='64' />\n"
+    " <reg name='x25' bitsize='64' />\n"
+    " <reg name='x26' bitsize='64' />\n"
+    " <reg name='x27' bitsize='64' />\n"
+    " <reg name='x28' bitsize='64' />\n"
+    " <reg name='x29' bitsize='64' />\n"
+    " <reg name='x30' bitsize='64' />\n"
+    " <reg name='sp' bitsize='64' type='data_ptr' />\n"
+    " <reg name='pc' bitsize='64' type='code_ptr' />\n"
+    " <flags id='cpsr_flags' size='4'>\n"
+    "   <field name='SP'  start='0'  end='0' />\n"
+    "   <field name=''    start='1'  end='1' />\n"
+    "   <field name='EL'  start='2'  end='3' />\n"
+    "   <field name='nRW' start='4'  end='4' />\n"
+    "   <field name=''    start='5'  end='5' />\n"
+    "   <field name='F'   start='6'  end='6' />\n"
+    "   <field name='I'   start='7'  end='7' />\n"
+    "   <field name='A'   start='8'  end='8' />\n"
+    "   <field name='D'   start='9'  end='9' />\n"
+    "   <field name='IL'  start='20' end='20' />\n"
+    "   <field name='SS'  start='21' end='21' />\n"
+    "   <field name='V'   start='28' end='28' />\n"
+    "   <field name='C'   start='29' end='29' />\n"
+    "   <field name='Z'   start='30' end='30' />\n"
+    "   <field name='N'   start='31' end='31' />\n"
+    " </flags>\n"
+    " <reg name='cpsr' bitsize='32' type='cpsr_flags' />\n";
 
 static GdbProcess * add_process(GdbClient * c, Context * ctx) {
     GdbProcess * p = (GdbProcess *)loc_alloc_zero(sizeof(GdbProcess));
@@ -283,7 +398,9 @@ static void free_process(GdbProcess * p) {
 
 static const char * get_regs(GdbClient * c) {
     if (strcmp(c->server->isa, "i386") == 0) return regs_i386;
+    if (strcmp(c->server->isa, "amd64") == 0) return regs_amd64;
     if (strcmp(c->server->isa, "arm") == 0) return regs_arm;
+    if (strcmp(c->server->isa, "aarch64") == 0) return regs_aarch64;
     set_fmt_errno(ERR_OTHER, "Unsupported ISA %s", c->server->isa);
     return NULL;
 }
@@ -581,20 +698,38 @@ static int add_res_target_info(GdbClient * c) {
     return 0;
 }
 
+static int add_res_exec_file(GdbClient * c, unsigned pid) {
+    GdbProcess * p = find_process_pid(c, pid);
+    if (p != NULL) {
+        MemoryMap * client_map;
+        MemoryMap * target_map;
+        unsigned i;
+        if (memory_map_get(p->ctx, &client_map, &target_map) < 0) return -1;
+        for (i = 0; i < target_map->region_cnt; i++) {
+            MemoryRegion * r = target_map->regions + i;
+            if (r->file_name != NULL) {
+                add_res_ch(c, 'l');
+                add_res_str(c, r->file_name);
+                return 0;
+            }
+        }
+    }
+    return 0;
+}
+
 static void add_res_reg_value(GdbClient * c, GdbThread * t, const char * name, unsigned bits) {
     RegisterDefinition * def = NULL;
     unsigned size = (bits + 7) / 8;
     void * buf = tmp_alloc_zero(size);
     unsigned i = 0;
     if (t != NULL) def = find_register(t, name);
-    if (def != NULL && context_read_reg(t->ctx, def, 0, size, buf) < 0) def = NULL;
+    if (def != NULL && context_read_reg(t->ctx, def, 0, def->size < size ? def->size : size, buf) < 0) def = NULL;
     while (i < size) {
         if (def == NULL) {
             add_res_str(c, "xx");
         }
         else {
-            unsigned byte = ((uint8_t *)buf)[i];
-            add_res_hex8(c, byte);
+            add_res_hex8(c, ((uint8_t *)buf)[i]);
         }
         i++;
     }
@@ -737,8 +872,10 @@ static void read_reg_attributes(const char * p, char ** name, unsigned * bits, u
     const char * p0 = p;
     *name = NULL;
     *bits = 0;
-    for (;;) {
-        if (*p == 0) break;
+    while (*p == ' ') p++;
+    if (strncmp(p, "<reg ", 5) != 0) return;
+    p += 5;
+    while (*p) {
         if (*p == '\n') break;
         if (p[0] == '=' && (p[1] == '"' || p[1] == '\'')) {
             char q = p[1];
@@ -833,10 +970,35 @@ static int handle_m_command(GdbClient * c) {
     else {
         unsigned i = 0;
         while (i < size) {
-            unsigned byte = ((uint8_t *)buf)[i];
-            add_res_hex8(c, byte);
-            i++;
+            add_res_hex8(c, ((uint8_t *)buf)[i++]);
         }
+    }
+    return 0;
+}
+
+static int handle_M_command(GdbClient * c) {
+    /* Write memory */
+    char * s = c->cmd_buf + 2;
+    ContextAddress addr = (ContextAddress)get_cmd_uint64(c, &s);
+    GdbThread * t = find_thread(c, c->cur_g_pid, c->cur_g_tid);
+    void * buf = NULL;
+    size_t size = 0;
+    if (*s == ',') {
+        s++;
+        size = (size_t)get_cmd_uint(c, &s);
+    }
+    buf = tmp_alloc_zero(size);
+    if (*s == ':') {
+        unsigned i = 0;
+        while (i < size) {
+            ((uint8_t *)buf)[i++] = get_cmd_uint8(c, &s);
+        }
+    }
+    if (t == NULL || context_write_mem(t->ctx, addr, buf, size) < 0) {
+        add_res_str(c, "E01");
+    }
+    else {
+        add_res_str(c, "OK");
     }
     return 0;
 }
@@ -859,6 +1021,48 @@ static int handle_p_command(GdbClient * c) {
             if (name != NULL && bits != 0) {
                 if (regnum == reg) {
                     add_res_reg_value(c, t, name, bits);
+                    return 0;
+                }
+                regnum++;
+            }
+            r = p;
+        }
+    }
+    add_res_str(c, "E01");
+    return 0;
+}
+
+static int handle_P_command(GdbClient * c) {
+    /* Write register */
+    char * s = c->cmd_buf + 2;
+    GdbThread * t = find_thread(c, c->cur_g_pid, c->cur_g_tid);
+    unsigned reg = get_cmd_uint(c, &s);
+    const char * regs = get_regs(c);
+    const char * p = regs;
+    const char * r = regs;
+    unsigned regnum = 0;
+    if (p == NULL) return -1;
+    while (*p) {
+        if (*p++ == '\n') {
+            char * name = NULL;
+            unsigned bits = 0;
+            read_reg_attributes(r, &name, &bits, &regnum);
+            if (name != NULL && bits != 0) {
+                if (regnum == reg) {
+                    RegisterDefinition * def = NULL;
+                    unsigned size = (bits + 7) / 8;
+                    void * buf = tmp_alloc_zero(size);
+                    if (*s++ == '=') {
+                        unsigned i = 0;
+                        while (i < size) {
+                            ((uint8_t *)buf)[i++] = get_cmd_uint8(c, &s);
+                        }
+                    }
+                    if (t != NULL) def = find_register(t, name);
+                    if (def != NULL && context_write_reg(t->ctx, def, 0, def->size < size ? def->size : size, buf) == 0) {
+                        add_res_str(c, "OK");
+                        return 0;
+                    }
                     break;
                 }
                 regnum++;
@@ -866,6 +1070,7 @@ static int handle_p_command(GdbClient * c) {
             r = p;
         }
     }
+    add_res_str(c, "E01");
     return 0;
 }
 
@@ -876,6 +1081,7 @@ static int handle_q_command(GdbClient * c) {
         add_res_str(c, "PacketSize=4000");
         add_res_str(c, ";QStartNoAckMode+");
         add_res_str(c, ";qXfer:features:read+");
+        add_res_str(c, ";qXfer:exec-file:read+");
         add_res_str(c, ";multiprocess+");
 #if 0
         add_res_str(c, ";QNonStop+;QAgent+");
@@ -914,6 +1120,17 @@ static int handle_q_command(GdbClient * c) {
                 }
             }
         }
+        if (strcmp(w, "exec-file") == 0 && *s++ == ':') {
+            w = get_cmd_word(c, &s);
+            if (strcmp(w, "read") == 0 && *s++ == ':') {
+                int pid = get_cmd_uint(c, &s);
+                if (pid == 0) pid = c->cur_g_pid;
+                if (add_res_exec_file(c, pid) < 0) return -1;
+                if (*s++ == ':') get_xfer_range(c, &s);
+                return 0;
+            }
+        }
+        return 0;
     }
     if (strcmp(w, "fThreadInfo") == 0) {
         LINK * l;
@@ -1308,7 +1525,9 @@ static int handle_command(GdbClient * c) {
     case 'd': return 0;
     case 'g': return handle_g_command(c);
     case 'm': return handle_m_command(c);
+    case 'M': return handle_M_command(c);
     case 'p': return handle_p_command(c);
+    case 'P': return handle_P_command(c);
     case 'q': return handle_q_command(c);
     case 'Q': return handle_Q_command(c);
     case 'H': return handle_H_command(c);
@@ -1601,8 +1820,11 @@ int ini_gdb_rsp(const char * conf) {
     int sock = -1;
     strlcpy(port, conf, sizeof(port));
     if (sep != NULL) {
+        const char * str = sep + 1;
         if ((size_t)(sep - conf) < sizeof(port)) port[sep - conf] = 0;
-        strlcpy(isa, sep + 1, sizeof(isa));
+        if (strcmp(str, "a32") == 0) str = "arm";
+        if (strcmp(str, "a64") == 0) str = "aarch64";
+        strlcpy(isa, str, sizeof(isa));
     }
     else {
         strlcpy(isa, "i386", sizeof(isa));
