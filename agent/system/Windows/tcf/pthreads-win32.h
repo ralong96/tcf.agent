@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,7 +22,7 @@
 
 #include <time.h>
 #if defined(__CYGWIN__)
-#  include <cygwin/types.h>
+#  include <pthread.h>
 #else
 typedef struct pthread_struct * pthread_t;
 typedef struct pthread_attr_struct * pthread_attr_t;
