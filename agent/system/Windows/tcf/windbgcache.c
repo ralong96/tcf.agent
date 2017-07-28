@@ -263,31 +263,31 @@ BOOL SymSetOptions(DWORD Options) {
     return proc(Options);
 }
 
-BOOL SymGetLineFromName(HANDLE hProcess, PCSTR ModuleName, PCSTR FileName, DWORD dwLineNumber, PLONG plDisplacement, PIMAGEHLP_LINE Line) {
-    typedef BOOL (FAR WINAPI * ProcType)(HANDLE, PCSTR, PCSTR, DWORD, PLONG, PIMAGEHLP_LINE);
+BOOL SymGetLineFromName64(HANDLE hProcess, PCSTR ModuleName, PCSTR FileName, DWORD dwLineNumber, PLONG plDisplacement, PIMAGEHLP_LINE64 Line) {
+    typedef BOOL (FAR WINAPI * ProcType)(HANDLE, PCSTR, PCSTR, DWORD, PLONG, PIMAGEHLP_LINE64);
     static ProcType proc = NULL;
     if (proc == NULL) {
-        proc = (ProcType)GetProc("SymGetLineFromName");
+        proc = (ProcType)GetProc("SymGetLineFromName64");
         if (proc == NULL) return 0;
     }
     return proc(hProcess, ModuleName, FileName, dwLineNumber, plDisplacement, Line);
 }
 
-BOOL SymGetLineFromAddr(HANDLE hProcess, DWORD dwAddr, PDWORD pdwDisplacement, PIMAGEHLP_LINE Line) {
-    typedef BOOL (FAR WINAPI * ProcType)(HANDLE, DWORD, PDWORD, PIMAGEHLP_LINE);
+BOOL SymGetLineFromAddr64(HANDLE hProcess, DWORD64 dwAddr, PDWORD pdwDisplacement, PIMAGEHLP_LINE64 Line) {
+    typedef BOOL (FAR WINAPI * ProcType)(HANDLE, DWORD64, PDWORD, PIMAGEHLP_LINE64);
     static ProcType proc = NULL;
     if (proc == NULL) {
-        proc = (ProcType)GetProc("SymGetLineFromAddr");
+        proc = (ProcType)GetProc("SymGetLineFromAddr64");
         if (proc == NULL) return 0;
     }
     return proc(hProcess, dwAddr, pdwDisplacement, Line);
 }
 
-BOOL SymGetLineNext(HANDLE hProcess, PIMAGEHLP_LINE Line) {
-    typedef BOOL (FAR WINAPI * ProcType)(HANDLE, PIMAGEHLP_LINE);
+BOOL SymGetLineNext64(HANDLE hProcess, PIMAGEHLP_LINE64 Line) {
+    typedef BOOL (FAR WINAPI * ProcType)(HANDLE, PIMAGEHLP_LINE64);
     static ProcType proc = NULL;
     if (proc == NULL) {
-        proc = (ProcType)GetProc("SymGetLineNext");
+        proc = (ProcType)GetProc("SymGetLineNext64");
         if (proc == NULL) return 0;
     }
     assert(Line != NULL);

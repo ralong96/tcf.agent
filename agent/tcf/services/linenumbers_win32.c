@@ -82,33 +82,33 @@ int line_to_address(Context * ctx, const char * file, int line, int column,
     if (err == 0) {
         CodeArea area;
         LONG offset = 0;
-        IMAGEHLP_LINE img_line;
+        IMAGEHLP_LINE64 img_line;
         Channel * chnl = cache_channel();
 
         memset(&area, 0, sizeof(area));
         memset(&img_line, 0, sizeof(img_line));
-        img_line.SizeOfStruct = sizeof(IMAGEHLP_LINE);
+        img_line.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
         file = canonic_path_map_file_name(file);
 
-        if (!SymGetLineFromName(get_context_handle(ctx), NULL, file, line, &offset, &img_line)) {
+        if (!SymGetLineFromName64(get_context_handle(ctx), NULL, file, line, &offset, &img_line)) {
             DWORD win_err = GetLastError();
             if (win_err != ERROR_NOT_FOUND) {
                 err = set_win32_errno(win_err);
             }
         }
         else {
-            IMAGEHLP_LINE img_next;
+            IMAGEHLP_LINE64 img_next;
             memcpy(&img_next, &img_line, sizeof(img_next));
-            img_next.SizeOfStruct = sizeof(IMAGEHLP_LINE);
-            if (!SymGetLineNext(get_context_handle(ctx), &img_next)) {
+            img_next.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
+            if (!SymGetLineNext64(get_context_handle(ctx), &img_next)) {
                 err = set_win32_errno(GetLastError());
             }
             else if (compare_path(chnl, ctx, file, img_line.FileName)) {
                 area.file = img_line.FileName;
                 area.start_line = img_line.LineNumber;
-                area.start_address = img_line.Address;
+                area.start_address = (ContextAddress)img_line.Address;
                 area.end_line = img_next.LineNumber;
-                area.end_address = img_next.Address;
+                area.end_address = (ContextAddress)img_next.Address;
                 callback(&area, user_args);
             }
         }
@@ -130,8 +130,8 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
     int err = 0;
     int not_found = 0;
     DWORD offset = 0;
-    IMAGEHLP_LINE line;
-    IMAGEHLP_LINE next;
+    IMAGEHLP_LINE64 line;
+    IMAGEHLP_LINE64 next;
     ContextAddress org_addr0 = addr0;
     ContextAddress org_addr1 = addr1;
 
@@ -141,10 +141,10 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
     if (err == 0 && ctx->parent != NULL) ctx = ctx->parent;
 
     memset(&line, 0, sizeof(line));
-    line.SizeOfStruct = sizeof(IMAGEHLP_LINE);
+    line.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
     if (addr0 >= addr1) not_found = 1;
 
-    while (err == 0 && not_found == 0 && !SymGetLineFromAddr(get_context_handle(ctx), addr0, &offset, &line)) {
+    while (err == 0 && not_found == 0 && !SymGetLineFromAddr64(get_context_handle(ctx), addr0, &offset, &line)) {
         DWORD w = GetLastError();
         if (w == ERROR_MOD_NOT_FOUND) {
             not_found = 1;
@@ -195,7 +195,7 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
         }
     }
     memcpy(&next, &line, sizeof(next));
-    if (err == 0 && !not_found && !SymGetLineNext(get_context_handle(ctx), &next)) {
+    if (err == 0 && !not_found && !SymGetLineNext64(get_context_handle(ctx), &next)) {
         DWORD w = GetLastError();
         if (w == ERROR_NOT_FOUND) {
             /* Last line in the source file */
@@ -219,9 +219,9 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
 
             memset(&area, 0, sizeof(area));
             area.file = line.FileName;
-            area.start_address = line.Address;
+            area.start_address = (ContextAddress)line.Address;
             area.start_line = line.LineNumber;
-            area.end_address = next.Address;
+            area.end_address = (ContextAddress)next.Address;
             area.end_line = next.LineNumber;
             if (org_addr0 != addr0) {
                 area.start_address = org_addr0;
@@ -229,7 +229,7 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
             }
             callback(&area, user_args);
             memcpy(&line, &next, sizeof(line));
-            if (!SymGetLineNext(get_context_handle(ctx), &next)) break;
+            if (!SymGetLineNext64(get_context_handle(ctx), &next)) break;
         }
     }
 
