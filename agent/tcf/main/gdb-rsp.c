@@ -1902,6 +1902,7 @@ int ini_gdb_rsp(const char * conf) {
     if (strcmp(isa, "x86") == 0) isa = "i386";
     if (strcmp(isa, "ia32") == 0) isa = "i386";
     if (strcmp(isa, "x64") == 0) isa = "amd64";
+    if (strcmp(isa, "x86_64") == 0) isa = "amd64";
     if (strcmp(isa, "a32") == 0) isa = "arm";
     if (strcmp(isa, "a64") == 0) isa = "aarch64";
     if (strcmp(isa, "ppc") == 0) isa = "powerpc";
