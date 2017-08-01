@@ -52,9 +52,6 @@
     <Filter Include="machine\arm">
       <UniqueIdentifier>{2b8b41e2-5b0a-4b1c-947e-ca1fdc7ceb03}</UniqueIdentifier>
     </Filter>
-    <Filter Include="machine\ppc">
-      <UniqueIdentifier>{ff538629-61f5-41bb-907c-975bcb6161f1}</UniqueIdentifier>
-    </Filter>
     <Filter Include="machine\a64">
       <UniqueIdentifier>{b9c11e60-65ff-4f7f-bf82-77d8dc3ed5c0}</UniqueIdentifier>
     </Filter>
@@ -63,6 +60,9 @@
     </Filter>
     <Filter Include="machine\ppc64">
       <UniqueIdentifier>{f457750f-4fbb-42de-b7c0-ce8f09933bc1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="machine\powerpc">
+      <UniqueIdentifier>{ff538629-61f5-41bb-907c-975bcb6161f1}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -352,10 +352,10 @@
       <Filter>framework</Filter>
     </ClCompile>
     <ClCompile Include="..\machine\powerpc\tcf\cpudefs-mdep.c">
-      <Filter>machine\ppc</Filter>
+      <Filter>machine\powerpc</Filter>
     </ClCompile>
     <ClCompile Include="..\machine\powerpc\tcf\disassembler-powerpc.c">
-      <Filter>machine\ppc</Filter>
+      <Filter>machine\powerpc</Filter>
     </ClCompile>
     <ClCompile Include="..\machine\x86_64\tcf\disassembler-x86_64.c">
       <Filter>machine\x86_64</Filter>
@@ -685,16 +685,16 @@
       <Filter>framework</Filter>
     </ClInclude>
     <ClInclude Include="..\machine\powerpc\tcf\cpudefs-mdep.h">
-      <Filter>machine\ppc</Filter>
+      <Filter>machine\powerpc</Filter>
     </ClInclude>
     <ClInclude Include="..\machine\powerpc\tcf\disassembler-powerpc.h">
-      <Filter>machine\ppc</Filter>
+      <Filter>machine\powerpc</Filter>
     </ClInclude>
     <ClInclude Include="..\machine\powerpc\tcf\dwarfreloc-mdep.h">
-      <Filter>machine\ppc</Filter>
+      <Filter>machine\powerpc</Filter>
     </ClInclude>
     <ClInclude Include="..\machine\powerpc\tcf\regset-mdep.h">
-      <Filter>machine\ppc</Filter>
+      <Filter>machine\powerpc</Filter>
     </ClInclude>
     <ClInclude Include="..\machine\x86_64\tcf\disassembler-x86_64.h">
       <Filter>machine\x86_64</Filter>
@@ -791,6 +791,27 @@
     </ClInclude>
     <ClInclude Include="..\tcf\framework\mdep-fs.h">
       <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\a64\tcf\cpu-regs-gdb.h">
+      <Filter>machine\a64</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\arm\tcf\cpu-regs-gdb.h">
+      <Filter>machine\arm</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\i386\tcf\cpu-regs-gdb.h">
+      <Filter>machine\i386</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\microblaze\tcf\cpu-regs-gdb.h">
+      <Filter>machine\microblaze</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\powerpc\tcf\cpu-regs-gdb.h">
+      <Filter>machine\powerpc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\ppc64\tcf\cpu-regs-gdb.h">
+      <Filter>machine\ppc64</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\x86_64\tcf\cpu-regs-gdb.h">
+      <Filter>machine\x86_64</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

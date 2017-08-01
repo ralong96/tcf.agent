@@ -38,6 +38,14 @@
 #include <tcf/services/breakpoints.h>
 #include <tcf/services/memorymap.h>
 
+#include <machine/i386/tcf/cpu-regs-gdb.h>
+#include <machine/x86_64/tcf/cpu-regs-gdb.h>
+#include <machine/arm/tcf/cpu-regs-gdb.h>
+#include <machine/a64/tcf/cpu-regs-gdb.h>
+#include <machine/powerpc/tcf/cpu-regs-gdb.h>
+#include <machine/ppc64/tcf/cpu-regs-gdb.h>
+#include <machine/microblaze/tcf/cpu-regs-gdb.h>
+
 #include <tcf/main/gdb-rsp.h>
 
 /*
@@ -141,235 +149,6 @@ static size_t context_extension_offset = 0;
 static int ini_done = 0;
 static LINK link_a2s;
 
-static const char * regs_i386 =
-    "<architecture>i386</architecture>\n"
-    "<feature name='org.gnu.gdb.i386.core'>\n"
-    "  <reg name='eax' bitsize='32' type='int32'/>\n"
-    "  <reg name='ecx' bitsize='32' type='int32'/>\n"
-    "  <reg name='edx' bitsize='32' type='int32'/>\n"
-    "  <reg name='ebx' bitsize='32' type='int32'/>\n"
-    "  <reg name='esp' bitsize='32' type='data_ptr'/>\n"
-    "  <reg name='ebp' bitsize='32' type='data_ptr'/>\n"
-    "  <reg name='esi' bitsize='32' type='int32'/>\n"
-    "  <reg name='edi' bitsize='32' type='int32'/>\n"
-    "  <reg name='eip' bitsize='32' type='code_ptr'/>\n"
-    "  <reg name='eflags' bitsize='32' type='int32'/>\n"
-    "  <reg name='cs'  bitsize='16' type='int32'/>\n"
-    "  <reg name='ss'  bitsize='16' type='int32'/>\n"
-    "  <reg name='ds'  bitsize='16' type='int32'/>\n"
-    "  <reg name='es'  bitsize='16' type='int32'/>\n"
-    "  <reg name='fs'  bitsize='16' type='int32'/>\n"
-    "  <reg name='gs'  bitsize='16' type='int32'/>\n"
-    "  <reg name='st0' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st1' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st2' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st3' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st4' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st5' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st6' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st7' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='fctrl' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fstat' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='ftag' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fiseg' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fioff' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='foseg' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fooff' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fop' bitsize='32' type='int' group='float'/>\n"
-    "</feature>\n";
-
-static const char * regs_amd64 =
-    "<architecture>i386:x86-64</architecture>\n"
-    "<feature name='org.gnu.gdb.i386.core'>\n"
-    "  <flags id='i386_eflags' size='4'>\n"
-    "    <field name='CF' start='0' end='0'/>\n"
-    "    <field name='' start='1' end='1'/>\n"
-    "    <field name='PF' start='2' end='2'/>\n"
-    "    <field name='AF' start='4' end='4'/>\n"
-    "    <field name='ZF' start='6' end='6'/>\n"
-    "    <field name='SF' start='7' end='7'/>\n"
-    "    <field name='TF' start='8' end='8'/>\n"
-    "    <field name='IF' start='9' end='9'/>\n"
-    "    <field name='DF' start='10' end='10'/>\n"
-    "    <field name='OF' start='11' end='11'/>\n"
-    "    <field name='NT' start='14' end='14'/>\n"
-    "    <field name='RF' start='16' end='16'/>\n"
-    "    <field name='VM' start='17' end='17'/>\n"
-    "    <field name='AC' start='18' end='18'/>\n"
-    "    <field name='VIF' start='19' end='19'/>\n"
-    "    <field name='VIP' start='20' end='20'/>\n"
-    "    <field name='ID' start='21' end='21'/>\n"
-    "  </flags>\n"
-    "  <reg name='rax' bitsize='64' type='int64'/>\n"
-    "  <reg name='rbx' bitsize='64' type='int64'/>\n"
-    "  <reg name='rcx' bitsize='64' type='int64'/>\n"
-    "  <reg name='rdx' bitsize='64' type='int64'/>\n"
-    "  <reg name='rsi' bitsize='64' type='int64'/>\n"
-    "  <reg name='rdi' bitsize='64' type='int64'/>\n"
-    "  <reg name='rbp' bitsize='64' type='data_ptr'/>\n"
-    "  <reg name='rsp' bitsize='64' type='data_ptr'/>\n"
-    "  <reg name='r8' bitsize='64' type='int64'/>\n"
-    "  <reg name='r9' bitsize='64' type='int64'/>\n"
-    "  <reg name='r10' bitsize='64' type='int64'/>\n"
-    "  <reg name='r11' bitsize='64' type='int64'/>\n"
-    "  <reg name='r12' bitsize='64' type='int64'/>\n"
-    "  <reg name='r13' bitsize='64' type='int64'/>\n"
-    "  <reg name='r14' bitsize='64' type='int64'/>\n"
-    "  <reg name='r15' bitsize='64' type='int64'/>\n"
-    "  <reg name='rip' bitsize='64' type='code_ptr'/>\n"
-    "  <reg name='eflags' bitsize='32' type='i386_eflags'/>\n"
-    "  <reg name='cs' bitsize='32' type='int32'/>\n"
-    "  <reg name='ss' bitsize='32' type='int32'/>\n"
-    "  <reg name='ds' bitsize='32' type='int32'/>\n"
-    "  <reg name='es' bitsize='32' type='int32'/>\n"
-    "  <reg name='fs' bitsize='32' type='int32'/>\n"
-    "  <reg name='gs' bitsize='32' type='int32'/>\n"
-    "  <reg name='st0' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st1' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st2' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st3' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st4' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st5' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st6' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='st7' bitsize='80' type='i387_ext'/>\n"
-    "  <reg name='fctrl' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fstat' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='ftag' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fiseg' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fioff' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='foseg' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fooff' bitsize='32' type='int' group='float'/>\n"
-    "  <reg name='fop' bitsize='32' type='int' group='float'/>\n"
-    "</feature>\n"
-    "<feature name='org.gnu.gdb.i386.sse'>\n"
-    "  <vector id='v4f' type='ieee_single' count='4'/>\n"
-    "  <vector id='v2d' type='ieee_double' count='2'/>\n"
-    "  <vector id='v16i8' type='int8' count='16'/>\n"
-    "  <vector id='v8i16' type='int16' count='8'/>\n"
-    "  <vector id='v4i32' type='int32' count='4'/>\n"
-    "  <vector id='v2i64' type='int64' count='2'/>\n"
-    "  <union id='vec128'>\n"
-    "    <field name='v4_float' type='v4f'/>\n"
-    "    <field name='v2_double' type='v2d'/>\n"
-    "    <field name='v16_int8' type='v16i8'/>\n"
-    "    <field name='v8_int16' type='v8i16'/>\n"
-    "    <field name='v4_int32' type='v4i32'/>\n"
-    "    <field name='v2_int64' type='v2i64'/>\n"
-    "    <field name='uint128' type='uint128'/>\n"
-    "  </union>\n"
-    "  <flags id='i386_mxcsr' size='4'>\n"
-    "    <field name='IE' start='0' end='0'/>\n"
-    "    <field name='DE' start='1' end='1'/>\n"
-    "    <field name='ZE' start='2' end='2'/>\n"
-    "    <field name='OE' start='3' end='3'/>\n"
-    "    <field name='UE' start='4' end='4'/>\n"
-    "    <field name='PE' start='5' end='5'/>\n"
-    "    <field name='DAZ' start='6' end='6'/>\n"
-    "    <field name='IM' start='7' end='7'/>\n"
-    "    <field name='DM' start='8' end='8'/>\n"
-    "    <field name='ZM' start='9' end='9'/>\n"
-    "    <field name='OM' start='10' end='10'/>\n"
-    "    <field name='UM' start='11' end='11'/>\n"
-    "    <field name='PM' start='12' end='12'/>\n"
-    "    <field name='FZ' start='15' end='15'/>\n"
-    "  </flags>\n"
-    "  <reg name='xmm0' bitsize='128' type='vec128' regnum='40'/>\n"
-    "  <reg name='xmm1' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm2' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm3' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm4' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm5' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm6' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm7' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm8' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm9' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm10' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm11' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm12' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm13' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm14' bitsize='128' type='vec128'/>\n"
-    "  <reg name='xmm15' bitsize='128' type='vec128'/>\n"
-    "  <reg name='mxcsr' bitsize='32' type='i386_mxcsr' group='vector'/>\n"
-    "</feature>\n";
-
-static const char * regs_arm =
-    "<architecture>arm</architecture>\n"
-    "<feature name='org.gnu.gdb.arm.core'>\n"
-    "  <reg name='r0' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r1' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r2' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r3' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r4' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r5' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r6' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r7' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r8' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r9' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r10' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r11' bitsize='32' type='uint32'/>\n"
-    "  <reg name='r12' bitsize='32' type='uint32'/>\n"
-    "  <reg name='sp' bitsize='32' type='data_ptr'/>\n"
-    "  <reg name='lr' bitsize='32'/>\n"
-    "  <reg name='pc' bitsize='32' type='code_ptr'/>\n"
-    "  <reg name='cpsr' bitsize='32' regnum='25'/>\n"
-    "</feature>\n";
-
-static const char * regs_aarch64 =
-    "<architecture>aarch64</architecture>\n"
-    "<feature name='org.gnu.gdb.aarch64.core'>\n"
-    "  <reg name='x0' bitsize='64' />\n"
-    "  <reg name='x1' bitsize='64' />\n"
-    "  <reg name='x2' bitsize='64' />\n"
-    "  <reg name='x3' bitsize='64' />\n"
-    "  <reg name='x4' bitsize='64' />\n"
-    "  <reg name='x5' bitsize='64' />\n"
-    "  <reg name='x6' bitsize='64' />\n"
-    "  <reg name='x7' bitsize='64' />\n"
-    "  <reg name='x8' bitsize='64' />\n"
-    "  <reg name='x9' bitsize='64' />\n"
-    "  <reg name='x10' bitsize='64' />\n"
-    "  <reg name='x11' bitsize='64' />\n"
-    "  <reg name='x12' bitsize='64' />\n"
-    "  <reg name='x13' bitsize='64' />\n"
-    "  <reg name='x14' bitsize='64' />\n"
-    "  <reg name='x15' bitsize='64' />\n"
-    "  <reg name='x16' bitsize='64' />\n"
-    "  <reg name='x17' bitsize='64' />\n"
-    "  <reg name='x18' bitsize='64' />\n"
-    "  <reg name='x19' bitsize='64' />\n"
-    "  <reg name='x20' bitsize='64' />\n"
-    "  <reg name='x21' bitsize='64' />\n"
-    "  <reg name='x22' bitsize='64' />\n"
-    "  <reg name='x23' bitsize='64' />\n"
-    "  <reg name='x24' bitsize='64' />\n"
-    "  <reg name='x25' bitsize='64' />\n"
-    "  <reg name='x26' bitsize='64' />\n"
-    "  <reg name='x27' bitsize='64' />\n"
-    "  <reg name='x28' bitsize='64' />\n"
-    "  <reg name='x29' bitsize='64' />\n"
-    "  <reg name='x30' bitsize='64' />\n"
-    "  <reg name='sp' bitsize='64' type='data_ptr' />\n"
-    "  <reg name='pc' bitsize='64' type='code_ptr' />\n"
-    "  <flags id='cpsr_flags' size='4'>\n"
-    "    <field name='SP'  start='0'  end='0' />\n"
-    "    <field name=''    start='1'  end='1' />\n"
-    "    <field name='EL'  start='2'  end='3' />\n"
-    "    <field name='nRW' start='4'  end='4' />\n"
-    "    <field name=''    start='5'  end='5' />\n"
-    "    <field name='F'   start='6'  end='6' />\n"
-    "    <field name='I'   start='7'  end='7' />\n"
-    "    <field name='A'   start='8'  end='8' />\n"
-    "    <field name='D'   start='9'  end='9' />\n"
-    "    <field name='IL'  start='20' end='20' />\n"
-    "    <field name='SS'  start='21' end='21' />\n"
-    "    <field name='V'   start='28' end='28' />\n"
-    "    <field name='C'   start='29' end='29' />\n"
-    "    <field name='Z'   start='30' end='30' />\n"
-    "    <field name='N'   start='31' end='31' />\n"
-    "  </flags>\n"
-    "  <reg name='cpsr' bitsize='32' type='cpsr_flags' />\n"
-    "</feature>\n";
-
 static GdbProcess * add_process(GdbClient * c, Context * ctx) {
     GdbProcess * p = (GdbProcess *)loc_alloc_zero(sizeof(GdbProcess));
     assert(ctx->mem == ctx);
@@ -459,10 +238,25 @@ static void free_process(GdbProcess * p) {
 }
 
 static const char * get_regs(GdbClient * c) {
-    if (strcmp(c->server->isa, "i386") == 0) return regs_i386;
-    if (strcmp(c->server->isa, "amd64") == 0) return regs_amd64;
-    if (strcmp(c->server->isa, "arm") == 0) return regs_arm;
-    if (strcmp(c->server->isa, "aarch64") == 0) return regs_aarch64;
+    if (strcmp(c->server->isa, "i386") == 0) return cpu_regs_gdb_i386;
+    if (strcmp(c->server->isa, "i686") == 0) return cpu_regs_gdb_i386;
+    if (strcmp(c->server->isa, "x86") == 0) return cpu_regs_gdb_i386;
+    if (strcmp(c->server->isa, "ia32") == 0) return cpu_regs_gdb_i386;
+    if (strcmp(c->server->isa, "x86_64") == 0) return cpu_regs_gdb_x86_64;
+    if (strcmp(c->server->isa, "amd64") == 0) return cpu_regs_gdb_x86_64;
+    if (strcmp(c->server->isa, "x64") == 0) return cpu_regs_gdb_x86_64;
+    if (strcmp(c->server->isa, "arm") == 0) return cpu_regs_gdb_arm;
+    if (strcmp(c->server->isa, "a32") == 0) return cpu_regs_gdb_arm;
+    if (strcmp(c->server->isa, "aarch64") == 0) return cpu_regs_gdb_a64;
+    if (strcmp(c->server->isa, "a64") == 0) return cpu_regs_gdb_a64;
+    if (strcmp(c->server->isa, "ppc") == 0) return cpu_regs_gdb_powerpc;
+    if (strcmp(c->server->isa, "ppc32") == 0) return cpu_regs_gdb_powerpc;
+    if (strcmp(c->server->isa, "power32") == 0) return cpu_regs_gdb_powerpc;
+    if (strcmp(c->server->isa, "powerpc") == 0) return cpu_regs_gdb_powerpc;
+    if (strcmp(c->server->isa, "ppc64") == 0) return cpu_regs_gdb_ppc64;
+    if (strcmp(c->server->isa, "power64") == 0) return cpu_regs_gdb_ppc64;
+    if (strcmp(c->server->isa, "microblaze") == 0) return cpu_regs_gdb_microblaze;
+    if (strcmp(c->server->isa, "mb") == 0) return cpu_regs_gdb_microblaze;
     set_fmt_errno(ERR_OTHER, "Unsupported ISA %s", c->server->isa);
     return NULL;
 }
@@ -1899,14 +1693,6 @@ int ini_gdb_rsp(const char * conf) {
         isa = "i386";
 #endif
     }
-    if (strcmp(isa, "x86") == 0) isa = "i386";
-    if (strcmp(isa, "ia32") == 0) isa = "i386";
-    if (strcmp(isa, "x64") == 0) isa = "amd64";
-    if (strcmp(isa, "x86_64") == 0) isa = "amd64";
-    if (strcmp(isa, "a32") == 0) isa = "arm";
-    if (strcmp(isa, "a64") == 0) isa = "aarch64";
-    if (strcmp(isa, "ppc") == 0) isa = "powerpc";
-    if (strcmp(isa, "ppc64") == 0) isa = "powerpc64";
     sock = open_server(port);
     if (sock < 0) return -1;
     if (!ini_done) {
