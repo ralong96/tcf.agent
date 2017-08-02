@@ -63,7 +63,7 @@ static ip_ifc_info ifc_list[MAX_IFC];
 static time_t last_req_slaves_time[MAX_IFC];
 static int send_all_ok[MAX_IFC];
 
-static int udp_server_port = 0;
+static uint16_t udp_server_port = 0;
 static int udp_server_socket = -1;
 static int udp_server_generation = 0;
 
@@ -273,7 +273,7 @@ static int create_server_socket(void) {
     udp_server_socket = sock;
     udp_server_generation++;
     loc_freeaddrinfo(reslist);
-    trace(LOG_DISCOVERY, "UDP discovery server created at port %d", udp_server_port);
+    trace(LOG_DISCOVERY, "UDP discovery server created at port %d", (int)udp_server_port);
     trigger_recv();
     return 0;
 }
@@ -642,7 +642,7 @@ static void udp_refresh_timer(void * arg) {
             struct sockaddr_in addr;
             memset(&addr, 0, sizeof(addr));
             addr.sin_family = AF_INET;
-            addr.sin_port = htons((short)udp_server_port);
+            addr.sin_port = htons(udp_server_port);
             addr.sin_addr.s_addr = ifc_list[i].addr;
             add_slave(&addr, timenow);
         }
