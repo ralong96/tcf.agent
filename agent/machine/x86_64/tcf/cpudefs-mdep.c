@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -51,8 +51,8 @@ static RegisterDefinition regs_def[] = {
     { "edi",    REG_OFFSET(Edi),      4,  7,  7 },
     { "eip",    REG_OFFSET(Eip),      4,  8,  8 },
     { "eflags", REG_OFFSET(EFlags),   4,  9,  9 },
-    { "cs",     REG_OFFSET(SegCs),    2, -1, -1 },
-    { "ss",     REG_OFFSET(SegSs),    2, -1, -1 },
+    { "cs",     REG_OFFSET(SegCs),    2, 51, 51 },
+    { "ss",     REG_OFFSET(SegSs),    2, 52, 52 },
 
     { "ax",     REG_OFFSET(Eax),      2, -1, -1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 0 },
     { "al",     REG_OFFSET(Eax),      1, -1, -1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 12 },
@@ -72,30 +72,30 @@ static RegisterDefinition regs_def[] = {
 
     { "fpu",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 24 */
 
-    { "f0", REG_OFFSET(FloatSave.RegisterArea) + 0,  10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f1", REG_OFFSET(FloatSave.RegisterArea) + 10, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f2", REG_OFFSET(FloatSave.RegisterArea) + 20, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f3", REG_OFFSET(FloatSave.RegisterArea) + 30, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f4", REG_OFFSET(FloatSave.RegisterArea) + 40, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f5", REG_OFFSET(FloatSave.RegisterArea) + 50, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f6", REG_OFFSET(FloatSave.RegisterArea) + 60, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f7", REG_OFFSET(FloatSave.RegisterArea) + 70, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st0", REG_OFFSET(FloatSave.RegisterArea) + 0,  10, 33, 33, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st1", REG_OFFSET(FloatSave.RegisterArea) + 10, 10, 34, 34, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st2", REG_OFFSET(FloatSave.RegisterArea) + 20, 10, 35, 35, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st3", REG_OFFSET(FloatSave.RegisterArea) + 30, 10, 36, 36, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st4", REG_OFFSET(FloatSave.RegisterArea) + 40, 10, 37, 37, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st5", REG_OFFSET(FloatSave.RegisterArea) + 50, 10, 38, 38, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st6", REG_OFFSET(FloatSave.RegisterArea) + 60, 10, 39, 39, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st7", REG_OFFSET(FloatSave.RegisterArea) + 70, 10, 40, 40, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
 
-    { "control", REG_OFFSET(FloatSave.ControlWord),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "status",  REG_OFFSET(FloatSave.StatusWord),   2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "control", REG_OFFSET(FloatSave.ControlWord),  2, 65, 65, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "status",  REG_OFFSET(FloatSave.StatusWord),   2, 66, 66, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
     { "tag",     REG_OFFSET(FloatSave.TagWord),      1, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
 
     { "xmm",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 36 */
 
     { "mxcsr",  REG_OFFSET(ExtendedRegisters) + 24, 4, 64, 64, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
-    { "xmm0",   REG_OFFSET(ExtendedRegisters) + 10 * 16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
-    { "xmm1",   REG_OFFSET(ExtendedRegisters) + 11 * 16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
-    { "xmm2",   REG_OFFSET(ExtendedRegisters) + 12 * 16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
-    { "xmm3",   REG_OFFSET(ExtendedRegisters) + 13 * 16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
-    { "xmm4",   REG_OFFSET(ExtendedRegisters) + 14 * 16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
-    { "xmm5",   REG_OFFSET(ExtendedRegisters) + 15 * 16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
-    { "xmm6",   REG_OFFSET(ExtendedRegisters) + 16 * 16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
-    { "xmm7",   REG_OFFSET(ExtendedRegisters) + 17 * 16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
+    { "xmm0",   REG_OFFSET(ExtendedRegisters) + 10 * 16, 16, 17, 17, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
+    { "xmm1",   REG_OFFSET(ExtendedRegisters) + 11 * 16, 16, 18, 18, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
+    { "xmm2",   REG_OFFSET(ExtendedRegisters) + 12 * 16, 16, 19, 19, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
+    { "xmm3",   REG_OFFSET(ExtendedRegisters) + 13 * 16, 16, 20, 20, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
+    { "xmm4",   REG_OFFSET(ExtendedRegisters) + 14 * 16, 16, 21, 21, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
+    { "xmm5",   REG_OFFSET(ExtendedRegisters) + 15 * 16, 16, 22, 22, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
+    { "xmm6",   REG_OFFSET(ExtendedRegisters) + 16 * 16, 16, 23, 23, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
+    { "xmm7",   REG_OFFSET(ExtendedRegisters) + 17 * 16, 16, 24, 24, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 36 },
 
     { "debug",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 46 */
 
@@ -127,27 +127,27 @@ static RegisterDefinition regs_def[] = {
     { "r14",    REG_OFFSET(R14),      8, 14, 14},
     { "r15",    REG_OFFSET(R15),      8, 15, 15},
     { "rip",    REG_OFFSET(Rip),      8, 16, 16},
-    { "eflags", REG_OFFSET(EFlags),   4, 49, -1},
-    { "es",     REG_OFFSET(SegEs),    2, 50, -1},
-    { "cs",     REG_OFFSET(SegCs),    2, 51, -1},
-    { "ss",     REG_OFFSET(SegSs),    2, 52, -1},
-    { "ds",     REG_OFFSET(SegDs),    2, 53, -1},
-    { "fs",     REG_OFFSET(SegFs),    2, 54, -1},
-    { "gs",     REG_OFFSET(SegGs),    2, 55, -1},
+    { "eflags", REG_OFFSET(EFlags),   4, 49, 49},
+    { "es",     REG_OFFSET(SegEs),    2, 50, 50},
+    { "cs",     REG_OFFSET(SegCs),    2, 51, 51},
+    { "ss",     REG_OFFSET(SegSs),    2, 52, 52},
+    { "ds",     REG_OFFSET(SegDs),    2, 53, 53},
+    { "fs",     REG_OFFSET(SegFs),    2, 54, 54},
+    { "gs",     REG_OFFSET(SegGs),    2, 55, 55},
 
     { "fpu",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 24 */
 
-    { "f0", REG_OFFSET(FltSave.FloatRegisters[0]), 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f1", REG_OFFSET(FltSave.FloatRegisters[1]), 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f2", REG_OFFSET(FltSave.FloatRegisters[2]), 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f3", REG_OFFSET(FltSave.FloatRegisters[3]), 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f4", REG_OFFSET(FltSave.FloatRegisters[4]), 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f5", REG_OFFSET(FltSave.FloatRegisters[5]), 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f6", REG_OFFSET(FltSave.FloatRegisters[6]), 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "f7", REG_OFFSET(FltSave.FloatRegisters[7]), 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st0", REG_OFFSET(FltSave.FloatRegisters[0]), 10, 33, 33, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st1", REG_OFFSET(FltSave.FloatRegisters[1]), 10, 34, 34, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st2", REG_OFFSET(FltSave.FloatRegisters[2]), 10, 35, 35, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st3", REG_OFFSET(FltSave.FloatRegisters[3]), 10, 36, 36, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st4", REG_OFFSET(FltSave.FloatRegisters[4]), 10, 37, 37, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st5", REG_OFFSET(FltSave.FloatRegisters[5]), 10, 38, 38, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st6", REG_OFFSET(FltSave.FloatRegisters[6]), 10, 39, 39, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "st7", REG_OFFSET(FltSave.FloatRegisters[7]), 10, 40, 40, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
 
-    { "control", REG_OFFSET(FltSave.ControlWord),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
-    { "status",  REG_OFFSET(FltSave.StatusWord),   2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "control", REG_OFFSET(FltSave.ControlWord),  2, 65, 65, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
+    { "status",  REG_OFFSET(FltSave.StatusWord),   2, 66, 66, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
     { "tag",     REG_OFFSET(FltSave.TagWord),      1, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 24 },
 
     { "debug",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 36 */
@@ -430,29 +430,29 @@ static RegisterDefinition regs_def[] = {
     { "r14",    REG_OFFSET(user.regs.r14),      8, 14, 14},
     { "r15",    REG_OFFSET(user.regs.r15),      8, 15, 15},
     { "rip",    REG_OFFSET(user.regs.rip),      8, 16, 16},
-    { "eflags", REG_OFFSET(user.regs.eflags),   4, 49, -1},
-    { "es",     REG_OFFSET(user.regs.es),       2, 50, -1},
-    { "cs",     REG_OFFSET(user.regs.cs),       2, 51, -1},
-    { "ss",     REG_OFFSET(user.regs.ss),       2, 52, -1},
-    { "ds",     REG_OFFSET(user.regs.ds),       2, 53, -1},
-    { "fs",     REG_OFFSET(user.regs.fs),       2, 54, -1},
-    { "gs",     REG_OFFSET(user.regs.gs),       2, 55, -1},
-    { "fs_base", REG_OFFSET(user.regs.fs_base), 8, 58, -1},
-    { "gs_base", REG_OFFSET(user.regs.gs_base), 8, 59, -1},
+    { "eflags", REG_OFFSET(user.regs.eflags),   4, 49, 49},
+    { "es",     REG_OFFSET(user.regs.es),       2, 50, 50},
+    { "cs",     REG_OFFSET(user.regs.cs),       2, 51, 51},
+    { "ss",     REG_OFFSET(user.regs.ss),       2, 52, 52},
+    { "ds",     REG_OFFSET(user.regs.ds),       2, 53, 53},
+    { "fs",     REG_OFFSET(user.regs.fs),       2, 54, 54},
+    { "gs",     REG_OFFSET(user.regs.gs),       2, 55, 55},
+    { "fs_base", REG_OFFSET(user.regs.fs_base), 8, 58, 58},
+    { "gs_base", REG_OFFSET(user.regs.gs_base), 8, 59, 59},
 
     { "fpu",    0, 0, -1, -1, 0, 0, 1, 1 },
 
-    { "f0",     REG_OFFSET(fp.st_space) +   0, 10, 33, 33, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
-    { "f1",     REG_OFFSET(fp.st_space) +  16, 10, 34, 34, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
-    { "f2",     REG_OFFSET(fp.st_space) +  32, 10, 35, 35, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
-    { "f3",     REG_OFFSET(fp.st_space) +  48, 10, 36, 36, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
-    { "f4",     REG_OFFSET(fp.st_space) +  64, 10, 37, 37, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
-    { "f5",     REG_OFFSET(fp.st_space) +  80, 10, 38, 38, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
-    { "f6",     REG_OFFSET(fp.st_space) +  96, 10, 39, 39, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
-    { "f7",     REG_OFFSET(fp.st_space) + 112, 10, 40, 40, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "st0",    REG_OFFSET(fp.st_space) +   0, 10, 33, 33, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "st1",    REG_OFFSET(fp.st_space) +  16, 10, 34, 34, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "st2",    REG_OFFSET(fp.st_space) +  32, 10, 35, 35, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "st3",    REG_OFFSET(fp.st_space) +  48, 10, 36, 36, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "st4",    REG_OFFSET(fp.st_space) +  64, 10, 37, 37, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "st5",    REG_OFFSET(fp.st_space) +  80, 10, 38, 38, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "st6",    REG_OFFSET(fp.st_space) +  96, 10, 39, 39, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "st7",    REG_OFFSET(fp.st_space) + 112, 10, 40, 40, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
 
-    { "cwd",    REG_OFFSET(fp.cwd),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
-    { "swd",    REG_OFFSET(fp.swd),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "cwd",    REG_OFFSET(fp.cwd),  2, 65, 65, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
+    { "swd",    REG_OFFSET(fp.swd),  2, 66, 66, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
     { "ftw",    REG_OFFSET(fp.ftw),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
     { "fop",    REG_OFFSET(fp.fop),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
     { "rip",    REG_OFFSET(fp.rip),  8, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 26 },
@@ -493,22 +493,22 @@ static RegisterDefinition regs_def[] = {
 #   define REG_SP user.regs.esp
 #   define REG_BP user.regs.ebp
 #   define REG_IP user.regs.eip
-    { "eax",    REG_OFFSET(user.regs.eax),      4,  0,  0},
-    { "ebx",    REG_OFFSET(user.regs.ebx),      4,  3,  3},
-    { "ecx",    REG_OFFSET(user.regs.ecx),      4,  1,  1},
-    { "edx",    REG_OFFSET(user.regs.edx),      4,  2,  2},
-    { "esp",    REG_OFFSET(user.regs.esp),      4,  4,  4},
-    { "ebp",    REG_OFFSET(user.regs.ebp),      4,  5,  5},
-    { "esi",    REG_OFFSET(user.regs.esi),      4,  6,  6},
-    { "edi",    REG_OFFSET(user.regs.edi),      4,  7,  7},
-    { "eip",    REG_OFFSET(user.regs.eip),      4,  8,  8},
-    { "eflags", REG_OFFSET(user.regs.eflags),   4,  9,  9},
-    { "ds",     REG_OFFSET(user.regs.xds),      2, -1, -1},
-    { "es",     REG_OFFSET(user.regs.xes),      2, -1, -1},
-    { "fs",     REG_OFFSET(user.regs.xfs),      2, -1, -1},
-    { "gs",     REG_OFFSET(user.regs.xgs),      2, -1, -1},
-    { "cs",     REG_OFFSET(user.regs.xcs),      2, -1, -1},
-    { "ss",     REG_OFFSET(user.regs.xss),      2, -1, -1},
+    { "eax",    REG_OFFSET(user.regs.eax),      4,  0,  0 },
+    { "ebx",    REG_OFFSET(user.regs.ebx),      4,  3,  3 },
+    { "ecx",    REG_OFFSET(user.regs.ecx),      4,  1,  1 },
+    { "edx",    REG_OFFSET(user.regs.edx),      4,  2,  2 },
+    { "esp",    REG_OFFSET(user.regs.esp),      4,  4,  4 },
+    { "ebp",    REG_OFFSET(user.regs.ebp),      4,  5,  5 },
+    { "esi",    REG_OFFSET(user.regs.esi),      4,  6,  6 },
+    { "edi",    REG_OFFSET(user.regs.edi),      4,  7,  7 },
+    { "eip",    REG_OFFSET(user.regs.eip),      4,  8,  8 },
+    { "eflags", REG_OFFSET(user.regs.eflags),   4,  9,  9 },
+    { "es",     REG_OFFSET(user.regs.xes),      2, 50, 50 },
+    { "cs",     REG_OFFSET(user.regs.xcs),      2, 51, 51 },
+    { "ss",     REG_OFFSET(user.regs.xss),      2, 52, 52 },
+    { "ds",     REG_OFFSET(user.regs.xds),      2, 53, 53 },
+    { "fs",     REG_OFFSET(user.regs.xfs),      2, 54, 54 },
+    { "gs",     REG_OFFSET(user.regs.xgs),      2, 55, 55 },
 
     { "ax",     REG_OFFSET(user.regs.eax),      2, -1, -1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 0 },
     { "al",     REG_OFFSET(user.regs.eax),      1, -1, -1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 16 },
@@ -528,17 +528,17 @@ static RegisterDefinition regs_def[] = {
 
     { "fpu",    0, 0, -1, -1, 0, 0, 1, 1 },
 
-    { "f0",     REG_OFFSET(other.st_space) +   0, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "f1",     REG_OFFSET(other.st_space) +  16, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "f2",     REG_OFFSET(other.st_space) +  32, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "f3",     REG_OFFSET(other.st_space) +  48, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "f4",     REG_OFFSET(other.st_space) +  64, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "f5",     REG_OFFSET(other.st_space) +  80, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "f6",     REG_OFFSET(other.st_space) +  96, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "f7",     REG_OFFSET(other.st_space) + 112, 10, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st0",    REG_OFFSET(other.st_space) +   0, 10, 33, 33, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st1",    REG_OFFSET(other.st_space) +  16, 10, 34, 34, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st2",    REG_OFFSET(other.st_space) +  32, 10, 35, 35, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st3",    REG_OFFSET(other.st_space) +  48, 10, 36, 36, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st4",    REG_OFFSET(other.st_space) +  64, 10, 37, 37, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st5",    REG_OFFSET(other.st_space) +  80, 10, 38, 38, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st6",    REG_OFFSET(other.st_space) +  96, 10, 39, 39, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st7",    REG_OFFSET(other.st_space) + 112, 10, 40, 40, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
 
-    { "cwd",    REG_OFFSET(other.cwd),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "swd",    REG_OFFSET(other.swd),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "cwd",    REG_OFFSET(other.cwd),  2, 65, 65, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "swd",    REG_OFFSET(other.swd),  2, 66, 66, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
     { "twd",    REG_OFFSET(other.twd),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
     { "fop",    REG_OFFSET(other.fop),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
     { "fip",    REG_OFFSET(other.fip),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
@@ -550,14 +550,14 @@ static RegisterDefinition regs_def[] = {
 
     { "xmm",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 46 */
 
-    { "xmm0",   REG_OFFSET(other.xmm_space) +   0, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm1",   REG_OFFSET(other.xmm_space) +  16, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm2",   REG_OFFSET(other.xmm_space) +  32, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm3",   REG_OFFSET(other.xmm_space) +  48, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm4",   REG_OFFSET(other.xmm_space) +  64, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm5",   REG_OFFSET(other.xmm_space) +  80, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm6",   REG_OFFSET(other.xmm_space) +  96, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm7",   REG_OFFSET(other.xmm_space) + 112, 16, -1, -1, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm0",   REG_OFFSET(other.xmm_space) +   0, 16, 17, 17, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm1",   REG_OFFSET(other.xmm_space) +  16, 16, 18, 18, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm2",   REG_OFFSET(other.xmm_space) +  32, 16, 19, 19, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm3",   REG_OFFSET(other.xmm_space) +  48, 16, 20, 20, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm4",   REG_OFFSET(other.xmm_space) +  64, 16, 21, 21, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm5",   REG_OFFSET(other.xmm_space) +  80, 16, 22, 22, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm6",   REG_OFFSET(other.xmm_space) +  96, 16, 23, 23, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm7",   REG_OFFSET(other.xmm_space) + 112, 16, 24, 24, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
 
     { "debug",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 55 */
 
@@ -570,7 +570,7 @@ static RegisterDefinition regs_def[] = {
 
 #endif
 
-    { NULL,     0,                    0,  0,  0},
+    { NULL },
 };
 
 RegisterDefinition * regs_index = NULL;
