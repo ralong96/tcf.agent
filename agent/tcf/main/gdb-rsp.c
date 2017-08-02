@@ -132,6 +132,13 @@ typedef struct GdbBreakpoint {
     BreakpointInfo * bp;
 } GdbBreakpoint;
 
+typedef struct GdbRegister {
+    unsigned regnum;
+    char name[256];
+    unsigned bits;
+    int id;
+} GdbRegister;
+
 typedef struct MonitorCommand {
     const char * name;
     void (*func)(GdbClient *, const char *);
@@ -239,6 +246,8 @@ static void free_process(GdbProcess * p) {
 
 static const char * get_regs(GdbClient * c) {
     if (strcmp(c->server->isa, "i386") == 0) return cpu_regs_gdb_i386;
+    if (strcmp(c->server->isa, "i486") == 0) return cpu_regs_gdb_i386;
+    if (strcmp(c->server->isa, "i586") == 0) return cpu_regs_gdb_i386;
     if (strcmp(c->server->isa, "i686") == 0) return cpu_regs_gdb_i386;
     if (strcmp(c->server->isa, "x86") == 0) return cpu_regs_gdb_i386;
     if (strcmp(c->server->isa, "ia32") == 0) return cpu_regs_gdb_i386;
@@ -247,6 +256,7 @@ static const char * get_regs(GdbClient * c) {
     if (strcmp(c->server->isa, "x64") == 0) return cpu_regs_gdb_x86_64;
     if (strcmp(c->server->isa, "arm") == 0) return cpu_regs_gdb_arm;
     if (strcmp(c->server->isa, "a32") == 0) return cpu_regs_gdb_arm;
+    if (strcmp(c->server->isa, "arm64") == 0) return cpu_regs_gdb_a64;
     if (strcmp(c->server->isa, "aarch64") == 0) return cpu_regs_gdb_a64;
     if (strcmp(c->server->isa, "a64") == 0) return cpu_regs_gdb_a64;
     if (strcmp(c->server->isa, "ppc") == 0) return cpu_regs_gdb_powerpc;
@@ -267,10 +277,18 @@ static unsigned reg_name_hash(const char * name) {
     return h;
 }
 
-static RegisterDefinition * find_register(GdbThread * t, const char * name) {
+static RegisterDefinition * find_register(GdbThread * t, GdbRegister * r) {
     RegisterDefinition ** map = t->regs_nm_map;
     unsigned n = 0;
 
+    if (r->id >= 0) {
+        RegisterDefinition * def = get_reg_definitions(t->ctx);
+        while (def->name != NULL) {
+            if (def->dwarf_id == r->id) return def;
+            def++;
+        }
+        return NULL;
+    }
     if (map == NULL) {
         unsigned map_len = 0;
         unsigned map_len_p2 = 1;
@@ -293,9 +311,9 @@ static RegisterDefinition * find_register(GdbThread * t, const char * name) {
         }
         t->regs_nm_map = map;
     }
-    n = reg_name_hash(name) & t->regs_nm_map_index_mask;
+    n = reg_name_hash(r->name) & t->regs_nm_map_index_mask;
     while (map[n] != NULL) {
-        if (strcmp(map[n]->name, name) == 0) return map[n];
+        if (strcmp(map[n]->name, r->name) == 0) return map[n];
         n = (n + 1) & t->regs_nm_map_index_mask;
     }
     return NULL;
@@ -567,12 +585,12 @@ static int add_res_exec_file(GdbClient * c, unsigned pid) {
     return 0;
 }
 
-static void add_res_reg_value(GdbClient * c, GdbThread * t, const char * name, unsigned bits) {
+static void add_res_reg_value(GdbClient * c, GdbThread * t, GdbRegister * r) {
     RegisterDefinition * def = NULL;
-    unsigned size = (bits + 7) / 8;
+    unsigned size = (r->bits + 7) / 8;
     void * buf = tmp_alloc_zero(size);
     unsigned i = 0;
-    if (t != NULL) def = find_register(t, name);
+    if (t != NULL) def = find_register(t, r);
     if (def != NULL && context_read_reg(t->ctx, def, 0, def->size < size ? def->size : size, buf) < 0) def = NULL;
     while (i < size) {
         if (def == NULL) {
@@ -718,12 +736,13 @@ static void get_xfer_range(GdbClient * c, char ** p) {
     c->xfer_range_size = get_cmd_uint(c, p);
 }
 
-static void read_reg_attributes(const char * p, char ** name, unsigned * bits, unsigned * regnum) {
+static int read_reg_attributes(const char * p, unsigned n, GdbRegister * r) {
     const char * p0 = p;
-    *name = NULL;
-    *bits = 0;
+    memset(r, 0, sizeof(GdbRegister));
+    r->regnum = n;
+    r->id = -1;
     while (*p == ' ') p++;
-    if (strncmp(p, "<reg ", 5) != 0) return;
+    if (strncmp(p, "<reg ", 5) != 0) return 0;
     p += 5;
     while (*p) {
         if (*p == '\n') break;
@@ -736,21 +755,25 @@ static void read_reg_attributes(const char * p, char ** name, unsigned * bits, u
             while (*v1 != 0 && *v1 != q) v1++;
             while (n0 > p0 && *(n0 - 1) != ' ') n0--;
             if (n1 - n0 == 4 && strncmp(n0, "name", 4) == 0) {
-                size_t l = v1 - v0;
-                *name = (char *)tmp_alloc_zero(l + 1);
-                memcpy(*name, v0, l);
+                size_t l = v1 - v0 + 1;
+                if (l > sizeof(r->name)) l = sizeof(r->name);
+                strlcpy(r->name, v0, l);
             }
             if (n1 - n0 == 7 && strncmp(n0, "bitsize", 7) == 0) {
-                *bits = (unsigned)atoi(v0);
+                r->bits = (unsigned)atoi(v0);
             }
             if (n1 - n0 == 6 && strncmp(n0, "regnum", 6) == 0) {
-                *regnum = (unsigned)atoi(v0);
+                r->regnum = (unsigned)atoi(v0);
+            }
+            if (n1 - n0 == 2 && strncmp(n0, "id", 2) == 0) {
+                r->id = atoi(v0);
             }
             if (*v1 != q) break;
             p = v1;
         }
         p++;
     }
+    return r->name != NULL && r->bits > 0;
 }
 
 static void breakpoint_cb(Context * ctx, void * args) {
@@ -784,19 +807,17 @@ static int handle_g_command(GdbClient * c) {
     GdbThread * t = find_thread(c, c->cur_g_pid, c->cur_g_tid);
     const char * regs = get_regs(c);
     const char * p = regs;
-    const char * s = regs;
+    const char * q = regs;
     unsigned regnum = 0;
     if (p == NULL) return -1;
     while (*p) {
         if (*p++ == '\n') {
-            char * name = NULL;
-            unsigned bits = 0;
-            read_reg_attributes(s, &name, &bits, &regnum);
-            if (name != NULL && bits != 0) {
-                add_res_reg_value(c, t, name, bits);
-                regnum++;
+            GdbRegister r;
+            if (read_reg_attributes(q, regnum, &r)) {
+                add_res_reg_value(c, t, &r);
+                regnum = r.regnum + 1;
             }
-            s = p;
+            q = p;
         }
     }
     return 0;
@@ -860,22 +881,20 @@ static int handle_p_command(GdbClient * c) {
     unsigned reg = get_cmd_uint(c, &s);
     const char * regs = get_regs(c);
     const char * p = regs;
-    const char * r = regs;
+    const char * q = regs;
     unsigned regnum = 0;
     if (p == NULL) return -1;
     while (*p) {
         if (*p++ == '\n') {
-            char * name = NULL;
-            unsigned bits = 0;
-            read_reg_attributes(r, &name, &bits, &regnum);
-            if (name != NULL && bits != 0) {
-                if (regnum == reg) {
-                    add_res_reg_value(c, t, name, bits);
+            GdbRegister r;
+            if (read_reg_attributes(q, regnum, &r)) {
+                if (r.regnum == reg) {
+                    add_res_reg_value(c, t, &r);
                     return 0;
                 }
-                regnum++;
+                regnum = r.regnum + 1;
             }
-            r = p;
+            q = p;
         }
     }
     add_res_str(c, "E01");
@@ -889,35 +908,31 @@ static int handle_P_command(GdbClient * c) {
     unsigned reg = get_cmd_uint(c, &s);
     const char * regs = get_regs(c);
     const char * p = regs;
-    const char * r = regs;
+    const char * q = regs;
     unsigned regnum = 0;
     if (p == NULL) return -1;
     while (*p) {
         if (*p++ == '\n') {
-            char * name = NULL;
-            unsigned bits = 0;
-            read_reg_attributes(r, &name, &bits, &regnum);
-            if (name != NULL && bits != 0) {
-                if (regnum == reg) {
+            GdbRegister r;
+            if (read_reg_attributes(q, regnum, &r)) {
+                if (r.regnum == reg) {
                     RegisterDefinition * def = NULL;
-                    unsigned size = (bits + 7) / 8;
+                    unsigned size = (r.bits + 7) / 8;
                     void * buf = tmp_alloc_zero(size);
                     if (*s++ == '=') {
                         unsigned i = 0;
-                        while (i < size) {
-                            ((uint8_t *)buf)[i++] = get_cmd_uint8(c, &s);
-                        }
+                        while (i < size) ((uint8_t *)buf)[i++] = get_cmd_uint8(c, &s);
                     }
-                    if (t != NULL) def = find_register(t, name);
+                    if (t != NULL) def = find_register(t, &r);
                     if (def != NULL && context_write_reg(t->ctx, def, 0, def->size < size ? def->size : size, buf) == 0) {
                         add_res_str(c, "OK");
                         return 0;
                     }
                     break;
                 }
-                regnum++;
+                regnum = r.regnum + 1;
             }
-            r = p;
+            q = p;
         }
     }
     add_res_str(c, "E01");
