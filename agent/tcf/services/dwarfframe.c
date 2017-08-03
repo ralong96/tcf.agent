@@ -834,7 +834,6 @@ static void generate_register_commands(RegisterRules * reg, RegisterDefinition *
         if (reg->rule == RULE_OFFSET) {
             LocationExpressionCommand * cmd = add_command(SFT_CMD_RD_MEM);
             cmd->args.mem.size = dst_reg_def->size;
-            if (cmd->args.mem.size > rules.address_size) cmd->args.mem.size = rules.address_size;
             cmd->args.mem.big_endian = rules.reg_id_scope.big_endian;
         }
         break;
@@ -855,7 +854,6 @@ static void generate_register_commands(RegisterRules * reg, RegisterDefinition *
         if (reg->rule == RULE_EXPRESSION) {
             LocationExpressionCommand * cmd = add_command(SFT_CMD_RD_MEM);
             cmd->args.mem.size = dst_reg_def->size;
-            if (cmd->args.mem.size > rules.address_size) cmd->args.mem.size = rules.address_size;
             cmd->args.mem.big_endian = rules.reg_id_scope.big_endian;
         }
         break;

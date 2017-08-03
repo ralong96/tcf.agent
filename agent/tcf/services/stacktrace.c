@@ -165,11 +165,12 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
             }
             down->ctx = ctx;
             for (i = 0; i < info->reg_cnt; i++) {
-                int ok = 0;
-                uint64_t v = 0;
+                RegisterDefinition * reg_def = info->regs[i]->reg;
+                uint8_t * buf = NULL;
+                size_t size = 0;
                 Trap trap_reg;
 #if ENABLE_StackRegisterLocations
-                if (write_reg_location(down, info->regs[i]->reg, info->regs[i]->cmds, info->regs[i]->cmds_cnt) == 0) {
+                if (write_reg_location(down, reg_def, info->regs[i]->cmds, info->regs[i]->cmds_cnt) == 0) {
                     down->has_reg_data = 1;
                     continue;
                 }
@@ -178,12 +179,26 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
                     /* If a saved register value cannot be evaluated - ignore it */
                     state = evaluate_location_expression(ctx, frame, info->regs[i]->cmds, info->regs[i]->cmds_cnt, NULL, 0);
                     if (state->stk_pos == 1) {
-                        v = state->stk[0];
-                        ok = 1;
+                        unsigned j;
+                        uint64_t v = state->stk[0];
+                        buf = (uint8_t *)tmp_alloc_zero(reg_def->size);
+                        for (j = 0; j < reg_def->size; j++) {
+                            buf[reg_def->big_endian ? reg_def->size - j - 1 : j] = (uint8_t)v;
+                            v = v >> 8;
+                        }
+                        size = reg_def->size;
+                    }
+                    else if (state->stk_pos == 0 && state->pieces_cnt > 0) {
+                        read_location_pieces(state->ctx, state->stack_frame,
+                            state->pieces, state->pieces_cnt, state->reg_id_scope.big_endian, (void **)&buf, &size);
                     }
                     clear_trap(&trap_reg);
                 }
-                if (ok && write_reg_value(down, info->regs[i]->reg, v) < 0) exception(errno);
+                if (buf != NULL && size > 0) {
+                    if (size > reg_def->size) size = reg_def->size;
+                    if (write_reg_bytes(down, reg_def, 0, size, buf) < 0) exception(errno);
+                    down->has_reg_data = 1;
+                }
             }
             clear_trap(&trap);
             frame->is_walked = 1;

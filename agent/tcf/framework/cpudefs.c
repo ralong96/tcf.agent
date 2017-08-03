@@ -322,14 +322,30 @@ LocationExpressionState * evaluate_location_expression(Context * ctx, StackFrame
                 size_t j;
                 size_t size = cmd->args.mem.size;
                 uint64_t n = 0;
-                uint8_t buf[8];
 
-                assert(size <= sizeof(buf));
-                if (context_read_mem(ctx, (ContextAddress)stk[stk_pos - 1], buf, size) < 0) exception(errno);
-                for (j = 0; j < size; j++) {
-                    n = (n << 8) | buf[cmd->args.mem.big_endian ? j : size - j - 1];
+                if (size <= sizeof(n)) {
+                    uint8_t buf[8];
+                    if (context_read_mem(ctx, (ContextAddress)stk[stk_pos - 1], buf, size) < 0) exception(errno);
+                    for (j = 0; j < size; j++) {
+                        n = (n << 8) | buf[cmd->args.mem.big_endian ? j : size - j - 1];
+                    }
+                    stk[stk_pos - 1] = n;
                 }
-                stk[stk_pos - 1] = n;
+                else if (state->pieces_cnt == 0 && i + 1 == cmd_cnt && stk_pos == 1) {
+                    LocationPiece * piece = NULL;
+                    if (state->pieces_cnt >= state->pieces_max) {
+                        state->pieces_max += 4;
+                        state->pieces = (LocationPiece *)tmp_realloc(state->pieces, state->pieces_max * sizeof(LocationPiece));
+                    }
+                    piece = state->pieces + state->pieces_cnt++;
+                    memset(piece, 0, sizeof(LocationPiece));
+                    piece->addr = (ContextAddress)stk[stk_pos - 1];
+                    piece->size = size;
+                    stk_pos--;
+                }
+                else {
+                    exception(ERR_INV_DATA_SIZE);
+                }
             }
             break;
         case SFT_CMD_WR_MEM:
