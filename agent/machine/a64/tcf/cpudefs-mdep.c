@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2015-2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -38,10 +38,13 @@
 #define REG_OFFSET(name) offsetof(REG_SET, name)
 
 RegisterDefinition regs_def[] = {
-    { "r0",      REG_OFFSET(gp.regs[0]),              8, 0, 0},
-    { "sp",      REG_OFFSET(gp.sp),                   8, 31, 31},
-    { "pc",      REG_OFFSET(gp.pc),                   8, 33, 33},
-    { NULL,      0, 0,  0,  0},
+    { "x0",      REG_OFFSET(gp.regs[0]),              8, 0, 0 },
+    { "sp",      REG_OFFSET(gp.sp),                   8, 31, 31 },
+    { "pc",      REG_OFFSET(gp.pc),                   8, 33, 33 },
+    { "cpsr",    REG_OFFSET(gp.pstate),               8, -1, -1 },
+    { "orig_x0", REG_OFFSET(gp.orig_x0),              8, -1, -1 },
+    { "vfp",     0, 0, -1, -1, 0, 0, 1, 1 },
+    { NULL },
 };
 
 RegisterDefinition * regs_index = NULL;
@@ -92,18 +95,69 @@ static void ini_reg_defs(void) {
             r->role = "PC";
             pc_def = r;
         }
-        else if (strcmp(r->name, "r0") == 0) {
+        else if (strcmp(r->name, "x0") == 0) {
             unsigned i;
             for (i = 1; i < 31; i++) {
                 char name[64];
                 r = alloc_reg();
                 *r = *d;
-                snprintf(name, sizeof(name), "r%d", i);
+                snprintf(name, sizeof(name), "x%d", i);
                 r->name = loc_strdup(name);
                 r->offset = d->offset + i * 8;
                 r->dwarf_id = d->dwarf_id + i;
                 r->eh_frame_id = d->eh_frame_id + i;
             }
+        }
+        else if (strcmp(r->name, "vfp") == 0) {
+            int n;
+            RegisterDefinition * x = NULL;
+            for (n = 0; n < 2; n++) {
+                unsigned i;
+                RegisterDefinition * w = alloc_reg();
+                w->no_read = 1;
+                w->no_write = 1;
+                w->parent = r;
+                switch (n) {
+                case 0:
+                    w->name = "64-bit";
+                    for (i = 0; i < 64; i++) {
+                        char nm[32];
+                        x = alloc_reg();
+                        snprintf(nm, sizeof(nm), "d%d", i);
+                        x->name = loc_strdup(nm);
+                        x->offset = REG_OFFSET(fp.vregs) + i * 8;
+                        x->size = 8;
+                        x->fp_value = 1;
+                        x->parent = w;
+                    }
+                    break;
+                case 1:
+                    w->name = "128-bit";
+                    for (i = 0; i < 32; i++) {
+                        char nm[32];
+                        x = alloc_reg();
+                        snprintf(nm, sizeof(nm), "v%d", i);
+                        x->name = loc_strdup(nm);
+                        x->offset = REG_OFFSET(fp.vregs) + i * 16;
+                        x->size = 16;
+                        x->dwarf_id = 64 + i;
+                        x->eh_frame_id = 64 + i;
+                        x->fp_value = 1;
+                        x->parent = w;
+                    }
+                    break;
+                }
+            }
+            x = alloc_reg();
+            x->name = "fpsr";
+            x->offset = REG_OFFSET(fp.fpsr);
+            x->size = 4;
+            x->parent = r;
+            x = alloc_reg();
+            x->name = "fpcr";
+            x->offset = REG_OFFSET(fp.fpcr);
+            x->size = 4;
+            x->parent = r;
         }
     }
 }

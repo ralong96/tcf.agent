@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2015-2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,6 +27,9 @@ struct regset_gp {
     uint64_t sp;
     uint64_t pc;
     uint64_t pstate;
+    uint64_t orig_x0;
+    uint64_t syscallno;
+    uint64_t orig_addr_limit;
 };
 
 struct regset_fp_reg {
@@ -40,6 +43,6 @@ struct regset_fp {
 };
 
 #define REGSET_GP NT_PRSTATUS
-#define REGSET_FP NT_ARM_VFP
+#define REGSET_FP NT_FPREGSET
 
 #endif

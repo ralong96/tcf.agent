@@ -72,8 +72,8 @@ static const char * cpu_regs_gdb_x86_64 =
 "  <reg name='st5' bitsize='80' type='i387_ext'/>\n"
 "  <reg name='st6' bitsize='80' type='i387_ext'/>\n"
 "  <reg name='st7' bitsize='80' type='i387_ext'/>\n"
-"  <reg name='fctrl' bitsize='32' type='int' group='float'/>\n"
-"  <reg name='fstat' bitsize='32' type='int' group='float'/>\n"
+"  <reg name='fctrl' bitsize='32' type='int' group='float' id='65'/>\n"
+"  <reg name='fstat' bitsize='32' type='int' group='float' id='66'/>\n"
 "  <reg name='ftag' bitsize='32' type='int' group='float'/>\n"
 "  <reg name='fiseg' bitsize='32' type='int' group='float'/>\n"
 "  <reg name='fioff' bitsize='32' type='int' group='float'/>\n"
@@ -130,6 +130,10 @@ static const char * cpu_regs_gdb_x86_64 =
 "  <reg name='xmm14' bitsize='128' type='vec128'/>\n"
 "  <reg name='xmm15' bitsize='128' type='vec128'/>\n"
 "  <reg name='mxcsr' bitsize='32' type='i386_mxcsr' group='vector'/>\n"
+"</feature>\n"
+"<feature name='org.gnu.gdb.i386.segments'>\n"
+"  <reg name='fs_base' bitsize='64' type='int'/>\n"
+"  <reg name='gs_base' bitsize='64' type='int'/>\n"
 "</feature>\n";
 
 #endif /* D_cpu_regs_gdb_x86_64 */

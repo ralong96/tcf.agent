@@ -1152,9 +1152,17 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
             isa->max_instruction_size = 4;
             isa->alignment = 4;
         }
-        else if (strcmp(s, "Thumb") == 0) {
+        else if (strcmp(s, "A64") == 0) {
+            isa->max_instruction_size = 4;
+            isa->alignment = 4;
+        }
+        else if (strcmp(s, "Thumb") == 0 || strcmp(s, "ThumbEE") == 0) {
             isa->max_instruction_size = 4;
             isa->alignment = 2;
+        }
+        else if (strcmp(s, "PPC") == 0 || strcmp(s, "PPC64") == 0) {
+            isa->max_instruction_size = 4;
+            isa->alignment = 4;
         }
     }
     return 0;

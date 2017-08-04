@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Stanislav Yakovlev and others.
+ * Copyright (c) 2013-2017 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -16,3 +16,37 @@
 
 /* offset to be applied to the PC after a software trap */
 #define TRAP_OFFSET 0
+
+#if defined(__linux__)
+
+#include <elf.h>
+
+#define MDEP_UseREGSET
+
+#ifndef NT_ARM_VFP
+#define NT_ARM_VFP 0x400
+#endif
+
+#ifndef PTRACE_GETREGSET
+#define PTRACE_GETREGSET (enum __ptrace_request)0x4204
+#endif
+
+#ifndef PTRACE_SETREGSET
+#define PTRACE_SETREGSET (enum __ptrace_request)0x4205
+#endif
+
+struct regset_gp {
+    uint32_t regs[16];
+    uint32_t cpsr;
+    uint32_t orig_r0;
+};
+
+struct regset_fp {
+    uint64_t fpregs[32];
+    uint32_t fpscr;
+};
+
+#define REGSET_GP NT_PRSTATUS
+#define REGSET_FP NT_ARM_VFP
+
+#endif
