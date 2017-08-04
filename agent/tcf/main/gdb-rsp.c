@@ -1305,6 +1305,7 @@ static int handle_Z_command(GdbClient * c) {
                 static const char * attr_list[] = {
                     BREAKPOINT_ENABLED,
                     BREAKPOINT_ACCESSMODE,
+                    BREAKPOINT_CONTEXTIDS,
                     BREAKPOINT_LOCATION,
                     BREAKPOINT_SIZE,
                     BREAKPOINT_SERVICE
@@ -1327,13 +1328,18 @@ static int handle_Z_command(GdbClient * c) {
                         json_write_long(out, mode);
                         break;
                     case 2:
+                        write_stream(out, '[');
+                        json_write_string(out, p->ctx->id);
+                        write_stream(out, ']');
+                        break;
+                    case 3:
                         snprintf(str, sizeof(str), "0x%" PRIX64, (uint64_t)addr);
                         json_write_string(out, str);
                         break;
-                    case 3:
+                    case 4:
                         json_write_long(out, size);
                         break;
-                    case 4:
+                    case 5:
                         json_write_string(out, "GDB-RSP");
                         break;
                     }
@@ -1346,7 +1352,7 @@ static int handle_Z_command(GdbClient * c) {
                 b->addr = addr;
                 b->kind = kind;
                 list_add_last(&b->link_p2b, &p->link_p2b);
-                b->bp = create_eventpoint_ext(attrs, p->ctx, breakpoint_cb, NULL);
+                b->bp = create_eventpoint_ext(attrs, NULL, breakpoint_cb, NULL);
                 add_res_str(c, "OK");
                 return 0;
             }
