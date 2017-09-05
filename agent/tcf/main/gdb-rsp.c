@@ -818,7 +818,7 @@ static int read_reg_attributes(const char * p, unsigned n, GdbRegister * r) {
         }
         p++;
     }
-    return r->name != NULL && r->bits > 0;
+    return r->name[0] && r->bits > 0;
 }
 
 static int is_all_intercepted(GdbClient * c) {
