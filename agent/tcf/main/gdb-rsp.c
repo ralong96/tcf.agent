@@ -1592,6 +1592,22 @@ static int read_packet(GdbClient * c, unsigned len) {
         else if (!c->no_ack_mode && ch == '-' && c->res_pos > 0) {
             if (send(c->req.u.sio.sock, c->res_buf, c->res_pos, 0) < 0) return -1;
         }
+        else if (ch == 3) {
+            LINK * l;
+            for (l = c->link_c2p.next; l != &c->link_c2p; l = l->next) {
+                LINK * m;
+                GdbProcess * p = link_c2p(l);
+                for (m = p->link_p2t.next; m != &p->link_p2t; m = m->next) {
+                    GdbThread * t = link_p2t(m);
+                    Context * ctx = t->ctx;
+                    if (suspend_debug_context(ctx) < 0) {
+                        char * name = ctx->name;
+                        if (name == NULL) name = ctx->id;
+                        trace(LOG_ALWAYS, "GDB Server: cannot suspend context %s: %s", errno_to_str(errno));
+                    }
+                }
+            }
+        }
     }
 
     return 0;
