@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2013, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -50,13 +50,19 @@
 #define PROXY_NAME "TCF Proxy"
 #endif
 
-static Protocol * proto;
-static TCFBroadcastGroup * bcg;
+typedef struct ChannelExtensionServer {
+    ChannelServer * serv;
+} ChannelExtensionServer;
+
+static size_t channel_extension_offset = 0;
+
+#define EXT(c) ((ChannelExtensionServer *)((char *)(c) + channel_extension_offset))
 
 static void channel_new_connection(ChannelServer * serv, Channel * c) {
-    protocol_reference(proto);
-    c->protocol = proto;
-    channel_set_broadcast_group(c, bcg);
+    protocol_reference(serv->protocol);
+    c->protocol = serv->protocol;
+    EXT(c)->serv = serv;
+    channel_set_broadcast_group(c, serv->bcg);
     channel_start(c);
 }
 
@@ -114,7 +120,7 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
             TARGET_SERVICE_CHECK_HOOK;
         }
 #if SERVICE_PathMap
-        ini_path_map_service(host->protocol, bcg);
+        ini_path_map_service(host->protocol, EXT(host)->serv->bcg);
 #  if ENABLE_DebugContext && ENABLE_ContextProxy
         if (service_pm) forward_pm = 1;
 #  endif
@@ -143,15 +149,11 @@ int ini_server(const char * url, Protocol * p, TCFBroadcastGroup * b) {
     Trap trap;
 
     if (!set_trap(&trap)) {
-        bcg = NULL;
-        proto = NULL;
         if (ps != NULL) peer_server_free(ps);
         errno = trap.error;
         return -1;
     }
 
-    bcg = b;
-    proto = p;
     ps = channel_peer_from_url(url);
     if (ps == NULL) str_exception(ERR_OTHER, "Invalid server URL");
     peer_server_addprop(ps, loc_strdup("Name"), loc_strdup(PROXY_NAME));
@@ -160,8 +162,13 @@ int ini_server(const char * url, Protocol * p, TCFBroadcastGroup * b) {
     serv = channel_server(ps);
     if (serv == NULL) exception(errno);
     serv->new_conn = channel_new_connection;
+    serv->protocol = p;
+    serv->bcg = b;
 
     clear_trap(&trap);
-    add_channel_redirection_listener(channel_redirection_listener);
+    if (channel_extension_offset == 0) {
+        add_channel_redirection_listener(channel_redirection_listener);
+        channel_extension_offset = channel_extension(sizeof(ChannelExtensionServer));
+    }
     return 0;
 }

@@ -23,13 +23,10 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/main/server.h>
 
-static Protocol * proto;
-static TCFBroadcastGroup * bcg;
-
 static void channel_new_connection(ChannelServer * serv, Channel * c) {
-    protocol_reference(proto);
-    c->protocol = proto;
-    channel_set_broadcast_group(c, bcg);
+    protocol_reference(serv->protocol);
+    c->protocol = serv->protocol;
+    channel_set_broadcast_group(c, serv->bcg);
     channel_start(c);
 }
 
@@ -39,15 +36,11 @@ int ini_server(const char * url, Protocol * p, TCFBroadcastGroup * b) {
     Trap trap;
 
     if (!set_trap(&trap)) {
-        bcg = NULL;
-        proto = NULL;
         if (ps != NULL) peer_server_free(ps);
         errno = trap.error;
         return -1;
     }
 
-    bcg = b;
-    proto = p;
     ps = channel_peer_from_url(url);
     if (ps == NULL) str_exception(ERR_OTHER, "Invalid server URL");
     peer_server_addprop(ps, loc_strdup("ServiceManagerID"), loc_strdup(get_service_manager_id(p)));
@@ -59,6 +52,8 @@ int ini_server(const char * url, Protocol * p, TCFBroadcastGroup * b) {
     serv = channel_server(ps);
     if (serv == NULL) exception(errno);
     serv->new_conn = channel_new_connection;
+    serv->protocol = p;
+    serv->bcg = b;
 
     clear_trap(&trap);
     return 0;
