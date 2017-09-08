@@ -281,6 +281,9 @@ extern int loc_clock_gettime(int, struct timespec *);
 #include <sys/socket.h>
 #include <limits.h>
 #include <inttypes.h>
+#if defined(ANDROID)
+#include <android/log.h>
+#endif
 #if defined(__sun__)
 #include <string.h>
 #include <sys/stropts.h>
@@ -298,6 +301,13 @@ extern char * canonicalize_file_name(const char * path);
 #  define CLOCK_REALTIME 1
   typedef int clockid_t;
   extern int clock_gettime(clockid_t clock_id, struct timespec * tp);
+#endif
+
+#if defined(ANDROID)
+/* Android does not have SUN_LEN */
+#ifndef SUN_LEN
+#define SUN_LEN(ptr) ((size_t) (((struct sockaddr_un *) 0)->sun_path) + strlen((ptr)->sun_path))
+#endif
 #endif
 
 extern int tkill(pid_t pid, int signal);
@@ -327,12 +337,12 @@ extern double str_to_double(const char * buf, char ** end);
 /* Convert double to string according to C/C++/JSON syntax */
 extern const char * double_to_str(double n);
 
-#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__) && !defined(__VXWORKS__)
+#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__) && !defined(__VXWORKS__) && !defined(ANDROID)
 extern size_t strlcpy(char * dst, const char * src, size_t size);
 extern size_t strlcat(char * dst, const char * src, size_t size);
 #endif
 
-#if defined(__UCLIBC__)
+#if defined(__UCLIBC__) || defined(ANDROID)
 extern char * canonicalize_file_name(const char * path);
 extern int posix_openpt(int flags);
 #endif

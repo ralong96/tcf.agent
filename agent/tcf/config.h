@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -34,6 +34,7 @@
 #  endif
 #  define TARGET_BSD        0
 #  define TARGET_SYMBIAN    0
+#  define TARGET_ANDROID    0
 #elif defined(_WRS_KERNEL)
 #  define TARGET_WINDOWS    0
 #  define TARGET_VXWORKS    1
@@ -41,6 +42,7 @@
 #  define TARGET_MSVC       0
 #  define TARGET_BSD        0
 #  define TARGET_SYMBIAN    0
+#  define TARGET_ANDROID    0
 #elif defined(__SYMBIAN32__)
 #  define TARGET_WINDOWS    0
 #  define TARGET_VXWORKS    0
@@ -48,6 +50,7 @@
 #  define TARGET_MSVC       0
 #  define TARGET_BSD        0
 #  define TARGET_SYMBIAN    1
+#  define TARGET_ANDROID    0
 #else
 #  define TARGET_WINDOWS    0
 #  define TARGET_VXWORKS    0
@@ -59,31 +62,36 @@
 #    define TARGET_BSD      0
 #  endif
 #  define TARGET_SYMBIAN    0
+#  if defined(ANDROID)
+#    define TARGET_ANDROID  1
+#  else
+#    define TARGET_ANDROID  0
+#  endif
 #endif
 
 #if !defined(SERVICE_Locator)
 #define SERVICE_Locator         (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS || TARGET_SYMBIAN)
 #endif
 #if !defined(SERVICE_RunControl)
-#define SERVICE_RunControl      (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS)
+#define SERVICE_RunControl      ((TARGET_UNIX && !TARGET_ANDROID) || TARGET_VXWORKS || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_Breakpoints)
-#define SERVICE_Breakpoints     (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS)
+#define SERVICE_Breakpoints     ((TARGET_UNIX && !TARGET_ANDROID) || TARGET_VXWORKS || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_Memory)
-#define SERVICE_Memory          (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS)
+#define SERVICE_Memory          ((TARGET_UNIX && !TARGET_ANDROID) || TARGET_VXWORKS || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_Registers)
-#define SERVICE_Registers       (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS)
+#define SERVICE_Registers       ((TARGET_UNIX && !TARGET_ANDROID) || TARGET_VXWORKS || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_Processes)
 #define SERVICE_Processes       (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_MemoryMap)
-#define SERVICE_MemoryMap       (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS)
+#define SERVICE_MemoryMap       ((TARGET_UNIX && !TARGET_ANDROID) || TARGET_VXWORKS || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_StackTrace)
-#define SERVICE_StackTrace      (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS)
+#define SERVICE_StackTrace      ((TARGET_UNIX && !TARGET_ANDROID) || TARGET_VXWORKS || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_Symbols)
 #define SERVICE_Symbols         (TARGET_UNIX || TARGET_MSVC)
@@ -98,7 +106,7 @@
 #define SERVICE_SysMonitor      ((TARGET_UNIX && !TARGET_BSD) || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_Expressions)
-#define SERVICE_Expressions     (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS)
+#define SERVICE_Expressions     ((TARGET_UNIX && !TARGET_ANDROID) || TARGET_VXWORKS || TARGET_WINDOWS)
 #endif
 #if !defined(SERVICE_Streams)
 #define SERVICE_Streams         (TARGET_UNIX || TARGET_VXWORKS || TARGET_WINDOWS || TARGET_SYMBIAN)

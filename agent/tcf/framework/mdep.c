@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -889,14 +889,20 @@ ip_ifc_info* get_ip_ifc(void) {
 #if USE_locale
 #include <locale.h>
 #endif
-#include <langinfo.h>
+#if !defined(ANDROID)
+#  include <langinfo.h>
+#endif
 #include <sys/utsname.h>
 #if defined(__linux__)
 #  include <asm/unistd.h>
 #endif
 
 #if !defined(USE_clock_gettime)
-#  define USE_clock_gettime (!defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__))
+#  if (!defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__))
+#    define USE_clock_gettime 1
+#  else
+#    define USE_clock_gettime 0
+#  endif
 #endif
 
 #if !USE_clock_gettime
@@ -917,7 +923,7 @@ int clock_gettime(clockid_t clock_id, struct timespec * tp) {
 }
 #endif
 
-#if defined(__UCLIBC__)
+#if defined(__UCLIBC__) || defined(ANDROID)
 #include <fcntl.h>
 
 int posix_openpt(int flags) {
@@ -962,7 +968,7 @@ const char * get_user_name(void) {
 }
 
 int tkill(pid_t pid, int signal) {
-#if defined(__linux__)
+#if defined(__linux__) && !defined(ANDROID)
     return syscall(__NR_tkill, pid, signal);
 #else
     return kill(pid, signal);
@@ -1081,7 +1087,7 @@ char * canonicalize_file_name(const char * path) {
     return strdup(buf);
 }
 
-#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__sun__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__sun__) || defined(ANDROID)
 
 char * canonicalize_file_name(const char * path) {
     char buf[PATH_MAX];
@@ -1500,7 +1506,7 @@ void close_out_and_err(void) {
         close(fd);
 }
 
-#elif defined(_WRS_KERNEL) || defined (__SYMBIAN32__)
+#elif defined(_WRS_KERNEL) || defined (__SYMBIAN32__) || defined(ANDROID)
 
 int is_daemon(void) {
     return 0;
@@ -1844,7 +1850,11 @@ size_t strlcat(char * dst, const char * src, size_t size) {
 #endif
 
 #if !defined(USE_uuid_generate)
-#  define USE_uuid_generate (defined(__linux__) && !defined(__UCLIBC__) && !defined(ANDROID))
+#  if (defined(__linux__) && !defined(__UCLIBC__) && !defined(ANDROID))
+#    define USE_uuid_generate 1
+#  else
+#    define USE_uuid_generate 0
+#  endif
 #endif
 
 #if USE_uuid_generate
