@@ -278,6 +278,29 @@ static const char * get_regs(GdbClient * c) {
     return NULL;
 }
 
+static int check_process_isa(GdbClient * c, Context * prs) {
+    ContextISA isa;
+    const char * regs = get_regs(c);
+    if (regs != NULL) {
+        memset(&isa, 0, sizeof(isa));
+        context_get_isa(prs, 0, &isa);
+        printf("%s %s\n", prs->name, isa.def ? isa.def : "???");
+        if (isa.def != NULL) {
+            if (strcmp(isa.def, "386") == 0) return regs == cpu_regs_gdb_i386;
+            if (strcmp(isa.def, "X86_64") == 0) return regs == cpu_regs_gdb_x86_64;
+            if (strcmp(isa.def, "ARM") == 0) return regs == cpu_regs_gdb_arm;
+            if (strcmp(isa.def, "Thumb") == 0) return regs == cpu_regs_gdb_arm;
+            if (strcmp(isa.def, "ThumbEE") == 0) return regs == cpu_regs_gdb_arm;
+            if (strcmp(isa.def, "Jazelle") == 0) return regs == cpu_regs_gdb_arm;
+            if (strcmp(isa.def, "A64") == 0) return regs == cpu_regs_gdb_a64;
+            if (strcmp(isa.def, "PPC") == 0) return regs == cpu_regs_gdb_powerpc;
+            if (strcmp(isa.def, "PPC64") == 0) return regs == cpu_regs_gdb_ppc64;
+            if (strcmp(isa.def, "MicroBlaze") == 0) return regs == cpu_regs_gdb_microblaze;
+        }
+    }
+    return 0;
+}
+
 static unsigned reg_name_hash(const char * name) {
     unsigned h = 5381;
     while (*name) h = ((h << 5) + h) + *name++;
@@ -437,38 +460,58 @@ static void detach_process(GdbProcess * p) {
     p->attached = 0;
 }
 
-static void start_client(void * args) {
-    LINK * l;
-    unsigned has_state_cnt = 0;
-    GdbClient * c = (GdbClient *)args;
-
-    for (l = context_root.next; l != &context_root; l = l->next) {
-        Context * ctx = ctxl2ctxp(l);
-        if (!ctx->exited && context_has_state(ctx)) {
-            has_state_cnt++;
+static int is_all_intercepted(GdbClient * c) {
+    LINK * l, * m;
+    for (l = c->link_c2p.next; l != &c->link_c2p; l = l->next) {
+        GdbProcess * p = link_c2p(l);
+        for (m = p->link_p2t.next; m != &p->link_p2t; m = m->next) {
+            GdbThread * t = link_p2t(m);
+            assert(p->attached);
+            assert(!t->ctx->exited);
+            assert(context_has_state(t->ctx));
+            if (!is_intercepted(t->ctx)) return 0;
         }
     }
+    return 1;
+}
 
-    if (c->start_timer > 10 || has_state_cnt > 0) {
+static void start_client(void * args) {
+    GdbClient * c = (GdbClient *)args;
 
+    if (c->start_timer > 10 || (c->stopped && is_all_intercepted(c))) {
+        if (c->stopped && !is_all_intercepted(c)) {
+            LINK * l;
+            c->cur_g_pid = 0;
+            c->cur_g_tid = 0;
+            for (l = c->link_c2p.next; l != &c->link_c2p; l = l->next) {
+                GdbProcess * p = link_c2p(l);
+                detach_process(p);
+            }
+        }
+        c->req.u.sio.rval = 0;
+        async_req_post(&c->req);
+        return;
+    }
+
+    if (!c->stopped) {
+        LINK * l;
         /* Select initial debug target */
         for (l = context_root.next; l != &context_root; l = l->next) {
             Context * ctx = ctxl2ctxp(l);
-            Context * prs = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
             if (!ctx->exited && context_has_state(ctx)) {
-                attach_process(find_process_ctx(c, prs));
-                lock_threads(c);
-                break;
+                Context * prs = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+                GdbProcess * p = find_process_ctx(c, prs);
+                if (p != NULL) {
+                    attach_process(p);
+                    lock_threads(c);
+                    break;
+                }
             }
         }
+    }
 
-        c->req.u.sio.rval = 0;
-        async_req_post(&c->req);
-    }
-    else {
-        post_event_with_delay(start_client, args, 500000);
-        c->start_timer++;
-    }
+    post_event_with_delay(start_client, args, 500000);
+    c->start_timer++;
 }
 
 static void close_client(GdbClient * c) {
@@ -821,21 +864,6 @@ static int read_reg_attributes(const char * p, unsigned n, GdbRegister * r) {
     return r->name[0] && r->bits > 0;
 }
 
-static int is_all_intercepted(GdbClient * c) {
-    LINK * l, * m;
-    for (l = c->link_c2p.next; l != &c->link_c2p; l = l->next) {
-        GdbProcess * p = link_c2p(l);
-        for (m = p->link_p2t.next; m != &p->link_p2t; m = m->next) {
-            GdbThread * t = link_p2t(m);
-            assert(p->attached);
-            assert(!t->ctx->exited);
-            assert(context_has_state(t->ctx));
-            if (!is_intercepted(t->ctx)) return 0;
-        }
-    }
-    return 1;
-}
-
 static void breakpoint_cb(Context * ctx, void * args) {
     GdbBreakpoint * b = (GdbBreakpoint *)args;
     GdbProcess * p = b->process;
@@ -860,7 +888,13 @@ static void monitor_ps(GdbClient * c, const char * args) {
         char s[256];
         char * m = s;
         GdbProcess * p = link_c2p(l);
-        snprintf(s, sizeof(s), "%u: %s\n", (unsigned)p->pid, p->ctx->name ? p->ctx->name : p->ctx->id);
+        if (context_has_state(p->ctx)) {
+            const char * state = get_context_state_name(p->ctx);
+            snprintf(s, sizeof(s), "%u: %s (%s)\n", (unsigned)p->pid, p->ctx->name ? p->ctx->name : p->ctx->id, state);
+        }
+        else {
+            snprintf(s, sizeof(s), "%u: %s\n", (unsigned)p->pid, p->ctx->name ? p->ctx->name : p->ctx->id);
+        }
         while (*m) add_res_hex8(c, *m++);
         cnt++;
     }
@@ -1667,8 +1701,10 @@ static void accept_done(void * args) {
         Context * ctx = ctxl2ctxp(l);
         if (!ctx->exited && context_has_state(ctx)) {
             Context * prs = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
-            GdbProcess * p = find_process_ctx(c, prs);
-            if (p == NULL) p = add_process(c, prs);
+            if (check_process_isa(c, prs)) {
+                GdbProcess * p = find_process_ctx(c, prs);
+                if (p == NULL) p = add_process(c, prs);
+            }
         }
     }
 
@@ -1692,9 +1728,11 @@ static void event_context_created(Context * ctx, void * args) {
             GdbServer * s = link_a2s(l);
             for (n = s->link_s2c.next; n != &s->link_s2c; n = n->next) {
                 GdbClient * c = link_s2c(n);
-                GdbProcess * p = find_process_ctx(c, prs);
-                if (p == NULL) p = add_process(c, prs);
-                else if (p->attached) add_thread(c, ctx);
+                if (check_process_isa(c, prs)) {
+                    GdbProcess * p = find_process_ctx(c, prs);
+                    if (p == NULL) p = add_process(c, prs);
+                    else if (p->attached) add_thread(c, ctx);
+                }
             }
         }
     }
