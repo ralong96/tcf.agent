@@ -934,6 +934,7 @@ static int handle_M_command(GdbClient * c) {
     buf = tmp_alloc_zero(size);
     if (*s == ':') {
         unsigned i = 0;
+        s++;
         while (i < size) {
             ((uint8_t *)buf)[i++] = get_cmd_uint8(c, &s);
         }
