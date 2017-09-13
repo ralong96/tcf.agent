@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2016-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -245,12 +245,14 @@ TCFBroadcastGroup * broadcast_group_alloc(void) {
     p->out.splice_block = splice_block_all;
     p->out.cur = p->buf;
     p->out.end = p->buf + sizeof(p->buf);
+    p->ref_count = 1;
     return p;
 }
 
-void broadcast_group_free(TCFBroadcastGroup * p) {
+static void broadcast_group_dispose(TCFBroadcastGroup * p) {
     LINK * l = p->channels.next;
 
+    assert(p->ref_count == 0);
     assert(is_dispatch_thread());
     while (l != &p->channels) {
         Channel * c = bclink2channel(l);
@@ -262,6 +264,20 @@ void broadcast_group_free(TCFBroadcastGroup * p) {
     assert(list_is_empty(&p->channels));
     p->magic = 0;
     loc_free(p);
+}
+
+void broadcast_group_lock(TCFBroadcastGroup * p) {
+    assert(p->ref_count > 0);
+    assert(is_dispatch_thread());
+    p->ref_count++;
+}
+    
+void broadcast_group_unlock(TCFBroadcastGroup * p) {
+    assert(p->ref_count > 0);
+    assert(is_dispatch_thread());
+    if (--(p->ref_count) == 0) {
+        broadcast_group_dispose(p);
+    }
 }
 
 void channel_set_broadcast_group(Channel * c, TCFBroadcastGroup * bcg) {

@@ -873,6 +873,7 @@ static void process_exited(ChildProcess * prs) {
     semTake(prs_list_lock, WAIT_FOREVER);
 #endif
     list_remove(&prs->link);
+    broadcast_group_unlock(prs->bcg);
     if (prs->inp_struct) {
         ProcessInput * inp = prs->inp_struct;
         if (!inp->req_posted) {
@@ -1219,6 +1220,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
         (*prs)->pid = pid;
         (*prs)->tty = -1;
         (*prs)->bcg = c->bcg;
+        broadcast_group_lock(c->bcg);
         strlcpy((*prs)->service, params->service, sizeof((*prs)->service));
         (*prs)->inp_struct = write_process_input(*prs, fpipes[0][1]);
         (*prs)->out_struct = read_process_output(*prs, fpipes[1][0]);
@@ -1312,6 +1314,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
             (*prs)->pid = pid;
             (*prs)->tty = -1;
             (*prs)->bcg = c->bcg;
+            broadcast_group_lock(c->bcg);
             strlcpy((*prs)->service, params->service, sizeof((*prs)->service));
             (*prs)->inp_struct = write_process_input(*prs, pipes[0][0]);
             (*prs)->out_struct = read_process_output(*prs, pipes[0][0]);
@@ -1398,6 +1401,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
             (*prs)->pid = pid;
             (*prs)->tty = -1;
             (*prs)->bcg = c->bcg;
+            broadcast_group_lock(c->bcg);
             strlcpy((*prs)->service, params->service, sizeof((*prs)->service));
             (*prs)->inp_struct = write_process_input(*prs, p_inp[1]);
             (*prs)->out_struct = read_process_output(*prs, p_out[0]);
@@ -1476,6 +1480,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
             (*prs)->pid = pid;
             (*prs)->tty = fd_tty_master;
             (*prs)->bcg = c->bcg;
+            broadcast_group_lock(c->bcg);
             strlcpy((*prs)->service, params->service, sizeof((*prs)->service));
             (*prs)->inp_struct = write_process_input(*prs, fd_tty_master);
             (*prs)->out_struct = read_process_output(*prs, fd_tty_out);

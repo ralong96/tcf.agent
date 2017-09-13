@@ -290,6 +290,7 @@ static void terminal_exited(void * args) {
     }
 
     list_remove(&term->link);
+    broadcast_group_unlock(term->bcg);
     channel_unlock_with_msg(term->channel, TERMINALS);
     loc_free(term);
 }
@@ -466,6 +467,7 @@ static void command_launch(char * token, Channel * c) {
 
     if (!err) {
         term->bcg = c->bcg;
+        broadcast_group_lock(c->bcg);
         channel_lock_with_msg(term->channel = c, TERMINALS);
         strlcpy(term->pty_type, pty_type, sizeof(term->pty_type));
         strlcpy(term->encoding, encoding, sizeof(term->encoding));

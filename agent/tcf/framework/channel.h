@@ -33,6 +33,12 @@ extern LINK channel_server_root;
 #define chanlink2channelp(A) ((Channel *)((char *)(A) - offsetof(Channel, chanlink)))
 #define servlink2channelserverp(A) ((ChannelServer *)((char *)(A) - offsetof(ChannelServer, servlink)))
 
+/*
+ * broadcast_group_free() API is deprecated and replaced by
+ * broadcast_group_unlock() API.
+ */
+#define broadcast_group_free broadcast_group_unlock
+
 struct Protocol;
 typedef struct TCFBroadcastGroup TCFBroadcastGroup;
 typedef struct ChannelServer ChannelServer;
@@ -43,6 +49,7 @@ struct TCFBroadcastGroup {
     unsigned char buf[256];
     OutputStream out;                   /* Broadcast stream */
     LINK channels;                      /* Channels in group */
+    unsigned int ref_count;             /* reference count, see broadcast_group_lock() and broadcast_group_unlock() */
 };
 
 enum {
@@ -204,9 +211,17 @@ extern void channel_close(Channel *);
 extern TCFBroadcastGroup * broadcast_group_alloc(void);
 
 /*
- * Remove channels from Broadcast Group and deallocate the group object.
+ * Increment reference counter of broadcast group.
+ * While ref count > 0 object will not be deleted.
  */
-extern void broadcast_group_free(TCFBroadcastGroup *);
+void broadcast_group_lock(TCFBroadcastGroup *);
+    
+/*
+ * Decrement reference counter.
+ * If ref count == 0, remove channels from Broadcast Group and deallocate
+ * the group object.
+ */
+void broadcast_group_unlock(TCFBroadcastGroup *);
 
 /*
  * Add a channel to a Broadcast Group.
