@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -42,6 +42,7 @@ typedef struct WaitingCacheClient {
 } WaitingCacheClient;
 
 static WaitingCacheClient current_client = {0, 0, 0, 0, 0, 0};
+static AbstractCache * current_cache = NULL;
 static int client_exited = 0;
 static int cache_miss_cnt = 0;
 static WaitingCacheClient * wait_list_buf;
@@ -91,6 +92,7 @@ static void run_cache_client(int retry) {
     Trap trap;
     unsigned i;
 
+    current_cache = NULL;
     cache_miss_cnt = 0;
     client_exited = 0;
     def_channel = NULL;
@@ -101,12 +103,29 @@ static void run_cache_client(int retry) {
         assert(cache_miss_cnt == 0);
         assert(client_exited);
     }
-    else if (get_error_code(trap.error) != ERR_CACHE_MISS || client_exited || cache_miss_cnt == 0) {
+    else if (get_error_code(trap.error) != ERR_CACHE_MISS || client_exited || cache_miss_cnt == 0 || current_cache == NULL) {
         trace(LOG_ALWAYS, "Unhandled exception in data cache client: %d %s", trap.error, errno_to_str(trap.error));
+    }
+    else {
+        AbstractCache * cache = current_cache;
+        if (cache->wait_list_cnt >= cache->wait_list_max) {
+            cache->wait_list_max += 8;
+            cache->wait_list_buf = (WaitingCacheClient *)loc_realloc(cache->wait_list_buf, cache->wait_list_max * sizeof(WaitingCacheClient));
+        }
+        if (current_client.args != NULL && !current_client.args_copy) {
+            void * mem = loc_alloc(current_client.args_size);
+            memcpy(mem, current_client.args, current_client.args_size);
+            current_client.args = mem;
+            current_client.args_copy = 1;
+        }
+        if (cache->wait_list_cnt == 0) list_add_last(&cache->link, &cache_list);
+        if (current_client.channel != NULL) channel_lock_with_msg(current_client.channel, channel_lock_msg);
+        cache->wait_list_buf[cache->wait_list_cnt++] = current_client;
     }
     for (i = 0; i < listeners_cnt; i++) listeners[i](client_exited ? CTLE_COMMIT : CTLE_ABORT);
     if (cache_miss_cnt == 0 && current_client.args_copy) loc_free(current_client.args);
     memset(&current_client, 0, sizeof(current_client));
+    current_cache = NULL;
     cache_miss_cnt = 0;
     client_exited = 0;
     def_channel = NULL;
@@ -124,6 +143,11 @@ void cache_enter(CacheClient * client, Channel * channel, void * args, size_t ar
     current_client.args = args;
     current_client.args_size = args_size;
     current_client.args_copy = 0;
+#ifndef NDEBUG
+    current_client.time_stamp = 0;
+    current_client.file = NULL;
+    current_client.line = 0;
+#endif
     run_cache_client(0);
 }
 
@@ -142,17 +166,9 @@ void cache_wait_dbg(const char * file, int line, AbstractCache * cache) {
 #endif
     assert(is_dispatch_thread());
     assert(client_exited == 0);
-    if (current_client.client != NULL && cache_miss_cnt == 0) {
-        if (cache->wait_list_cnt >= cache->wait_list_max) {
-            cache->wait_list_max += 8;
-            cache->wait_list_buf = (WaitingCacheClient *)loc_realloc(cache->wait_list_buf, cache->wait_list_max * sizeof(WaitingCacheClient));
-        }
-        if (current_client.args != NULL && !current_client.args_copy) {
-            void * mem = loc_alloc(current_client.args_size);
-            memcpy(mem, current_client.args, current_client.args_size);
-            current_client.args = mem;
-            current_client.args_copy = 1;
-        }
+    if (current_client.client != NULL) {
+        current_cache = cache;
+        cache_miss_cnt++;
 #ifndef NDEBUG
         current_client.file = file;
         current_client.line = line;
@@ -162,16 +178,12 @@ void cache_wait_dbg(const char * file, int line, AbstractCache * cache) {
             cache_timer_posted = 1;
         }
 #endif
-        if (cache->wait_list_cnt == 0) list_add_last(&cache->link, &cache_list);
-        if (current_client.channel != NULL) channel_lock_with_msg(current_client.channel, channel_lock_msg);
-        cache->wait_list_buf[cache->wait_list_cnt++] = current_client;
     }
 #ifndef NDEBUG
-    else if (current_client.client == NULL) {
+    else {
         trace(LOG_ALWAYS, "Illegal cache access at %s:%d", file, line);
     }
 #endif
-    cache_miss_cnt++;
     exception(ERR_CACHE_MISS);
 }
 
