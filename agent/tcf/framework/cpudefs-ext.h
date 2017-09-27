@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -30,10 +30,10 @@
 #endif
 #include <tcf/cpudefs-mdep.h>
 
-struct RegisterData {
+typedef struct SysRegisterData {
     REG_SET data;
     REG_SET mask;
-};
+} SysRegisterData;
 
 RegisterDefinition * get_reg_definitions(Context * ctx) {
     if (context_has_state(ctx)) return regs_index;
@@ -45,7 +45,7 @@ uint8_t * get_break_instruction(Context * ctx, size_t * size) {
     return BREAK_INST;
 }
 
-static RegisterDefinition * get_reg_by_dwarf_id(unsigned id) {
+static RegisterDefinition * get_sys_reg_by_dwarf_id(unsigned id) {
     static RegisterDefinition ** map = NULL;
     static unsigned map_length = 0;
 
@@ -62,7 +62,7 @@ static RegisterDefinition * get_reg_by_dwarf_id(unsigned id) {
     return id < map_length ? map[id] : NULL;
 }
 
-static RegisterDefinition * get_reg_by_eh_frame_id(unsigned id) {
+static RegisterDefinition * get_sys_reg_by_eh_frame_id(unsigned id) {
     static RegisterDefinition ** map = NULL;
     static unsigned map_length = 0;
 
@@ -82,12 +82,12 @@ static RegisterDefinition * get_reg_by_eh_frame_id(unsigned id) {
 RegisterDefinition * get_reg_by_id(Context * ctx, unsigned id, RegisterIdScope * scope) {
     RegisterDefinition * def = NULL;
 #ifdef GET_REG_BY_ID_HOOK
-        GET_REG_BY_ID_HOOK;
+    GET_REG_BY_ID_HOOK;
 #endif
     if (context_has_state(ctx)) {
         switch (scope->id_type) {
-        case REGNUM_DWARF: def = get_reg_by_dwarf_id(id); break;
-        case REGNUM_EH_FRAME: def = get_reg_by_eh_frame_id(id); break;
+        case REGNUM_DWARF: def = get_sys_reg_by_dwarf_id(id); break;
+        case REGNUM_EH_FRAME: def = get_sys_reg_by_eh_frame_id(id); break;
         }
     }
     if (def == NULL) set_errno(ERR_OTHER, "Invalid register ID");
@@ -101,8 +101,8 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
         }
         if (frame->regs != NULL) {
             size_t i;
-            uint8_t * r_addr = (uint8_t *)&frame->regs->data + reg_def->offset;
-            uint8_t * m_addr = (uint8_t *)&frame->regs->mask + reg_def->offset;
+            uint8_t * r_addr = (uint8_t *)&((SysRegisterData *)frame->regs)->data + reg_def->offset;
+            uint8_t * m_addr = (uint8_t *)&((SysRegisterData *)frame->regs)->mask + reg_def->offset;
             for (i = 0; i < size; i++) {
                 if (m_addr[offs + i] != 0xff) {
                     set_fmt_errno(ERR_OTHER, "Value of register %s is unknown in the selected frame", reg_def->name);
@@ -128,11 +128,11 @@ int write_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned o
             return context_write_reg(frame->ctx, reg_def, offs, size, buf);
         }
         if (frame->regs == NULL && context_has_state(frame->ctx)) {
-            frame->regs = (RegisterData *)loc_alloc_zero(sizeof(RegisterData));
+            frame->regs = (RegisterData *)loc_alloc_zero(sizeof(SysRegisterData));
         }
         if (frame->regs != NULL) {
-            uint8_t * r_addr = (uint8_t *)&frame->regs->data + reg_def->offset;
-            uint8_t * m_addr = (uint8_t *)&frame->regs->mask + reg_def->offset;
+            uint8_t * r_addr = (uint8_t *)&((SysRegisterData *)frame->regs)->data + reg_def->offset;
+            uint8_t * m_addr = (uint8_t *)&((SysRegisterData *)frame->regs)->mask + reg_def->offset;
 
             assert(reg_def->offset + reg_def->size <= sizeof(REG_SET));
             if (offs + size > reg_def->size) {
@@ -147,5 +147,13 @@ int write_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned o
     errno = ERR_INV_CONTEXT;
     return -1;
 }
+
+#if ENABLE_ContextMux
+#undef get_reg_definitions
+#undef get_reg_by_id
+#undef read_reg_bytes
+#undef write_reg_bytes
+#undef get_break_instruction
+#endif
 
 #endif /* !ENABLE_ContextProxy */
