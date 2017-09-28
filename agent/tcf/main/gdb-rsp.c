@@ -64,6 +64,7 @@ typedef struct GdbServer {
     LINK link_s2c;
     int disposed;
     AsyncReqInfo req;
+    char port[32];
     char isa[32];
 } GdbServer;
 
@@ -1868,6 +1869,17 @@ int ini_gdb_rsp(const char * conf) {
         isa = "i386";
 #endif
     }
+    if (ini_done) {
+        LINK * l;
+        for (l = link_a2s.next; l != &link_a2s; l = l->next) {
+            GdbServer * g = link_a2s(l);
+            if (strcmp(g->port, port) == 0) {
+                if (strcmp(g->isa, isa) == 0) return 0;
+                set_fmt_errno(ERR_OTHER, "Port is used by '%s:%s' server", g->port, g->isa);
+                return -1;
+            }
+        }
+    }
     sock = open_server(port);
     if (sock < 0) return -1;
     if (!ini_done) {
@@ -1886,6 +1898,7 @@ int ini_gdb_rsp(const char * conf) {
     s->req.done = accept_done;
     s->req.u.acc.sock = sock;
     s->req.u.acc.rval = 0;
+    strlcpy(s->port, port, sizeof(s->port));
     strlcpy(s->isa, isa, sizeof(s->isa));
     async_req_post(&s->req);
     return 0;
