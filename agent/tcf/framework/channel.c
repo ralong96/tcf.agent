@@ -271,7 +271,7 @@ void broadcast_group_lock(TCFBroadcastGroup * p) {
     assert(is_dispatch_thread());
     p->ref_count++;
 }
-    
+
 void broadcast_group_unlock(TCFBroadcastGroup * p) {
     assert(p->ref_count > 0);
     assert(is_dispatch_thread());

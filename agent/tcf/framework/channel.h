@@ -215,7 +215,7 @@ extern TCFBroadcastGroup * broadcast_group_alloc(void);
  * While ref count > 0 object will not be deleted.
  */
 void broadcast_group_lock(TCFBroadcastGroup *);
-    
+
 /*
  * Decrement reference counter.
  * If ref count == 0, remove channels from Broadcast Group and deallocate
