@@ -89,10 +89,21 @@ static int get_frame_debug_info(StackFrame * frame, StackTracingInfo ** info) {
     }
     if (ip > 0 && !frame->is_top_frame) {
         StackTrace * stk = EXT(ctx);
-        StackFrame * up = stk->frames + (frame->frame - 1);
-        if (up->is_walked) {
-            /* Workaround for missing frame info for return address of a function that never returns */
+        if (frame->frame > stk->frame_cnt) {
             ip--;
+        }
+        else {
+            StackFrame * up = stk->frames + (frame->frame - 1);
+            /* Walked reg values are saved before call, use (return address) - 1 to search next frame info.
+             * Stack crawl regs are computed after return, use return address */
+            if (up->is_walked) {
+                ip--;
+            }
+            else {
+                /* Workaround for missing frame info for return address of a function that never returns */
+                if (get_stack_tracing_info(ctx, (ContextAddress)ip, info) == 0 && *info != NULL) return 0;
+                ip--;
+            }
         }
     }
     return get_stack_tracing_info(ctx, (ContextAddress)ip, info);
