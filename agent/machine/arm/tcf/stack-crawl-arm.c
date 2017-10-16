@@ -44,6 +44,7 @@
 #include <tcf/framework/context.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
+#include <tcf/services/symbols.h>
 #include <tcf/services/stacktrace.h>
 #include <machine/arm/tcf/stack-crawl-arm.h>
 
@@ -2230,6 +2231,24 @@ static int trace_instructions(void) {
     RegData org_4to11[8];
     RegData org_cpsr = cpsr_data;
     RegData org_spsr = spsr_data;
+    ContextAddress func_addr = 0;
+    ContextAddress func_size = 0;
+
+#if ENABLE_Symbols
+    if (reg_data[15].o) {
+        Symbol * sym = NULL;
+        int sym_class = SYM_CLASS_UNKNOWN;
+        ContextAddress sym_addr = 0;
+        ContextAddress sym_size = 0;
+        if (find_symbol_by_addr(stk_ctx, STACK_NO_FRAME, reg_data[15].v, &sym) == 0 &&
+                get_symbol_class(sym, &sym_class) == 0 && sym_class == SYM_CLASS_FUNCTION &&
+                get_symbol_size(sym, &sym_size) == 0 && sym_size != 0 &&
+                get_symbol_address(sym, &sym_addr) == 0 && sym_addr != 0) {
+            func_addr = sym_addr;
+            func_size = sym_size;
+        }
+    }
+#endif
 
     TRACE_INSTRUCTIONS_HOOK;
 
@@ -2257,6 +2276,10 @@ static int trace_instructions(void) {
             }
             else if (!cpsr_data.o) {
                 error = set_errno(ERR_OTHER, "CPSR value not available");
+            }
+            else if (func_size > 0 && (reg_data[15].v < func_addr ||
+                    (func_addr + func_size > func_addr && reg_data[15].v >= func_addr + func_size))) {
+                error = set_errno(ERR_OTHER, "PC outside current function");
             }
             else {
                 int r = 0;
@@ -2316,7 +2339,7 @@ static int trace_instructions(void) {
     }
     cpsr_data.o = 0;
     spsr_data.o = 0;
-    if (org_cpsr.o && org_spsr.o && org_lr.o) {
+    if (org_cpsr.o && org_spsr.o && ((org_spsr.v & 0x1f) > 0x10) && org_lr.o) {
         cpsr_data = org_cpsr;
         spsr_data = org_spsr;
         reg_data[15] = org_lr;
