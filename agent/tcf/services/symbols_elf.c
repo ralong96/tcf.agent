@@ -1182,6 +1182,7 @@ static int same_namespace(ObjectInfo * x, ObjectInfo * y) {
 static ObjectInfo * find_definition(ObjectInfo * decl) {
     while (decl != NULL) {
         int search_pub_names = 0;
+        int search_ext_only = 0;
         if (decl->mDefinition != NULL) {
             decl = decl->mDefinition;
             continue;
@@ -1197,6 +1198,7 @@ static ObjectInfo * find_definition(ObjectInfo * decl) {
             break;
         default:
             search_pub_names = (decl->mFlags & DOIF_external) != 0;
+            search_ext_only = 1;
             break;
         }
         if (search_pub_names) {
@@ -1212,6 +1214,7 @@ static ObjectInfo * find_definition(ObjectInfo * decl) {
                     if (obj->mTag != decl->mTag) continue;
                     if (obj->mFlags & DOIF_declaration) continue;
                     if (obj->mFlags & DOIF_specification) continue;
+                    if (search_ext_only && (obj->mFlags & DOIF_external) == 0) continue;
                     if (!equ_symbol_names(obj->mName, decl->mName)) continue;
                     if (!cmp_object_profiles(decl, obj)) continue;
                     if (!cmp_object_linkage_names(decl, obj)) continue;

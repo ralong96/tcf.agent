@@ -950,7 +950,7 @@ static void read_object_refs(ELF_Section * Section) {
                     ref.obj->mFlags |= ref.org->mFlags & ~(DOIF_children_loaded | DOIF_declaration | DOIF_specification);
                     if (ref.obj->mFlags & DOIF_specification) {
                         ref.org->mDefinition = ref.obj;
-                        if ((ref.obj->mFlags & (DOIF_low_pc | DOIF_ranges)) == 0) {
+                        if ((ref.obj->mFlags & (DOIF_low_pc | DOIF_ranges | DOIF_location)) == 0) {
                             ref.obj->mFlags |= ref.org->mFlags & DOIF_declaration;
                         }
                     }
