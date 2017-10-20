@@ -1911,6 +1911,82 @@ static void fp_conditional_select(void) {
     add_str(cond_names[cond]);
 }
 
+static void fp_data_processing_1_source(void) {
+    uint32_t M = (instr >> 31) & 1;
+    uint32_t S = (instr >> 29) & 1;
+    uint32_t type = (instr >> 22) & 3;
+    uint32_t opcode = (instr >> 15) & 0x3f;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    uint32_t Rd = instr & 0x1f;
+    char wd = 0;
+    char wn = 0;
+
+    switch (type) {
+    case 0: wn = wd = 's'; break;
+    case 1: wn = wd = 'd'; break;
+    case 3: wn = wd = 'h'; break;
+    default: return;
+    }
+
+    if (M) return;
+    if (S) return;
+
+    switch (opcode) {
+    case 0x00:
+        add_str("fmov");
+        break;
+    case 0x01:
+        add_str("fabs");
+        break;
+    case 0x02:
+        add_str("fneg");
+        break;
+    case 0x03:
+        add_str("fsqrt");
+        break;
+    case 0x04:
+        add_str("fcvt");
+        wd = 's';
+        break;
+    case 0x05:
+        add_str("fcvt");
+        wd = 'd';
+        break;
+    case 0x07:
+        add_str("fcvt");
+        wd = 'h';
+        break;
+    case 0x08:
+        add_str("frintn");
+        break;
+    case 0x09:
+        add_str("frintp");
+        break;
+    case 0x0a:
+        add_str("frintm");
+        break;
+    case 0x0b:
+        add_str("frintz");
+        break;
+    case 0x0c:
+        add_str("frinta");
+        break;
+    case 0x0e:
+        add_str("frintx");
+        break;
+    case 0x0f:
+        add_str("frinti");
+        break;
+    }
+
+    add_char(' ');
+    add_char(wd);
+    add_dec_uint32(Rd);
+    add_str(", ");
+    add_char(wn);
+    add_dec_uint32(Rn);
+}
+
 static void fp_to_integer_conversions(void) {
     uint32_t sf = (instr >> 31) & 1;
     uint32_t type = (instr >> 22) & 3;
@@ -2105,6 +2181,96 @@ static void AdvSIMD_three_same(void) {
     }
 }
 
+static void scalar_shift_by_immediate(void) {
+    uint32_t U = (instr >> 29) & 1;
+    uint32_t immh = (instr >> 19) & 0xf;
+    uint32_t immb = (instr >> 16) & 0x7;
+    uint32_t opcode = (instr >> 11) & 0x1f;
+    uint32_t Rd = instr & 0x1f;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    uint32_t shift = 0;
+    int sh = 0;
+    char w = 0;
+
+    if (immh == 0) return;
+
+    switch (opcode) {
+    case 0:
+        add_str(U ? "ushr" : "sshr");
+        break;
+    case 2:
+        add_str(U ? "usra" : "ssra");
+        break;
+    case 4:
+        add_str(U ? "urshr" : "srshr");
+        break;
+    case 6:
+        add_str(U ? "ursra" : "srsra");
+        break;
+    case 8:
+        add_str(U ? "sri" : "");
+        break;
+    case 10:
+        add_str(U ? "sli" : "shl");
+        sh = 1;
+        break;
+    case 12:
+        add_str(U ? "sqshlu" : "");
+        sh = 1;
+        break;
+    case 14:
+        add_str(U ? "uqshr" : "sqshr");
+        sh = 1;
+        break;
+    case 16:
+        add_str(U ? "sqshrun" : "");
+        break;
+    case 17:
+        add_str(U ? "sqrshrun" : "");
+        break;
+    case 18:
+        add_str(U ? "uqshrn" : "sqshrn");
+        break;
+    case 19:
+        add_str(U ? "uqrshrn" : "sqrshrn");
+        break;
+    case 28:
+        add_str(U ? "ucvtf" : "scvtf");
+        break;
+    case 31:
+        add_str(U ? "fcvtzu" : "fcvtzs");
+        break;
+    }
+
+    if (buf_pos == 0) return;
+
+    if (sh) {
+        if (immh < 2) shift = (immh << 3) + immb - 8u;
+        else if (immh < 4) shift = (immh << 3) + immb - 16u;
+        else if (immh < 8) shift = (immh << 3) + immb - 32u;
+        else shift = (immh << 3) + immb - 64u;
+    }
+    else {
+        if (immh < 2) shift = 16u - ((immh << 3) + immb);
+        else if (immh < 4) shift = 32u - ((immh << 3) + immb);
+        else if (immh < 8) shift = 64u - ((immh << 3) + immb);
+        else shift = 128u - ((immh << 3) + immb);
+    }
+
+    if (immh < 2) w = 'b';
+    else if (immh < 4) w = 'h';
+    else if (immh < 8) w = 's';
+    else w = 'd';
+    add_char(' ');
+    add_char(w);
+    add_dec_uint32(Rd);
+    add_str(", ");
+    add_char(w);
+    add_dec_uint32(Rn);
+    add_str(", #");
+    add_dec_uint32(shift);
+}
+
 static void data_processing_simd_and_fp(void) {
     if ((instr & 0x5f200000) == 0x1e000000) {
         /* Floating-point<->fixed-point conversions */
@@ -2136,6 +2302,7 @@ static void data_processing_simd_and_fp(void) {
     }
     if ((instr & 0x5f207c00) == 0x1e204000) {
         /* Floating-point data-processing (1 source) */
+        fp_data_processing_1_source();
         return;
     }
     if ((instr & 0x5f20fc00) == 0x1e200000) {
@@ -2219,6 +2386,7 @@ static void data_processing_simd_and_fp(void) {
     }
     if ((instr & 0xdf800400) == 0x5f000400) {
         /* AdvSIMD scalar shift by immediate */
+        scalar_shift_by_immediate();
         return;
     }
     if ((instr & 0xff3e0c00) == 0x4e280800) {
