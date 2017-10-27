@@ -1387,6 +1387,13 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
                 while (!err && fd > 3 && fd - 1 != p_log[1]) close(--fd);
                 if (!err && params->attach && context_attach_self() < 0) err = errno;
                 if (!err && params->dir != NULL && chdir(params->dir) < 0) err = errno;
+#if defined(_POSIX_C_SOURCE)
+                if (!err) {
+                    sigset_t set;
+                    sigemptyset(&set);
+                    if (sigprocmask(SIG_SETMASK, &set, NULL) < 0) err = errno;
+                }
+#endif
                 if (!err) {
                     if (envp != NULL) environ = envp;
                     execvp(exe, args);
@@ -1466,6 +1473,13 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
                 while (!err && fd > 3 && fd - 1 != p_log[1]) close(--fd);
                 if (!err && params->attach && context_attach_self() < 0) err = errno;
                 if (!err && params->dir != NULL && chdir(params->dir) < 0) err = errno;
+#if defined(_POSIX_C_SOURCE)
+                if (!err) {
+                    sigset_t set;
+                    sigemptyset(&set);
+                    if (sigprocmask(SIG_SETMASK, &set, NULL) < 0) err = errno;
+                }
+#endif
                 if (!err) {
                     if (envp != NULL) environ = envp;
                     execvp(exe, args);
