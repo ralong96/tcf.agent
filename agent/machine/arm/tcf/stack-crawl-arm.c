@@ -1968,6 +1968,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
 
     if (rd == 15 && (instr & (1 << 20)) != 0) {
         return_from_exception();
+        trace_return = 1;
     }
 }
 
