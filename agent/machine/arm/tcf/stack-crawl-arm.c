@@ -1692,6 +1692,15 @@ static void trace_arm_extra_ldr_str(uint32_t instr) {
     }
 }
 
+static uint32_t modified_immediate_constant(uint32_t instr) {
+    uint8_t shift_dist  = (instr & 0x0f00) >> 8;
+    uint8_t shift_const = (instr & 0x00ff);
+
+    /* rotate const right by 2 * shift_dist */
+    shift_dist *= 2;
+    return (shift_const >> shift_dist) | (shift_const << (32 - shift_dist));
+}
+
 static void trace_arm_data_processing_instr(uint32_t instr) {
     uint32_t cond = (instr >> 28) & 0xf;
     int I = (instr & 0x02000000) != 0;
@@ -1705,13 +1714,7 @@ static void trace_arm_data_processing_instr(uint32_t instr) {
 
     /* Decode operand 2 */
     if (I) {
-        uint8_t shift_dist  = (operand2 & 0x0f00) >> 8;
-        uint8_t shift_const = (operand2 & 0x00ff);
-
-        /* rotate const right by 2 * shift_dist */
-        shift_dist *= 2;
-        op2val    = (shift_const >> shift_dist) |
-                    (shift_const << (32 - shift_dist));
+        op2val    = modified_immediate_constant(operand2);
         op2origin = REG_VAL_OTHER;
     }
     else {
@@ -2232,28 +2235,32 @@ static int trace_instructions(void) {
     RegData org_4to11[8];
     RegData org_cpsr = cpsr_data;
     RegData org_spsr = spsr_data;
-    ContextAddress func_addr = 0;
-    ContextAddress func_size = 0;
+    uint32_t func_addr = 0;
+    uint32_t func_size = 0;
+
+    memcpy(org_4to11, reg_data + 4, sizeof(org_4to11));
 
 #if ENABLE_Symbols
-    if (reg_data[15].o) {
+    if (chk_loaded(15) == 0) {
         Symbol * sym = NULL;
         int sym_class = SYM_CLASS_UNKNOWN;
-        ContextAddress sym_addr = 0;
+        ContextAddress sym_addr = reg_data[15].v;
         ContextAddress sym_size = 0;
-        if (find_symbol_by_addr(stk_ctx, STACK_NO_FRAME, reg_data[15].v, &sym) == 0 &&
+        if (sym_addr > 0 && !stk_frame->is_top_frame) sym_addr--;
+        if (find_symbol_by_addr(stk_ctx, STACK_NO_FRAME, sym_addr, &sym) == 0 &&
                 get_symbol_class(sym, &sym_class) == 0 && sym_class == SYM_CLASS_FUNCTION &&
                 get_symbol_size(sym, &sym_size) == 0 && sym_size != 0 &&
-                get_symbol_address(sym, &sym_addr) == 0 && sym_addr != 0) {
-            func_addr = sym_addr;
-            func_size = sym_size;
+                get_symbol_address(sym, &sym_addr) == 0 && sym_addr != 0 &&
+                sym_addr + sym_size <= 0x100000000) {
+            func_addr = (uint32_t)sym_addr;
+            func_size = (uint32_t)sym_size;
+            trace(LOG_STACK, "Function symbol: addr 0x%08x, size 0x%08x", func_addr, func_size);
         }
     }
 #endif
 
     TRACE_INSTRUCTIONS_HOOK;
 
-    memcpy(org_4to11, reg_data + 4, sizeof(org_4to11));
     for (;;) {
         unsigned t = 0;
         BranchData * b = NULL;
@@ -2329,6 +2336,60 @@ static int trace_instructions(void) {
     trace(LOG_STACK, "Stack crawl: Function epilogue not found");
 
     EPILOGUE_NOT_FOUND_HOOK;
+
+    if (func_size > 12 && (func_addr & 0x3) == 0) {
+        unsigned n = 0;
+        /* Check for common ARM prologue pattern */
+        while (n < 3 && n < func_size / 4 - 1) {
+            uint32_t instr = 0;
+            uint32_t push_regs = 0;
+            if (read_word(func_addr + n * 4, &instr) < 0) break;
+            if ((instr & 0xffffe000) == 0xe92d4000) {
+                /* PUSH {..., lr} */
+                push_regs = instr & 0xffff;
+            }
+            else if ((instr & 0xffffffff) == 0xe52de004) {
+                /* PUSH {lr} */
+                push_regs |= 1 << 14;
+            }
+            if (push_regs) {
+                reg_data[13] = org_sp;
+                if (chk_loaded(13) == 0) {
+                    uint32_t addr = reg_data[13].v;
+                    while (n < 8 && n < func_size / 4 - 1) {
+                        if (read_word(func_addr + n * 4, &instr) < 0) break;
+                        if ((instr  & 0xfffff000) == 0xe24dd000) {
+                            /* SUB sp, sp, #... */
+                            addr += modified_immediate_constant(instr);
+                            break;
+                        }
+                        n++;
+                    }
+                    for (i = 0; i < 16; i++) {
+                        if (push_regs & (1 << i)) {
+                            reg_data[i].o = REG_VAL_STACK;
+                            reg_data[i].v = addr;
+                            addr += 4;
+                        }
+                        else if (i >= 4 && i <= 11) { /* Local variables */
+                            reg_data[i] = org_4to11[i - 4];
+                        }
+                        else {
+                            reg_data[i].o = 0;
+                        }
+                    }
+                    reg_data[13].o = REG_VAL_OTHER;
+                    reg_data[13].v = addr;
+                    reg_data[15] = reg_data[14];
+                    reg_data[14].o = 0;
+                    bx_write_pc();
+                    return 0;
+                }
+                break;
+            }
+            n++;
+        }
+    }
 
     for (i = 0; i < REG_DATA_SIZE; i++) {
         if (i >= 4 && i <= 11) { /* Local variables */
