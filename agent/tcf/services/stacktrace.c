@@ -99,11 +99,22 @@ static int get_frame_debug_info(StackFrame * frame, StackTracingInfo ** info) {
             if (up->is_walked) {
                 ip--;
             }
+#if ENABLE_Symbols
             else {
                 /* Workaround for missing frame info for return address of a function that never returns */
-                if (get_stack_tracing_info(ctx, (ContextAddress)ip, info) == 0 && *info != NULL) return 0;
-                ip--;
+                Symbol * sym = NULL;
+                int sym_class = SYM_CLASS_UNKNOWN;
+                ContextAddress sym_addr = 0;
+                ContextAddress sym_size = 0;
+                if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip - 1, &sym) == 0 &&
+                        get_symbol_class(sym, &sym_class) == 0 && sym_class == SYM_CLASS_FUNCTION &&
+                        get_symbol_size(sym, &sym_size) == 0 && sym_size != 0 &&
+                        get_symbol_address(sym, &sym_addr) == 0 && sym_addr != 0 &&
+                        sym_addr + sym_size > sym_addr && sym_addr + sym_size <= ip) {
+                    ip--;
+                }
             }
+#endif
         }
     }
     return get_stack_tracing_info(ctx, (ContextAddress)ip, info);
