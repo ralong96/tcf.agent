@@ -251,7 +251,6 @@ static void command_get_context(char * token, Channel * c) {
 }
 
 static void command_get_children(char * token, Channel * c) {
-    int     err = 0;
     char    id[256];
     pid_t   pid = 0;
     pid_t   parent = 0;
@@ -341,7 +340,7 @@ static void command_get_children(char * token, Channel * c) {
 }
 
 static void command_get_command_line(char * token, Channel * c) {
-    int             err;
+    int             err = 0;
     char            id[256];
     pid_t           pid;
     pid_t           parent;
