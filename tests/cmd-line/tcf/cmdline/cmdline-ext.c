@@ -20,6 +20,7 @@
 #include <tcf/services/breakpoints.h>
 #include <tcf/main/cmdline.h>
 #include <tcf/cmdline/cmdline-ext.h>
+#include <stdio.h>
 
 static BreakpointInfo ** bp_list = NULL;
 static unsigned bp_cnt = 0;
