@@ -280,7 +280,6 @@ static void get_symbol_cache_client(void * x) {
     GetSymbolArgs * args = (GetSymbolArgs *)x;
     Channel * c = cache_channel();
     Context * ctx = args->ctx;
-    Symbol * sym = NULL;
     ContextAddress addr = 0;
     int error = ERR_SYM_NOT_FOUND;
 
@@ -288,6 +287,7 @@ static void get_symbol_cache_client(void * x) {
 
 #if ENABLE_Symbols
     if (get_error_code(error) == ERR_SYM_NOT_FOUND) {
+        Symbol * sym = NULL;
         error = 0;
         if (find_symbol_by_name(ctx, STACK_NO_FRAME, 0, args->name, &sym) < 0) error = errno;
         if (!error && get_symbol_address(sym, &addr) < 0) error = errno;
