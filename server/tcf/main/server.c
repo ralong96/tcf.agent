@@ -102,7 +102,7 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
             /* Added this line to avoid build warnings if none of the
              * services below are defined (note that nm may be used
              * in TARGET_SERVICE_CHECK_HOOK() macro). */
-            if (nm);
+            (void)nm;
 #if SERVICE_LineNumbers
             if (strcmp(nm, "LineNumbers") == 0) service_ln = 1;
 #endif
