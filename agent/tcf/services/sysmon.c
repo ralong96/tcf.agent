@@ -56,25 +56,6 @@ static const char SYS_MON[] = "SysMonitor";
 
 typedef struct kinfo_proc kinfo_proc;
 
-static void write_string_array(OutputStream * out, char **ap, int len) {
-    int cnt;
-
-    write_stream(out, '[');
-    for (cnt = 0; cnt < len; cnt++) {
-        if (cnt > 0) write_stream(out, ',');
-        json_write_string(out, ap[cnt]);
-    }
-    write_stream(out, ']');
-}
-
-static void free_array(char **ap, int len) {
-    int c;
-    for (c = 0; c < len; c++) {
-        free(*ap++);
-    }
-    free(ap);
-}
-
 /*
  * Get kernel process information for all processes.
  */

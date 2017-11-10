@@ -297,7 +297,7 @@ extern char ** environ;
 extern char * canonicalize_file_name(const char * path);
 #endif /* BSD */
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(CLOCK_REALTIME)
 #  define CLOCK_REALTIME 1
   typedef int clockid_t;
   extern int clock_gettime(clockid_t clock_id, struct timespec * tp);
