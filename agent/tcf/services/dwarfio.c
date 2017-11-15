@@ -55,6 +55,7 @@ struct DIO_Cache {
     U1_T * mStringTable;
     U4_T mStringTableSize;
     DIO_AbbrevSet ** mAbbrevTable;
+    U8_T mAbbrevSectionAddr;
 };
 
 typedef struct DIO_Cache DIO_Cache;
@@ -616,6 +617,7 @@ void dio_ReadUnit(DIO_UnitDescriptor * Unit, DIO_EntryCallBack CallBack) {
     sUnit->m64bit = 0;
     if (strcmp(sSection->name, ".debug") != 0) {
         ELF_Section * Sect = NULL;
+        DIO_Cache * Cache = dio_GetCache(sSection->file);
         sUnit->mUnitSize = dio_ReadU4();
         if (sUnit->mUnitSize == 0xffffffffu) {
             sUnit->m64bit = 1;
@@ -627,6 +629,7 @@ void dio_ReadUnit(DIO_UnitDescriptor * Unit, DIO_EntryCallBack CallBack) {
         }
         sUnit->mVersion = dio_ReadU2();
         sUnit->mAbbrevTableOffs = dio_ReadAddressX(&Sect, sUnit->m64bit ? 8 : 4);
+        sUnit->mAbbrevTableOffs -= Cache->mAbbrevSectionAddr;
         sUnit->mAddressSize = dio_ReadU1();
         if (strcmp(sSection->name, ".debug_types") == 0) {
             sUnit->mTypeSignature = dio_ReadU8();
@@ -672,6 +675,7 @@ void dio_LoadAbbrevTable(ELF_File * File) {
         }
     }
     if (Section == NULL) return;
+    Cache->mAbbrevSectionAddr = Section->addr;
     dio_EnterSection(NULL, Section, 0);
     for (;;) {
         U4_T AttrPos = 0;
