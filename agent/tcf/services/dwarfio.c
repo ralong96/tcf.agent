@@ -53,6 +53,7 @@ typedef struct DIO_AbbrevSet DIO_AbbrevSet;
 
 struct DIO_Cache {
     U1_T * mStringTable;
+    U8_T mStringTableAddr;
     U4_T mStringTableSize;
     DIO_AbbrevSet ** mAbbrevTable;
     U8_T mAbbrevSectionAddr;
@@ -317,7 +318,7 @@ char * dio_ReadString(void) {
     return Res;
 }
 
-static U1_T * dio_LoadStringTable(ELF_File * File, U4_T * StringTableSize) {
+static U1_T * dio_LoadStringTable(ELF_File * File, U8_T * StringTableAddr, U4_T * StringTableSize) {
     DIO_Cache * Cache = dio_GetCache(File);
 
     if (Cache->mStringTable == NULL) {
@@ -338,6 +339,7 @@ static U1_T * dio_LoadStringTable(ELF_File * File, U4_T * StringTableSize) {
             str_exception(ERR_INV_DWARF, "Section .debug_str not found");
         }
 
+        Cache->mStringTableAddr = Section->addr;
         Cache->mStringTableSize = (size_t)Section->size;
         if (elf_load(Section) < 0) {
             str_exception(errno, "Cannot read .debug_str section");
@@ -345,15 +347,14 @@ static U1_T * dio_LoadStringTable(ELF_File * File, U4_T * StringTableSize) {
         Cache->mStringTable = (U1_T *)Section->data;
     }
 
+    *StringTableAddr = Cache->mStringTableAddr;
     *StringTableSize = Cache->mStringTableSize;
     return Cache->mStringTable;
 }
 
-static U1_T * dio_LoadAltStringTable(ELF_File * File, U4_T * StringTableSize) {
-    if (File->dwz_file == NULL) {
-        str_exception(errno, "Cannot open DWZ file");
-    }
-    return dio_LoadStringTable(File->dwz_file, StringTableSize);
+static U1_T * dio_LoadAltStringTable(ELF_File * File, U8_T * StringTableAddr, U4_T * StringTableSize) {
+    if (File->dwz_file == NULL) str_exception(errno, "Cannot open DWZ file");
+    return dio_LoadStringTable(File->dwz_file, StringTableAddr, StringTableSize);
 }
 
 static void dio_ReadFormAddr(void) {
@@ -413,9 +414,10 @@ static void dio_ReadFormString(void) {
 }
 
 static void dio_ReadFormStringRef(void) {
-    U8_T Offset = dio_ReadAddressX(&dio_gFormSection, sUnit->m64bit ? 8 : 4);
+    U8_T StringTableAddr = 0;
     U4_T StringTableSize = 0;
-    U1_T * StringTable = dio_LoadStringTable(sSection->file, &StringTableSize);
+    U1_T * StringTable = dio_LoadStringTable(sSection->file, &StringTableAddr, &StringTableSize);
+    U8_T Offset = dio_ReadAddressX(&dio_gFormSection, sUnit->m64bit ? 8 : 4) - StringTableAddr;
     dio_gFormDataAddr = StringTable + Offset;
     dio_gFormDataSize = 1;
     for (;;) {
@@ -428,9 +430,10 @@ static void dio_ReadFormStringRef(void) {
 }
 
 static void dio_ReadFormAltStringRef(void) {
-    U8_T Offset = dio_ReadAddressX(&dio_gFormSection, sUnit->m64bit ? 8 : 4);
+    U8_T StringTableAddr = 0;
     U4_T StringTableSize = 0;
-    U1_T * StringTable = dio_LoadAltStringTable(sSection->file, &StringTableSize);
+    U1_T * StringTable = dio_LoadAltStringTable(sSection->file, &StringTableAddr, &StringTableSize);
+    U8_T Offset = dio_ReadAddressX(&dio_gFormSection, sUnit->m64bit ? 8 : 4) - StringTableAddr;
     dio_gFormDataAddr = StringTable + Offset;
     dio_gFormDataSize = 1;
     for (;;) {
