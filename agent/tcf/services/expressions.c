@@ -2699,7 +2699,7 @@ static void funcccall_breakpoint(Context * ctx, void * args) {
         suspend_debug_context(ctx);
     }
     else if (state->committed) {
-        if (state->error) trace(LOG_ALWAYS, "Cannot restore state",
+        if (state->error) trace(LOG_ALWAYS, "Cannot restore state: %s",
             errno_to_str(set_error_report_errno(state->error)));
         free_funccall_state(state);
     }
