@@ -116,6 +116,10 @@ static DIO_Cache * dio_GetCache(ELF_File * File) {
 
 void dio_EnterSection(DIO_UnitDescriptor * Unit, ELF_Section * Section, U8_T Offset) {
     if (elf_load(Section)) exception(errno);
+    if (Offset > Section->size) {
+        if (Section->name == NULL) exception(ERR_INV_DWARF);
+        str_fmt_exception(ERR_INV_DWARF, "Invalid offset in '%s' section", Section->name);
+    }
     sSection = Section;
     sData = (U1_T *)Section->data;
     sDataPos = Offset;

@@ -877,10 +877,28 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
             Unit->mDir = (char *)dio_gFormDataAddr;
             break;
         case AT_stmt_list:
-            if (Form == FORM_ADDR) {
-                /* Workaround: some compilers incorrectly use FORM_ADDR for AT_stmt_list */
+            if (Form == FORM_ADDR || Form == FORM_SEC_OFFSET) {
                 Unit->mLineInfoOffs = dio_gFormData;
-                if (dio_gFormSection != NULL) Unit->mLineInfoOffs -= dio_gFormSection->addr;
+                if (dio_gFormSection != NULL) {
+                    Unit->mLineInfoOffs -= dio_gFormSection->addr;
+                    Unit->mLineInfoSection = dio_gFormSection;
+                }
+                else {
+                    unsigned idx;
+                    ELF_File * file = Unit->mFile;
+                    for (idx = 1; idx < file->section_cnt; idx++) {
+                        ELF_Section * sec = file->sections + idx;
+                        if (sec->size == 0) continue;
+                        if (sec->name == NULL) continue;
+                        if (sec->type == SHT_NOBITS) continue;
+                        if (Unit->mLineInfoOffs >= sec->addr && Unit->mLineInfoOffs < sec->addr + sec->size &&
+                            strcmp(sec->name, sUnitDesc.mVersion <= 1 ? ".line" : ".debug_line") == 0) {
+                            Unit->mLineInfoOffs -= sec->addr;
+                            Unit->mLineInfoSection = sec;
+                            break;
+                        }
+                    }
+                }
                 break;
             }
             dio_ChkData(Form);
@@ -2307,7 +2325,8 @@ static void load_line_numbers_v2(CompUnit * Unit, U8_T unit_size, int dwarf64) {
 void load_line_numbers(CompUnit * Unit) {
     Trap trap;
     DWARFCache * Cache = (DWARFCache *)Unit->mFile->dwarf_dt_cache;
-    ELF_Section * LineInfoSection = Unit->mDesc.mVersion <= 1 ? Cache->mDebugLineV1 : Cache->mDebugLineV2;
+    ELF_Section * LineInfoSection = Unit->mLineInfoSection;
+    if (LineInfoSection == NULL) LineInfoSection = Unit->mDesc.mVersion <= 1 ? Cache->mDebugLineV1 : Cache->mDebugLineV2;
     if (LineInfoSection == NULL) return;
     if (Unit->mLineInfoLoaded) return;
     if (elf_load(LineInfoSection)) exception(errno);

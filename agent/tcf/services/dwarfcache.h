@@ -200,6 +200,7 @@ struct CompUnit {
     DIO_UnitDescriptor mDesc;
     RegisterIdScope mRegIdScope;
 
+    ELF_Section * mLineInfoSection;
     U8_T mLineInfoOffs;
     char * mDir;
 
