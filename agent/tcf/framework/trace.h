@@ -48,11 +48,17 @@ extern int log_mode;
 
 #if ENABLE_Trace
 
+#if defined(__GNUC__)
+#  define ATTR_PRINTF(FORMAT, ARG) __attribute__ ((format (printf, (FORMAT), (ARG))))
+#else
+#  define ATTR_PRINTF(FORMAT, ARG)
+#endif
+
 /*
  * Print a trace message into log file.
  * Use macro 'trace' instead of calling this function directly.
  */
-extern int print_trace(int mode, const char * fmt, ...);
+extern int print_trace(int mode, const char * fmt, ...) ATTR_PRINTF(2, 3);
 
 extern FILE * log_file;
 
