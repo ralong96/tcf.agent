@@ -206,7 +206,7 @@ static void add_thread(GdbClient * c, Context * ctx) {
         if (suspend_debug_context(ctx) < 0) {
             char * name = ctx->name;
             if (name == NULL) name = ctx->id;
-            trace(LOG_ALWAYS, "GDB Server: cannot suspend context %s: %s", errno_to_str(errno));
+            trace(LOG_ALWAYS, "GDB Server: cannot suspend context %s: %s", name, errno_to_str(errno));
         }
     }
 }
@@ -413,7 +413,7 @@ static void lock_threads(GdbClient * c) {
             if (suspend_debug_context(ctx) < 0) {
                 char * name = ctx->name;
                 if (name == NULL) name = ctx->id;
-                trace(LOG_ALWAYS, "GDB Server: cannot suspend context %s: %s", errno_to_str(errno));
+                trace(LOG_ALWAYS, "GDB Server: cannot suspend context %s: %s", name, errno_to_str(errno));
             }
             t->locked = 1;
         }
@@ -1639,7 +1639,7 @@ static int read_packet(GdbClient * c, unsigned len) {
                     if (suspend_debug_context(ctx) < 0) {
                         char * name = ctx->name;
                         if (name == NULL) name = ctx->id;
-                        trace(LOG_ALWAYS, "GDB Server: cannot suspend context %s: %s", errno_to_str(errno));
+                        trace(LOG_ALWAYS, "GDB Server: cannot suspend context %s: %s", name, errno_to_str(errno));
                     }
                 }
             }
