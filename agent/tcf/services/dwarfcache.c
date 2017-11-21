@@ -1217,6 +1217,21 @@ static int cmp_pub_objects(ObjectInfo * x, ObjectInfo * y) {
         DOIF_const_value;
 
     if ((x->mFlags & flags) != (y->mFlags & flags)) return 0;
+    if (x->mParent != y->mParent) {
+        ObjectInfo * px = x->mParent;
+        ObjectInfo * py = y->mParent;
+        for (;;) {
+            if (px == NULL || py == NULL) return 0;
+            if (px->mTag != py->mTag) return 0;
+            if (px->mTag != TAG_namespace) break;
+            if (px->mName != py->mName) {
+                if (px->mName == NULL || py->mName == NULL) return 0;
+                if (strcmp(px->mName, py->mName) != 0) return 0;
+            }
+            px = px->mParent;
+            py = py->mParent;
+        }
+    }
     switch (x->mTag) {
     case TAG_base_type:
     case TAG_fund_type:
