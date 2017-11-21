@@ -220,7 +220,7 @@ static const char * help_text[] = {
 #endif
     "  -s<url>          set agent listening port and protocol, default is " DEFAULT_SERVER_URL,
     "  -S               print server properties in Json format to stdout",
-#if ENABLE_DebugContext
+#if ENABLE_GdbRemoteSerialProtocol
     "  -g<port>         start GDB Remote Serial Protocol server at the specified TCP port",
 #endif
     "  -I<idle-seconds> exit if there are no connections for the specified time",
@@ -346,7 +346,9 @@ int main(int argc, char ** argv) {
 #endif
             case 'L':
             case 's':
+#if ENABLE_GdbRemoteSerialProtocol
             case 'g':
+#endif
 #if ENABLE_Plugins
             case 'P':
 #endif
