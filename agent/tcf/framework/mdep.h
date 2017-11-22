@@ -96,10 +96,13 @@
   #elif defined(_WIN32)
    typedef long ssize_t;
   #endif
+#  define PRIx32 "I32x"
 #  define PRIu64 "I64u"
 #  define PRId64 "I64d"
+#  define PRIx64 "I64x"
 #  define PRIX64 "I64X"
 #  define SCNx64 "I64x"
+#  define PRIxPTR "Ix"
 #else
 #  include <inttypes.h>
 #endif
@@ -316,14 +319,26 @@ extern int tkill(pid_t pid, int signal);
 
 #endif
 
+#ifndef PRIx32
+#  define PRIx32 "lx"
+#endif
+#ifndef PRIu64
+#  define PRIu64 "llu"
+#endif
 #ifndef PRId64
 #  define PRId64 "lld"
+#endif
+#ifndef PRIx64
+#  define PRIx64 "llx"
 #endif
 #ifndef PRIX64
 #  define PRIX64 "llX"
 #endif
 #ifndef SCNx64
 #  define SCNx64 "llx"
+#endif
+#ifndef PRIxPTR
+#  define PRIxPTR "x"
 #endif
 
 #ifndef MEM_USAGE_FACTOR

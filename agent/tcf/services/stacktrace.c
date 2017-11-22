@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -272,7 +272,7 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             for (def = get_reg_definitions(ctx); def->name != NULL; def++) {
                 if (def->no_read || def->read_once || def->bits) continue;
                 if (read_reg_value(frame, def, &v) != 0) continue;
-                trace(LOG_STACK, "  %-8s %16" PRIX64, def->name, v);
+                trace(LOG_STACK, "  %-8s %16" PRIx64, def->name, v);
             }
         }
 #endif
@@ -295,7 +295,7 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             }
         }
         assert(down.area == NULL);
-        trace(LOG_STACK, "  cfa      %16" PRIX64, (uint64_t)frame->fp);
+        trace(LOG_STACK, "  cfa      %16" PRIx64, (uint64_t)frame->fp);
         if (!down.has_reg_data) {
             stack->complete = 1;
             free_frame(&down);

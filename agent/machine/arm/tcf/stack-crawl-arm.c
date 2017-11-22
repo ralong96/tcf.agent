@@ -2216,7 +2216,7 @@ static int trace_arm(void) {
         unsigned i;
         /* Unknown/undecoded. May alter some register, so invalidate file */
         for (i = 0; i < 11; i++) reg_data[i].o = 0;
-        trace(LOG_STACK, "Stack crawl: unknown ARM A32 instruction %08x", instr);
+        trace(LOG_STACK, "Stack crawl: unknown ARM A32 instruction %08" PRIx32, instr);
     }
 
     if (!trace_return && !trace_branch) {
@@ -2254,7 +2254,7 @@ static int trace_instructions(void) {
                 sym_addr + sym_size <= 0x100000000) {
             func_addr = (uint32_t)sym_addr;
             func_size = (uint32_t)sym_size;
-            trace(LOG_STACK, "Function symbol: addr 0x%08x, size 0x%08x", func_addr, func_size);
+            trace(LOG_STACK, "Function symbol: addr 0x%08" PRIx32 ", size 0x%08" PRIx32, func_addr, func_size);
         }
     }
 #endif
@@ -2266,7 +2266,7 @@ static int trace_instructions(void) {
         BranchData * b = NULL;
         if (chk_loaded(13) < 0) return -1;
         if (chk_loaded(15) < 0) return -1;
-        trace(LOG_STACK, "Stack crawl: pc 0x%08x, sp 0x%08x",
+        trace(LOG_STACK, "Stack crawl: pc 0x%08" PRIx32 ", sp 0x%08" PRIx32,
             reg_data[15].o ? reg_data[15].v : 0,
             reg_data[13].o ? reg_data[13].v : 0);
         for (t = 0; t < 200; t++) {

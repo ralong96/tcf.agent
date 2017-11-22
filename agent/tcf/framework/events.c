@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -183,8 +183,8 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
     else {
         prev->next = ev;
     }
-    trace(LOG_EVENTCORE, "post_event: event %#lx, handler %#lx, arg %#lx, runtime %02d%02d.%03d",
-        ev, ev->handler, ev->arg,
+    trace(LOG_EVENTCORE, "post_event: event %#" PRIxPTR ", handler %#" PRIxPTR ", arg %#" PRIxPTR ", runtime %02ld%02ld.%03ld",
+        (uintptr_t)ev, (uintptr_t)ev->handler, (uintptr_t)ev->arg,
         ev->runtime.tv_sec / 60 % 60, ev->runtime.tv_sec % 60, ev->runtime.tv_nsec / 1000000);
     check_error(pthread_mutex_unlock(&event_lock));
 }
@@ -221,8 +221,8 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
         }
         check_error(pthread_mutex_unlock(&event_lock));
 
-        trace(LOG_EVENTCORE, "post_event: event %#lx, handler %#lx, arg %#lx, runtime %02d%02d.%03d",
-            ev, ev->handler, ev->arg,
+        trace(LOG_EVENTCORE, "post_event: event %#" PRIxPTR ", handler %#" PRIxPTR ", arg %#" PRIxPTR ", runtime %02ld%02ld.%03ld",
+            (uintptr_t)ev, (uintptr_t)ev->handler, (uintptr_t)ev->arg,
             ev->runtime.tv_sec / 60 % 60, ev->runtime.tv_sec % 60, ev->runtime.tv_nsec / 1000000);
     }
     else {
@@ -248,7 +248,8 @@ void post_event(EventCallBack * handler, void * arg) {
             event_last->next = ev;
             event_last = ev;
         }
-        trace(LOG_EVENTCORE, "post_event: event %#lx, handler %#lx, arg %#lx", ev, ev->handler, ev->arg);
+        trace(LOG_EVENTCORE, "post_event: event %#" PRIxPTR ", handler %#" PRIxPTR ", arg %#" PRIxPTR,
+            (uintptr_t)ev, (uintptr_t)ev->handler, (uintptr_t)ev->arg);
     }
     else {
         post_from_bg_thread(handler, arg, 0);
@@ -263,7 +264,7 @@ int cancel_event(EventCallBack * handler, void * arg, int wait) {
     assert(handler != NULL);
     assert(cancel_handler == NULL);
 
-    trace(LOG_EVENTCORE, "cancel_event: handler %#lx, arg %#lx, wait %d", handler, arg, wait);
+    trace(LOG_EVENTCORE, "cancel_event: handler %#" PRIxPTR ", arg %#" PRIxPTR ", wait %d", (uintptr_t)handler, (uintptr_t)arg, wait);
     prev = NULL;
     ev = event_queue;
     while (ev != NULL) {
@@ -449,7 +450,8 @@ void run_event_loop(void) {
             event_last = NULL;
         }
 
-        trace(LOG_EVENTCORE, "run_event_loop: event %#lx, handler %#lx, arg %#lx", ev, ev->handler, ev->arg);
+        trace(LOG_EVENTCORE, "run_event_loop: event %#" PRIxPTR ", handler %#" PRIxPTR ", arg %#" PRIxPTR,
+            (uintptr_t)ev, (uintptr_t)ev->handler, (uintptr_t)ev->arg);
         if (ev->runtime.tv_sec == 0 && ev->runtime.tv_nsec == 0) {
             /* Don't count timer queue events since getting new timer events
              * before the previous batch of timer events are processed

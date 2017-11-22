@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -857,7 +857,7 @@ static void udp_server_recv(void * x) {
 }
 
 static void local_peer_changed(PeerServer * ps, int type, void * arg) {
-    trace(LOG_DISCOVERY, "Peer changed: ps=0x%x, type=%d", ps, type);
+    trace(LOG_DISCOVERY, "Peer changed: ps=%#" PRIxPTR ", type=%d", (uintptr_t)ps, type);
     switch (type) {
     case PS_EVENT_ADDED:
     case PS_EVENT_CHANGED:

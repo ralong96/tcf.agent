@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -2861,7 +2861,7 @@ static void op_funccall(int mode, Value * v) {
 
                 /* Create breakpoint at the function return address */
                 assert(state->bp == NULL);
-                snprintf(ret_addr, sizeof(ret_addr), "0x%" PRIX64, state->ret_addr);
+                snprintf(ret_addr, sizeof(ret_addr), "%#" PRIx64, state->ret_addr);
                 state->bp = create_eventpoint(ret_addr, state->ctx, funcccall_breakpoint, state);
 
                 /* Set PC to the function address */

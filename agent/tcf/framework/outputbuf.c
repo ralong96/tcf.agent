@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -123,7 +123,7 @@ void output_queue_done(OutputQueue * q, int error, int size) {
     assert(q->error == 0);
     if (error) {
         q->error = error;
-        trace(LOG_PROTOCOL, "Can't write() on output queue %#lx: %s", q, errno_to_str(q->error));
+        trace(LOG_PROTOCOL, "Can't write() on output queue %#" PRIxPTR ": %s", (uintptr_t)q, errno_to_str(q->error));
         output_queue_clear(q);
     }
     else {

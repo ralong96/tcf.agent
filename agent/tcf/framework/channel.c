@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -585,7 +585,7 @@ void add_channel_transport(const char * transportname, ChannelServerCreate creat
  * Start communication of a newly created channel
  */
 void channel_start(Channel * c) {
-    trace(LOG_PROTOCOL, "Starting channel %#lx %s", c, c->peer_name);
+    trace(LOG_PROTOCOL, "Starting channel %#" PRIxPTR " %s", (uintptr_t)c, c->peer_name);
     assert(c->protocol != NULL);
     assert(c->state == ChannelStateStartWait);
     c->state = ChannelStateStarted;
@@ -596,6 +596,6 @@ void channel_start(Channel * c) {
  * Close communication channel
  */
 void channel_close(Channel * c) {
-    trace(LOG_PROTOCOL, "Closing channel %#lx %s", c, c->peer_name);
+    trace(LOG_PROTOCOL, "Closing channel %#" PRIxPTR " %s", (uintptr_t)c, c->peer_name);
     c->close(c, 0);
 }

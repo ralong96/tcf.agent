@@ -1482,7 +1482,7 @@ static int handle_Z_command(GdbClient * c) {
                         write_stream(out, ']');
                         break;
                     case 3:
-                        snprintf(str, sizeof(str), "0x%" PRIX64, (uint64_t)addr);
+                        snprintf(str, sizeof(str), "%#" PRIx64, (uint64_t)addr);
                         json_write_string(out, str);
                         break;
                     case 4:

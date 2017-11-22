@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -177,7 +177,7 @@ void * loc_alloc(size_t size) {
         perror("malloc");
         exit(1);
     }
-    trace(LOG_ALLOC, "loc_alloc(%u) = %#lx", (unsigned)size, p);
+    trace(LOG_ALLOC, "loc_alloc(%u) = %#" PRIxPTR, (unsigned)size, (uintptr_t)p);
     return p;
 }
 
@@ -190,7 +190,7 @@ void * loc_alloc_zero(size_t size) {
         exit(1);
     }
     memset(p, 0, size);
-    trace(LOG_ALLOC, "loc_alloc_zero(%u) = %#lx", (unsigned)size, p);
+    trace(LOG_ALLOC, "loc_alloc_zero(%u) = %#" PRIxPTR, (unsigned)size, (uintptr_t)p);
     return p;
 }
 
@@ -202,12 +202,12 @@ void * loc_realloc(void * ptr, size_t size) {
         perror("realloc");
         exit(1);
     }
-    trace(LOG_ALLOC, "loc_realloc(%#lx, %u) = %#lx", ptr, (unsigned)size, p);
+    trace(LOG_ALLOC, "loc_realloc(%#" PRIxPTR ", %u) = %#" PRIxPTR, (uintptr_t)ptr, (unsigned)size, (uintptr_t)p);
     return p;
 }
 
 void loc_free(const void * p) {
-    trace(LOG_ALLOC, "loc_free %#lx", p);
+    trace(LOG_ALLOC, "loc_free %#" PRIxPTR, (uintptr_t)p);
     free((void *)p);
 }
 

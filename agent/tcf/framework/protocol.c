@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -697,7 +697,7 @@ static void channel_closed(Channel * c) {
                     clear_trap(&trap);
                 }
                 else {
-                    trace(LOG_ALWAYS, "Exception handling reply %ul: %d %s",
+                    trace(LOG_ALWAYS, "Exception handling reply %lu: %d %s",
                           rh->tokenid, trap.error, errno_to_str(trap.error));
                 }
                 if (c->state != ChannelStateDisconnected) {

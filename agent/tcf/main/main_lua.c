@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -127,8 +127,7 @@ static struct lua_read_command_state lua_read_command_state;
 static void lua_read_command_fillbuf(struct lua_read_command_state *state);
 
 
-static struct luaref *luaref_new(lua_State *L, void * owner)
-{
+static struct luaref *luaref_new(lua_State *L, void * owner) {
     struct luaref *refp = (struct luaref *)loc_alloc(sizeof *refp);
 
     refp->ref = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -138,14 +137,13 @@ static struct luaref *luaref_new(lua_State *L, void * owner)
     return refp;
 }
 
-static void luaref_free(lua_State *L, struct luaref *p)
-{
+static void luaref_free(lua_State *L, struct luaref *p) {
     struct luaref **refpp;
     struct luaref *refp;
 
     refpp = &refroot;
-    while((refp = *refpp) != NULL) {
-        if(refp == p) {
+    while ((refp = *refpp) != NULL) {
+        if (refp == p) {
             *refpp = refp->next;
             luaL_unref(L, LUA_REGISTRYINDEX, refp->ref);
             loc_free(refp);
@@ -156,14 +154,13 @@ static void luaref_free(lua_State *L, struct luaref *p)
     assert(!"lua reference not found in list");
 }
 
-static void luaref_owner_free(lua_State *L, void * owner)
-{
+static void luaref_owner_free(lua_State *L, void * owner) {
     struct luaref **refpp;
     struct luaref *refp;
 
     refpp = &refroot;
-    while((refp = *refpp) != NULL) {
-        if(refp->owner == owner) {
+    while ((refp = *refpp) != NULL) {
+        if (refp->owner == owner) {
             *refpp = refp->next;
             luaL_unref(L, LUA_REGISTRYINDEX, refp->ref);
             loc_free(refp);
@@ -174,11 +171,10 @@ static void luaref_owner_free(lua_State *L, void * owner)
 }
 
 #ifndef NDEBUG
-static int lua_isclass(lua_State *L, int index, const char *name)
-{
+static int lua_isclass(lua_State *L, int index, const char *name) {
     int rval;
 
-    if(!lua_getmetatable(L, index)) return 0;
+    if (!lua_getmetatable(L, index)) return 0;
     lua_getfield(L, LUA_REGISTRYINDEX, name);
     rval = lua_rawequal(L, -1, -2);
     lua_pop(L, 2);
@@ -186,79 +182,66 @@ static int lua_isclass(lua_State *L, int index, const char *name)
 }
 #endif
 
-static struct peer_extra *lua2peer(lua_State *L, int index)
-{
-    if(luaL_checkudata(L, index, "tcf_peer") == NULL) {
-        return NULL;
-    }
+static struct peer_extra *lua2peer(lua_State *L, int index) {
+    if (luaL_checkudata(L, index, "tcf_peer") == NULL) return NULL;
     return (struct peer_extra *)lua_touserdata(L, index);
 }
 
-static struct protocol_extra *lua2protocol(lua_State *L, int index)
-{
-    if(luaL_checkudata(L, index, "tcf_protocol") == NULL) {
-        return NULL;
-    }
+static struct protocol_extra *lua2protocol(lua_State *L, int index) {
+    if (luaL_checkudata(L, index, "tcf_protocol") == NULL) return NULL;
     return (struct protocol_extra *)lua_touserdata(L, index);
 }
 
-static struct channel_extra *lua2channel(lua_State *L, int index)
-{
-    if(luaL_checkudata(L, index, "tcf_channel") == NULL) {
-        return NULL;
-    }
+static struct channel_extra *lua2channel(lua_State *L, int index) {
+    if (luaL_checkudata(L, index, "tcf_channel") == NULL) return NULL;
     return (struct channel_extra *)lua_touserdata(L, index);
 }
 
-static struct post_event_extra *lua2postevent(lua_State *L, int index)
-{
-    if(luaL_checkudata(L, index, "tcf_post_event") == NULL) {
-        return NULL;
-    }
+static struct post_event_extra *lua2postevent(lua_State *L, int index) {
+    if (luaL_checkudata(L, index, "tcf_post_event") == NULL) return NULL;
     return (struct post_event_extra *)lua_touserdata(L, index);
 }
 
-static void lua_read_command_getline(void *client_data)
-{
+static void lua_read_command_getline(void *client_data) {
     int c;
     lua_State *L = luastate;
     struct lua_read_command_state *state = (struct lua_read_command_state *)client_data;
 
     assert(state->reqline != 0);
     assert(state->reqdata == 0);
-    while(state->bufrd < state->bufwr) {
+    while (state->bufrd < state->bufwr) {
         c = state->buf[state->bufrd++];
-        switch(state->bufst) {
+        switch (state->bufst) {
         case bufst_normal:
         case_bufst_normal:
-            if(c == '\\') {
+            if (c == '\\') {
                 state->bufst = bufst_esc;
                 continue;
             }
-            if(c == '\r') {
+            if (c == '\r') {
                 state->bufst = bufst_eol_optnl;
                 goto eol;
             }
-            if(c == '\n') {
+            if (c == '\n') {
                 state->bufst = bufst_eol;
                 goto eol;
             }
             break;
 
         case bufst_normal_optnl:
-            if(c == '\n') {
+            if (c == '\n') {
                 state->bufst = bufst_normal;
                 continue;
             }
             goto case_bufst_normal;
 
         case bufst_esc:
-            if(c == '\r') {
+            if (c == '\r') {
                 state->bufst = bufst_normal_optnl;
                 c = '\n';
                 break;
             }
-            if(c == '\n') {
+            if (c == '\n') {
                 state->bufst = bufst_normal;
                 break;
             }
@@ -277,14 +260,14 @@ static void lua_read_command_getline(void *client_data)
 
         case bufst_eol_optnl:
             state->bufst = bufst_normal;
-            if(c == '\n') continue;
+            if (c == '\n') continue;
             goto case_bufst_normal;
 
         default:
             assert(!"unexpected state");
         }
-        if(state->lineind == state->linemax) {
-            if(state->linemax == 0) {
+        if (state->lineind == state->linemax) {
+            if (state->linemax == 0) {
                 state->linemax = 1024;
                 state->line = (char *)loc_alloc(state->linemax);
             }
@@ -296,7 +279,7 @@ static void lua_read_command_getline(void *client_data)
         state->line[state->lineind++] = (char)c;
     }
 eol:
-    if(state->bufst != bufst_eol_optnl && state->bufst != bufst_eol && !state->eof) {
+    if (state->bufst != bufst_eol_optnl && state->bufst != bufst_eol && !state->eof) {
         assert(state->bufrd == state->bufwr);
         lua_read_command_fillbuf(state);
         return;
@@ -306,7 +289,7 @@ eol:
     lua_rawgeti(L, LUA_REGISTRYINDEX, state->refp->ref);
     luaref_free(L, state->refp);
     state->refp = NULL;
-    if(state->lineind > 0 || !state->eof) {
+    if (state->lineind > 0 || !state->eof) {
         trace(LOG_LUA, "lua_read_command: %.*s", state->lineind, state->line);
         lua_pushlstring(L, state->line, state->lineind);
         state->lineind = 0;
@@ -315,21 +298,20 @@ eol:
         trace(LOG_LUA, "lua_read_command: EOF");
         lua_pushnil(L);
     }
-    if(lua_pcall(L, 1, 0, 0) != 0) {
+    if (lua_pcall(L, 1, 0, 0) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }
     return;
 }
 
-static void lua_read_command_done(void *client_data)
-{
+static void lua_read_command_done(void *client_data) {
     AsyncReqInfo *req = (AsyncReqInfo *)client_data;
     struct lua_read_command_state *state = (struct lua_read_command_state *)req->client_data;
 
     assert(state->reqdata != 0);
     state->reqdata = 0;
-    if(state->req.u.fio.rval > 0) {
+    if (state->req.u.fio.rval > 0) {
         state->bufwr += state->req.u.fio.rval;
         state->eof = 0;
     }
@@ -339,8 +321,7 @@ static void lua_read_command_done(void *client_data)
     lua_read_command_getline(state);
 }
 
-static void lua_read_command_fillbuf(struct lua_read_command_state *state)
-{
+static void lua_read_command_fillbuf(struct lua_read_command_state *state) {
     assert(state->reqdata == 0);
     assert(state->bufrd == state->bufwr);
     state->reqdata = 1;
@@ -354,20 +335,19 @@ static void lua_read_command_fillbuf(struct lua_read_command_state *state)
     async_req_post(&state->req);
 }
 
-static int lua_read_command(lua_State *L)
-{
+static int lua_read_command(lua_State *L) {
     struct lua_read_command_state *state = &lua_read_command_state;
 
     assert(L == luastate);
     assert(state->reqline == 0);
-    if(lua_gettop(L) != 1 || !lua_isfunction(L, 1)) {
+    if (lua_gettop(L) != 1 || !lua_isfunction(L, 1)) {
         luaL_error(L, "wrong number or type of arguments");
     }
     trace(LOG_LUA, "lua_read_command start");
     lua_pushvalue(L, 1);
     state->refp = luaref_new(L, state);
     state->reqline = 1;
-    if(state->bufrd == state->bufwr) {
+    if (state->bufrd == state->bufwr) {
         lua_read_command_fillbuf(state);
     }
     else {
@@ -376,14 +356,13 @@ static int lua_read_command(lua_State *L)
     return 0;
 }
 
-static struct peer_extra *lookup_pse(lua_State *L, PeerServer *ps)
-{
+static struct peer_extra *lookup_pse(lua_State *L, PeerServer *ps) {
     struct peer_extra *pse;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, peers_refp->ref);
     lua_pushstring(L, ps->id);          /* Key */
     lua_rawget(L, -2);
-    if((pse = (struct peer_extra *)lua_touserdata(L, -1)) == NULL) {
+    if ((pse = (struct peer_extra *)lua_touserdata(L, -1)) == NULL) {
         assert(lua_isnil(L, -1));
         lua_pop(L, 2);
         return NULL;
@@ -393,8 +372,7 @@ static struct peer_extra *lookup_pse(lua_State *L, PeerServer *ps)
     return pse;
 }
 
-static struct peer_extra *lua_alloc_pse(lua_State *L, PeerServer *ps)
-{
+static struct peer_extra *lua_alloc_pse(lua_State *L, PeerServer *ps) {
     struct peer_extra *pse;
 
     /* Allocate new LUA object for peer */
@@ -408,14 +386,13 @@ static struct peer_extra *lua_alloc_pse(lua_State *L, PeerServer *ps)
     return pse;
 }
 
-static struct peer_extra *lua_push_pse(lua_State *L, PeerServer *ps)
-{
+static struct peer_extra *lua_push_pse(lua_State *L, PeerServer *ps) {
     struct peer_extra *pse;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, peers_refp->ref);
     lua_pushstring(L, ps->id);          /* Key */
     lua_rawget(L, -2);
-    if((pse = (struct peer_extra *)lua_touserdata(L, -1)) != NULL) {
+    if ((pse = (struct peer_extra *)lua_touserdata(L, -1)) != NULL) {
         assert(lua_isclass(L, -1, "tcf_peer"));
         assert(pse->managed);
 
@@ -437,12 +414,11 @@ static struct peer_extra *lua_push_pse(lua_State *L, PeerServer *ps)
     return pse;
 }
 
-static void peer_server_changes(PeerServer *ps, int changeType, void * client_data)
-{
+static void peer_server_changes(PeerServer *ps, int changeType, void * client_data) {
     lua_State *L = (lua_State *)client_data;
     struct peer_extra *pse = lookup_pse(L, ps);
 
-    switch(changeType) {
+    switch (changeType) {
     case PS_EVENT_ADDED:
         assert(pse == NULL);
         break;
@@ -451,11 +427,11 @@ static void peer_server_changes(PeerServer *ps, int changeType, void * client_da
         break;
 
     case PS_EVENT_CHANGED:
-        if(pse != NULL) pse->ps = ps;
+        if (pse != NULL) pse->ps = ps;
         break;
 
     case PS_EVENT_REMOVED:
-        if(pse != NULL) pse->ps = NULL;
+        if (pse != NULL) pse->ps = NULL;
         break;
 
     default:
@@ -463,19 +439,18 @@ static void peer_server_changes(PeerServer *ps, int changeType, void * client_da
     }
 }
 
-static int lua_peer_server_find(lua_State *L)
-{
+static int lua_peer_server_find(lua_State *L) {
     PeerServer *ps;
     const char *name;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || !lua_isstring(L, 1)) {
+    if (lua_gettop(L) != 1 || !lua_isstring(L, 1)) {
         luaL_error(L, "wrong number or type of arguments");
     }
     name = lua_tostring(L, 1);
     ps = peer_server_find(name);
-    trace(LOG_LUA, "lua_peer_server_find %s %p", name, ps);
-    if(ps == NULL) {
+    trace(LOG_LUA, "lua_peer_server_find %s %#" PRIxPTR, name, (uintptr_t)ps);
+    if (ps == NULL) {
         lua_pushnil(L);
         return 1;
     }
@@ -483,18 +458,16 @@ static int lua_peer_server_find(lua_State *L)
     return 1;
 }
 
-static int lua_peer_server_list_entry(PeerServer * ps, void * client_data)
-{
+static int lua_peer_server_list_entry(PeerServer * ps, void * client_data) {
     lua_State *L = (lua_State *)client_data;
     lua_push_pse(L, ps);
     lua_rawseti(L, -2, lua_objlen(L, -2) + 1);
     return 0;
 }
 
-static int lua_peer_server_list(lua_State *L)
-{
+static int lua_peer_server_list(lua_State *L) {
     assert(L == luastate);
-    if(lua_gettop(L) != 0) {
+    if (lua_gettop(L) != 0) {
         luaL_error(L, "wrong number of arguments");
     }
     trace(LOG_LUA, "lua_peer_server_list");
@@ -503,29 +476,27 @@ static int lua_peer_server_list(lua_State *L)
     return 1;
 }
 
-static int lua_peer_server_from_url(lua_State *L)
-{
+static int lua_peer_server_from_url(lua_State *L) {
     PeerServer *ps;
     const char *url;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || !lua_isstring(L, 1)) {
+    if (lua_gettop(L) != 1 || !lua_isstring(L, 1)) {
         luaL_error(L, "wrong number or type of arguments");
     }
     url = lua_tostring(L, 1);
     ps = channel_peer_from_url(url);
-    trace(LOG_LUA, "lua_peer_server_from_url %s %p", url, ps);
-    if(ps == NULL) luaL_error(L, "cannot parse url: %s", lua_tostring(L, 1));
-    if(ps->id == NULL) {
+    trace(LOG_LUA, "lua_peer_server_from_url %s %#" PRIxPTR, url, (uintptr_t)ps);
+    if (ps == NULL) luaL_error(L, "cannot parse url: %s", lua_tostring(L, 1));
+    if (ps->id == NULL) {
         peer_server_addprop(ps, loc_strdup("ID"), loc_strdup(lua_tostring(L, 1)));
     }
     lua_alloc_pse(L, ps);
     return 1;
 }
 
-static struct protocol_extra *lua_protocol_ref(struct protocol_extra *pe, int index)
-{
-    if(pe->ucnt == 0) {
+static struct protocol_extra *lua_protocol_ref(struct protocol_extra *pe, int index) {
+    if (pe->ucnt == 0) {
         assert(lua_touserdata(pe->L, index) == pe);
         lua_pushvalue(pe->L, index); /* Prevent GC while connection is active */
         pe->self_refp = luaref_new(pe->L, pe);
@@ -534,23 +505,21 @@ static struct protocol_extra *lua_protocol_ref(struct protocol_extra *pe, int in
     return pe;
 }
 
-static void lua_protocol_unref(struct protocol_extra *pe)
-{
+static void lua_protocol_unref(struct protocol_extra *pe) {
     assert(pe->ucnt > 0);
     assert(pe->self_refp != NULL);
     pe->ucnt--;
-    if(pe->ucnt == 0) {
+    if (pe->ucnt == 0) {
         luaref_free(pe->L, pe->self_refp);
         pe->self_refp = NULL;
     }
 }
 
-static int lua_protocol_alloc(lua_State *L)
-{
+static int lua_protocol_alloc(lua_State *L) {
     struct protocol_extra *pe;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 0) {
+    if (lua_gettop(L) != 0) {
         luaL_error(L, "wrong number or type of arguments");
     }
     trace(LOG_LUA, "lua_protocol_alloc");
@@ -563,8 +532,7 @@ static int lua_protocol_alloc(lua_State *L)
     return 1;
 }
 
-static int lua_channel_server(lua_State *L)
-{
+static int lua_channel_server(lua_State *L) {
     trace(LOG_LUA, "lua_channel_server");
     luaL_error(L, "not implemented");
     return 0;
@@ -575,14 +543,14 @@ static void channel_connecting(Channel * c) {
     struct channel_extra *ce = (struct channel_extra *)c->client_data;
     lua_State *L = ce->L;
 
-    if(ce->connecting_cbrefp != NULL) {
+    if (ce->connecting_cbrefp != NULL) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, ce->connecting_cbrefp->ref);
-        if(lua_pcall(L, 0, 0, 0) != 0) {
+        if (lua_pcall(L, 0, 0, 0) != 0) {
             fprintf(stderr, "%s\n", lua_tostring(L,1));
             exit(1);
         }
     }
-    trace(LOG_LUA, "lua_channel_connecting %p", c);
+    trace(LOG_LUA, "lua_channel_connecting %#" PRIxPTR, (uintptr_t)c);
     send_hello_message(c);
 }
 
@@ -590,10 +558,10 @@ static void channel_connected(Channel * c) {
     struct channel_extra *ce = (struct channel_extra *)c->client_data;
     lua_State *L = ce->L;
 
-    trace(LOG_LUA, "lua_channel_connected %p", c);
-    if(ce->connected_cbrefp != NULL) {
+    trace(LOG_LUA, "lua_channel_connected %#" PRIxPTR, (uintptr_t)c);
+    if (ce->connected_cbrefp != NULL) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, ce->connected_cbrefp->ref);
-        if(lua_pcall(L, 0, 0, 0) != 0) {
+        if (lua_pcall(L, 0, 0, 0) != 0) {
             fprintf(stderr, "%s\n", lua_tostring(L,1));
             exit(1);
         }
@@ -604,10 +572,10 @@ static void channel_receive(Channel * c) {
     struct channel_extra *ce = (struct channel_extra *)c->client_data;
     lua_State *L = ce->L;
 
-    trace(LOG_LUA, "lua_channel_receive %p", c);
-    if(ce->receive_cbrefp != NULL) {
+    trace(LOG_LUA, "lua_channel_receive %#" PRIxPTR, (uintptr_t)c);
+    if (ce->receive_cbrefp != NULL) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, ce->receive_cbrefp->ref);
-        if(lua_pcall(L, 0, 0, 0) != 0) {
+        if (lua_pcall(L, 0, 0, 0) != 0) {
             fprintf(stderr, "%s\n", lua_tostring(L,1));
             exit(1);
         }
@@ -619,10 +587,10 @@ static void channel_disconnected(Channel * c) {
     struct channel_extra *ce = (struct channel_extra *)c->client_data;
     lua_State *L = ce->L;
 
-    trace(LOG_LUA, "lua_channel_disconnected %p", c);
-    if(ce->disconnected_cbrefp != NULL) {
+    trace(LOG_LUA, "lua_channel_disconnected %#" PRIxPTR, (uintptr_t)c);
+    if (ce->disconnected_cbrefp != NULL) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, ce->disconnected_cbrefp->ref);
-        if(lua_pcall(L, 0, 0, 0) != 0) {
+        if (lua_pcall(L, 0, 0, 0) != 0) {
             fprintf(stderr, "%s\n", lua_tostring(L,1));
             exit(1);
         }
@@ -634,15 +602,14 @@ static void channel_disconnected(Channel * c) {
     luaref_owner_free(L, ce);
 }
 
-static void lua_channel_connect_cb(void * client_data, int error, Channel * c)
-{
+static void lua_channel_connect_cb(void * client_data, int error, Channel * c) {
     struct channel_extra *ce = (struct channel_extra *)client_data;
     lua_State *L = ce->L;
 
-    trace(LOG_LUA, "lua_channel_connect_cb %p %d", c, error);
+    trace(LOG_LUA, "lua_channel_connect_cb %#" PRIxPTR " %d", (uintptr_t)c, error);
     assert(ce->connect_cbrefp != NULL);
     lua_rawgeti(L, LUA_REGISTRYINDEX, ce->connect_cbrefp->ref);
-    if(!error) {
+    if (!error) {
         assert(c != NULL);
         ce->c = c;
         c->client_data = ce;
@@ -660,27 +627,26 @@ static void lua_channel_connect_cb(void * client_data, int error, Channel * c)
         lua_pushnil(L);
         lua_pushstring(L, errno_to_str(error));
     }
-    if(lua_pcall(L, 2, 0, 0) != 0) {
+    if (lua_pcall(L, 2, 0, 0) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }
 }
 
-static int lua_channel_connect(lua_State *L)
-{
+static int lua_channel_connect(lua_State *L) {
     struct peer_extra *pse = NULL;
     struct protocol_extra *pe = NULL;
     struct channel_extra *ce;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 3 ||
+    if (lua_gettop(L) != 3 ||
        (pse = lua2peer(L, 1)) == NULL ||
        (pe = lua2protocol(L, 2)) == NULL ||
        !lua_isfunction(L, 3)) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    trace(LOG_LUA, "lua_channel_connect %p", pse->ps);
-    if(pse->ps == NULL) luaL_error(L, "stale peer");
+    trace(LOG_LUA, "lua_channel_connect %#" PRIxPTR, (uintptr_t)pse->ps);
+    if (pse->ps == NULL) luaL_error(L, "stale peer");
     ce = (struct channel_extra *)lua_newuserdata(L, sizeof *ce);
     memset(ce, 0, sizeof *ce);
     lua_pushvalue(L, -1);  /* Prevent GC while connection is active */
@@ -695,29 +661,27 @@ static int lua_channel_connect(lua_State *L)
     return 0;
 }
 
-static void lua_post_event_cb(void * client_data)
-{
+static void lua_post_event_cb(void * client_data) {
     struct post_event_extra *p = (struct post_event_extra *)client_data;
     lua_State *L = p->L;
 
     assert(p->handler_refp != NULL);
-    trace(LOG_LUA, "lua_post_event_cb %d", p->handler_refp);
+    trace(LOG_LUA, "lua_post_event_cb %#" PRIxPTR, (uintptr_t)p->handler_refp);
     lua_rawgeti(L, LUA_REGISTRYINDEX, p->handler_refp->ref);
     luaref_owner_free(L, p);
-    if(lua_pcall(L, 0, 0, 0) != 0) {
+    if (lua_pcall(L, 0, 0, 0) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }
 }
 
-static int lua_post_event(lua_State *L)
-{
+static int lua_post_event(lua_State *L) {
     struct post_event_extra *p;
     unsigned long delay;
 
     assert(L == luastate);
 
-    if(lua_gettop(L) > 2 || !lua_isfunction(L, 1) ||
+    if (lua_gettop(L) > 2 || !lua_isfunction(L, 1) ||
        (lua_gettop(L) > 1 && !(lua_isnil(L, 2) || lua_isnumber(L, 2)))) {
         luaL_error(L, "wrong number or type of arguments");
     }
@@ -728,11 +692,11 @@ static int lua_post_event(lua_State *L)
     p->self_refp = luaref_new(L, p);
     lua_pushvalue(L, 1);
     p->handler_refp = luaref_new(L, p);
-    trace(LOG_LUA, "lua_post_event %d", p->handler_refp);
+    trace(LOG_LUA, "lua_post_event %#" PRIxPTR, (uintptr_t)p->handler_refp);
     luaL_getmetatable(L, "tcf_post_event");
     lua_setmetatable(L, -2);
     delay = lua_tointeger(L, 2);
-    if(delay == 0) {
+    if (delay == 0) {
         post_event(lua_post_event_cb, p);
     }
     else {
@@ -754,30 +718,28 @@ static const luaL_Reg tcffuncs[] = {
 };
 
 
-static int lua_protocol_tostring(lua_State *L)
-{
+static int lua_protocol_tostring(lua_State *L) {
     struct protocol_extra *pe = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (pe = lua2protocol(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (pe = lua2protocol(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    trace(LOG_LUA, "lua_protocol_tostring %p", pe->p);
-    lua_pushfstring(L, "tcf_protocol (%p, %d)", pe, pe->ucnt);
+    trace(LOG_LUA, "lua_protocol_tostring %#" PRIxPTR, (uintptr_t)pe->p);
+    lua_pushfstring(L, "tcf_protocol (%#" PRIxPTR ", %d)", (uintptr_t)pe, pe->ucnt);
     return 1;
 }
 
-static int lua_protocol_gc(lua_State *L)
-{
+static int lua_protocol_gc(lua_State *L) {
     struct protocol_extra *pe = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (pe = lua2protocol(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (pe = lua2protocol(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
     assert(pe->ucnt == 0);
     assert(pe->p != NULL);
-    trace(LOG_LUA, "lua_protocol_gc %p", pe->p);
+    trace(LOG_LUA, "lua_protocol_gc %#" PRIxPTR, (uintptr_t)pe->p);
     protocol_release(pe->p);
     pe->p = NULL;
     return 0;
@@ -794,26 +756,25 @@ static void protocol_command_handler(char * token, Channel * c, void * client_da
     lua_rawgeti(L, LUA_REGISTRYINDEX, refp->ref);
     lua_pushstring(L, token);
     luaL_buffinit(L, &msg);
-    while((ch = read_stream(inp)) >= 0) {
+    while ((ch = read_stream(inp)) >= 0) {
         luaL_addchar(&msg, ch);
     }
     luaL_pushresult(&msg);
     trace(LOG_LUA, "lua_protocol_command %d %s", refp->ref, lua_tostring(L, -1));
-    if(lua_pcall(L, 2, 0, 0) != 0) {
+    if (lua_pcall(L, 2, 0, 0) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }
 }
 
-static int lua_protocol_command_handler(lua_State *L)
-{
+static int lua_protocol_command_handler(lua_State *L) {
     struct protocol_extra *pe = NULL;
     struct luaref *refp;
     const char *service;
     const char *name;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 4 || (pe = lua2protocol(L, 1)) == NULL ||
+    if (lua_gettop(L) != 4 || (pe = lua2protocol(L, 1)) == NULL ||
        !lua_isstring(L, 2) || !lua_isstring(L, 3) ||
        !lua_isfunction(L, 4)) {
         luaL_error(L, "wrong number or type of arguments");
@@ -836,10 +797,9 @@ static const luaL_Reg protocolfuncs[] = {
 };
 
 
-static const char *channel_state_string(Channel * c)
-{
+static const char *channel_state_string(Channel * c) {
     if (c == NULL) return "Disconnected";
-    switch(c->state) {
+    switch (c->state) {
     case ChannelStateStartWait: return "StartWait";
     case ChannelStateStarted: return "Started";
     case ChannelStateHelloSent: return "HelloSent";
@@ -852,119 +812,112 @@ static const char *channel_state_string(Channel * c)
     }
 }
 
-static int lua_channel_tostring(lua_State *L)
-{
+static int lua_channel_tostring(lua_State *L) {
     struct channel_extra *ce = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (ce = lua2channel(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    trace(LOG_LUA, "lua_channel_tostring %p", ce->c);
-    if(ce->c != NULL) {
-        lua_pushfstring(L, "tcf_channel (%s, %p, %s)", ce->c->peer_name, ce,
+    trace(LOG_LUA, "lua_channel_tostring %#" PRIxPTR, (uintptr_t)ce->c);
+    if (ce->c != NULL) {
+        lua_pushfstring(L, "tcf_channel (%s, %#" PRIxPTR ", %s)", (uintptr_t)ce->c->peer_name, ce,
                         channel_state_string(ce->c));
     }
     else {
-        lua_pushfstring(L, "tcf_channel (<disconnected>, %p)", ce);
+        lua_pushfstring(L, "tcf_channel (<disconnected>, %#" PRIxPTR ")", (uintptr_t)ce);
     }
     return 1;
 }
 
-static int lua_channel_state(lua_State *L)
-{
+static int lua_channel_state(lua_State *L) {
     struct channel_extra *ce = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (ce = lua2channel(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    trace(LOG_LUA, "lua_channel_state %p", ce->c);
+    trace(LOG_LUA, "lua_channel_state %#" PRIxPTR, (uintptr_t)ce->c);
     lua_pushstring(L, channel_state_string(ce->c));
     return 1;
 }
 
-static int lua_channel_close(lua_State *L)
-{
+static int lua_channel_close(lua_State *L) {
     struct channel_extra *ce = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (ce = lua2channel(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    trace(LOG_LUA, "lua_channel_close %p", ce->c);
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    trace(LOG_LUA, "lua_channel_close %#" PRIxPTR, (uintptr_t)ce->c);
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
     channel_close(ce->c);
     return 0;
 }
 
 static void update_callback(lua_State *L, int index, struct luaref **cbrefpp, void * owner) {
-    if(!lua_isfunction(L, index) && !lua_isnil(L, index)) {
+    if (!lua_isfunction(L, index) && !lua_isnil(L, index)) {
         luaL_error(L, "handler must be function or nil");
     }
-    if(*cbrefpp != NULL) {
+    if (*cbrefpp != NULL) {
         luaref_free(L, *cbrefpp);
         *cbrefpp = NULL;
     }
-    if(lua_isfunction(L, index)) {
+    if (lua_isfunction(L, index)) {
         lua_pushvalue(L, index);
         *cbrefpp = luaref_new(L, owner);
     }
 }
 
-static int lua_channel_connecting_handler(lua_State *L)
-{
+static int lua_channel_connecting_handler(lua_State *L) {
     struct channel_extra *ce = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 2 || (ce = lua2channel(L, 1)) == NULL) {
+    if (lua_gettop(L) != 2 || (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
     update_callback(L, 2, &ce->connecting_cbrefp, ce);
-    trace(LOG_LUA, "lua_channel_connecting_handler %p", ce->c, ce->connecting_cbrefp->ref);
+    trace(LOG_LUA, "lua_channel_connecting_handler %#" PRIxPTR " %#" PRIxPTR, (uintptr_t)ce->c, (uintptr_t)ce->connecting_cbrefp->ref);
     return 0;
 }
 
-static int lua_channel_connected_handler(lua_State *L)
-{
+static int lua_channel_connected_handler(lua_State *L) {
     struct channel_extra *ce = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 2 || (ce = lua2channel(L, 1)) == NULL) {
+    if (lua_gettop(L) != 2 || (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
     update_callback(L, 2, &ce->connected_cbrefp, ce);
-    trace(LOG_LUA, "lua_channel_connected_handler %p", ce->c, ce->connected_cbrefp->ref);
+    trace(LOG_LUA, "lua_channel_connected_handler %#" PRIxPTR " %#" PRIxPTR, (uintptr_t)ce->c, (uintptr_t)ce->connected_cbrefp->ref);
     return 0;
 }
 
-static int lua_channel_receive_handler(lua_State *L)
-{
+static int lua_channel_receive_handler(lua_State *L) {
     struct channel_extra *ce = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 2 || (ce = lua2channel(L, 1)) == NULL) {
+    if (lua_gettop(L) != 2 || (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
     update_callback(L, 2, &ce->receive_cbrefp, ce);
-    trace(LOG_LUA, "lua_channel_receive_handler %p", ce->c, ce->receive_cbrefp->ref);
+    trace(LOG_LUA, "lua_channel_receive_handler %#" PRIxPTR " %#" PRIxPTR, (uintptr_t)ce->c, (uintptr_t)ce->receive_cbrefp->ref);
     return 0;
 }
 
-static int lua_channel_disconnected_handler(lua_State *L)
-{
+static int lua_channel_disconnected_handler(lua_State *L) {
     struct channel_extra *ce = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 2 || (ce = lua2channel(L, 1)) == NULL) {
+    if (lua_gettop(L) != 2 || (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
     update_callback(L, 2, &ce->disconnected_cbrefp, ce);
-    trace(LOG_LUA, "lua_channel_disconnected_handler %p", ce->c, ce->disconnected_cbrefp->ref);
+    trace(LOG_LUA, "lua_channel_disconnected_handler %#" PRIxPTR " %#" PRIxPTR, (uintptr_t)ce->c, (uintptr_t)ce->disconnected_cbrefp->ref);
     return 0;
 }
 
@@ -978,81 +931,77 @@ static void channel_event_handler(Channel * c, void * client_data) {
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, refp->ref);
     luaL_buffinit(L, &msg);
-    while((ch = read_stream(inp)) >= 0) {
+    while ((ch = read_stream(inp)) >= 0) {
         luaL_addchar(&msg, ch);
     }
     luaL_pushresult(&msg);
-    trace(LOG_LUA, "lua_channel_event %p %d %s", c, refp->ref, lua_tostring(L, -1));
-    if(lua_pcall(L, 1, 0, 0) != 0) {
+    trace(LOG_LUA, "lua_channel_event %#" PRIxPTR " %d %s", (uintptr_t)c, refp->ref, lua_tostring(L, -1));
+    if (lua_pcall(L, 1, 0, 0) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }
 }
 
-static int lua_channel_event_handler(lua_State *L)
-{
+static int lua_channel_event_handler(lua_State *L) {
     struct channel_extra *ce = NULL;
     struct luaref *refp;
     const char *service;
     const char *name;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 4 || (ce = lua2channel(L, 1)) == NULL ||
+    if (lua_gettop(L) != 4 || (ce = lua2channel(L, 1)) == NULL ||
        !lua_isstring(L, 2) || !lua_isstring(L, 3) ||
        !lua_isfunction(L, 4)) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
     lua_pushvalue(L, 4);
     refp = luaref_new(L, ce);
     service = lua_tostring(L, 2);
     name = lua_tostring(L, 3);
-    trace(LOG_LUA, "lua_channel_event_handler %p %s %s %d", ce->c, service, name, refp->ref);
+    trace(LOG_LUA, "lua_channel_event_handler %#" PRIxPTR " %s %s %d", (uintptr_t)ce->c, service, name, refp->ref);
     add_event_handler2(ce->c, service, name, channel_event_handler, refp);
     return 0;
 }
 
-static int lua_channel_start(lua_State *L)
-{
+static int lua_channel_start(lua_State *L) {
     struct channel_extra *ce = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (ce = lua2channel(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
-    trace(LOG_LUA, "lua_channel_start %p", ce->c);
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
+    trace(LOG_LUA, "lua_channel_start %#" PRIxPTR, (uintptr_t)ce->c);
     channel_start(ce->c);
     return 0;
 }
 
-static int lua_channel_send_message(lua_State *L)
-{
+static int lua_channel_send_message(lua_State *L) {
     struct channel_extra *ce = NULL;
     OutputStream *out;
     const char *s;
     size_t l;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 2 ||
+    if (lua_gettop(L) != 2 ||
        (ce = lua2channel(L, 1)) == NULL ||
        !lua_isstring(L, 2)) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
 
     s = lua_tolstring(L, 2, &l);
-    trace(LOG_LUA, "lua_channel_send_message %p %.*s", ce->c, l, s);
+    trace(LOG_LUA, "lua_channel_send_message %#" PRIxPTR " %.*s", (uintptr_t)ce->c, (int)l, s);
     out = &ce->c->out;
-    while(l-- > 0) {
+    while (l-- > 0) {
         write_stream(out, (*s++) & 0xff);
     }
     write_stream(out, MARKER_EOM);
     return 0;
 }
 
-static void channel_send_command_cb(Channel * c, void * client_data, int error)
-{
+static void channel_send_command_cb(Channel * c, void * client_data, int error) {
     struct channel_extra *ce = (struct channel_extra *)c->client_data;
     struct command_extra *cmd = (struct command_extra *)client_data;
     lua_State *L = ce->L;
@@ -1061,29 +1010,28 @@ static void channel_send_command_cb(Channel * c, void * client_data, int error)
     int ch;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, cmd->result_cbrefp->ref);
-    if(!error) {
+    if (!error) {
         luaL_buffinit(L, &msg);
-        while((ch = read_stream(inp)) >= 0) {
+        while ((ch = read_stream(inp)) >= 0) {
             luaL_addchar(&msg, ch);
         }
         luaL_pushresult(&msg);
         lua_pushnil(L);
-        trace(LOG_LUA, "lua_channel_send_command_reply %p %d %s", c, cmd->result_cbrefp->ref, lua_tostring(L, -2));
+        trace(LOG_LUA, "lua_channel_send_command_reply %#" PRIxPTR " %d %s", (uintptr_t)c, cmd->result_cbrefp->ref, lua_tostring(L, -2));
     }
     else {
         lua_pushnil(L);
         lua_pushstring(L, errno_to_str(error));
-        trace(LOG_LUA, "lua_channel_send_command_reply %p %d error %d", c, cmd->result_cbrefp->ref, error);
+        trace(LOG_LUA, "lua_channel_send_command_reply %#" PRIxPTR " %d error %d", (uintptr_t)c, cmd->result_cbrefp->ref, error);
     }
-    if(lua_pcall(L, 2, 0, 0) != 0) {
+    if (lua_pcall(L, 2, 0, 0) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }
     luaref_owner_free(L, cmd);
 }
 
-static int lua_channel_send_command(lua_State *L)
-{
+static int lua_channel_send_command(lua_State *L) {
     struct channel_extra *ce = NULL;
     struct command_extra *cmd;
     OutputStream *out;
@@ -1091,7 +1039,7 @@ static int lua_channel_send_command(lua_State *L)
     size_t l;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 5 ||
+    if (lua_gettop(L) != 5 ||
        (ce = lua2channel(L, 1)) == NULL ||
        !lua_isstring(L, 2) ||
        !lua_isstring(L, 3) ||
@@ -1099,7 +1047,7 @@ static int lua_channel_send_command(lua_State *L)
        !lua_isfunction(L, 5)) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
 
     /* Object to track outstanding command */
     cmd = (struct command_extra *)lua_newuserdata(L, sizeof *cmd);
@@ -1119,57 +1067,54 @@ static int lua_channel_send_command(lua_State *L)
                                            lua_tostring(L, 3),
                                            channel_send_command_cb, cmd);
     s = lua_tolstring(L, 4, &l);
-    trace(LOG_LUA, "lua_channel_send_command %p %d %.*s", ce->c, cmd->result_cbrefp->ref, l, s);
+    trace(LOG_LUA, "lua_channel_send_command %#" PRIxPTR " %d %.*s", (uintptr_t)ce->c, cmd->result_cbrefp->ref, (int)l, s);
     out = &ce->c->out;
-    while(l-- > 0) {
+    while (l-- > 0) {
         write_stream(out, (*s++) & 0xff);
     }
     write_stream(out, MARKER_EOM);
     return 1;
 }
 
-static int lua_channel_cancel_command(lua_State *L)
-{
+static int lua_channel_cancel_command(lua_State *L) {
     trace(LOG_LUA, "lua_channel_cancel_command");
     luaL_error(L, "not implemented");
     return 0;
 }
 
-static void channel_redirect_cb(Channel * c, void * client_data, int error)
-{
+static void channel_redirect_cb(Channel * c, void * client_data, int error) {
     struct channel_extra *ce = (struct channel_extra *)c->client_data;
     struct command_extra *cmd = (struct command_extra *)client_data;
     lua_State *L = ce->L;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, cmd->result_cbrefp->ref);
-    if(!error) {
+    if (!error) {
         lua_pushnil(L);
-        trace(LOG_LUA, "lua_channel_redirect_reply %p %d %s", c, cmd->result_cbrefp->ref, lua_tostring(L, -2));
+        trace(LOG_LUA, "lua_channel_redirect_reply %#" PRIxPTR " %d %s", (uintptr_t)c, cmd->result_cbrefp->ref, lua_tostring(L, -2));
     }
     else {
         lua_pushstring(L, errno_to_str(error));
-        trace(LOG_LUA, "lua_channel_redirect_reply %p %d error %d", c, cmd->result_cbrefp->ref, error);
+        trace(LOG_LUA, "lua_channel_redirect_reply %#" PRIxPTR " %d error %d", (uintptr_t)c, cmd->result_cbrefp->ref, error);
     }
-    if(lua_pcall(L, 1, 0, 0) != 0) {
+    if (lua_pcall(L, 1, 0, 0) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }
     luaref_owner_free(L, cmd);
 }
 
-static int lua_channel_redirect(lua_State *L)
-{
+static int lua_channel_redirect(lua_State *L) {
     struct channel_extra *ce = NULL;
     struct command_extra *cmd;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 3 ||
+    if (lua_gettop(L) != 3 ||
        (ce = lua2channel(L, 1)) == NULL ||
        !lua_isstring(L, 2) ||
        !lua_isfunction(L, 3)) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
 
     /* Object to track outstanding command */
     cmd = (struct command_extra *)lua_newuserdata(L, sizeof *cmd);
@@ -1184,25 +1129,22 @@ static int lua_channel_redirect(lua_State *L)
     cmd->result_cbrefp = luaref_new(L, cmd);
 
     /* Send command header */
-    cmd->replyinfo = send_redirect_command(ce->c,
-                                           lua_tostring(L, 2),
-                                           channel_redirect_cb, cmd);
-    trace(LOG_LUA, "lua_channel_redirect %p %d %s", ce->c, cmd->result_cbrefp->ref, lua_tostring(L, 2));
+    cmd->replyinfo = send_redirect_command(ce->c, lua_tostring(L, 2), channel_redirect_cb, cmd);
+    trace(LOG_LUA, "lua_channel_redirect %#" PRIxPTR " %d %s", (uintptr_t)ce->c, cmd->result_cbrefp->ref, lua_tostring(L, 2));
     return 1;
 }
 
-static int lua_channel_get_services(lua_State *L)
-{
+static int lua_channel_get_services(lua_State *L) {
     struct channel_extra *ce = NULL;
     int i;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 ||
+    if (lua_gettop(L) != 1 ||
        (ce = lua2channel(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(ce->c == NULL) luaL_error(L, "disconnected channel");
-    trace(LOG_LUA, "lua_channel_get_services %p", ce->c);
+    if (ce->c == NULL) luaL_error(L, "disconnected channel");
+    trace(LOG_LUA, "lua_channel_get_services %#" PRIxPTR "", (uintptr_t)ce->c);
     lua_newtable(L);
     for (i = 0; i < ce->c->peer_service_cnt; i++) {
         lua_pushstring(L, ce->c->peer_service_list[i]);
@@ -1229,60 +1171,56 @@ static const luaL_Reg channelfuncs[] = {
     { 0 }
 };
 
-static int lua_peer_tostring(lua_State *L)
-{
+static int lua_peer_tostring(lua_State *L) {
     struct peer_extra *pse = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    trace(LOG_LUA, "lua_peer_tostring %p", pse->ps);
-    lua_pushfstring(L, "tcf_peer (%s, %p)", pse->ps ? pse->ps->id : "<stale>", pse);
+    trace(LOG_LUA, "lua_peer_tostring %#" PRIxPTR, (uintptr_t)pse->ps);
+    lua_pushfstring(L, "tcf_peer (%s, %#" PRIxPTR ")", pse->ps ? pse->ps->id : "<stale>", (uintptr_t)pse);
     return 1;
 }
 
-static int lua_peer_gc(lua_State *L)
-{
+static int lua_peer_gc(lua_State *L) {
     struct peer_extra *pse = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(pse->managed == 0) {
-        trace(LOG_LUA, "lua_peer_gc %p", pse->ps);
+    if (pse->managed == 0) {
+        trace(LOG_LUA, "lua_peer_gc %#" PRIxPTR, (uintptr_t)pse->ps);
         peer_server_free(pse->ps);
         pse->ps = NULL;
     }
     return 0;
 }
 
-static int lua_peer_getid(lua_State *L)
-{
+static int lua_peer_getid(lua_State *L) {
     struct peer_extra *pse = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(pse->ps == NULL) luaL_error(L, "stale peer");
-    trace(LOG_LUA, "lua_peer_getid %p", pse->ps);
+    if (pse->ps == NULL) luaL_error(L, "stale peer");
+    trace(LOG_LUA, "lua_peer_getid %#" PRIxPTR, (uintptr_t)pse->ps);
     lua_pushstring(L, pse->ps->id);
     return 1;
 }
 
-static int lua_peer_getnames(lua_State *L)
-{
+static int lua_peer_getnames(lua_State *L) {
     unsigned i;
     struct peer_extra *pse = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(pse->ps == NULL) luaL_error(L, "stale peer");
-    trace(LOG_LUA, "lua_peer_getnames %p", pse->ps);
+    if (pse->ps == NULL) luaL_error(L, "stale peer");
+    trace(LOG_LUA, "lua_peer_getnames %#" PRIxPTR, (uintptr_t)pse->ps);
     lua_createtable(L, pse->ps->ind, 0);
     for(i = 0; i < pse->ps->ind; i++) {
         lua_pushstring(L, pse->ps->list[i].name);
@@ -1291,20 +1229,19 @@ static int lua_peer_getnames(lua_State *L)
     return 1;
 }
 
-static int lua_peer_getvalue(lua_State *L)
-{
+static int lua_peer_getvalue(lua_State *L) {
     struct peer_extra *pse = NULL;
     const char *s;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 2 ||
+    if (lua_gettop(L) != 2 ||
        (pse = lua2peer(L, 1)) == NULL ||
        !lua_isstring(L, 2)) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(pse->ps == NULL) luaL_error(L, "stale peer");
-    trace(LOG_LUA, "lua_peer_getvalue %p", pse->ps);
-    if((s = peer_server_getprop(pse->ps, lua_tostring(L, 2), NULL)) == NULL) {
+    if (pse->ps == NULL) luaL_error(L, "stale peer");
+    trace(LOG_LUA, "lua_peer_getvalue %#" PRIxPTR, (uintptr_t)pse->ps);
+    if ((s = peer_server_getprop(pse->ps, lua_tostring(L, 2), NULL)) == NULL) {
         lua_pushnil(L);
         return 1;
     }
@@ -1312,43 +1249,41 @@ static int lua_peer_getvalue(lua_State *L)
     return 1;
 }
 
-static int lua_peer_setvalue(lua_State *L)
-{
+static int lua_peer_setvalue(lua_State *L) {
     struct peer_extra *pse = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 3 || (pse = lua2peer(L, 1)) == NULL ||
+    if (lua_gettop(L) != 3 || (pse = lua2peer(L, 1)) == NULL ||
        !lua_isstring(L, 2) || !lua_isstring(L, 3)) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(pse->ps == NULL) luaL_error(L, "stale peer");
-    trace(LOG_LUA, "lua_peer_setvalue %p", pse->ps);
+    if (pse->ps == NULL) luaL_error(L, "stale peer");
+    trace(LOG_LUA, "lua_peer_setvalue %#" PRIxPTR, (uintptr_t)pse->ps);
     peer_server_addprop(pse->ps, loc_strdup(lua_tostring(L, 2)), loc_strdup(lua_tostring(L, 3)));
     return 0;
 }
 
-static int lua_peer_getflags(lua_State *L)
-{
+static int lua_peer_getflags(lua_State *L) {
     struct peer_extra *pse = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (pse = lua2peer(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(pse->ps == NULL) luaL_error(L, "stale peer");
-    trace(LOG_LUA, "lua_peer_getflags %p", pse->ps);
+    if (pse->ps == NULL) luaL_error(L, "stale peer");
+    trace(LOG_LUA, "lua_peer_getflags %#" PRIxPTR, (uintptr_t)pse->ps);
     lua_createtable(L, 0, 0);
-    if(pse->ps->flags & PS_FLAG_LOCAL) {
+    if (pse->ps->flags & PS_FLAG_LOCAL) {
         lua_pushstring(L, "local");
         lua_pushboolean(L, 1);
         lua_rawset(L, -3);
     }
-    if(pse->ps->flags & PS_FLAG_PRIVATE) {
+    if (pse->ps->flags & PS_FLAG_PRIVATE) {
         lua_pushstring(L, "private");
         lua_pushboolean(L, 1);
         lua_rawset(L, -3);
     }
-    if(pse->ps->flags & PS_FLAG_DISCOVERABLE) {
+    if (pse->ps->flags & PS_FLAG_DISCOVERABLE) {
         lua_pushstring(L, "discoverable");
         lua_pushboolean(L, 1);
         lua_rawset(L, -3);
@@ -1356,38 +1291,37 @@ static int lua_peer_getflags(lua_State *L)
     return 1;
 }
 
-static int lua_peer_setflags(lua_State *L)
-{
+static int lua_peer_setflags(lua_State *L) {
     struct peer_extra *pse = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 2 || (pse = lua2peer(L, 1)) == NULL ||
+    if (lua_gettop(L) != 2 || (pse = lua2peer(L, 1)) == NULL ||
        !lua_istable(L, 2)) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    if(pse->ps == NULL) luaL_error(L, "stale peer");
-    trace(LOG_LUA, "lua_peer_setflags %p", pse->ps);
+    if (pse->ps == NULL) luaL_error(L, "stale peer");
+    trace(LOG_LUA, "lua_peer_setflags %#" PRIxPTR, (uintptr_t)pse->ps);
     lua_pushnil(L);
-    while(lua_next(L, 2) != 0) {
-        if(lua_isstring(L, -2)) {
-            if(strcmp(lua_tostring(L, -2), "local") == 0) {
-                if(lua_toboolean(L, 2)) {
+    while (lua_next(L, 2) != 0) {
+        if (lua_isstring(L, -2)) {
+            if (strcmp(lua_tostring(L, -2), "local") == 0) {
+                if (lua_toboolean(L, 2)) {
                     pse->ps->flags |= PS_FLAG_LOCAL;
                 }
                 else {
                     pse->ps->flags &= ~PS_FLAG_LOCAL;
                 }
             }
-            else if(strcmp(lua_tostring(L, -2), "private") == 0) {
-                if(lua_toboolean(L, 2)) {
+            else if (strcmp(lua_tostring(L, -2), "private") == 0) {
+                if (lua_toboolean(L, 2)) {
                     pse->ps->flags |= PS_FLAG_PRIVATE;
                 }
                 else {
                     pse->ps->flags &= ~PS_FLAG_PRIVATE;
                 }
             }
-            else if(strcmp(lua_tostring(L, -2), "discoverable") == 0) {
-                if(lua_toboolean(L, 2)) {
+            else if (strcmp(lua_tostring(L, -2), "discoverable") == 0) {
+                if (lua_toboolean(L, 2)) {
                     pse->ps->flags |= PS_FLAG_DISCOVERABLE;
                 }
                 else {
@@ -1413,28 +1347,26 @@ static const luaL_Reg peerfuncs[] = {
     { 0 }
 };
 
-static int lua_post_event_tostring(lua_State *L)
-{
+static int lua_post_event_tostring(lua_State *L) {
     struct post_event_extra *p = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (p = lua2postevent(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (p = lua2postevent(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    trace(LOG_LUA, "lua_post_event_tostring %p", p);
-    lua_pushfstring(L, "tcf_post_event (%s, %p)", p->handler_refp ? "pending" : "stale", p);
+    trace(LOG_LUA, "lua_post_event_tostring %#" PRIxPTR, (uintptr_t)p);
+    lua_pushfstring(L, "tcf_post_event (%s, %#" PRIxPTR ")", p->handler_refp ? "pending" : "stale", (uintptr_t)p);
     return 1;
 }
 
-static int lua_post_event_cancel(lua_State *L)
-{
+static int lua_post_event_cancel(lua_State *L) {
     struct post_event_extra *p = NULL;
 
     assert(L == luastate);
-    if(lua_gettop(L) != 1 || (p = lua2postevent(L, 1)) == NULL) {
+    if (lua_gettop(L) != 1 || (p = lua2postevent(L, 1)) == NULL) {
         luaL_error(L, "wrong number or type of arguments");
     }
-    trace(LOG_LUA, "lua_post_event_cancel %p", p);
+    trace(LOG_LUA, "lua_post_event_cancel %#" PRIxPTR, (uintptr_t)p);
     p->self_refp = NULL;
     p->handler_refp = NULL;
     luaref_owner_free(L, p);
@@ -1551,7 +1483,7 @@ int main(int argc, char ** argv) {
 #endif
 
     if (script_name != NULL) {
-        if((lua_read_command_state.req.u.fio.fd = open(script_name, O_RDONLY, 0)) < 0) {
+        if ((lua_read_command_state.req.u.fio.fd = open(script_name, O_RDONLY, 0)) < 0) {
             fprintf(stderr, "%s: error: cannot open script: %s\n", progname, script_name);
             exit(1);
         }
@@ -1562,7 +1494,7 @@ int main(int argc, char ** argv) {
 
     discovery_start();
 
-    if((luastate = L = luaL_newstate()) == NULL) {
+    if ((luastate = L = luaL_newstate()) == NULL) {
         fprintf(stderr, "error from luaL_newstate\n");
         exit(1);
     }
@@ -1615,12 +1547,12 @@ int main(int argc, char ** argv) {
     peers_refp = luaref_new(L, NULL);
     peer_server_add_listener(peer_server_changes, L);
 
-    if((error = luaL_loadfile(L, engine_name)) != 0) {
+    if ((error = luaL_loadfile(L, engine_name)) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }
 
-    if((error = lua_pcall(L, 0, LUA_MULTRET, 0)) != 0) {
+    if ((error = lua_pcall(L, 0, LUA_MULTRET, 0)) != 0) {
         fprintf(stderr, "%s\n", lua_tostring(L,1));
         exit(1);
     }

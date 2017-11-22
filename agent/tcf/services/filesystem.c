@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -217,7 +217,7 @@ static void channel_close_listener(Channel * c) {
         OpenFileInfo * h = ring2file(list_next);
         if (h->inp == &c->inp) {
             int posted = 0;
-            trace(LOG_ALWAYS, "file handle left open by client: FS%d", h->handle);
+            trace(LOG_ALWAYS, "file handle left open by client: FS%lu", h->handle);
             list_remove(&h->link_hash);
             while (!list_is_empty(&h->link_reqs)) {
                 LINK * link = h->link_reqs.next;
