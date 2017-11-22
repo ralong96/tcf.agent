@@ -59,8 +59,7 @@ typedef struct kinfo_proc kinfo_proc;
 /*
  * Get kernel process information for all processes.
  */
-static int get_allprocesses(kinfo_proc **kprocs, int *nprocs)
-{
+static int get_allprocesses(kinfo_proc **kprocs, int *nprocs) {
     size_t          len;
     kinfo_proc *    kp;
     int             mib_name[] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
@@ -85,8 +84,7 @@ static int get_allprocesses(kinfo_proc **kprocs, int *nprocs)
 /*
  * Get kernel process information for a specified pid.
  */
-static kinfo_proc *get_process(pid_t pid)
-{
+static kinfo_proc *get_process(pid_t pid) {
     kinfo_proc *        kp;
     int                 mib_name[] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, 0};
     int                 mib_len = 4;

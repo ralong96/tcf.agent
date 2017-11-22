@@ -300,7 +300,7 @@ static void lws_add_channel_property(SessionData * data, char * name, char * val
     data->prop_cnt++;
 }
 
-static void lws_parse_http_header(SessionData * data, struct lws *wsi) {
+static void lws_parse_http_header(SessionData * data, struct lws * wsi) {
     int n = 0, len;
     char * prop_name;
     char * prop_value;
@@ -332,9 +332,7 @@ static void lws_parse_http_header(SessionData * data, struct lws *wsi) {
     }
 }
 
-static int lws_tcf_callback(struct lws *wsi, enum lws_callback_reasons reason,
-                        void *user, void *in, size_t len)
-{
+static int lws_tcf_callback(struct lws * wsi, enum lws_callback_reasons reason, void * user, void *in, size_t len) {
     struct lws_pollargs *pa = (struct lws_pollargs *)in;
     WSIUserData * userdata = (WSIUserData *) user;
 
@@ -1254,8 +1252,7 @@ static ChannelServer * channel_server_create(PeerServer * ps) {
 
 /* LWS service thread */
 
-static void * lws_service_thread(void * x)
-{
+static void * lws_service_thread(void * x) {
     struct lws_context_creation_info context_creation_info;
     int vhost_created = 0;
 

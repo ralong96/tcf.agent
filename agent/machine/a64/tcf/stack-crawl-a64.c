@@ -1026,7 +1026,7 @@ static int trace_instructions(void) {
         unsigned t = 0;
         BranchData * b = NULL;
         if (chk_loaded(REG_ID_SP) < 0) return -1;
-        trace(LOG_STACK, "Stack crawl: pc 0x%" PRIx64 ", sp 0x%" PRIx64,
+        trace(LOG_STACK, "Stack crawl: pc %#" PRIx64 ", sp %#" PRIx64,
             pc_data.o ? pc_data.v : (uint64_t)0,
             reg_data[REG_ID_SP].o ? reg_data[REG_ID_SP].v : (uint64_t)0);
         for (t = 0; t < MAX_INST; t++) {

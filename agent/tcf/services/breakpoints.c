@@ -3031,7 +3031,7 @@ static void safe_restore_breakpoint(void * arg) {
                 safe_skip_breakpoint(arg);
                 return;
             }
-            trace(LOG_ALWAYS, "Skip breakpoint error: wrong PC %#" PRIx64, pc);
+            trace(LOG_ALWAYS, "Skip breakpoint error: wrong PC %#" PRIx64, (uint64_t)pc);
         }
     }
     ext->stepping_over_bp = NULL;

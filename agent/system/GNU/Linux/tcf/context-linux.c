@@ -692,14 +692,14 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
     assert(is_dispatch_thread());
     assert(!ctx->exited);
     trace(LOG_CONTEXT,
-        "context: write memory ctx %#" PRIxPTR ", id %s, address %#lx, size %zu",
-        (uintptr_t)ctx, ctx->id, address, size);
+        "context: write memory ctx %#" PRIxPTR ", id %s, address %#" PRIx64 ", size %zu",
+        (uintptr_t)ctx, ctx->id, (uint64_t)address, size);
     mem_err_info.error = 0;
     if (size == 0) return 0;
     if (address + size < address) {
         trace(LOG_CONTEXT,
-            "context: write past the end of memory: ctx %#" PRIxPTR ", id %s, addr %#lx, size %ld",
-            (uintptr_t)ctx, ctx->id, address, size);
+            "context: write past the end of memory: ctx %#" PRIxPTR ", id %s, addr %#" PRIx64 ", size %u",
+            (uintptr_t)ctx, ctx->id, (uint64_t)address, (unsigned)size);
         errno = EFAULT;
         return -1;
     }
@@ -714,8 +714,8 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
                 error = errno;
                 if (error != ESRCH || ctx != ctx->mem) {
                     trace(LOG_CONTEXT,
-                        "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#" PRIxPTR ", id %s, addr %#lx, error %d %s",
-                        (uintptr_t)ctx, ctx->id, word_addr, error, errno_to_str(error));
+                        "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#" PRIxPTR ", id %s, addr %#" PRIx64 ", error %d %s",
+                        (uintptr_t)ctx, ctx->id, (uint64_t)word_addr, error, errno_to_str(error));
                 }
                 break;
             }
@@ -732,8 +732,8 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
             error = errno;
             if (error != ESRCH || ctx != ctx->mem) {
                 trace(LOG_ALWAYS,
-                    "error: ptrace(PTRACE_POKEDATA, ...) failed: ctx %#" PRIxPTR ", id %s, addr %#lx, error %d %s",
-                    (uintptr_t)ctx, ctx->id, word_addr, error, errno_to_str(error));
+                    "error: ptrace(PTRACE_POKEDATA, ...) failed: ctx %#" PRIxPTR ", id %s, addr %#" PRIx64 ", error %d %s",
+                    (uintptr_t)ctx, ctx->id, (uint64_t)word_addr, error, errno_to_str(error));
             }
             break;
         }
@@ -792,14 +792,14 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
     assert(is_dispatch_thread());
     assert(!ctx->exited);
     trace(LOG_CONTEXT,
-        "context: read memory ctx %#" PRIxPTR ", id %s, address %#lx, size %zu",
-        (uintptr_t)ctx, ctx->id, address, size);
+        "context: read memory ctx %#" PRIxPTR ", id %s, address %#" PRIx64 ", size %zu",
+        (uintptr_t)ctx, ctx->id, (uint64_t)address, size);
     mem_err_info.error = 0;
     if (size == 0) return 0;
     if ((address + size) < address) {
         trace(LOG_CONTEXT,
-            "context: read past the end of memory: ctx %#" PRIxPTR ", id %s, addr %#lx, size %ld",
-            (uintptr_t)ctx, ctx->id, address, size);
+            "context: read past the end of memory: ctx %#" PRIxPTR ", id %s, addr %#" PRIx64 ", size %u",
+            (uintptr_t)ctx, ctx->id, (uint64_t)address, (unsigned)size);
         errno = EFAULT;
         return -1;
     }
@@ -811,8 +811,8 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
             error = errno;
             if (error != ESRCH || ctx != ctx->mem) {
                 trace(LOG_CONTEXT,
-                    "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#" PRIxPTR ", id %s, addr %#lx, error %d %s",
-                    (uintptr_t)ctx, ctx->id, word_addr, error, errno_to_str(error));
+                    "context: ptrace(PTRACE_PEEKDATA, ...) failed: ctx %#" PRIxPTR ", id %s, addr %#" PRIx64 ", error %d %s",
+                    (uintptr_t)ctx, ctx->id, (uint64_t)word_addr, error, errno_to_str(error));
             }
             break;
         }
@@ -1585,16 +1585,16 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             ext->syscall_pc = pc1;
             ext->syscall_enter = 1;
             ext->syscall_exit = 0;
-            trace(LOG_EVENTS, "event: pid %d enter sys call %d, PC = %#lx",
-                pid, ext->syscall_id, ext->syscall_pc);
+            trace(LOG_EVENTS, "event: pid %d enter sys call %d, PC = %#" PRIx64,
+                pid, ext->syscall_id, (uint64_t)ext->syscall_pc);
         }
         else {
             if (ext->syscall_pc != pc1) {
-                trace(LOG_ALWAYS, "Invalid PC at sys call exit: pid %d, sys call %d, PC %#lx, expected PC %#lx",
-                    ext->pid, ext->syscall_id, pc1, ext->syscall_pc);
+                trace(LOG_ALWAYS, "Invalid PC at sys call exit: pid %d, sys call %d, PC %#" PRIx64 ", expected PC %#" PRIx64,
+                    ext->pid, ext->syscall_id, (uint64_t)pc1, (uint64_t)ext->syscall_pc);
             }
-            trace(LOG_EVENTS, "event: pid %d exit sys call %d, PC = %#lx",
-                pid, ext->syscall_id, pc1);
+            trace(LOG_EVENTS, "event: pid %d exit sys call %d, PC = %#" PRIx64,
+                pid, ext->syscall_id, (uint64_t)pc1);
             switch (ext->syscall_id) {
 #ifdef __NR_mmap
             case __NR_mmap:
@@ -1619,7 +1619,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             ext->syscall_id = 0;
             ext->syscall_pc = 0;
         }
-        trace(LOG_EVENTS, "event: pid %d stopped at PC = %#lx", pid, pc1);
+        trace(LOG_EVENTS, "event: pid %d stopped at PC = %#" PRIx64, pid, (uint64_t)pc1);
     }
 
     cpu_bp_on_suspend(ctx, &cb_found);
