@@ -1,5 +1,5 @@
 %define name tcf-agent
-%define version 1.5.0
+%define version 1.6.0
 %define release 1.%(bin/get-os-tag)
 %define make_options CONF=Release PATH_Plugins=/etc/tcf/plugins
 
@@ -62,6 +62,8 @@ fi
 %{_includedir}/tcf
 
 %changelog
+* Wed Jun 01 2017 Eugene Tarassov <eugene.tarassov@xilinx.com> 1.5.0
+- Eclipse 4.7.0 Oxygen release
 * Wed Jul 05 2016 Eugene Tarassov <eugene.tarassov@xilinx.com> 1.4.0
 - Eclipse 4.6.0 Neon release
 * Wed Jun 24 2015 Eugene Tarassov <eugene.tarassov@xilinx.com> 1.3.0
