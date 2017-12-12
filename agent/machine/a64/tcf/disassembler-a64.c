@@ -91,25 +91,25 @@ static void add_hex_uint64(uint64_t n) {
 }
 
 static void add_flt_uint32(uint32_t n) {
-    char buf[32];
+    char str[32];
     union {
         uint32_t n;
         float f;
     } u;
     u.n = n;
-    snprintf(buf, sizeof(buf), "%#g", u.f);
-    add_str(buf);
+    snprintf(str, sizeof(str), "%#g", u.f);
+    add_str(str);
 }
 
 static void add_flt_uint64(uint64_t n) {
-    char buf[32];
+    char str[32];
     union {
         uint64_t n;
         double d;
     } u;
     u.n = n;
-    snprintf(buf, sizeof(buf), "%#g", u.d);
-    add_str(buf);
+    snprintf(str, sizeof(str), "%#g", u.d);
+    add_str(str);
 }
 
 static void add_vfp_expand_imm(uint32_t imm8, int dbl) {

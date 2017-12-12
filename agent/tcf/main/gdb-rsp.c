@@ -1564,11 +1564,11 @@ static int handle_command(GdbClient * c) {
 }
 
 static int read_packet(GdbClient * c, unsigned len) {
-    unsigned char * p = c->buf;
-    unsigned char * e = p + len;
+    unsigned char * b = c->buf;
+    unsigned char * e = b + len;
 
-    while (p < e) {
-        char ch = *p++;
+    while (b < e) {
+        char ch = *b++;
         if (c->cmd_pos > 0 || ch == '$') {
             if (ch == 0x7d && !c->cmd_esc) {
                 c->cmd_esc = 1;
