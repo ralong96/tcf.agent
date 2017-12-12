@@ -4787,7 +4787,7 @@ static void context_intercepted(Context * ctx, void * args) {
                 state->error = get_error_report(set_errno(ERR_OTHER,
                     "Intercepted while executing injected function call"));
             }
-            cache_notify(&state->cache);
+            cache_notify_later(&state->cache);
         }
     }
 }
