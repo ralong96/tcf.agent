@@ -26,7 +26,6 @@
 #define D_json
 
 #include <tcf/config.h>
-#include <stdlib.h>
 #include <tcf/framework/streams.h>
 
 /* Marker of end of command argument */

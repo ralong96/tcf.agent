@@ -22,9 +22,7 @@
 
 #include <tcf/config.h>
 
-#include <tcf/framework/link.h>
 #include <tcf/framework/context.h>
-#include <tcf/services/profiler.h>
 
 /* Add profiling support for debug context 'ctx' */
 extern void profiler_sst_add(Context * ctx);

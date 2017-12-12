@@ -31,7 +31,6 @@
 #include <time.h>
 #include <sys/stat.h>
 
-#include <tcf/framework/link.h>
 #include <tcf/framework/events.h>
 
 enum {

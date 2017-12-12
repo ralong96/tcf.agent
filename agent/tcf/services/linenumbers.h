@@ -24,7 +24,6 @@
 
 #include <tcf/framework/protocol.h>
 #include <tcf/framework/context.h>
-#include <tcf/framework/cpudefs.h>
 
 #if ENABLE_DebugContext
 

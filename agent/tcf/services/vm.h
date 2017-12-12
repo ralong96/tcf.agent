@@ -24,7 +24,7 @@
 
 #if ENABLE_DebugContext
 
-#include <tcf/framework/context.h>
+#include <tcf/framework/cpudefs.h>
 
 extern int evaluate_vm_expression(LocationExpressionState * state);
 

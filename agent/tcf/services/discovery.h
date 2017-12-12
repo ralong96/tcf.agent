@@ -22,8 +22,6 @@
 
 #include <tcf/config.h>
 #include <tcf/framework/protocol.h>
-#include <tcf/framework/channel.h>
-#include <tcf/framework/link.h>
 
 #define DISCOVERY_TCF_PORT      1534
 

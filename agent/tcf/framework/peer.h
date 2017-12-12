@@ -20,7 +20,6 @@
 #ifndef D_peer
 #define D_peer
 
-#include <stdlib.h>
 #include <time.h>
 
 typedef struct PeerServer PeerServer;

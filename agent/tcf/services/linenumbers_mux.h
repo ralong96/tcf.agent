@@ -21,7 +21,6 @@
 #define D_linenumbersMux
 
 #include <tcf/framework/context.h>
-#include <tcf/framework/protocol.h>
 
 #if ENABLE_LineNumbersMux
 
