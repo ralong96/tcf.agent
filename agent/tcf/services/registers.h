@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -25,7 +25,7 @@
 #if SERVICE_Registers
 
 #include <tcf/framework/protocol.h>
-#include <tcf/framework/cpudefs.h>
+#include <tcf/framework/context.h>
 
 /*
  * Notify clients about register value change.

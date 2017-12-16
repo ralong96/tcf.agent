@@ -39,7 +39,6 @@
 #include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/mdep-inet.h>
 #include <tcf/framework/tcf.h>
-#include <tcf/framework/channel.h>
 #include <tcf/framework/channel_lws.h>
 #include <tcf/framework/channel_lws_ext.h>
 #include <tcf/framework/myalloc.h>

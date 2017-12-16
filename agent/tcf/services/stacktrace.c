@@ -27,9 +27,7 @@
 #include <string.h>
 #include <assert.h>
 #include <tcf/framework/myalloc.h>
-#include <tcf/framework/protocol.h>
 #include <tcf/framework/trace.h>
-#include <tcf/framework/context.h>
 #include <tcf/framework/json.h>
 #include <tcf/framework/cache.h>
 #include <tcf/framework/exceptions.h>

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012, 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2012-2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -18,7 +18,6 @@
  */
 
 #include <tcf/config.h>
-#include <tcf/framework/link.h>
 #include <tcf/framework/trace.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/shutdown.h>

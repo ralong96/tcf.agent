@@ -40,7 +40,6 @@
 #include <assert.h>
 #include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/myalloc.h>
-#include <tcf/framework/protocol.h>
 #include <tcf/framework/trace.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/json.h>

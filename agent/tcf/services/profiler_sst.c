@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2017 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2017 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -25,7 +25,6 @@
 #include <tcf/framework/json.h>
 #include <tcf/framework/cache.h>
 #include <tcf/framework/myalloc.h>
-#include <tcf/framework/context.h>
 #include <tcf/services/runctrl.h>
 #include <tcf/services/stacktrace.h>
 #include <tcf/services/profiler.h>

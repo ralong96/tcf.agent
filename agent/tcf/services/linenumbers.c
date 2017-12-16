@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -27,12 +27,10 @@
 #include <errno.h>
 #include <assert.h>
 #include <stdio.h>
-#include <tcf/framework/context.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/cache.h>
 #include <tcf/framework/json.h>
-#include <tcf/framework/protocol.h>
 #include <tcf/framework/trace.h>
 #include <tcf/services/linenumbers.h>
 
