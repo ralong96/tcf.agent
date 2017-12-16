@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -106,7 +106,7 @@ static int get_frame_debug_info(StackFrame * frame, StackTracingInfo ** info) {
                 int sym_class = SYM_CLASS_UNKNOWN;
                 ContextAddress sym_addr = 0;
                 ContextAddress sym_size = 0;
-                if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip - 1, &sym) == 0 &&
+                if (find_symbol_by_addr(ctx, STACK_NO_FRAME, (ContextAddress)(ip - 1), &sym) == 0 &&
                         get_symbol_class(sym, &sym_class) == 0 && sym_class == SYM_CLASS_FUNCTION &&
                         get_symbol_size(sym, &sym_size) == 0 && sym_size != 0 &&
                         get_symbol_address(sym, &sym_addr) == 0 && sym_addr != 0 &&

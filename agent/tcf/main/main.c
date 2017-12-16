@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -144,7 +144,7 @@ static void signal_handler(int sig) {
     }
 }
 
-#if defined(_POSIX_C_SOURCE)
+#if defined(_POSIX_C_SOURCE) && !defined(__MINGW32__)
 static void * signal_handler_thread(void * arg) {
     int sig  = 0;
     sigset_t * set = (sigset_t *)arg;
@@ -184,7 +184,7 @@ static BOOL CtrlHandler(DWORD ctrl) {
 #endif
 
 static void ini_signal_handlers(void) {
-#if defined(_POSIX_C_SOURCE)
+#if defined(_POSIX_C_SOURCE) && !defined(__MINGW32__)
     pthread_t thread;
     static sigset_t set;
     sigemptyset(&set);

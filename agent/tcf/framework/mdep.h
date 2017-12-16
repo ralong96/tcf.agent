@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -120,7 +120,7 @@ typedef int socklen_t;
 
 #include <errno.h>
 
-#if !defined(HAVE_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED)
+#if !defined(HAVE_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(__struct_timespec_defined)
 struct timespec {
     time_t  tv_sec;         /* seconds */
     long    tv_nsec;        /* nanoseconds */
@@ -136,7 +136,6 @@ struct timespec {
 #endif
 
 #if defined(__MINGW32__)
-typedef unsigned int useconds_t;
 #elif defined(_MSC_VER)
 #if defined(_M_IX86)
 #  define __i386__
@@ -150,14 +149,13 @@ typedef unsigned int useconds_t;
 #else
 typedef unsigned long pid_t;
 #endif
-typedef unsigned long useconds_t;
 #endif
 
 #define CLOCK_REALTIME  1
 #define CLOCK_MONOTONIC 2
 typedef int clockid_t;
 extern int clock_gettime(clockid_t clock_id, struct timespec * tp);
-extern void usleep(useconds_t useconds);
+extern void usleep(unsigned useconds);
 
 #define off_t __int64
 #define lseek _lseeki64

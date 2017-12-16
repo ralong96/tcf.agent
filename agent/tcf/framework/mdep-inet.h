@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -43,8 +43,9 @@ extern const char * loc_gai_strerror(int ecode);
 
 #define MSG_MORE 0
 
-#if defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0600
-/* inet_ntop()/inet_pton() are not available before Windows Vista */
+/* inet_ntop()/inet_pton() are not available in MinGW */
+/* inet_ntop()/inet_pton() are not available in Windows before Windows Vista */
+#if defined(__MINGW32__) || (defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0600)
 extern const char * inet_ntop(int af, const void * src, char * dst, socklen_t size);
 extern int inet_pton(int af, const char * src, void * dst);
 #endif

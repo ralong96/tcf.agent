@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -183,9 +183,11 @@ static void post_from_bg_thread(EventCallBack * handler, void * arg, unsigned lo
     else {
         prev->next = ev;
     }
-    trace(LOG_EVENTCORE, "post_event: event %#" PRIxPTR ", handler %#" PRIxPTR ", arg %#" PRIxPTR ", runtime %02ld%02ld.%03ld",
+    trace(LOG_EVENTCORE, "post_event: event %#" PRIxPTR ", handler %#" PRIxPTR ", arg %#" PRIxPTR ", runtime %02u:%02u.%03u",
         (uintptr_t)ev, (uintptr_t)ev->handler, (uintptr_t)ev->arg,
-        ev->runtime.tv_sec / 60 % 60, ev->runtime.tv_sec % 60, ev->runtime.tv_nsec / 1000000);
+        (unsigned)(ev->runtime.tv_sec / 60 % 60),
+        (unsigned)(ev->runtime.tv_sec % 60),
+        (unsigned)(ev->runtime.tv_nsec / 1000000));
     check_error(pthread_mutex_unlock(&event_lock));
 }
 
@@ -221,9 +223,11 @@ void post_event_with_delay(EventCallBack * handler, void * arg, unsigned long de
         }
         check_error(pthread_mutex_unlock(&event_lock));
 
-        trace(LOG_EVENTCORE, "post_event: event %#" PRIxPTR ", handler %#" PRIxPTR ", arg %#" PRIxPTR ", runtime %02ld%02ld.%03ld",
+        trace(LOG_EVENTCORE, "post_event: event %#" PRIxPTR ", handler %#" PRIxPTR ", arg %#" PRIxPTR ", runtime %02u%02u.%03u",
             (uintptr_t)ev, (uintptr_t)ev->handler, (uintptr_t)ev->arg,
-            ev->runtime.tv_sec / 60 % 60, ev->runtime.tv_sec % 60, ev->runtime.tv_nsec / 1000000);
+            (unsigned)(ev->runtime.tv_sec / 60 % 60),
+            (unsigned)(ev->runtime.tv_sec % 60),
+            (unsigned)(ev->runtime.tv_nsec / 1000000));
     }
     else {
         post_from_bg_thread(handler, arg, delay);

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -220,8 +220,8 @@ static void get_registers(Context * ctx) {
     }
     else {
         ext->trace_flag = (ext->regs->EFlags & 0x100) != 0;
-        trace(LOG_CONTEXT, "context: get regs OK: ctx %#lx, id %s, PC %#lx",
-            ctx, ctx->id, ext->regs->reg_ip);
+        trace(LOG_CONTEXT, "context: get regs OK: ctx %#" PRIxPTR ", id %s, PC %#" PRIx64,
+            (uintptr_t)ctx, ctx->id, (uint64_t)ext->regs->reg_ip);
     }
 }
 
@@ -241,8 +241,8 @@ static DWORD event_win32_context_stopped(Context * ctx) {
     ext->stop_pending = 0;
     ext->start_pending = 0;
 
-    trace(LOG_CONTEXT, "context: stopped: ctx %#lx, id %s, exception %#lx",
-        ctx, ctx->id, exception_code);
+    trace(LOG_CONTEXT, "context: stopped: ctx %#" PRIxPTR ", id %s, exception %#x",
+        (uintptr_t)ctx, ctx->id, (unsigned)exception_code);
 
     if (SuspendThread(ext->handle) == (DWORD)-1) {
         DWORD err = GetLastError();
@@ -326,8 +326,8 @@ static DWORD event_win32_context_stopped(Context * ctx) {
             }
             break;
         case EXCEPTION_DEBUGGER_IO:
-            trace(LOG_ALWAYS, "Debugger IO request %#lx",
-                ext->suspend_reason.ExceptionRecord.ExceptionInformation[0]);
+            trace(LOG_ALWAYS, "Debugger IO request %#" PRIxPTR,
+                (uintptr_t)ext->suspend_reason.ExceptionRecord.ExceptionInformation[0]);
             break;
         default:
             continue_status = DBG_EXCEPTION_NOT_HANDLED;
@@ -367,7 +367,7 @@ static DWORD event_win32_context_stopped(Context * ctx) {
 
 static void event_win32_context_started(Context * ctx) {
     ContextExtensionWin32 * ext = EXT(ctx);
-    trace(LOG_CONTEXT, "context: started: ctx %#lx, id %s", ctx, ctx->id);
+    trace(LOG_CONTEXT, "context: started: ctx %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
     assert(ctx->stopped);
     ext->stop_pending = 0;
     send_context_started_event(ctx);
@@ -378,7 +378,7 @@ static int win32_resume(Context * ctx, int step);
 static void event_win32_context_exited(Context * ctx, int detach) {
     ContextExtensionWin32 * ext = EXT(ctx);
     LINK * l = NULL;
-    trace(LOG_CONTEXT, "context: exited: ctx %#lx, id %s", ctx, ctx->id);
+    trace(LOG_CONTEXT, "context: exited: ctx %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
     assert(!ctx->exited);
     context_lock(ctx);
     ctx->exiting = 1;
@@ -457,7 +457,7 @@ static void break_process_event(void * args) {
                         SuspendThread(EXT(cldl2ctxp(l))->handle);
                     }
 
-                    trace(LOG_CONTEXT, "context: creating remote thread in process %#lx, id %s", ctx, ctx->id);
+                    trace(LOG_CONTEXT, "context: creating remote thread in process %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
                     if (debug_state->break_thread_code == NULL) {
                         debug_state->break_thread_code = VirtualAllocEx(ext->handle,
                             NULL, buf_size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
@@ -528,7 +528,7 @@ static int win32_resume(Context * ctx, int step) {
     if (ext->regs_dirty) {
         assert(ext->regs->ContextFlags);
         if (ext->regs_error) {
-            trace(LOG_ALWAYS, "Can't resume thread, registers copy is invalid: ctx %#lx, id %s", ctx, ctx->id);
+            trace(LOG_ALWAYS, "Can't resume thread, registers copy is invalid: ctx %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
             errno = set_error_report_errno(ext->regs_error);
             return -1;
         }
@@ -581,7 +581,7 @@ static int win32_terminate(Context * ctx) {
         debug_state->reporting_debug_event++;
     }
 
-    trace(LOG_CONTEXT, "context: terminating process %#lx, id %s", ctx, ctx->id);
+    trace(LOG_CONTEXT, "context: terminating process %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
     if (!ctx->exiting) {
         if (!TerminateProcess(ext->handle, 1)) {
             errno = log_error("TerminateProcess", 0);
@@ -766,7 +766,7 @@ static void debug_event_handler(DebugEvent * debug_event) {
                         break;
                     }
                 }
-                trace(LOG_ALWAYS, "context: already stopped, id %s, exception 0x%08x", ctx->id, exception_code);
+                trace(LOG_ALWAYS, "context: already stopped, id %s, exception 0x%08x", ctx->id, (unsigned)exception_code);
                 debug_event->continue_status = DBG_CONTINUE;
                 break;
             }
@@ -821,8 +821,8 @@ static void debug_event_handler(DebugEvent * debug_event) {
         debug_state->module_address = 0;
         break;
     case RIP_EVENT:
-        trace(LOG_ALWAYS, "System debugging error: debuggee pid %d, error type %d, error code %d",
-            win32_event->dwProcessId, win32_event->u.RipInfo.dwType, win32_event->u.RipInfo.dwError);
+        trace(LOG_ALWAYS, "System debugging error: debuggee pid %u, error type %u, error code %u",
+            (unsigned)win32_event->dwProcessId, (unsigned)win32_event->u.RipInfo.dwType, (unsigned)win32_event->u.RipInfo.dwError);
         break;
     }
 }
@@ -839,7 +839,7 @@ static void continue_debug_event(void * args) {
         return;
     }
 
-    trace(LOG_WAITPID, "check suspend requests, process ID %u", debug_state->process_id);
+    trace(LOG_WAITPID, "check suspend requests, process ID %u", (unsigned)debug_state->process_id);
 
     if (prs != NULL && !prs->exited) {
         LINK * l;
@@ -860,7 +860,7 @@ static void continue_debug_event(void * args) {
         }
     }
 
-    trace(LOG_WAITPID, "continue debug event, process ID %u", debug_state->process_id);
+    trace(LOG_WAITPID, "continue debug event, process ID %u", (unsigned)debug_state->process_id);
     log_error("SetEvent", SetEvent(debug_state->debug_event_inp));
     log_error("WaitForSingleObject", WaitForSingleObject(debug_state->debug_event_out, INFINITE) != WAIT_FAILED);
     debug_state->reporting_debug_event = 0;
@@ -889,15 +889,15 @@ static void early_debug_event_handler(void * x) {
     DEBUG_EVENT * win32_event = &debug_event->win32_event;
 
     if (win32_event->dwDebugEventCode == EXCEPTION_DEBUG_EVENT) {
-        trace(LOG_WAITPID, "%s, process %d, thread %d, code %#lx",
+        trace(LOG_WAITPID, "%s, process %u, thread %u, code %#x",
             win32_debug_event_name(win32_event->dwDebugEventCode),
-            win32_event->dwProcessId, win32_event->dwThreadId,
-            win32_event->u.Exception.ExceptionRecord.ExceptionCode);
+            (unsigned)win32_event->dwProcessId, (unsigned)win32_event->dwThreadId,
+            (unsigned)win32_event->u.Exception.ExceptionRecord.ExceptionCode);
     }
     else {
-        trace(LOG_WAITPID, "%s, process %d, thread %d",
+        trace(LOG_WAITPID, "%s, process %u, thread %u",
             win32_debug_event_name(win32_event->dwDebugEventCode),
-            win32_event->dwProcessId, win32_event->dwThreadId);
+            (unsigned)win32_event->dwProcessId, (unsigned)win32_event->dwThreadId);
     }
 
     debug_state->debug_event_generation++;
@@ -927,7 +927,8 @@ static void debugger_exit_handler(void * x) {
     DebugState * debug_state = (DebugState *)x;
     Context * prs = context_find_from_pid(debug_state->process_id, 0);
 
-    trace(LOG_WAITPID, "debugger thread %d exited, debuggee pid %d", debug_state->debug_thread_id, debug_state->process_id);
+    trace(LOG_WAITPID, "debugger thread %u exited, debuggee pid %u",
+        (unsigned)debug_state->debug_thread_id, (unsigned)debug_state->process_id);
 
     log_error("WaitForSingleObject", WaitForSingleObject(debug_state->debug_thread, INFINITE) != WAIT_FAILED);
     log_error("CloseHandle", CloseHandle(debug_state->debug_thread));
@@ -952,7 +953,7 @@ static DWORD WINAPI debugger_thread_func(LPVOID x) {
         return 0;
     }
 
-    trace(LOG_WAITPID, "debugger thread %d started", GetCurrentThreadId());
+    trace(LOG_WAITPID, "debugger thread %u started", (unsigned)GetCurrentThreadId());
     ReleaseSemaphore(debug_state->debug_thread_semaphore, 1, 0);
 
     memset(&debug_event, 0, sizeof(debug_event));
@@ -971,7 +972,7 @@ static DWORD WINAPI debugger_thread_func(LPVOID x) {
                 post_event(debugger_detach_handler, debug_state);
                 WaitForSingleObject(debug_state->debug_event_inp, INFINITE);
                 if (!DebugActiveProcessStop(debug_state->process_id)) {
-                    trace(LOG_ALWAYS, "DebugActiveProcessStop() error %d", GetLastError());
+                    trace(LOG_ALWAYS, "DebugActiveProcessStop() error %#x", (unsigned)GetLastError());
                 }
                 break;
             }
@@ -979,7 +980,7 @@ static DWORD WINAPI debugger_thread_func(LPVOID x) {
                 timeout_cnt++;
                 continue;
             }
-            trace(LOG_ALWAYS, "WaitForDebugEvent() error %d", GetLastError());
+            trace(LOG_ALWAYS, "WaitForDebugEvent() error %#x", (unsigned)GetLastError());
             break;
         }
 
@@ -990,8 +991,8 @@ static DWORD WINAPI debugger_thread_func(LPVOID x) {
         post_event(early_debug_event_handler, &debug_event);
         WaitForSingleObject(debug_state->debug_event_inp, INFINITE);
         if (ContinueDebugEvent(win32_event->dwProcessId, win32_event->dwThreadId, debug_event.continue_status) == 0) {
-            trace(LOG_ALWAYS, "Can't continue debug event: process %d, thread %d: error %d",
-                win32_event->dwProcessId, win32_event->dwThreadId, GetLastError());
+            trace(LOG_ALWAYS, "Can't continue debug event: process %u, thread %u: error %#x",
+                (unsigned)win32_event->dwProcessId, (unsigned)win32_event->dwThreadId, (unsigned)GetLastError());
         }
         SetEvent(debug_state->debug_event_out);
         WaitForSingleObject(debug_state->debug_event_inp, INFINITE);
@@ -1075,8 +1076,8 @@ int context_stop(Context * ctx) {
     ContextExtensionWin32 * ext = EXT(ctx);
     DebugState * debug_state = EXT(ctx->parent)->debug_state;
 
-    trace(LOG_CONTEXT, "context:%s suspending ctx %#lx id %s",
-        ctx->pending_intercept ? "" : " temporary", ctx, ctx->id);
+    trace(LOG_CONTEXT, "context:%s suspending ctx %#" PRIxPTR " id %s",
+        ctx->pending_intercept ? "" : " temporary", (uintptr_t)ctx, ctx->id);
     assert(context_has_state(ctx));
     assert(!ctx->stopped);
     assert(!ctx->exited);
@@ -1096,7 +1097,7 @@ int context_continue(Context * ctx) {
     assert(ctx->stopped);
     assert(!ctx->exited);
 
-    trace(LOG_CONTEXT, "context: resuming ctx %#lx, id %s", ctx, ctx->id);
+    trace(LOG_CONTEXT, "context: resuming ctx %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
     return win32_resume(ctx, 0);
 }
 
@@ -1106,7 +1107,7 @@ int context_single_step(Context * ctx) {
     assert(ctx->stopped);
     assert(!ctx->exited);
 
-    trace(LOG_CONTEXT, "context: single step ctx %#lx, id %s", ctx, ctx->id);
+    trace(LOG_CONTEXT, "context: single step ctx %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
     return win32_resume(ctx, 1);
 }
 
@@ -1115,7 +1116,7 @@ static int context_terminate(Context * ctx) {
     assert(!context_has_state(ctx));
     assert(!ctx->exited);
 
-    trace(LOG_CONTEXT, "context: terminate ctx %#lx, id %s", ctx, ctx->id);
+    trace(LOG_CONTEXT, "context: terminate ctx %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
     return win32_terminate(ctx);
 }
 
@@ -1124,7 +1125,7 @@ static int context_detach(Context * ctx) {
     ContextExtensionWin32 * ext = EXT(ctx);
     DebugState * debug_state = ext->debug_state;
     assert(ctx->parent == NULL);
-    trace(LOG_CONTEXT, "context: detach ctx %#lx id %s", ctx, ctx->id);
+    trace(LOG_CONTEXT, "context: detach ctx %#" PRIxPTR " id %s", (uintptr_t)ctx, ctx->id);
     debug_state->detach = 1;
     unplant_breakpoints(ctx);
     ctx->exiting = 1;
@@ -1168,8 +1169,8 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
     SIZE_T bcnt = 0;
 
     trace(LOG_CONTEXT,
-        "context: read memory ctx %#lx, id %s, address %#lx, size %d",
-        ctx, ctx->id, address, (int)size);
+        "context: read memory ctx %#" PRIxPTR ", id %s, address %#" PRIx64 ", size %u",
+        (uintptr_t)ctx, ctx->id, (uint64_t)address, (unsigned)size);
     assert(is_dispatch_thread());
     mem_err_info.error = 0;
     if (ReadProcessMemory(ext->handle, (LPCVOID)address, buf, size, &bcnt) == 0 || bcnt != size) {
@@ -1219,8 +1220,8 @@ int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t 
     SIZE_T bcnt = 0;
 
     trace(LOG_CONTEXT,
-        "context: write memory ctx %#lx, id %s, address %#lx, size %d",
-        ctx, ctx->id, address, (int)size);
+        "context: write memory ctx %#" PRIxPTR ", id %s, address %#" PRIx64 ", size %u",
+        (uintptr_t)ctx, ctx->id, (uint64_t)address, (unsigned)size);
     assert(is_dispatch_thread());
     mem_err_info.error = 0;
     if (check_breakpoints_on_memory_write(ctx, address, buf, size) < 0) return -1;

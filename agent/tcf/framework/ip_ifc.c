@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2011 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -52,7 +52,7 @@ int build_ifclist(int sock, int max, ip_ifc_info * list) {
         ret_val = GetIpAddrTable(info, &out_buf_len, 0);
     }
     if (ret_val != NO_ERROR) {
-        trace(LOG_ALWAYS, "GetIpAddrTable() error: %d", ret_val);
+        trace(LOG_ALWAYS, "GetIpAddrTable() error: %u", (unsigned)ret_val);
         loc_free(info);
         return 0;
     }

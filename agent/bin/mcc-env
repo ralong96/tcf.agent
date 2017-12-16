@@ -1,19 +1,20 @@
 if [ -z "$VSHOME" ] ; then
     for KEY in \
         "Microsoft/VisualStudio/10.0/Setup/VS/ProductDir" \
-        "Wow6432Node/Microsoft/VisualStudio/10.0/Setup/VS/ProductDir" \
-        "Microsoft/VisualStudio/9.0/Setup/VS/ProductDir" \
-        "Wow6432Node/Microsoft/VisualStudio/9.0/Setup/VS/ProductDir"
+        "Microsoft/VisualStudio/9.0/Setup/VS/ProductDir"
     do
-        KEY="/proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/$KEY"
-        if [ -e "$KEY" ] ; then
-            KEY="`cat "$KEY"`"
-            KEY="`cygpath -u "$KEY"`"
-            if [ -d "$KEY" ] ; then
-                VSHOME="$KEY"
-                break
+        for WOW in "" /Wow6432Node
+        do
+            DIR="/proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/$WOW$KEY"
+            if [ -e "$DIR" ] ; then
+                DIR="`cat "$DIR" | tr '\0' '\n'`"
+                DIR="`cygpath -u "$DIR"`"
+                if [ -d "$DIR" ] ; then
+                    VSHOME="$DIR"
+                    break
+                fi
             fi
-        fi
+        done
     done
     if [ -z "$VSHOME" ] ; then
         for VAR in VS100COMNTOOLS VS90COMNTOOLS
@@ -50,21 +51,25 @@ fi
 
 if [ -z "$WINSDK" ] ; then
     for KEY in \
-        "Microsoft/Microsoft SDKs/Windows/CurrentInstallFolder" \
-        "Wow6432Node/Microsoft/Microsoft SDKs/Windows/CurrentInstallFolder"
+        "Microsoft/Microsoft SDKs/Windows/CurrentInstallFolder"
     do
-        KEY="/proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/$KEY"
-        if [ -e "$KEY" ] ; then
-            KEY="`cat "$KEY"`"
-            KEY="`cygpath -u "$KEY"`"
-            if [ -d "$KEY" ] ; then
-                WINSDK="$KEY"
-                break
+        for WOW in "" /Wow6432Node
+        do
+            DIR="/proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/$WOW$KEY"
+            if [ -e "$DIR" ] ; then
+                DIR="`cat "$DIR" | tr '\0' '\n'`"
+                DIR="`cygpath -u "$DIR"`"
+                if [ -d "$DIR" ] ; then
+                    WINSDK="$DIR"
+                    break
+                fi
             fi
-        fi
+        done
     done
     if [ -z "$WINSDK" ] ; then
         for DIR in \
+            "/cygdrive/c/Program Files (x86)/Windows Kits/10" \
+            "/cygdrive/c/Program Files (x86)/Windows Kits/8.1" \
             "/cygdrive/c/Program Files (x86)/Microsoft SDKs/Windows/v7.1" \
             "/cygdrive/c/Program Files/Microsoft SDKs/Windows/v7.1" \
             "/cygdrive/c/Program Files (x86)/Microsoft SDKs/Windows/v7.0A" \
@@ -89,9 +94,8 @@ export WindowsSdkDir=$(cygpath -am "$WINSDK/")
 export VSINSTALLDIR=$(cygpath -am "$VSHOME")
 export VCINSTALLDIR="$VSINSTALLDIR/VC"
 export DevEnvDir="$VSINSTALLDIR/Common7/IDE"
-export FrameworkDir=Framework32
-export LIB="$VSINSTALLDIR/VC/lib"\;"$WindowsSdkDir/Lib"
-export INCLUDE="$VSINSTALLDIR/VC/include"\;"$WindowsSdkDir/Include"
+export LIB="$VSINSTALLDIR/VC/lib;$WindowsSdkDir/Lib"
+export INCLUDE="$VSINSTALLDIR/VC/include;$WindowsSdkDir/Include"
 export PATH="$VSHOME/Common7/IDE:$VSHOME/VC/bin:$VSHOME/Common7/Tools:$VSHOME/VC/VCPackages:$PATH"
 
 unset MAKEFLAGS

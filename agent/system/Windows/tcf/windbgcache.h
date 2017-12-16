@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2008-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -198,6 +198,18 @@ enum SymTagEnum {
     SymTagDimension,
     SymTagMax
 };
+
+#if defined(__MINGW32__)
+
+typedef struct _IMAGEHLP_LINE64 {
+    DWORD    SizeOfStruct;
+    PVOID    Key;
+    DWORD    LineNumber;
+    PCHAR    FileName;
+    DWORD64  Address;
+} IMAGEHLP_LINE64, *PIMAGEHLP_LINE64;
+
+#endif
 
 #endif /* defined(__GNUC__) */
 

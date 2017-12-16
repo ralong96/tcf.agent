@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1049,7 +1049,7 @@ static int setenv(const char * name, const char * val, int overwrite) {
     _putenv_s(name, val);
     return 0;
 }
-#elif defined(__MINGW32__)
+#elif defined(__MINGW32__) && __MINGW32_MAJOR_VERSION < 5
 static int setenv(const char * name, const char * val, int overwrite) {
     int len = strlen(name) + strlen(val) + 2;
     char * str = (char *)loc_alloc(len);

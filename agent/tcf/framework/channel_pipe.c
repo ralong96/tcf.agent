@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -111,7 +111,7 @@ static void close_input_pipe(ChannelPIPE * c);
 static void close_output_pipe(ChannelPIPE * c);
 
 static void delete_channel(ChannelPIPE * c) {
-    trace(LOG_PROTOCOL, "Deleting channel %#lx", c);
+    trace(LOG_PROTOCOL, "Deleting channel %#" PRIxPTR, (uintptr_t)c);
     assert(c->lock_cnt == 0);
     assert(c->out_flush_cnt == 0);
     assert(c->magic == CHANNEL_MAGIC);
@@ -345,7 +345,7 @@ static void send_eof_and_close(Channel * channel, int err) {
         channel->disconnected(channel);
     }
     else {
-        trace(LOG_PROTOCOL, "channel %#lx disconnected", c);
+        trace(LOG_PROTOCOL, "channel %#" PRIxPTR " disconnected", (uintptr_t)c);
         if (channel->protocol != NULL) protocol_release(channel->protocol);
     }
     channel->protocol = NULL;
@@ -364,7 +364,7 @@ static void handle_channel_msg(void * x) {
     has_msg = ibuf_start_message(&c->ibuf);
     if (has_msg <= 0) {
         if (has_msg < 0 && c->chan->state != ChannelStateDisconnected) {
-            trace(LOG_PROTOCOL, "Pipe is close by remote peer, channel %#lx %s", c, c->chan->peer_name);
+            trace(LOG_PROTOCOL, "Pipe is close by remote peer, channel %#" PRIxPTR " %s", (uintptr_t)c, c->chan->peer_name);
             channel_close(c->chan);
         }
     }
