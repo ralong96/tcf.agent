@@ -378,7 +378,7 @@ static void tcp_flush_with_flags(ChannelTCP * c, int flags) {
             ssize_t wr = send(c->socket, p, sz, flags);
             if (wr < 0) {
                 int err = errno;
-                trace(LOG_PROTOCOL, "Can't send() on channel %#lx: %s", c, errno_to_str(err));
+                trace(LOG_PROTOCOL, "Can't send() on channel %#" PRIxPTR ": %s", (uintptr_t)c, errno_to_str(err));
                 c->out_errno = err;
                 c->chan->out.cur = c->obuf->buf;
                 c->out_eom_cnt = 0;
