@@ -112,6 +112,7 @@ static void run_cache_client(int retry) {
         if (get_error_code(trap.error) != ERR_CACHE_MISS || cache_miss_cnt == 0 || current_cache == NULL) {
             trace(LOG_ALWAYS, "Unhandled exception in data cache client: %s", errno_to_str(trap.error));
             for (i = 0; i < listeners_cnt; i++) listeners[i](CTLE_COMMIT);
+            if (current_client.args_copy) loc_free(current_client.args);
         }
         else {
             AbstractCache * cache = current_cache;
@@ -163,6 +164,7 @@ void cache_exit(void) {
     assert(current_client.client != NULL);
     if (cache_miss_cnt > 0) exception(ERR_CACHE_MISS);
     for (i = 0; i < listeners_cnt; i++) listeners[i](CTLE_COMMIT);
+    if (current_client.args_copy) loc_free(current_client.args);
     memset(&current_client, 0, sizeof(current_client));
     current_cache = NULL;
     cache_miss_cnt = 0;
