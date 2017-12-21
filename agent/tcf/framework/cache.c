@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009-2017 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -43,7 +43,6 @@ typedef struct WaitingCacheClient {
 
 static WaitingCacheClient current_client = {0, 0, 0, 0, 0, 0};
 static AbstractCache * current_cache = NULL;
-static int client_exited = 0;
 static int cache_miss_cnt = 0;
 static WaitingCacheClient * wait_list_buf;
 static unsigned wait_list_max;
@@ -91,44 +90,51 @@ static void cache_timer(void * x) {
 static void run_cache_client(int retry) {
     Trap trap;
     unsigned i;
+    unsigned id = current_client.id;
 
+    assert(id != 0);
     current_cache = NULL;
     cache_miss_cnt = 0;
-    client_exited = 0;
     def_channel = NULL;
     for (i = 0; i < listeners_cnt; i++) listeners[i](retry ? CTLE_RETRY : CTLE_START);
     if (set_trap(&trap)) {
         current_client.client(current_client.args);
         clear_trap(&trap);
+        assert(current_client.id == 0);
         assert(cache_miss_cnt == 0);
-        assert(client_exited);
     }
-    else if (get_error_code(trap.error) != ERR_CACHE_MISS || client_exited || cache_miss_cnt == 0 || current_cache == NULL) {
-        trace(LOG_ALWAYS, "Unhandled exception in data cache client: %d %s", trap.error, errno_to_str(trap.error));
+    else if (id != current_client.id) {
+        trace(LOG_ALWAYS, "Unhandled exception in data cache client: %s", errno_to_str(trap.error));
+        assert(current_client.id == 0);
+        assert(cache_miss_cnt == 0);
     }
     else {
-        AbstractCache * cache = current_cache;
-        if (cache->wait_list_cnt >= cache->wait_list_max) {
-            cache->wait_list_max += 8;
-            cache->wait_list_buf = (WaitingCacheClient *)loc_realloc(cache->wait_list_buf, cache->wait_list_max * sizeof(WaitingCacheClient));
+        if (get_error_code(trap.error) != ERR_CACHE_MISS || cache_miss_cnt == 0 || current_cache == NULL) {
+            trace(LOG_ALWAYS, "Unhandled exception in data cache client: %s", errno_to_str(trap.error));
+            for (i = 0; i < listeners_cnt; i++) listeners[i](CTLE_COMMIT);
         }
-        if (current_client.args != NULL && !current_client.args_copy) {
-            void * mem = loc_alloc(current_client.args_size);
-            memcpy(mem, current_client.args, current_client.args_size);
-            current_client.args = mem;
-            current_client.args_copy = 1;
+        else {
+            AbstractCache * cache = current_cache;
+            if (cache->wait_list_cnt >= cache->wait_list_max) {
+                cache->wait_list_max += 8;
+                cache->wait_list_buf = (WaitingCacheClient *)loc_realloc(cache->wait_list_buf, cache->wait_list_max * sizeof(WaitingCacheClient));
+            }
+            if (current_client.args != NULL && !current_client.args_copy) {
+                void * mem = loc_alloc(current_client.args_size);
+                memcpy(mem, current_client.args, current_client.args_size);
+                current_client.args = mem;
+                current_client.args_copy = 1;
+            }
+            if (cache->wait_list_cnt == 0) list_add_last(&cache->link, &cache_list);
+            if (current_client.channel != NULL) channel_lock_with_msg(current_client.channel, channel_lock_msg);
+            cache->wait_list_buf[cache->wait_list_cnt++] = current_client;
+            for (i = 0; i < listeners_cnt; i++) listeners[i](CTLE_ABORT);
         }
-        if (cache->wait_list_cnt == 0) list_add_last(&cache->link, &cache_list);
-        if (current_client.channel != NULL) channel_lock_with_msg(current_client.channel, channel_lock_msg);
-        cache->wait_list_buf[cache->wait_list_cnt++] = current_client;
+        memset(&current_client, 0, sizeof(current_client));
+        current_cache = NULL;
+        cache_miss_cnt = 0;
+        def_channel = NULL;
     }
-    for (i = 0; i < listeners_cnt; i++) listeners[i](client_exited ? CTLE_COMMIT : CTLE_ABORT);
-    if (cache_miss_cnt == 0 && current_client.args_copy) loc_free(current_client.args);
-    memset(&current_client, 0, sizeof(current_client));
-    current_cache = NULL;
-    cache_miss_cnt = 0;
-    client_exited = 0;
-    def_channel = NULL;
 }
 
 void cache_enter(CacheClient * client, Channel * channel, void * args, size_t args_size) {
@@ -152,11 +158,15 @@ void cache_enter(CacheClient * client, Channel * channel, void * args, size_t ar
 }
 
 void cache_exit(void) {
+    unsigned i;
     assert(is_dispatch_thread());
     assert(current_client.client != NULL);
-    assert(!client_exited);
     if (cache_miss_cnt > 0) exception(ERR_CACHE_MISS);
-    client_exited = 1;
+    for (i = 0; i < listeners_cnt; i++) listeners[i](CTLE_COMMIT);
+    memset(&current_client, 0, sizeof(current_client));
+    current_cache = NULL;
+    cache_miss_cnt = 0;
+    def_channel = NULL;
 }
 
 #ifdef NDEBUG
@@ -165,7 +175,7 @@ void cache_wait(AbstractCache * cache) {
 void cache_wait_dbg(const char * file, int line, AbstractCache * cache) {
 #endif
     assert(is_dispatch_thread());
-    assert(client_exited == 0);
+    assert(current_client.client != NULL);
     if (current_client.client != NULL) {
         current_cache = cache;
         cache_miss_cnt++;
