@@ -91,11 +91,13 @@ static void run_cache_client(int retry) {
     Trap trap;
     unsigned i;
     unsigned id = current_client.id;
+    void * args_copy = NULL;
 
     assert(id != 0);
     current_cache = NULL;
     cache_miss_cnt = 0;
     def_channel = NULL;
+    if (current_client.args_copy) args_copy = current_client.args;
     for (i = 0; i < listeners_cnt; i++) listeners[i](retry ? CTLE_RETRY : CTLE_START);
     if (set_trap(&trap)) {
         current_client.client(current_client.args);
@@ -112,7 +114,6 @@ static void run_cache_client(int retry) {
         if (get_error_code(trap.error) != ERR_CACHE_MISS || cache_miss_cnt == 0 || current_cache == NULL) {
             trace(LOG_ALWAYS, "Unhandled exception in data cache client: %s", errno_to_str(trap.error));
             for (i = 0; i < listeners_cnt; i++) listeners[i](CTLE_COMMIT);
-            if (current_client.args_copy) loc_free(current_client.args);
         }
         else {
             AbstractCache * cache = current_cache;
@@ -130,12 +131,14 @@ static void run_cache_client(int retry) {
             if (current_client.channel != NULL) channel_lock_with_msg(current_client.channel, channel_lock_msg);
             cache->wait_list_buf[cache->wait_list_cnt++] = current_client;
             for (i = 0; i < listeners_cnt; i++) listeners[i](CTLE_ABORT);
+            args_copy = NULL;
         }
         memset(&current_client, 0, sizeof(current_client));
         current_cache = NULL;
         cache_miss_cnt = 0;
         def_channel = NULL;
     }
+    if (args_copy != NULL) loc_free(args_copy);
 }
 
 void cache_enter(CacheClient * client, Channel * channel, void * args, size_t args_size) {
@@ -164,7 +167,6 @@ void cache_exit(void) {
     assert(current_client.client != NULL);
     if (cache_miss_cnt > 0) exception(ERR_CACHE_MISS);
     for (i = 0; i < listeners_cnt; i++) listeners[i](CTLE_COMMIT);
-    if (current_client.args_copy) loc_free(current_client.args);
     memset(&current_client, 0, sizeof(current_client));
     current_cache = NULL;
     cache_miss_cnt = 0;
