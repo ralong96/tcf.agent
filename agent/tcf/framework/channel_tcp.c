@@ -1471,6 +1471,7 @@ void generate_ssl_certificate(void) {
     char fnm[FILE_PATH_SIZE];
     X509 * cert = NULL;
     RSA * rsa = NULL;
+    BIGNUM * bne = NULL;
     EVP_PKEY * rsa_key = NULL;
     ASN1_INTEGER * serial = NULL;
     X509_NAME * name = NULL;
@@ -1479,7 +1480,15 @@ void generate_ssl_certificate(void) {
     FILE * fp = NULL;
 
     ini_ssl();
-    if (!err && (rsa = RSA_generate_key(2048, 3, NULL, (void *)"RSA")) == NULL) err = set_ssl_errno();
+#if defined(OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x10100001
+    /* RSA_generate_key() is deprecated in OpenSSL 1.1.0 */
+    bne = BN_new();
+    rsa = RSA_new();
+    if (!err && !BN_set_word(bne, 3)) err = set_ssl_errno();
+    if (!err && !RSA_generate_key_ex(rsa, 2048, bne, NULL)) err = set_ssl_errno();
+#else
+    if (!err && (rsa = RSA_generate_key(2048, 3, NULL, NULL)) == NULL) err = set_ssl_errno();
+#endif
     if (!err && !RSA_check_key(rsa)) err = set_ssl_errno();
     if (!err && gethostname(subject_name, sizeof(subject_name)) != 0) err = errno;
     if (!err) {
@@ -1525,6 +1534,7 @@ void generate_ssl_certificate(void) {
     }
     if (cert != NULL) X509_free(cert);
     if (rsa != NULL) RSA_free(rsa);
+    if (bne != NULL) BN_free(bne);
 #else /* ENABLE_SSL */
     fprintf(stderr, "SSL support not available\n");
 #endif /* ENABLE_SSL */
