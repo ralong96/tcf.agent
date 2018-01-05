@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -176,10 +176,6 @@ extern ssize_t pwrite(int fd, const void * buf, size_t size, off_t offset);
 
 #endif /* __CYGWIN__ */
 
-extern char * canonicalize_file_name(const char * path);
-
-#define O_LARGEFILE 0
-
 #elif defined(_WRS_KERNEL)
 /* VxWork kernel module */
 
@@ -214,11 +210,9 @@ typedef unsigned long useconds_t;
 #endif
 
 #define O_BINARY 0
-#define O_LARGEFILE 0
 #define lstat stat
 
 extern int truncate(char * path, int64_t size);
-extern char * canonicalize_file_name(const char * path);
 extern ssize_t pread(int fd, void * buf, size_t size, off_t offset);
 extern ssize_t pwrite(int fd, const void * buf, size_t size, off_t offset);
 
@@ -293,10 +287,8 @@ extern int loc_clock_gettime(int, struct timespec *);
 #define O_BINARY 0
 
 #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(__sun__)
-#  define O_LARGEFILE 0
 extern char ** environ;
-extern char * canonicalize_file_name(const char * path);
-#endif /* BSD */
+#endif
 
 #if defined(__APPLE__) && !defined(CLOCK_REALTIME)
 #  define CLOCK_REALTIME 1
@@ -350,14 +342,34 @@ extern double str_to_double(const char * buf, char ** end);
 /* Convert double to string according to C/C++/JSON syntax */
 extern const char * double_to_str(double n);
 
-#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__) && !defined(__VXWORKS__) && !defined(ANDROID)
-extern size_t strlcpy(char * dst, const char * src, size_t size);
-extern size_t strlcat(char * dst, const char * src, size_t size);
+#if defined(__UCLIBC__) || defined(ANDROID)
+extern int posix_openpt(int flags);
 #endif
 
-#if defined(__UCLIBC__) || defined(ANDROID)
+#ifndef USE_canonicalize_file_name
+#   if defined(_WIN32) || defined(__CYGWIN__) || \
+       defined(_WRS_KERNEL) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__) || \
+       defined(__sun__) || defined(ANDROID) || defined(__UCLIBC__) || \
+       !defined(__GLIBC__) || (defined(__GLIBC__) && !defined(__USE_GNU))
+#    define USE_canonicalize_file_name 0
+#  else
+#    define USE_canonicalize_file_name 1
+#  endif
+#endif
+#if !USE_canonicalize_file_name
 extern char * canonicalize_file_name(const char * path);
-extern int posix_openpt(int flags);
+#endif
+
+#ifndef USE_strlcpy_strlcat
+#  if defined(_WIN32) || defined(__CYGWIN__) || defined(__sun__) || defined(__GLIBC__)
+#    define USE_strlcpy_strlcat 0
+#  else
+#    define USE_strlcpy_strlcat 1
+#  endif
+#endif
+#if !USE_strlcpy_strlcat
+extern size_t strlcpy(char * dst, const char * src, size_t size);
+extern size_t strlcat(char * dst, const char * src, size_t size);
 #endif
 
 #if defined(__i386__) || defined(__x86_64__)

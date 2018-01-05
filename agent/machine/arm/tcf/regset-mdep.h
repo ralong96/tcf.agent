@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2017 Stanislav Yakovlev and others.
+ * Copyright (c) 2013-2018 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -28,11 +28,11 @@
 #endif
 
 #ifndef PTRACE_GETREGSET
-#define PTRACE_GETREGSET (enum __ptrace_request)0x4204
+#  define PTRACE_GETREGSET 0x4204
 #endif
 
 #ifndef PTRACE_SETREGSET
-#define PTRACE_SETREGSET (enum __ptrace_request)0x4205
+#  define PTRACE_SETREGSET 0x4205
 #endif
 
 struct regset_gp {

@@ -367,6 +367,7 @@
     <ClInclude Include="..\tcf\framework\cpudefs-mdep-mux.h" />
     <ClInclude Include="..\tcf\framework\cpudefs-mux.h" />
     <ClInclude Include="..\tcf\framework\mdep-fs.h" />
+    <ClInclude Include="..\tcf\framework\mdep-ptrace.h" />
     <ClInclude Include="..\tcf\services\breakpoints-ext.h" />
     <ClInclude Include="..\tcf\services\dwarfecomp-ext.h" />
     <ClInclude Include="..\tcf\services\dwarfreloc-ext.h" />

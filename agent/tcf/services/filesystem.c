@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -16,10 +16,6 @@
 /*
  * Target service implementation: file system access (TCF name FileSystem)
  */
-
-#if defined(__GNUC__) && !defined(_GNU_SOURCE)
-#  define _GNU_SOURCE
-#endif
 
 #include <tcf/config.h>
 
@@ -611,7 +607,7 @@ static void write_file_attrs(OutputStream * out, FileAttrs * attrs) {
 }
 
 static int to_local_open_flags(int flags) {
-    int res = O_BINARY | O_LARGEFILE;
+    int res = O_BINARY;
     if ((flags & TCF_O_READ) && (flags & TCF_O_WRITE)) res |= O_RDWR;
     else if (flags & TCF_O_READ) res |= O_RDONLY;
     else if (flags & TCF_O_WRITE) res |= O_WRONLY;

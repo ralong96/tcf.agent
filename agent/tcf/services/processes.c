@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1432,7 +1432,7 @@ static int start_process_imp(Channel * c, char ** envp, const char * dir, const 
         /* http://docs.oracle.com/cd/E18752_01/html/816-4855/termsub15-44781.html */
         fd_tty_master = open("/dev/ptmx", O_RDWR);
 #else
-        fd_tty_master = posix_openpt(O_RDWR|O_NOCTTY);
+        fd_tty_master = posix_openpt(O_RDWR | O_NOCTTY);
 #endif
         if (fd_tty_master < 0 || grantpt(fd_tty_master) < 0 || unlockpt(fd_tty_master) < 0) err = errno;
         if (!err && (tty_slave_name = ptsname(fd_tty_master)) == NULL) err = EINVAL;

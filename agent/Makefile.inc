@@ -2,6 +2,9 @@ CONF ?= Debug
 
 ifndef OPSYS
   OPSYS   := $(shell uname -o 2>/dev/null || uname -s)
+  ifeq ($(OPSYS),Linux)
+    OPSYS := GNU/Linux
+  endif
 endif
 ifndef MACHINE
   MACHINE := $(shell uname -m)
@@ -186,3 +189,8 @@ ifdef SERVICES
 endif
 
 OPTS += $(foreach dir,$(INCDIRS),-I$(TCF_AGENT_DIR)/$(dir))
+
+ifeq ($(OPSYS),GNU/Linux)
+  CHECK_C_LIB := $(shell $(TCF_AGENT_DIR)/bin/check-c-lib $(CC) $(CFLAGS) $(OPTS))
+  OPTS += $(CHECK_C_LIB)
+endif

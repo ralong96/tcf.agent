@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -16,10 +16,6 @@
 /*
  * Symbols service - ELF version.
  */
-
-#if defined(__GNUC__) && !defined(_GNU_SOURCE)
-#  define _GNU_SOURCE
-#endif
 
 #include <tcf/config.h>
 
@@ -4298,8 +4294,10 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
 }
 
 int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
-#define STO_PPC64_LOCAL_BIT 5
-#define STO_PPC64_LOCAL_MASK    (7 << STO_PPC64_LOCAL_BIT)
+#ifndef STO_PPC64_LOCAL_MASK
+#  define STO_PPC64_LOCAL_BIT 5
+#  define STO_PPC64_LOCAL_MASK    (7 << STO_PPC64_LOCAL_BIT)
+#endif
 #define IS_PPC64_V2(elfsym) ((elfsym->file->machine == EM_PPC64) && (elfsym->file->flags & 0x3) == 2)
 
     ELF_SymbolInfo elf_sym_info;

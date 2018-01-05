@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -925,10 +925,8 @@ int clock_gettime(clockid_t clock_id, struct timespec * tp) {
 #endif
 
 #if defined(__UCLIBC__) || defined(ANDROID)
-#include <fcntl.h>
-
 int posix_openpt(int flags) {
-    return (open("/dev/ptmx", flags));
+    return open("/dev/ptmx", flags);
 }
 #endif
 
@@ -1097,7 +1095,7 @@ char * canonicalize_file_name(const char * path) {
     return strdup(res);
 }
 
-#elif defined(__UCLIBC__)
+#elif !USE_canonicalize_file_name
 
 char * canonicalize_file_name(const char * path) {
     return realpath(path, NULL);
@@ -1817,7 +1815,7 @@ const char * double_to_str(double n) {
     return tmp_strdup(buf + i);
 }
 
-#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__APPLE__) && !defined(__VXWORKS__)
+#if !USE_strlcpy_strlcat
 
 size_t strlcpy(char * dst, const char * src, size_t size) {
     char ch;

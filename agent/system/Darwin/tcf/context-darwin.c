@@ -29,8 +29,8 @@
 #include <signal.h>
 #include <sched.h>
 #include <sys/syscall.h>
-#include <sys/ptrace.h>
 #include <mach/thread_status.h>
+#include <tcf/framework/mdep-ptrace.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/errors.h>

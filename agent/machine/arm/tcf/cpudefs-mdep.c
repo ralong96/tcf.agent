@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2017 Stanislav Yakovlev and others.
+ * Copyright (c) 2013-2018 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -32,7 +32,7 @@
 #  include <sys/auxv.h>
 #  include <asm/hwcap.h>
 #endif
-#include <sys/ptrace.h>
+#include <tcf/framework/mdep-ptrace.h>
 #include <tcf/framework/errors.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
@@ -89,10 +89,10 @@ static RegisterDefinition * lr_def = NULL;
 static RegisterDefinition * cpsr_def = NULL;
 
 #if !defined(PTRACE_GETHBPREGS)
-#define PTRACE_GETHBPREGS (enum __ptrace_request)29
+#  define PTRACE_GETHBPREGS 29
 #endif
 #if !defined(PTRACE_SETHBPREGS)
-#define PTRACE_SETHBPREGS (enum __ptrace_request)30
+# define PTRACE_SETHBPREGS 30
 #endif
 
 #define ARM_DEBUG_ARCH_V6       1

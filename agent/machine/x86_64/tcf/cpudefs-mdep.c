@@ -581,7 +581,7 @@ unsigned char BREAK_INST[] = { 0xcc };
 
 #ifdef MDEP_OtherRegisters
 
-#include <sys/ptrace.h>
+#include <tcf/framework/mdep-ptrace.h>
 
 #if !defined(PTRACE_GETFPXREGS) && !defined(PT_GETFPXREGS)
 #define PTRACE_GETFPXREGS 18

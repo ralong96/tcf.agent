@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -32,9 +32,9 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <asm/unistd.h>
-#include <sys/ptrace.h>
 #include <sys/utsname.h>
 #include <linux/kdev_t.h>
+#include <tcf/framework/mdep-ptrace.h>
 #include <tcf/framework/mdep-fs.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/events.h>
@@ -59,36 +59,7 @@
 #include <tcf/framework/context-mux.h>
 #endif
 
-#if !defined(PTRACE_SETOPTIONS)
-#define PTRACE_SETOPTIONS       (enum __ptrace_request)0x4200
-#define PTRACE_GETEVENTMSG      (enum __ptrace_request)0x4201
-#define PTRACE_GETSIGINFO       (enum __ptrace_request)0x4202
-#define PTRACE_SETSIGINFO       (enum __ptrace_request)0x4203
-
-#define PTRACE_O_TRACESYSGOOD   0x00000001
-#define PTRACE_O_TRACEFORK      0x00000002
-#define PTRACE_O_TRACEVFORK     0x00000004
-#define PTRACE_O_TRACECLONE     0x00000008
-#define PTRACE_O_TRACEEXEC      0x00000010
-#define PTRACE_O_TRACEVFORKDONE 0x00000020
-#define PTRACE_O_TRACEEXIT      0x00000040
-
-#define PTRACE_EVENT_FORK       1
-#define PTRACE_EVENT_VFORK      2
-#define PTRACE_EVENT_CLONE      3
-#define PTRACE_EVENT_EXEC       4
-#define PTRACE_EVENT_VFORK_DONE 5
-#define PTRACE_EVENT_EXIT       6
-#endif
-
 #define USE_PTRACE_SYSCALL      0
-
-#if defined(__arm__) || defined(__aarch64__)
-#if !defined(PTRACE_GETVFPREGS)
-#define PTRACE_GETVFPREGS       (enum __ptrace_request)27
-#define PTRACE_SETVFPREGS       (enum __ptrace_request)28
-#endif
-#endif
 
 static const int PTRACE_FLAGS =
 #if USE_PTRACE_SYSCALL
@@ -483,7 +454,7 @@ static const char * get_ptrace_cmd_name(int cmd) {
 static int do_single_step(Context * ctx) {
     uint32_t is_cont = 0;
     ContextExtensionLinux * ext = EXT(ctx);
-    enum __ptrace_request cmd = PTRACE_SINGLESTEP;
+    int cmd = PTRACE_SINGLESTEP;
 
     assert(!ext->pending_step);
 
@@ -540,9 +511,9 @@ int context_continue(Context * ctx) {
     int signal = 0;
     ContextExtensionLinux * ext = EXT(ctx);
 #if USE_PTRACE_SYSCALL
-    enum __ptrace_request cmd = PTRACE_SYSCALL;
+    int cmd = PTRACE_SYSCALL;
 #else
-    enum __ptrace_request cmd = PTRACE_CONT;
+    int cmd = PTRACE_CONT;
 #endif
 
     assert(is_dispatch_thread());

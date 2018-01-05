@@ -813,5 +813,8 @@
     <ClInclude Include="..\machine\x86_64\tcf\cpu-regs-gdb.h">
       <Filter>machine\x86_64</Filter>
     </ClInclude>
+    <ClInclude Include="..\tcf\framework\mdep-ptrace.h">
+      <Filter>framework</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
