@@ -118,6 +118,7 @@ static int read_byte(uint64_t addr, uint8_t * bt) {
         }
         c->size = info.size_valid;
 #else
+        c->size = 0;
         return -1;
 #endif
     }

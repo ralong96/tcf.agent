@@ -104,6 +104,7 @@ static int read_byte(uint64_t addr, uint8_t * bt) {
     c->addr = addr;
     c->size = sizeof(c->data);
     if (context_read_mem(stk_ctx, addr, c->data, c->size) < 0) {
+#if ENABLE_ExtendedMemoryErrorReports
         int error = errno;
         MemoryErrorInfo info;
         if (context_get_mem_error_info(&info) < 0 || info.size_valid == 0) {
@@ -112,6 +113,10 @@ static int read_byte(uint64_t addr, uint8_t * bt) {
             return -1;
         }
         c->size = info.size_valid;
+#else
+        c->size = 0;
+        return -1;
+#endif
     }
     *bt = c->data[0];
     return 0;
