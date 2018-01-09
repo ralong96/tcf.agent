@@ -284,6 +284,13 @@
     <ClCompile Include="..\machine\arm\tcf\disassembler-arm.c" />
     <ClCompile Include="..\machine\arm\tcf\disassembler-thumb.c" />
     <ClCompile Include="..\machine\arm\tcf\stack-crawl-arm.c" />
+    <ClCompile Include="..\machine\microblaze\tcf\cpudefs-mdep.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\machine\microblaze\tcf\stack-crawl-microblaze.c" />
     <ClCompile Include="..\machine\powerpc\tcf\cpudefs-mdep.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
@@ -353,7 +360,10 @@
     <ClInclude Include="..\machine\arm\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\i386\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\microblaze\tcf\cpu-regs-gdb.h" />
+    <ClInclude Include="..\machine\microblaze\tcf\cpudefs-mdep.h" />
     <ClInclude Include="..\machine\microblaze\tcf\dwarfreloc-mdep.h" />
+    <ClInclude Include="..\machine\microblaze\tcf\regset-mdep.h" />
+    <ClInclude Include="..\machine\microblaze\tcf\stack-crawl-microblaze.h" />
     <ClInclude Include="..\machine\powerpc\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\ppc64\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\ppc64\tcf\dwarfreloc-mdep.h" />

@@ -381,6 +381,12 @@
     <ClCompile Include="..\tcf\framework\channel_lws.c">
       <Filter>framework</Filter>
     </ClCompile>
+    <ClCompile Include="..\machine\microblaze\tcf\cpudefs-mdep.c">
+      <Filter>machine\microblaze</Filter>
+    </ClCompile>
+    <ClCompile Include="..\machine\microblaze\tcf\stack-crawl-microblaze.c">
+      <Filter>machine\microblaze</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\tcf\framework\asyncreq.h">
@@ -815,6 +821,15 @@
     </ClInclude>
     <ClInclude Include="..\tcf\framework\mdep-ptrace.h">
       <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\microblaze\tcf\cpudefs-mdep.h">
+      <Filter>machine\microblaze</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\microblaze\tcf\regset-mdep.h">
+      <Filter>machine\microblaze</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\microblaze\tcf\stack-crawl-microblaze.h">
+      <Filter>machine\microblaze</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

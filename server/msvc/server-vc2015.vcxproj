@@ -262,6 +262,7 @@
     <ClInclude Include="..\..\agent\tcf\framework\cpudefs-mux.h" />
     <ClInclude Include="..\..\agent\tcf\framework\mdep-fs.h" />
     <ClInclude Include="..\..\agent\tcf\framework\mdep-inet.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\mdep-ptrace.h" />
     <ClInclude Include="..\..\agent\tcf\framework\mdep-threads.h" />
     <ClInclude Include="..\..\agent\tcf\framework\pid-hash.h" />
     <ClInclude Include="..\..\agent\tcf\framework\sigsets.h" />
