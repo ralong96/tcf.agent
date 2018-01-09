@@ -100,9 +100,6 @@ ifneq ($(OPSYS),Windows)
     OPTS += -D_FILE_OFFSET_BITS=64
   endif
   OPTS += -Wall
-  ifneq ($(CC),g++)
-    OPTS += -Wmissing-prototypes
-  endif
 endif
 
 # Compiler flags definition
