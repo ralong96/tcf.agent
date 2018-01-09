@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2018 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -19,6 +19,9 @@
 
 #ifndef D_stack_crawl_arm
 #define D_stack_crawl_arm
+
+#include <tcf/config.h>
+#include <tcf/framework/cpudefs.h>
 
 /* ARMv7-A, ARMv7-R, AArch32 */
 extern int crawl_stack_frame_arm(StackFrame * frame, StackFrame * down);

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014, 2017 Xilinx, Inc. and others.
+ * Copyright (c) 2014-2018 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,12 +22,9 @@
 #if ENABLE_DebugContext
 
 #include <assert.h>
-#include <tcf/framework/errors.h>
-#include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
-#include <tcf/services/stacktrace.h>
 #include <machine/a64/tcf/stack-crawl-a64.h>
 
 #define MAX_INST 200
