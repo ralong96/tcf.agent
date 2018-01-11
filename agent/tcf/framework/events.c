@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -41,7 +41,9 @@
 #endif
 
 #if !defined(USE_CLOCK_MONOTONIC)
-#  if defined(__linux__) && !(defined(ANDROID) && defined(HAVE_PTHREAD_COND_TIMEDWAIT_MONOTONIC))
+#  if defined(__UCLIBC__)
+#    define USE_CLOCK_MONOTONIC 0
+#  elif defined(__linux__) && !(defined(ANDROID) && defined(HAVE_PTHREAD_COND_TIMEDWAIT_MONOTONIC))
 #    define USE_CLOCK_MONOTONIC 1
 #  elif (defined(_WIN32) || defined(__CYGWIN__)) && !defined(DISABLE_PTHREADS_WIN32)
 #    define USE_CLOCK_MONOTONIC 1
