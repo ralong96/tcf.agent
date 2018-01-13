@@ -1510,7 +1510,7 @@ void generate_ssl_certificate(void) {
             (unsigned char *)issuer_name, strlen(issuer_name), -1, 0);
     }
     if (!err && !X509_set_pubkey(cert, rsa_key)) err = set_ssl_errno();
-    if (!err) X509_sign(cert, rsa_key, EVP_md5());
+    if (!err) X509_sign(cert, rsa_key, EVP_sha256());
     if (!err && !X509_verify(cert, rsa_key)) err = set_ssl_errno();
     if (stat(tcf_dir, &st) != 0 && mkdir(tcf_dir, MKDIR_MODE_TCF) != 0) err = errno;
     snprintf(fnm, sizeof(fnm), "%s/ssl", tcf_dir);
@@ -1533,7 +1533,8 @@ void generate_ssl_certificate(void) {
         fprintf(stderr, "Cannot create SSL certificate: %s\n", errno_to_str(err));
     }
     if (cert != NULL) X509_free(cert);
-    if (rsa != NULL) RSA_free(rsa);
+    if (rsa_key != NULL) EVP_PKEY_free(rsa_key);
+    else if (rsa != NULL) RSA_free(rsa);
     if (bne != NULL) BN_free(bne);
 #else /* ENABLE_SSL */
     fprintf(stderr, "SSL support not available\n");
