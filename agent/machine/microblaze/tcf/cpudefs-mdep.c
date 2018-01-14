@@ -24,6 +24,7 @@
 #include <tcf/framework/context.h>
 #include <tcf/framework/myalloc.h>
 #include <machine/microblaze/tcf/stack-crawl-microblaze.h>
+#include <machine/microblaze/tcf/disassembler-microblaze.h>
 #if ENABLE_ContextMux
 #include <tcf/framework/cpudefs-mdep-mux.h>
 #endif
@@ -120,6 +121,7 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
 
 #if ENABLE_add_cpudefs_disassembler
 void add_cpudefs_disassembler(Context * cpu_ctx) {
+    add_disassembler(cpu_ctx, "MicroBlaze", disassemble_microblaze);
 }
 #endif
 
