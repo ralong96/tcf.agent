@@ -778,6 +778,59 @@ static void branch_exception_system(void) {
         else if (l == 0 && op0 == 1) {
             /* SYS */
             uint32_t crm = (instr >> 8) & 0xf;
+            if (op1 == 3 && crn == 7 && crm == 4 && op2 == 1) {
+                add_str("dc zva, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
+            if (op1 == 0 && crn == 7 && crm == 6 && op2 == 1) {
+                add_str("dc ivac, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
+            if (op1 == 0 && crn == 7 && crm == 6 && op2 == 2) {
+                add_str("dc isw, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
+            if (op1 == 3 && crn == 7 && crm == 10 && op2 == 1) {
+                add_str("dc cvac, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
+            if (op1 == 0 && crn == 7 && crm == 10 && op2 == 2) {
+                add_str("dc csw, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
+            if (op1 == 3 && crn == 7 && crm == 11 && op2 == 1) {
+                add_str("dc cvau, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
+            if (op1 == 3 && crn == 7 && crm == 14 && op2 == 1) {
+                add_str("dc civac, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
+            if (op1 == 0 && crn == 7 && crm == 14 && op2 == 2) {
+                add_str("dc cisw, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
+            if (op1 == 0 && crn == 7 && crm == 1 && op2 == 0) {
+                add_str("ic ialluis, ");
+                return;
+            }
+            if (op1 == 0 && crn == 7 && crm == 5 && op2 == 0) {
+                add_str("ic iallu, ");
+                return;
+            }
+            if (op1 == 3 && crn == 7 && crm == 5 && op2 == 1) {
+                add_str("ic ivau, ");
+                add_reg_name(rt, 1, 1);
+                return;
+            }
             add_str("sys #");
             add_dec_uint32(op1);
             add_str(", c");
@@ -2283,6 +2336,166 @@ static void AdvSIMD_three_same(void) {
     }
 }
 
+static void AdvSIMD_two_reg_misc(void) {
+    uint32_t Q = (instr >> 30) & 1;
+    uint32_t U = (instr >> 29) & 1;
+    uint32_t size = (instr >> 22) & 0x3;
+    uint32_t opcode = (instr >> 12) & 0x1f;
+    uint32_t Rn = (instr >> 5) & 0x1f;
+    uint32_t Rd = instr & 0x1f;
+
+    switch (opcode) {
+    case 0x00:
+        add_str(U ? "rev32" : "rev64");
+        break;
+    case 0x01:
+        if (U) break;
+        add_str("rev16");
+        break;
+    case 0x02:
+        add_str(U ? "uaddlp" : "saddlp");
+        break;
+    case 0x03:
+        add_str(U ? "usqadd" : "suqadd");
+        break;
+    case 0x04:
+        add_str(U ? "cmge" : "cls");
+        break;
+    case 0x05:
+        if (U) {
+            if (size == 0) add_str("not");
+            if (size == 1) add_str("rbit");
+            break;
+        }
+        add_str("cnt");
+        break;
+    case 0x06:
+        add_str(U ? "uadalp" : "sadalp");
+        break;
+    case 0x07:
+        add_str(U ? "sqneg" : "sqabs");
+        break;
+    case 0x08:
+        add_str(U ? "cmge" : "cmgt");
+        break;
+    case 0x09:
+        add_str(U ? "cmle" : "cmeq");
+        break;
+    case 0x0a:
+        if (U) break;
+        add_str("cmlt");
+        break;
+    case 0x0b:
+        add_str(U ? "neg" : "abs");
+        break;
+    case 0x0c:
+        if (size < 2) break;
+        add_str(U ? "fcmge" : "fcmgt");
+        break;
+    case 0x0d:
+        if (size < 2) break;
+        add_str(U ? "fcmle" : "fcmeq");
+        break;
+    case 0x0e:
+        if (U) break;
+        if (size < 2) break;
+        add_str("fcmlt");
+        break;
+    case 0x0f:
+        if (size < 2) break;
+        add_str(U ? "fneg" : "fabs");
+        break;
+    case 0x12:
+        add_str(U ? "sqxtun" : "xtn");
+        if (Q) add_char('2');
+        break;
+    case 0x13:
+        if (!U) break;
+        add_str("shll");
+        if (Q) add_char('2');
+        break;
+    case 0x14:
+        add_str(U ? "uqxtn" : "sqxtn");
+        if (Q) add_char('2');
+        break;
+    case 0x16:
+        if (size < 2) {
+            add_str(U ? "fcvtxn" : "fcvtn");
+            if (Q) add_char('2');
+        }
+        break;
+    case 0x17:
+        if (U) break;
+        if (size < 2) {
+            add_str("fcvtl");
+            if (Q) add_char('2');
+        }
+        break;
+    case 0x18:
+        if (size < 2) {
+            add_str(U ? "frinta" : "frintn");
+        }
+        else {
+            if (U) break;
+            add_str("frintp");
+        }
+        break;
+    case 0x19:
+        if (size < 2) {
+            add_str(U ? "frintx" : "frintm");
+        }
+        else {
+            add_str(U ? "frinti" : "frintz");
+        }
+        break;
+    case 0x1a:
+        if (size < 2) {
+            add_str(U ? "fcvtnu" : "fcvtns");
+        }
+        else {
+            add_str(U ? "fcvtpu" : "fcvtps");
+        }
+        break;
+    case 0x1b:
+        if (size < 2) {
+            add_str(U ? "fcvtmu" : "fcvtms");
+        }
+        else {
+            add_str(U ? "fcvtzu" : "fcvtzs");
+        }
+        break;
+    case 0x1c:
+        if (size < 2) {
+            add_str(U ? "fcvtau" : "fcvtas");
+        }
+        else {
+            add_str(U ? "ursqrte" : "urecpe");
+        }
+        break;
+    case 0x1d:
+        if (size < 2) {
+            add_str(U ? "ucvtf" : "scvtf");
+        }
+        else {
+            add_str(U ? "frsqrte" : "frecpe");
+        }
+        break;
+    case 0x1f:
+        if (size < 2) break;
+        if (!U) break;
+        add_str("fsqrt");
+        break;
+    }
+    if (buf_pos == 0) return;
+
+    add_char(' ');
+    add_fp_reg_name_q(Rd, size, Q);
+    add_str(", ");
+    add_fp_reg_name_q(Rn, size, Q);
+
+    if (opcode >= 0x08 && opcode <= 0x0b) add_str(", #0");
+}
+
 static void AdvSIMD_copy(void) {
     uint32_t Q = (instr >> 30) & 1;
     uint32_t op = (instr >> 29) & 1;
@@ -2318,7 +2531,7 @@ static void AdvSIMD_copy(void) {
         add_reg_name(Rn, sz == 3, 0);
     }
     else if (!op && imm4 == 5) {
-        if (sz > 2) return;
+        if (sz == 3 && !Q) return;
         add_str("smov ");
         add_reg_name(Rd, Q, 0);
         add_str(", ");
@@ -2328,8 +2541,9 @@ static void AdvSIMD_copy(void) {
         add_char(']');
     }
     else if (!op && imm4 == 7) {
-        if (sz > 2) return;
-        add_str("umov ");
+        if (sz == 3 && !Q) return;
+        if (sz >= 2 || Q) add_str("mov ");
+        else add_str("umov ");
         add_reg_name(Rd, Q, 0);
         add_str(", ");
         add_fp_reg_name(Rn, sz);
@@ -2581,6 +2795,7 @@ static void data_processing_simd_and_fp(void) {
     }
     if ((instr & 0x9f3e0c00) == 0x0e200800) {
         /* AdvSIMD two-reg misc */
+        AdvSIMD_two_reg_misc();
         return;
     }
     if ((instr & 0x9f3e0c00) == 0x0e300800) {
