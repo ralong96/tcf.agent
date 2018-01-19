@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -44,6 +44,7 @@ extern void * tmp_alloc_zero(size_t size);
 extern void * tmp_realloc(void * ptr, size_t size);
 extern char * tmp_strdup(const char * s);
 extern char * tmp_strdup2(const char * s1, const char * s2);
+extern char * tmp_printf(const char * fmt, ...);
 extern void tmp_gc(void);
 
 #endif /* D_myalloc */

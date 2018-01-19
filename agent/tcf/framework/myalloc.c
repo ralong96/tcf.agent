@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -20,6 +20,7 @@
 #include <tcf/config.h>
 #include <assert.h>
 #include <string.h>
+#include <stdarg.h>
 #include <tcf/framework/link.h>
 #include <tcf/framework/trace.h>
 #include <tcf/framework/events.h>
@@ -163,6 +164,33 @@ char * tmp_strdup2(const char * s1, const char * s2) {
     memcpy(rval, s1, l1);
     memcpy(rval + l1, s2, l2 + 1);
     return rval;
+}
+
+char * tmp_printf(const char * fmt, ...) {
+    va_list ap;
+    char arr[0x100];
+    void * mem = NULL;
+    char * buf = arr;
+    size_t len = sizeof(arr);
+    int n;
+
+    while (1) {
+        va_start(ap, fmt);
+        n = vsnprintf(buf, len, fmt, ap);
+        va_end(ap);
+        if (n < 0) {
+            if (len > 0x1000) break;
+            len *= 2;
+        }
+        else {
+            if (n < (int)len) break;
+            len = n + 1;
+        }
+        mem = tmp_realloc(mem, len);
+        buf = (char *)mem;
+    }
+    if (buf == arr) buf = tmp_strdup(arr);
+    return buf;
 }
 
 #if USE_libc_malloc

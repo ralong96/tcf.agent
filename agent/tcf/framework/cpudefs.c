@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -166,26 +166,16 @@ int id2frame(const char * id, Context ** ctx, int * frame) {
 }
 
 const char * frame2id(Context * ctx, int frame) {
-    size_t l = strlen(ctx->id) + 20;
-    char * id = (char *)tmp_alloc(l);
     assert(frame >= 0);
-    snprintf(id, l, "FP%d.%s", frame, ctx->id);
-    return id;
+    return tmp_printf("FP%d.%s", frame, ctx->id);
 }
 
 const char * register2id(Context * ctx, int frame, RegisterDefinition * reg) {
     RegisterDefinition * defs = get_reg_definitions(ctx);
-    size_t l = strlen(ctx->id) + 30;
-    char * id = (char *)tmp_alloc(l);
     assert(defs != NULL);
     assert(reg >= defs);
-    if (frame < 0) {
-        snprintf(id, l, "R%d.%s", (int)(reg - defs), ctx->id);
-    }
-    else {
-        snprintf(id, l, "R%d@%d.%s", (int)(reg - defs), frame, ctx->id);
-    }
-    return id;
+    if (frame < 0) return tmp_printf("R%d.%s", (int)(reg - defs), ctx->id);
+    return tmp_printf("R%d@%d.%s", (int)(reg - defs), frame, ctx->id);
 }
 
 int id2reg_num(const char * id, const char ** ctx_id, int * frame, unsigned * reg_num) {
