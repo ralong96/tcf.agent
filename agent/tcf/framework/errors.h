@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -97,7 +97,7 @@ extern int set_errno(int no, const char * msg);
  * Persistent error report can be obtained by calling get_error_report().
  * Return new error code that designates both original code and the message.
  */
-extern int set_fmt_errno(int no, const char * fmt, ...);
+extern int set_fmt_errno(int no, const char * fmt, ...) ATTR_PRINTF(2, 3);
 
 /*
  * Set errno to indicate getaddrinfo() error code.

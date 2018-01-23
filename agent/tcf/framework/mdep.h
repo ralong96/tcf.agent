@@ -385,6 +385,22 @@ extern size_t strlcat(char * dst, const char * src, size_t size);
    extern int big_endian_host(void);
 #endif
 
+#ifndef ATTR_PRINTF
+#  if defined(__GNUC__) && __GNUC__ >= 3
+#    define ATTR_PRINTF(FORMAT, ARG) __attribute__((format(printf, (FORMAT), (ARG))))
+#  else
+#    define ATTR_PRINTF(FORMAT, ARG)
+#  endif
+#endif
+
+#ifndef ATTR_NORETURN
+#  if defined(__GNUC__) && __GNUC__ >= 3
+#    define ATTR_NORETURN __attribute__((noreturn))
+#  else
+#    define ATTR_NORETURN
+#  endif
+#endif
+
 /* Swap bytes in a buffer - change value endianness */
 extern void swap_bytes(void * buf, size_t size);
 #define SWAP(x) swap_bytes(&(x), sizeof(x))

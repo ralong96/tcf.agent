@@ -20,6 +20,7 @@
 #ifndef D_myalloc
 #define D_myalloc
 
+#include <tcf/config.h>
 #include <stdlib.h>
 
 #ifndef MEM_HEAP_LINK_SIZE
@@ -44,7 +45,8 @@ extern void * tmp_alloc_zero(size_t size);
 extern void * tmp_realloc(void * ptr, size_t size);
 extern char * tmp_strdup(const char * s);
 extern char * tmp_strdup2(const char * s1, const char * s2);
-extern char * tmp_printf(const char * fmt, ...);
+extern char * tmp_printf(const char * fmt, ...) ATTR_PRINTF(1, 2);
+
 extern void tmp_gc(void);
 
 #endif /* D_myalloc */
