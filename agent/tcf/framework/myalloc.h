@@ -33,6 +33,7 @@ extern void * loc_realloc(void * ptr, size_t size);
 extern char * loc_strdup(const char * s);
 extern char * loc_strdup2(const char * s1, const char * s2);
 extern char * loc_strndup(const char * s, size_t len);
+extern char * loc_printf(const char * fmt, ...) ATTR_PRINTF(1, 2);
 
 extern void loc_free(const void * p);
 

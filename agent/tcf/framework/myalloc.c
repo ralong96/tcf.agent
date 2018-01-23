@@ -265,3 +265,30 @@ char * loc_strndup(const char * s, size_t len) {
     rval[len] = '\0';
     return rval;
 }
+
+char * loc_printf(const char * fmt, ...) {
+    va_list ap;
+    char arr[0x100];
+    void * mem = NULL;
+    char * buf = arr;
+    size_t len = sizeof(arr);
+    int n;
+
+    while (1) {
+        va_start(ap, fmt);
+        n = vsnprintf(buf, len, fmt, ap);
+        va_end(ap);
+        if (n < 0) {
+            if (len > 0x1000) break;
+            len *= 2;
+        }
+        else {
+            if (n < (int)len) break;
+            len = n + 1;
+        }
+        mem = loc_realloc(mem, len);
+        buf = (char *)mem;
+    }
+    if (buf == arr) buf = loc_strdup(arr);
+    return buf;
+}
