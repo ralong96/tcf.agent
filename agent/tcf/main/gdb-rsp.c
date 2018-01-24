@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2016-2017 Xilinx, Inc. and others.
+ * Copyright (c) 2016-2018 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -285,7 +285,6 @@ static int check_process_isa(GdbClient * c, Context * prs) {
     if (regs != NULL) {
         memset(&isa, 0, sizeof(isa));
         context_get_isa(prs, 0, &isa);
-        printf("%s %s\n", prs->name, isa.def ? isa.def : "???");
         if (isa.def != NULL) {
             if (strcmp(isa.def, "386") == 0) return regs == cpu_regs_gdb_i386;
             if (strcmp(isa.def, "X86_64") == 0) return regs == cpu_regs_gdb_x86_64;
@@ -1713,6 +1712,12 @@ static void accept_done(void * args) {
     async_req_post(&s->req);
 
     if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&opt, sizeof(opt)) < 0) {
+        trace(LOG_ALWAYS, "GDB Server setsockopt failed: %s", errno_to_str(errno));
+        close_client(c);
+        return;
+    }
+
+    if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&opt, sizeof(opt)) < 0) {
         trace(LOG_ALWAYS, "GDB Server setsockopt failed: %s", errno_to_str(errno));
         close_client(c);
         return;
