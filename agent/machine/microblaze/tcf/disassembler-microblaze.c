@@ -159,6 +159,7 @@ enum Instructions {
     i_dcmp_lt,        i_dcmp_eq,        i_dcmp_le,        i_dcmp_gt,
     i_dcmp_ne,        i_dcmp_ge,        i_dcmp_un,        i_dbl,
     i_dlong,          i_dsqrt,
+    i_lli,            i_sli,
 };
 
 typedef struct InstructionInfo {
@@ -522,20 +523,22 @@ static InstructionInfo instruction_info[] = {
     { 0x32, OP(llr),            INST_TYPE_RD_RA_RB, 0 },
     { 0x36, OP(sl),             INST_TYPE_RD_RA_RB, 0 },
     { 0x36, OP(slr),            INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, OP(dadd),           INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, OP(drsub),          INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, OP(dmul),           INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, OP(ddiv),           INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, i_dcmp_lt, "dcmp.lt", INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, i_dcmp_eq, "dcmp.eq", INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, i_dcmp_le, "dcmp.le", INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, i_dcmp_gt, "dcmp.gt", INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, i_dcmp_ne, "dcmp.ne", INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, i_dcmp_ge, "dcmp.ge", INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, i_dcmp_un, "dcmp.un", INST_TYPE_RD_RA_RB, 0 },
-    { 0x26, OP(dbl),            INST_TYPE_RD_RA, 0 },
-    { 0x26, OP(dlong),          INST_TYPE_RD_RA, 0 },
-    { 0x26, OP(dsqrt),          INST_TYPE_RD_RA, 0 },
+    { 0x16, OP(dadd),           INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, OP(drsub),          INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, OP(dmul),           INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, OP(ddiv),           INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, i_dcmp_lt, "dcmp.lt", INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, i_dcmp_eq, "dcmp.eq", INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, i_dcmp_le, "dcmp.le", INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, i_dcmp_gt, "dcmp.gt", INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, i_dcmp_ne, "dcmp.ne", INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, i_dcmp_ge, "dcmp.ge", INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, i_dcmp_un, "dcmp.un", INST_TYPE_RD_RA_RB, 0 },
+    { 0x16, OP(dbl),            INST_TYPE_RD_RA, 0 },
+    { 0x16, OP(dlong),          INST_TYPE_RD_RA, 0 },
+    { 0x16, OP(dsqrt),          INST_TYPE_RD_RA, 0 },
+    { 0x3a, OP(lli),            INST_TYPE_RD_RA_IMM, F_IMM },
+    { 0x3e, OP(sli),            INST_TYPE_RD_RA_IMM, F_IMM },
 };
 
 #define UNKNOWN_OPCODE ((enum Instructions)(sizeof(instruction_info) / sizeof(InstructionInfo)))
@@ -626,6 +629,10 @@ static int decode_instruction(void) {
         op = instr_bits & 0x100 ? i_addlkc : i_addkc;
         break;
 
+    case 0x07:
+        op = instr_bits & 0x100 ? i_rsublkc : i_rsubkc;
+        break;
+
     case 0x08:
         op = is_preceded_by_imml() ? i_addli : i_addi;
         break;
@@ -652,6 +659,10 @@ static int decode_instruction(void) {
 
     case 0x0e:
         op = is_preceded_by_imml() ? i_addlikc : i_addikc;
+        break;
+
+    case 0x0f:
+        op = is_preceded_by_imml() ? i_rsublikc : i_rsubikc;
         break;
 
     case 0x10:
@@ -735,6 +746,29 @@ static int decode_instruction(void) {
         break;
 
     case 0x16:  /* FP operation */
+        if (instr_bits & 0x400) {
+            switch ((instr_bits >> 7) & 0x7) {
+            case 0x0: op = i_dadd; break;
+            case 0x1: op = i_drsub; break;
+            case 0x2: op = i_dmul; break;
+            case 0x3: op = i_ddiv; break;
+            case 0x4:
+                switch ((instr_bits >> 4) & 0x7) {
+                case 0: op = i_dcmp_un; break;
+                case 1: op = i_dcmp_lt; break;
+                case 2: op = i_dcmp_eq; break;
+                case 3: op = i_dcmp_le; break;
+                case 4: op = i_dcmp_gt; break;
+                case 5: op = i_dcmp_ne; break;
+                case 6: op = i_dcmp_ge; break;
+                }
+                break;
+            case 0x5: op = i_dbl; break;
+            case 0x6: op = i_dlong; break;
+            case 0x7: op = i_dsqrt; break;
+            }
+            break;
+        }
         switch((instr_bits >> 7) & 0x7) {
         case 0: op = i_fadd; break;
         case 1: op = i_frsub; break;
@@ -755,6 +789,7 @@ static int decode_instruction(void) {
         case 6: op = i_fint; break;
         case 7: op = i_fsqrt; break;
         }
+        break;
 
     case 0x19:
         switch (instr_bits & 0xe600) {
@@ -828,9 +863,9 @@ static int decode_instruction(void) {
 
     case 0x20:
         if (instr_bits & 0x400)
-            op = i_pcmpbf;
+            op = instr_bits & 0x100 ? i_pcmplbf : i_pcmpbf;
         else
-            op = i_or;
+            op = instr_bits & 0x100 ? i_orl : i_or;
         break;
 
     case 0x21:
@@ -838,33 +873,34 @@ static int decode_instruction(void) {
         break;
 
     case 0x22:
-        op = instr_bits & 0x400 ? i_pcmpeq : i_xor;
+        if (instr_bits & 0x400)
+            op = instr_bits & 0x100 ? i_pcmpleq : i_pcmpeq;
+        else
+            op = instr_bits & 0x100 ? i_xorl : i_xor;
         break;
 
     case 0x23:
-        if (instr_bits & 0x100) op = i_andnl;
-        else op = instr_bits & 0x400 ? i_pcmpne : i_andn;
+        if (instr_bits & 0x400)
+            op = instr_bits & 0x100 ? i_pcmplne : i_pcmpne;
+        else
+            op = instr_bits & 0x100 ? i_andnl : i_andn;
         break;
 
     case 0x24:
-        switch (instr_bits & 0xFFFF) {
-        case 0x0001:
-            op = i_sra;
-            break;
-        case 0x0021:
-            op = i_src;
-            break;
-        case 0x0041:
-            op = i_srl;
-            break;
-        case 0x0060:
-            op = i_sext8;
-            break;
-        case 0x0061:
-            op = i_sext16;
-            break;
+        switch (instr_bits & 0xffff) {
+        case 0x0001: op = i_sra; break;
+        case 0x0021: op = i_src; break;
+        case 0x0041: op = i_srl; break;
+        case 0x0060: op = i_sext8; break;
+        case 0x0061: op = i_sext16; break;
+        case 0x0101: op = i_srla; break;
+        case 0x0121: op = i_srlc; break;
+        case 0x0141: op = i_srll; break;
+        case 0x0160: op = i_sextl8; break;
+        case 0x0161: op = i_sextl16; break;
+        case 0x0162: op = i_sextl32; break;
         default:
-            switch (instr_bits & 0x1FFF) {
+            switch (instr_bits & 0x1fff) {
             case 0x0064: op = i_wdc; break;
             case 0x0068: op = i_wic; break;
             case 0x0074: op = i_wdc_flush; break;
@@ -902,29 +938,6 @@ static int decode_instruction(void) {
         break;
 
     case 0x26:
-        if (instr_bits & 0x400) {
-            switch ((instr_bits >> 7) & 0x7) {
-            case 0x0: op = i_dadd; break;
-            case 0x1: op = i_drsub; break;
-            case 0x2: op = i_dmul; break;
-            case 0x3: op = i_ddiv; break;
-            case 0x4:
-                switch ((instr_bits >> 4) & 0x7) {
-                case 0: op = i_dcmp_un; break;
-                case 1: op = i_dcmp_lt; break;
-                case 2: op = i_dcmp_eq; break;
-                case 3: op = i_dcmp_le; break;
-                case 4: op = i_dcmp_gt; break;
-                case 5: op = i_dcmp_ne; break;
-                case 6: op = i_dcmp_ge; break;
-                }
-                break;
-            case 0x5: op = i_dbl; break;
-            case 0x6: op = i_dlong; break;
-            case 0x7: op = i_dsqrt; break;
-            }
-            break;
-        }
         switch ((instr_bits >> 16) & 0x1F) {
         case 0x00: op = i_br; break;
         case 0x10: op = i_brd; break;
@@ -970,8 +983,16 @@ static int decode_instruction(void) {
         }
         break;
 
+    case 0x28:
+        op = is_preceded_by_imml() ? i_orli : i_ori;
+        break;
+
     case 0x29:
         op = is_preceded_by_imml() ? i_andli : i_andi;
+        break;
+
+    case 0x2a:
+        op = is_preceded_by_imml() ? i_xorli : i_xori;
         break;
 
     case 0x2b:
@@ -1018,8 +1039,7 @@ static int decode_instruction(void) {
         case 0x11: op = i_breaid; break;
         case 0x15: op = i_brealid; break;
         case 0x0c: op = i_brki; break;
-        default:
-            return 0;
+        default: return 0;
         }
         break;
 
@@ -1054,7 +1074,7 @@ static int decode_instruction(void) {
         break;
 
     case 0x30:
-        switch (instr_bits & 0x7FF) {
+        switch (instr_bits & 0x7ff) {
         case 0x000: op = i_lbu; break;
         case 0x200: op = i_lbur; break;
         case 0x080: op = i_lbuea; break;
@@ -1063,7 +1083,7 @@ static int decode_instruction(void) {
         break;
 
     case 0x31:
-        switch (instr_bits & 0x7FF) {
+        switch (instr_bits & 0x7ff) {
         case 0x000: op = i_lhu; break;
         case 0x200: op = i_lhur; break;
         case 0x080: op = i_lhuea; break;
@@ -1072,9 +1092,11 @@ static int decode_instruction(void) {
         break;
 
     case 0x32:
-        switch (instr_bits & 0x7FF) {
+        switch (instr_bits & 0x7ff) {
         case 0x000: op = i_lw; break;
+        case 0x100: op = i_ll; break;
         case 0x200: op = i_lwr; break;
+        case 0x300: op = i_llr; break;
         case 0x400: op = i_lwx; break;
         case 0x080: op = i_lwea; break;
         default: return 0;
@@ -1082,7 +1104,7 @@ static int decode_instruction(void) {
         break;
 
     case 0x34:
-        switch (instr_bits & 0x7FF) {
+        switch (instr_bits & 0x7ff) {
         case 0x000: op = i_sb; break;
         case 0x200: op = i_sbr; break;
         case 0x080: op = i_sbea; break;
@@ -1091,7 +1113,7 @@ static int decode_instruction(void) {
         break;
 
     case 0x35:
-        switch (instr_bits & 0x7FF) {
+        switch (instr_bits & 0x7ff) {
         case 0x000: op = i_sh; break;
         case 0x200: op = i_shr; break;
         case 0x080: op = i_shea; break;
@@ -1100,13 +1122,23 @@ static int decode_instruction(void) {
         break;
 
     case 0x36:
-        switch (instr_bits & 0x7FF) {
+        switch (instr_bits & 0x7ff) {
         case 0x000: op = i_sw; break;
+        case 0x100: op = i_sl; break;
         case 0x200: op = i_swr; break;
+        case 0x300: op = i_slr; break;
         case 0x400: op = i_swx; break;
         case 0x080: op = i_swea; break;
         default: return 0;
         }
+        break;
+
+    case 0x3a:
+        op = is_preceded_by_imml() ? i_lli : i_lwi;
+        break;
+
+    case 0x3e:
+        op = is_preceded_by_imml() ? i_sli : i_swi;
         break;
 
     }
@@ -1377,8 +1409,8 @@ static int disassemble_instruction(void) {
 
     add_str(tmp_buf);
 
-    if (instr_op == i_lwi || instr_op == i_lhui || instr_op == i_lbui ||
-            instr_op == i_swi || instr_op == i_shi || instr_op == i_sbi) {
+    if (instr_op == i_lli || instr_op == i_lwi || instr_op == i_lhui || instr_op == i_lbui ||
+            instr_op == i_sli || instr_op == i_swi || instr_op == i_shi || instr_op == i_sbi) {
         if (instr_r1 == 0) {
             DecodingState * state = (DecodingState *)disass_params->state;
             if (state != NULL && state->addr == ctx_addr - 4) {
