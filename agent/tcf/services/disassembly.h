@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2018 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -34,6 +34,7 @@ typedef struct DisassemblerParams {
     int big_endian;     /* 0 - little endian, 1 -  big endian */
     int simplified;     /* If true, simplified mnemonics are specified */
     int pseudo_instr;   /* If true, pseudo-instructions are requested */
+    void * state;
 } DisassemblerParams;
 
 typedef DisassemblyResult * Disassembler(uint8_t * /* code */, ContextAddress /* addr */,

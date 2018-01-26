@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2017 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2018 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -184,13 +184,15 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
     ContextAddress offs = 0;
     Disassembler * disassembler = NULL;
     Context * cpu = context_get_group(ctx, CONTEXT_GROUP_CPU);
+    DisassemblerParams params;
     int disassembler_ok = 0;
-    DisassemblerParams param;
 
-    param.ctx = ctx;
-    param.big_endian = ctx->big_endian;
-    param.pseudo_instr = args->pseudo_instr;
-    param.simplified = args->simplified;
+    memset(&params, 0, sizeof(DisassemblerParams));
+
+    params.ctx = ctx;
+    params.big_endian = ctx->big_endian;
+    params.pseudo_instr = args->pseudo_instr;
+    params.simplified = args->simplified;
     if (args->isa) {
         isa->isa = args->isa;
         isa->addr = args->addr;
@@ -212,7 +214,7 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
             else disassembler = find_disassembler(cpu, isa->def);
             disassembler_ok = 1;
         }
-        if (disassembler) dr = disassembler(mem_buf + (size_t)offs, addr, size, &param);
+        if (disassembler) dr = disassembler(mem_buf + (size_t)offs, addr, size, &params);
         if (dr == NULL) {
             static char buf[32];
             static DisassemblyResult dd;
@@ -272,6 +274,7 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
         offs += dr->size;
     }
     write_stream(out, ']');
+    loc_free(params.state);
     return 0;
 }
 

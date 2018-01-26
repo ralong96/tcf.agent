@@ -1105,6 +1105,8 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     isa->def = "PPC64";
 #elif defined(__powerpc__)
     isa->def = "PPC";
+#elif defined(__MICROBLAZE__)
+    isa->def = "MicroBlaze";
 #else
     isa->def = NULL;
 #endif
@@ -1132,6 +1134,10 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
             isa->alignment = 2;
         }
         else if (strcmp(s, "PPC") == 0 || strcmp(s, "PPC64") == 0) {
+            isa->max_instruction_size = 4;
+            isa->alignment = 4;
+        }
+        else if (strcmp(s, "MicroBlaze") == 0 || strcmp(s, "MicroBlazeX") == 0) {
             isa->max_instruction_size = 4;
             isa->alignment = 4;
         }
