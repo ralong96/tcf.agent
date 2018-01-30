@@ -75,7 +75,7 @@ static void pid_hash_context_exited(Context * ctx, void * args) {
 
 static void ini_context_pid_hash(void) {
     int i;
-    static ContextEventListener l = { NULL, pid_hash_context_exited };
+    static ContextEventListener l = { NULL, pid_hash_context_exited, NULL, NULL, NULL, NULL };
     for (i = 0; i < CONTEXT_PID_HASH_SIZE; i++) list_init(context_pid_hash + i);
     pid_hash_link_offset = context_extension(sizeof(LINK));
     add_context_event_listener(&l, NULL);

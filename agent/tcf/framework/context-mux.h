@@ -116,6 +116,8 @@ ContextIf sys_ctx_if = {
 #if ENABLE_ContextBreakpointCapabilities
         sys_context_get_breakpoint_capabilities,
 #endif
+        { 0 },
+        { 0 }
 };
 
 static void sys_send_context_created_event(Context * ctx) {
