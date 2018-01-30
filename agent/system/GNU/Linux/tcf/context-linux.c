@@ -1107,6 +1107,8 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     isa->def = "PPC";
 #elif defined(__MICROBLAZE__)
     isa->def = "MicroBlaze";
+#elif defined(__MICROBLAZEX__)
+    isa->def = "MicroBlazeX";
 #else
     isa->def = NULL;
 #endif

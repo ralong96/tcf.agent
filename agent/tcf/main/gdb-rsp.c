@@ -45,6 +45,7 @@
 #include <machine/powerpc/tcf/cpu-regs-gdb.h>
 #include <machine/ppc64/tcf/cpu-regs-gdb.h>
 #include <machine/microblaze/tcf/cpu-regs-gdb.h>
+#include <machine/microblazex/tcf/cpu-regs-gdb.h>
 
 #include <tcf/main/gdb-rsp.h>
 
@@ -274,7 +275,9 @@ static const char * get_regs(GdbClient * c) {
     if (strcmp(c->server->isa, "ppc64") == 0) return cpu_regs_gdb_ppc64;
     if (strcmp(c->server->isa, "power64") == 0) return cpu_regs_gdb_ppc64;
     if (strcmp(c->server->isa, "microblaze") == 0) return cpu_regs_gdb_microblaze;
+    if (strcmp(c->server->isa, "microblazex") == 0) return cpu_regs_gdb_microblazex;
     if (strcmp(c->server->isa, "mb") == 0) return cpu_regs_gdb_microblaze;
+    if (strcmp(c->server->isa, "mbx") == 0) return cpu_regs_gdb_microblazex;
     set_fmt_errno(ERR_OTHER, "Unsupported ISA %s", c->server->isa);
     return NULL;
 }
@@ -296,6 +299,7 @@ static int check_process_isa(GdbClient * c, Context * prs) {
             if (strcmp(isa.def, "PPC") == 0) return regs == cpu_regs_gdb_powerpc;
             if (strcmp(isa.def, "PPC64") == 0) return regs == cpu_regs_gdb_ppc64;
             if (strcmp(isa.def, "MicroBlaze") == 0) return regs == cpu_regs_gdb_microblaze;
+            if (strcmp(isa.def, "MicroBlazeX") == 0) return regs == cpu_regs_gdb_microblazex;
         }
     }
     return 0;
@@ -645,7 +649,17 @@ static void add_res_reg_value(GdbClient * c, GdbThread * t, GdbRegister * r) {
     void * buf = tmp_alloc_zero(size);
     unsigned i = 0;
     if (t != NULL) def = find_register(t, r);
-    if (def != NULL && context_read_reg(t->ctx, def, 0, def->size < size ? def->size : size, buf) < 0) def = NULL;
+    if (def != NULL) {
+        unsigned rd = def->size < size ? def->size : size;
+        if (context_read_reg(t->ctx, def, 0, rd, buf) >= 0) {
+            /* Register bytes are transmitted in the target byte order */
+            if (def->big_endian) swap_bytes(buf, rd);
+            if (t->ctx->big_endian) swap_bytes(buf, size);
+        }
+        else {
+            def = NULL;
+        }
+    }
     while (i < size) {
         if (def == NULL) {
             add_res_str(c, "xx");
@@ -1870,6 +1884,10 @@ int ini_gdb_rsp(const char * conf) {
         isa = "powerpc64";
 #elif defined(__powerpc__)
         isa = "powerpc";
+#elif defined(__MICROBLAZE__)
+        isa = "microblaze";
+#elif defined(__MICROBLAZEX__)
+        isa = "microblazex";
 #else
         isa = "i386";
 #endif
