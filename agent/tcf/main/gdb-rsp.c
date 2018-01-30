@@ -675,7 +675,7 @@ static void add_res_stop_reason(GdbClient * c) {
     GdbThread * t = find_thread(c, c->cur_g_pid, c->cur_g_tid);
     if (t != NULL) {
         unsigned i;
-        add_res_str(c, t->bp_cnt > 0 ? "T05" : "T00");
+        add_res_str(c, "T05");
         add_res_str(c, "thread:");
         add_res_ptid(c, c->cur_g_pid, c->cur_g_tid);
         add_res_ch(c, ';');

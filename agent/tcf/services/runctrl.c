@@ -882,23 +882,6 @@ int continue_debug_context(Context * ctx, Channel * c,
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_INTERCEPT);
     int err = 0;
 
-    EXT(grp)->reverse_run = 0;
-    switch (mode) {
-    case RM_REVERSE_RESUME:
-    case RM_REVERSE_STEP_OVER:
-    case RM_REVERSE_STEP_INTO:
-    case RM_REVERSE_STEP_OVER_LINE:
-    case RM_REVERSE_STEP_INTO_LINE:
-    case RM_REVERSE_STEP_OUT:
-    case RM_REVERSE_STEP_OVER_RANGE:
-    case RM_REVERSE_STEP_INTO_RANGE:
-    case RM_REVERSE_UNTIL_ACTIVE:
-        EXT(grp)->reverse_run = 1;
-        break;
-    }
-
-    if (context_has_state(ctx)) start_step_mode(ctx, c, mode, count, range_start, range_end);
-
     if (ctx->exited) {
         err = ERR_ALREADY_EXITED;
     }
@@ -908,13 +891,33 @@ int continue_debug_context(Context * ctx, Channel * c,
     else if (count < 1) {
         err = EINVAL;
     }
-    else if (resume_context_tree(ctx) < 0) {
-        err = errno;
+
+    if (!err) {
+        EXT(grp)->reverse_run = 0;
+        switch (mode) {
+        case RM_REVERSE_RESUME:
+        case RM_REVERSE_STEP_OVER:
+        case RM_REVERSE_STEP_INTO:
+        case RM_REVERSE_STEP_OVER_LINE:
+        case RM_REVERSE_STEP_INTO_LINE:
+        case RM_REVERSE_STEP_OUT:
+        case RM_REVERSE_STEP_OVER_RANGE:
+        case RM_REVERSE_STEP_INTO_RANGE:
+        case RM_REVERSE_UNTIL_ACTIVE:
+            EXT(grp)->reverse_run = 1;
+            break;
+        }
+
+        if (context_has_state(ctx)) start_step_mode(ctx, c, mode, count, range_start, range_end);
+
+        if (resume_context_tree(ctx) < 0) {
+            err = errno;
+            cancel_step_mode(ctx);
+        }
     }
 
     assert(err || !ext->intercepted);
     if (err) {
-        cancel_step_mode(ctx);
         errno = err;
         return -1;
     }
