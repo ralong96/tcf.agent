@@ -814,7 +814,9 @@ const char * get_user_name(void) {
 
 void ini_mdep(void) {
     pthread_attr_init(&pthread_create_attr);
+#ifndef USE_DEFAULT_THREAD_STACK_SIZE
     pthread_attr_setstacksize(&pthread_create_attr, 0x8000);
+#endif
     pthread_attr_setname(&pthread_create_attr, "tTcf");
     pthread_attr_setopt (&pthread_create_attr, VX_FP_TASK|VX_UNBREAKABLE);
 }
@@ -983,7 +985,9 @@ void ini_mdep(void) {
 #endif
     signal(SIGPIPE, SIG_IGN);
     pthread_attr_init(&pthread_create_attr);
+#ifndef USE_DEFAULT_THREAD_STACK_SIZE
     pthread_attr_setstacksize(&pthread_create_attr, 0x8000);
+#endif
 }
 
 #endif
