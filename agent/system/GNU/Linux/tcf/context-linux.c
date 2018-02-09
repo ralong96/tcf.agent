@@ -921,12 +921,12 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
         }
 #else
         if (i >= offsetof(REG_SET, user.regs) && i < offsetof(REG_SET, user.regs) + sizeof(ext->regs->user.regs)) {
-            if (ptrace(PTRACE_GETREGS, ext->pid, 0, &ext->regs->user.regs) < 0 && errno != ESRCH) {
-                err = errno;
-                break;
+            /* Try to read all registers at once */
+            if (ptrace(PTRACE_GETREGS, ext->pid, 0, &ext->regs->user.regs) == 0) {
+                memset(ext->regs_valid + offsetof(REG_SET, user.regs), 0xff, sizeof(ext->regs->user.regs));
+                continue;
             }
-            memset(ext->regs_valid + offsetof(REG_SET, user.regs), 0xff, sizeof(ext->regs->user.regs));
-            continue;
+            /* Did not work, use PTRACE_PEEKUSER to get one register at a time */
         }
         if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
 #if defined(__arm__) || defined(__aarch64__)

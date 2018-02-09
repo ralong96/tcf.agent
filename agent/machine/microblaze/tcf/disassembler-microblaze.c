@@ -1497,14 +1497,14 @@ static DisassemblyResult * disassemble_instr(uint8_t * code,
     return &dr;
 }
 
-DisassemblyResult * disassemble_microblaze(uint8_t * buf,
+DisassemblyResult * disassemble_microblaze(uint8_t * code,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params) {
     en_64_bit = 0;
-    return disassemble_instr(buf, addr, size, params);
+    return disassemble_instr(code, addr, size, params);
 }
 
-DisassemblyResult * disassemble_microblaze_x(uint8_t * buf,
+DisassemblyResult * disassemble_microblaze_x(uint8_t * code,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params) {
     en_64_bit = 1;
-    return disassemble_instr(buf, addr, size, params);
+    return disassemble_instr(code, addr, size, params);
 }

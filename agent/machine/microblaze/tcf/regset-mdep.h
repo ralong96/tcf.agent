@@ -12,3 +12,6 @@
  * Contributors:
  *     Xilinx - initial API and implementation
  *******************************************************************************/
+
+/* offset to be applied to the PC after a software trap */
+#define TRAP_OFFSET 0

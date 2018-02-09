@@ -64,6 +64,9 @@
     <Filter Include="machine\powerpc">
       <UniqueIdentifier>{ff538629-61f5-41bb-907c-975bcb6161f1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="machine\microblazex">
+      <UniqueIdentifier>{4e8ce030-4562-4d31-8bf8-3f970be0c354}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\tcf\framework\asyncreq.c">
@@ -836,6 +839,9 @@
     </ClInclude>
     <ClInclude Include="..\machine\microblaze\tcf\disassembler-microblaze.h">
       <Filter>machine\microblaze</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\microblazex\tcf\cpu-regs-gdb.h">
+      <Filter>machine\microblazex</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

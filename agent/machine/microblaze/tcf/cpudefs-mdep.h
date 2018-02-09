@@ -20,6 +20,10 @@
 extern void add_cpudefs_disassembler(Context * cpu_ctx);
 #endif
 
+#if !defined(ENABLE_external_stepping_mode)
+#define ENABLE_external_stepping_mode 1
+#endif
+
 extern RegisterDefinition * regs_index;
 extern unsigned char BREAK_INST[4];
 
