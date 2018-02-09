@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008-2017, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2008-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -43,7 +43,7 @@
 #include <tcf/services/terminals.h>
 
 #ifndef TERMINALS_NO_LOGIN
-#define TERMINALS_NO_LOGIN 1
+#  define TERMINALS_NO_LOGIN 1
 #endif
 
 static const char * TERMINALS = "Terminals";
@@ -54,19 +54,19 @@ static const char * TERMINALS = "Terminals";
 #else
 #  include <sys/stat.h>
 #  include <unistd.h>
-# if TERMINALS_NO_LOGIN
-#if defined(ANDROID)
-#  define TERM_LAUNCH_EXEC "/system/bin/sh"
-#else
-#  define TERM_LAUNCH_EXEC "/bin/bash"
-#endif
-#  define TERM_LAUNCH_ARGS {TERM_LAUNCH_EXEC, "-l", NULL}
-#  define TERM_EXIT_SIGNAL SIGHUP
-# else
-#  define TERM_LAUNCH_EXEC "/bin/login"
-#  define TERM_LAUNCH_ARGS {TERM_LAUNCH_EXEC, "-p", NULL}
-#  define TERM_EXIT_SIGNAL SIGTERM
-# endif
+#  if TERMINALS_NO_LOGIN
+#    if defined(ANDROID)
+#      define TERM_LAUNCH_EXEC "/system/bin/sh"
+#    else
+#      define TERM_LAUNCH_EXEC "/bin/bash"
+#    endif
+#    define TERM_LAUNCH_ARGS {TERM_LAUNCH_EXEC, "-l", NULL}
+#    define TERM_EXIT_SIGNAL SIGHUP
+#  else
+#    define TERM_LAUNCH_EXEC "/bin/login"
+#    define TERM_LAUNCH_ARGS {TERM_LAUNCH_EXEC, "-p", NULL}
+#    define TERM_EXIT_SIGNAL SIGTERM
+#  endif
 #endif
 
 #define TERM_PROP_DEF_SIZE 256
