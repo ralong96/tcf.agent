@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -25,8 +25,12 @@
 typedef struct Context Context;
 typedef struct ContextBreakpoint ContextBreakpoint;
 
+#ifndef ENABLE_ContextAddress64
+#define ENABLE_ContextAddress64 ENABLE_ContextProxy
+#endif
+
 /* Type to represent byte address inside context memory */
-#if ENABLE_ContextProxy
+#if ENABLE_ContextAddress64
 typedef uint64_t ContextAddress;
 #else
 typedef uintptr_t ContextAddress;
