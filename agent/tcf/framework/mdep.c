@@ -1209,7 +1209,7 @@ int loc_getaddrinfo(const char * nodename, const char * servname,
     }
     if (servname != NULL && servname[0] != 0) {
         char * p = NULL;
-        port = (unsigned int) strtoul(servname, &p, 10);
+        port = (unsigned)strtoul(servname, &p, 10);
         if (port < 0 || port > 0xffff || *p != '\0' || p == servname) {
             return 1;
         }
@@ -1875,7 +1875,7 @@ const char * create_uuid(void) {
     struct timespec time_now;
     memset(&time_now, 0, sizeof(time_now));
     if (clock_gettime(CLOCK_REALTIME, &time_now)) check_error(errno);
-    if (buf[0] == 0) srand((unsigned int)time_now.tv_sec ^ (unsigned int)time_now.tv_nsec);
+    if (buf[0] == 0) srand((unsigned)time_now.tv_sec ^ (unsigned)time_now.tv_nsec);
     snprintf(buf, sizeof(buf), "%08x-%04x-4%03x-8%03x-%04x%04x%04x",
         (int)time_now.tv_sec & 0xffffffff, (int)(time_now.tv_nsec >> 13) & 0xffff,
         rand() & 0xfff, rand() & 0xfff, rand() & 0xffff, rand() & 0xffff, rand() & 0xffff);

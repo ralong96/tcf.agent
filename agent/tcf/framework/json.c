@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -119,7 +119,7 @@ void json_write_ulong(OutputStream * out, unsigned long n) {
         json_write_ulong(out, n / 10);
         n = n % 10;
     }
-    write_stream(out, (unsigned int) n + '0');
+    write_stream(out, (unsigned)n + '0');
 }
 
 void json_write_long(OutputStream * out, long n) {

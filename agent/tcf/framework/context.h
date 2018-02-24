@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -56,9 +56,9 @@ struct Context {
     Context *           creator;            /* context creator */
     Context *           mem;                /* context memory space */
     int                 big_endian;         /* 0 - little endian, 1 -  big endian */
-    unsigned int        mem_access;         /* bit set of memory access types represented by this context */
-    unsigned int        reg_access;         /* bit set of register access types represented by this context */
-    unsigned int        ref_count;          /* reference count, see context_lock() and context_unlock() */
+    unsigned            mem_access;         /* bit set of memory access types represented by this context */
+    unsigned            reg_access;         /* bit set of register access types represented by this context */
+    unsigned            ref_count;          /* reference count, see context_lock() and context_unlock() */
     int                 stopped;            /* OS kernel has stopped this context */
     int                 stopped_by_bp;      /* stopped by breakpoint instruction */
     ContextBreakpoint** stopped_by_cb;      /* stopped by ContextBreakpoint - NULL terminated list of triggered ContextBreakpoint's */

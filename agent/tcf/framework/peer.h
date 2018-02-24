@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -71,7 +71,7 @@ extern const char * peer_server_getprop(PeerServer * ps, const char * name, cons
 extern void peer_server_free(PeerServer * ps);
 
 /* Add peer server information */
-extern PeerServer * peer_server_add(PeerServer * ps, unsigned int stale_delta);
+extern PeerServer * peer_server_add(PeerServer * ps, unsigned stale_delta);
 
 /* Find peer server based on ID */
 extern PeerServer * peer_server_find(const char * id);

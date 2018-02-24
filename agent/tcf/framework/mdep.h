@@ -198,7 +198,7 @@ extern ssize_t pwrite(int fd, const void * buf, size_t size, off_t offset);
 #define environ taskIdCurrent->ppEnviron
 
 #if _WRS_VXWORKS_MAJOR < 6 || _WRS_VXWORKS_MAJOR == 6 && _WRS_VXWORKS_MINOR < 9
-typedef unsigned int uintptr_t;
+typedef unsigned uintptr_t;
 #endif
 
 typedef unsigned long useconds_t;

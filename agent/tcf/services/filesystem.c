@@ -680,14 +680,14 @@ static IORequest * create_io_request(char * token, OpenFileInfo * handle, int ty
 
 static void command_open(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
-    unsigned int flags;
+    unsigned flags;
     FileAttrs attrs;
     OpenFileInfo * handle = NULL;
     IORequest * req = NULL;
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
-    flags = (unsigned int) json_read_ulong(&c->inp);
+    flags = (unsigned)json_read_ulong(&c->inp);
     json_test_char(&c->inp, MARKER_EOA);
     memset(&attrs, 0, sizeof(FileAttrs));
 #if defined(_WIN32) || defined(__CYGWIN__)

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -158,7 +158,7 @@ void peer_server_free(PeerServer * s) {
     loc_free(s);
 }
 
-PeerServer * peer_server_add(PeerServer * n, unsigned int stale_delta) {
+PeerServer * peer_server_add(PeerServer * n, unsigned stale_delta) {
     PeerServer ** sp = &peers;
     PeerServer * s;
     int type = PS_EVENT_ADDED;

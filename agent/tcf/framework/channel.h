@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -49,7 +49,7 @@ struct TCFBroadcastGroup {
     unsigned char buf[256];
     OutputStream out;                   /* Broadcast stream */
     LINK channels;                      /* Channels in group */
-    unsigned int ref_count;             /* reference count, see broadcast_group_lock() and broadcast_group_unlock() */
+    unsigned ref_count;                 /* reference count, see broadcast_group_lock() and broadcast_group_unlock() */
 };
 
 enum {
