@@ -971,6 +971,7 @@ int crawl_stack_frame_microblaze(StackFrame * frame, StackFrame * down) {
         reg_data[def->dwarf_id].v = (uint32_t)v;
         reg_data[def->dwarf_id].o = REG_VAL_OTHER;
         if (def->dwarf_id == REG_PC_INDEX) pc = (uint32_t)v;
+        if (def->dwarf_id == REG_SP_INDEX && v == 0) return 0;
     }
 
     if (trace_instructions() < 0) return -1;

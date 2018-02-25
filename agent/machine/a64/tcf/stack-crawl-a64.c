@@ -1124,9 +1124,10 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
     for (i = 0; i < MEM_CACHE_SIZE; i++) mem_cache[i].size = 0;
 
     for (def = defs; def->name; def++) {
-        if (def->dwarf_id == 31) {
-            if (read_reg_value(frame, def, &reg_data[def->dwarf_id].v) < 0) continue;
-            reg_data[def->dwarf_id].o = REG_VAL_OTHER;
+        if (def->dwarf_id == REG_ID_SP) {
+            if (read_reg_value(frame, def, &reg_data[REG_ID_SP].v) < 0) continue;
+            if (reg_data[REG_ID_SP].v == 0) return 0;
+            reg_data[REG_ID_SP].o = REG_VAL_OTHER;
         }
         else if (def->dwarf_id >= 0 && def->dwarf_id <= 31) {
             reg_data[def->dwarf_id].v = (uint32_t)(def - defs);
