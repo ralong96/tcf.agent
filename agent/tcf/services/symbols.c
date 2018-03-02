@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -313,6 +313,13 @@ static void command_get_context_cache_client(void * x) {
             json_write_string(&c->out, "LocalEntryOffset");
             write_stream(&c->out, ':');
             json_write_ulong(&c->out, props.local_entry_offset);
+            write_stream(&c->out, ',');
+        }
+
+        if (props.linkage_name != NULL) {
+            json_write_string(&c->out, "LinkageName");
+            write_stream(&c->out, ':');
+            json_write_string(&c->out, props.linkage_name);
             write_stream(&c->out, ',');
         }
 

@@ -4293,19 +4293,44 @@ int get_symbol_flags(const Symbol * sym, SYM_FLAGS * flags) {
     return 0;
 }
 
-int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
+static void get_local_entry_offset(const Symbol * sym, SymbolProperties * props) {
+    ELF_SymbolInfo elf_sym_info;
+
 #ifndef STO_PPC64_LOCAL_MASK
 #  define STO_PPC64_LOCAL_BIT 5
 #  define STO_PPC64_LOCAL_MASK    (7 << STO_PPC64_LOCAL_BIT)
 #endif
 #define IS_PPC64_V2(elfsym) ((elfsym->file->machine == EM_PPC64) && (elfsym->file->flags & 0x3) == 2)
 
-    ELF_SymbolInfo elf_sym_info;
+    /* PowerPC64 ABIv2 computes local offset from st_other */
+    if (sym->tbl != NULL) {
+        /* Only do that on PPC64 v2 */
+        if (!IS_PPC64_V2(sym->tbl)) return;
+        unpack_elf_symbol_info(sym->tbl, sym->index, &elf_sym_info);
+    }
+    else {
+        Symbol * elf_symbol = NULL;
+        /* From Dwarf object to Elf symbol */
+        map_to_sym_table(sym->obj, &elf_symbol);
+        if (elf_symbol == NULL) return;
+        if (!IS_PPC64_V2(elf_symbol->tbl)) return;
+        unpack_elf_symbol_info(elf_symbol->tbl, elf_symbol->index, &elf_sym_info);
+    }
+    /* We can compute the offset now */
+    props->local_entry_offset = (((1 << (((elf_sym_info.other) & STO_PPC64_LOCAL_MASK) >> STO_PPC64_LOCAL_BIT)) >> 2) << 2);
+}
+
+int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
     ObjectInfo * obj = sym->obj;
+    Trap trap;
+
     assert(sym->magic == SYMBOL_MAGIC);
     memset(props, 0, sizeof(SymbolProperties));
     if (sym->base || is_std_type_pseudo_symbol(sym)) return 0;
     if (unpack(sym) < 0) return -1;
+
+    if (!set_trap(&trap)) return -1;
+
     if (obj != NULL) {
         U8_T n = 0;
         if (obj->mTag == TAG_base_type) {
@@ -4317,22 +4342,16 @@ int get_symbol_props(const Symbol * sym, SymbolProperties * props) {
         }
     }
 
-    /* PowerPC64 ABIv2 computes local offset from st_other */
-    if (sym->tbl != NULL) {
-        /* Only do that on PPC64 v2 */
-        if (!IS_PPC64_V2(sym->tbl)) return 0;
-        unpack_elf_symbol_info(sym->tbl, sym->index, &elf_sym_info);
+    get_local_entry_offset(sym, props);
+
+    if (obj != NULL) {
+        const char * linkage_name = get_linkage_name(obj);
+        if (linkage_name != NULL && linkage_name != obj->mName) {
+            props->linkage_name = linkage_name;
+        }
     }
-    else {
-        Symbol * elf_symbol = NULL;
-        /* From Dwarf object to Elf symbol */
-        map_to_sym_table(sym->obj, &elf_symbol);
-        if (elf_symbol == NULL) return 0;
-        if (!IS_PPC64_V2(elf_symbol->tbl)) return 0;
-        unpack_elf_symbol_info(elf_symbol->tbl, elf_symbol->index, &elf_sym_info);
-    }
-    /* We can compute the offset now */
-    props->local_entry_offset = (((1 << (((elf_sym_info.other) & STO_PPC64_LOCAL_MASK) >> STO_PPC64_LOCAL_BIT)) >> 2) << 2);
+
+    clear_trap(&trap);
     return 0;
 }
 

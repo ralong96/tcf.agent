@@ -1923,7 +1923,9 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
             info->type = STT_FUNC;
         }
     }
-    else if (IS_PPC64_FUNC_OPD(file, info)) info->type = STT_FUNC;
+    else if (IS_PPC64_FUNC_OPD(file, info)) {
+        info->type = STT_FUNC;
+    }
 }
 
 static int create_symbol_names_hash(ELF_Section * tbl) {

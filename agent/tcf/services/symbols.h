@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -93,6 +93,7 @@ typedef struct SymbolProperties {
     int decimal_scale;  /* The exponent of the base ten scale factor to be applied to an instance of the type */
     unsigned bit_stride;
     unsigned local_entry_offset; /* Only PPC64 v2 supports it */
+    const char * linkage_name;
 } SymbolProperties;
 
 /* Symbol properties update policies */
