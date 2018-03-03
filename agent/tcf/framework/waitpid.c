@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -52,11 +52,9 @@ void add_waitpid_listener(WaitPIDListener * listener, void * args) {
 
 #if defined(_WIN32) || defined(__CYGWIN__)
 
-#define MAX_HANDLES 64
-
 typedef struct WaitPIDThread {
     DWORD thread;
-    HANDLE handles[MAX_HANDLES];
+    HANDLE handles[MAXIMUM_WAIT_OBJECTS];
     DWORD handle_cnt;
     int shutdown;
     struct WaitPIDThread * next;
@@ -84,13 +82,14 @@ static DWORD WINAPI waitpid_thread_func(LPVOID x) {
     check_error_win32(WaitForSingleObject(semaphore, INFINITE) != WAIT_FAILED);
     while (!thread->shutdown) {
         DWORD n = 0;
-        HANDLE arr[MAX_HANDLES];
+        HANDLE arr[MAXIMUM_WAIT_OBJECTS];
         DWORD cnt = thread->handle_cnt;
         memcpy(arr, thread->handles, cnt * sizeof(HANDLE));
         check_error_win32(ReleaseSemaphore(semaphore, 1, 0));
         n = WaitForMultipleObjects(cnt, arr, FALSE, INFINITE);
         check_error_win32(n != WAIT_FAILED);
         check_error_win32(WaitForSingleObject(semaphore, INFINITE) != WAIT_FAILED);
+        assert(n != WAIT_TIMEOUT);
         if (n > 0) {
             assert(thread->handles[n] == arr[n]);
             post_event(waitpid_event, thread->handles[n]);
@@ -111,7 +110,7 @@ void add_waitpid_process(int pid) {
     WaitPIDThread * thread = threads;
     assert(listener_cnt > 0);
     check_error_win32(WaitForSingleObject(semaphore, INFINITE) != WAIT_FAILED);
-    while (thread != NULL && thread->handle_cnt >= MAX_HANDLES) thread = thread->next;
+    while (thread != NULL && thread->handle_cnt >= MAXIMUM_WAIT_OBJECTS) thread = thread->next;
     if (thread == NULL) {
         thread = (WaitPIDThread *)loc_alloc_zero(sizeof(WaitPIDThread));
         thread->next = threads;
