@@ -103,7 +103,7 @@ static int read_byte(uint64_t addr, uint8_t * bt) {
     c = mem_cache + mem_cache_idx;
     c->addr = addr;
     c->size = sizeof(c->data);
-    if (context_read_mem(stk_ctx, addr, c->data, c->size) < 0) {
+    if (context_read_mem(stk_ctx, (ContextAddress)addr, c->data, c->size) < 0) {
 #if ENABLE_ExtendedMemoryErrorReports
         int error = errno;
         MemoryErrorInfo info;
