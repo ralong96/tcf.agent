@@ -2452,7 +2452,6 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
         }
         else if (def->dwarf_id == 13 || def->dwarf_id == 15) {
             if (read_reg_value(frame, def, &v) < 0) return -1;
-            if (def->dwarf_id == 13 && v == 0) return 0;
             reg_data[def->dwarf_id].v = (uint32_t)v;
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
         }
@@ -2472,6 +2471,8 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
             }
         }
     }
+
+    if (spsr_data.o == 0 && reg_data[13].v == 0) return 0;
 
     if (trace_instructions() < 0) return -1;
 
