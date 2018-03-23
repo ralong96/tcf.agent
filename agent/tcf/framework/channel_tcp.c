@@ -154,10 +154,33 @@ static void tcp_channel_read_done(void * x);
 static void handle_channel_msg(void * x);
 
 #if ENABLE_SSL
+#ifndef OPENSSL_VERSION_NUMBER
+#  define OPENSSL_VERSION_NUMBER 0x00000000
+#endif
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000
+void DH_get0_pqg(const DH * dh, const BIGNUM ** p, const BIGNUM ** q, const BIGNUM ** g) {
+    if (p != NULL) *p = dh->p;
+    if (q != NULL) *q = dh->q;
+    if (g != NULL) *g = dh->g;
+}
+int DH_set0_pqg(DH * dh, BIGNUM * p, BIGNUM * q, BIGNUM * g) {
+    /* q is optional */
+    if (p == NULL || g == NULL) return 0;
+    if (q != NULL) dh->length = BN_num_bits(q);
+    BN_free(dh->p);
+    BN_free(dh->q);
+    BN_free(dh->g);
+    dh->p = p;
+    dh->q = q;
+    dh->g = g;
+    return 1;
+}
+#endif
+
 static const char * issuer_name = "TCF";
 static const char * tcf_dir = "/etc/tcf";
 static SSL_CTX * ssl_ctx = NULL;
-static X509 * ssl_cert = NULL;
 static RSA * rsa_key = NULL;
 
 static void ini_ssl(void) {
@@ -219,6 +242,45 @@ static int certificate_verify_callback(int preverify_ok, X509_STORE_CTX * ctx) {
     if (err) trace(LOG_ALWAYS, "Cannot read certificate %s: %s", fnm, errno_to_str(err));
     else if (!found) trace(LOG_ALWAYS, "Authentication failure: invalid certificate");
     return err == 0 && found;
+}
+
+/* Created by: openssl dhparam -5 -C 1024 */
+/* Note: Java prior to 1.7 does not support Diffie-Hellman parameters longer than 1024 bits */
+/* Note: Bug in  OpenSSL 1.0.2: If generator is not 2 or 5, dh->g=generator is not a usable generator */
+static DH * get_dh1024(void) {
+    static unsigned char dhp_1024[] = {
+        0xD0, 0x8E, 0x12, 0x70, 0x45, 0x22, 0x7D, 0x83, 0x06, 0xB5,
+        0x49, 0xD8, 0x86, 0x34, 0x3A, 0x8E, 0x1D, 0xE9, 0x6C, 0x84,
+        0x3A, 0x83, 0x2E, 0x0E, 0xD0, 0x7B, 0x5F, 0x69, 0x65, 0xFD,
+        0xD4, 0x0A, 0x97, 0x6A, 0x1A, 0xF6, 0xB2, 0xCD, 0xB4, 0x33,
+        0x81, 0x9C, 0xC0, 0x45, 0x52, 0x73, 0xA5, 0xEC, 0x32, 0x9D,
+        0xAE, 0x90, 0x73, 0x24, 0x53, 0x28, 0x2E, 0x35, 0x22, 0xBC,
+        0xD7, 0x43, 0xCA, 0x3E, 0xD4, 0x32, 0x75, 0xB6, 0xBD, 0xD4,
+        0x8E, 0x58, 0x7B, 0x1F, 0x61, 0xCF, 0x62, 0x34, 0x95, 0xA0,
+        0x36, 0x78, 0x98, 0xEB, 0xD0, 0x2A, 0xDC, 0x31, 0x56, 0x02,
+        0x3E, 0xAB, 0x5D, 0x36, 0x65, 0x57, 0x24, 0x79, 0x27, 0x6F,
+        0xCE, 0x65, 0x29, 0xC3, 0x97, 0xFC, 0x39, 0x31, 0x3B, 0x9E,
+        0x7F, 0xA8, 0xEA, 0x68, 0x2E, 0x19, 0x06, 0x26, 0x3F, 0x9F,
+        0x29, 0x07, 0x30, 0xD7, 0xFA, 0xB7, 0xD6, 0xCF
+    };
+    static unsigned char dhg_1024[] = {
+        0x05
+    };
+
+    BIGNUM * dhp_bn = NULL;
+    BIGNUM * dhg_bn = NULL;
+    DH * dh = DH_new();
+
+    if (dh == NULL) return NULL;
+    dhp_bn = BN_bin2bn(dhp_1024, sizeof(dhp_1024), NULL);
+    dhg_bn = BN_bin2bn(dhg_1024, sizeof(dhg_1024), NULL);
+    if (dhp_bn == NULL || dhg_bn == NULL || !DH_set0_pqg(dh, dhp_bn, NULL, dhg_bn)) {
+        BN_free(dhp_bn);
+        BN_free(dhg_bn);
+        DH_free(dh);
+        return NULL;
+    }
+    return dh;
 }
 #endif /* ENABLE_SSL */
 
@@ -829,6 +891,10 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
             const char * agent_id = get_agent_id();
             unsigned char buf[SSL_MAX_SSL_SESSION_ID_LENGTH];
             unsigned buf_pos = 0;
+            char fnm[FILE_PATH_SIZE];
+            FILE * fp = NULL;
+            DH * ssl_dh = NULL;
+            X509 * ssl_cert = NULL;
 
             ini_ssl();
             ssl_ctx = SSL_CTX_new(SSLv23_method());
@@ -838,6 +904,41 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
                 agent_id++;
             }
             if (!SSL_CTX_set_session_id_context(ssl_ctx, buf, buf_pos)) err = set_ssl_errno();
+            if (!err && (ssl_dh = get_dh1024()) == NULL) err = set_ssl_errno();
+            if (!err) {
+                int codes = 0;
+                if (!DH_check(ssl_dh, &codes)) {
+                    err = set_ssl_errno();
+                }
+                else {
+                    const BIGNUM * p = NULL;
+                    const BIGNUM * g = NULL;
+                    DH_get0_pqg(ssl_dh, &p, NULL, &g);
+                    if (BN_is_word(g, DH_GENERATOR_2)) {
+                        long residue = BN_mod_word(p, 24);
+                        if (residue == 11 || residue == 23) {
+                            codes &= ~DH_NOT_SUITABLE_GENERATOR;
+                        }
+                    }
+                    if (codes & DH_UNABLE_TO_CHECK_GENERATOR) {
+                        err = set_errno(ERR_OTHER, "DH_check: failed to test generator");
+                    }
+                    else if (codes & DH_NOT_SUITABLE_GENERATOR) {
+                        err = set_errno(ERR_OTHER, "DH_check: not a suitable generator");
+                    }
+                    else if (codes & DH_CHECK_P_NOT_PRIME) {
+                        err = set_errno(ERR_OTHER, "DH_check: not a prime");
+                    }
+                    else if (codes & DH_CHECK_P_NOT_SAFE_PRIME) {
+                        err = set_errno(ERR_OTHER, "DH_check: not a safe prime");
+                    }
+                }
+                if (err) {
+                    DH_free(ssl_dh);
+                    ssl_dh = NULL;
+                }
+            }
+            if (!err && !SSL_CTX_set_tmp_dh(ssl_ctx, ssl_dh)) err = set_ssl_errno();
             if (err) {
                 SSL_CTX_free(ssl_ctx);
                 ssl_ctx = NULL;
@@ -845,12 +946,6 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
                 set_errno(err, "Cannot create SSL context");
                 return NULL;
             }
-        }
-
-        if (ssl_cert == NULL) {
-            int err = 0;
-            char fnm[FILE_PATH_SIZE];
-            FILE * fp = NULL;
             snprintf(fnm, sizeof(fnm), "%s/ssl/local.priv", tcf_dir);
             if (!err && (fp = fopen(fnm, "r")) == NULL) err = errno;
             if (!err && (rsa_key = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL)) == NULL) err = set_ssl_errno();
@@ -861,7 +956,14 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
                 if (!err && (ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL)) == NULL) err = set_ssl_errno();
                 if (!err && fclose(fp) != 0) err = errno;
             }
+            if (!err) {
+                SSL_CTX_use_certificate(ssl_ctx, ssl_cert);
+                SSL_CTX_use_RSAPrivateKey(ssl_ctx, rsa_key);
+                if (!SSL_CTX_check_private_key(ssl_ctx)) err = set_ssl_errno();
+            }
             if (err) {
+                SSL_CTX_free(ssl_ctx);
+                ssl_ctx = NULL;
                 trace(LOG_ALWAYS, "Cannot read SSL certificate %s: %s", fnm, errno_to_str(err));
                 set_errno(err, "Cannot read SSL certificate");
                 return NULL;
@@ -882,9 +984,20 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
         }
 #endif
         ssl = SSL_new(ssl_ctx);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000
+        SSL_set_min_proto_version(ssl, TLS1_1_VERSION);
+#endif
+        if (log_mode & LOG_PROTOCOL) {
+            int index = 0;
+            const char * name = NULL;
+            trace(LOG_PROTOCOL, "Enabled SSL cipher suites:");
+            for (index = 0;; index++) {
+                name = SSL_get_cipher_list(ssl, index);
+                if (name == NULL) break;
+                trace(LOG_PROTOCOL, "  %s", name);
+            }
+        }
         SSL_set_fd(ssl, sock);
-        SSL_use_certificate(ssl, ssl_cert);
-        SSL_use_RSAPrivateKey(ssl, rsa_key);
         if (server) SSL_set_accept_state(ssl);
         else SSL_set_connect_state(ssl);
 #endif
@@ -1480,7 +1593,7 @@ void generate_ssl_certificate(void) {
     FILE * fp = NULL;
 
     ini_ssl();
-#if defined(OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x10100001
+#if OPENSSL_VERSION_NUMBER >= 0x10100000
     /* RSA_generate_key() is deprecated in OpenSSL 1.1.0 */
     bne = BN_new();
     rsa = RSA_new();
