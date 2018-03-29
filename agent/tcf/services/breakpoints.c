@@ -291,10 +291,11 @@ static int print_not_stopped_contexts(Context * ctx) {
     Context * grp;
     if (is_all_stopped(ctx)) return 1;
     grp = context_get_group(ctx, CONTEXT_GROUP_STOP);
+    fprintf(stderr, "Context group '%s':\n", grp->name ? grp->name : grp->id);
     for (l = context_root.next; l != &context_root; l = l->next) {
         Context * c = ctxl2ctxp(l);
         if (context_get_group(c, CONTEXT_GROUP_STOP) != grp) continue;
-        printf("ID %s, stopped %d, exiting %d, exited %d, signal %d\n",
+        fprintf(stderr, "  ID %s, stopped %d, exiting %d, exited %d, signal %d\n",
             c->id, c->stopped, c->exiting, c->exited, c->signal);
     }
     return 0;
