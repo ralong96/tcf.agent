@@ -27,7 +27,7 @@
 extern DisassemblyResult * disassemble_microblaze(uint8_t * buf,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params);
 
-extern DisassemblyResult * disassemble_microblaze_x(uint8_t * buf,
+extern DisassemblyResult * disassemble_microblaze64(uint8_t * buf,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params);
 
 #endif /* D_disassembler_microblaze */

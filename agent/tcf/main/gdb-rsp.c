@@ -45,7 +45,7 @@
 #include <machine/powerpc/tcf/cpu-regs-gdb.h>
 #include <machine/ppc64/tcf/cpu-regs-gdb.h>
 #include <machine/microblaze/tcf/cpu-regs-gdb.h>
-#include <machine/microblazex/tcf/cpu-regs-gdb.h>
+#include <machine/microblaze64/tcf/cpu-regs-gdb.h>
 
 #include <tcf/main/gdb-rsp.h>
 
@@ -275,9 +275,9 @@ static const char * get_regs(GdbClient * c) {
     if (strcmp(c->server->isa, "ppc64") == 0) return cpu_regs_gdb_ppc64;
     if (strcmp(c->server->isa, "power64") == 0) return cpu_regs_gdb_ppc64;
     if (strcmp(c->server->isa, "microblaze") == 0) return cpu_regs_gdb_microblaze;
-    if (strcmp(c->server->isa, "microblazex") == 0) return cpu_regs_gdb_microblazex;
+    if (strcmp(c->server->isa, "microblaze64") == 0) return cpu_regs_gdb_microblaze64;
     if (strcmp(c->server->isa, "mb") == 0) return cpu_regs_gdb_microblaze;
-    if (strcmp(c->server->isa, "mbx") == 0) return cpu_regs_gdb_microblazex;
+    if (strcmp(c->server->isa, "mb64") == 0) return cpu_regs_gdb_microblaze64;
     set_fmt_errno(ERR_OTHER, "Unsupported ISA %s", c->server->isa);
     return NULL;
 }
@@ -299,7 +299,7 @@ static int check_process_isa(GdbClient * c, Context * prs) {
             if (strcmp(isa.def, "PPC") == 0) return regs == cpu_regs_gdb_powerpc;
             if (strcmp(isa.def, "PPC64") == 0) return regs == cpu_regs_gdb_ppc64;
             if (strcmp(isa.def, "MicroBlaze") == 0) return regs == cpu_regs_gdb_microblaze;
-            if (strcmp(isa.def, "MicroBlazeX") == 0) return regs == cpu_regs_gdb_microblazex;
+            if (strcmp(isa.def, "MicroBlaze64") == 0) return regs == cpu_regs_gdb_microblaze64;
         }
     }
     return 0;
@@ -548,7 +548,7 @@ static void dispose_client(ClientConnection * cc) {
 static char hex_digit(unsigned d) {
     assert(d < 0x10);
     if (d < 10) return (char)('0' + d);
-    /* Note: don't use capital 'E' - GDB can take as error reply */
+    /* Note: don't use capital 'E' - GDB can take it as error reply */
     return (char)('a' + d - 10);
 }
 
@@ -1886,8 +1886,8 @@ int ini_gdb_rsp(const char * conf) {
         isa = "powerpc";
 #elif defined(__MICROBLAZE__)
         isa = "microblaze";
-#elif defined(__MICROBLAZEX__)
-        isa = "microblazex";
+#elif defined(__MICROBLAZE64__)
+        isa = "microblaze64";
 #else
         isa = "i386";
 #endif

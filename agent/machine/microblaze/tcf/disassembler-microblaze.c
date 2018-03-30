@@ -1503,7 +1503,7 @@ DisassemblyResult * disassemble_microblaze(uint8_t * code,
     return disassemble_instr(code, addr, size, params);
 }
 
-DisassemblyResult * disassemble_microblaze_x(uint8_t * code,
+DisassemblyResult * disassemble_microblaze64(uint8_t * code,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params) {
     en_64_bit = 1;
     return disassemble_instr(code, addr, size, params);

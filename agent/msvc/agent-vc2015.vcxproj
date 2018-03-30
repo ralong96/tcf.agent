@@ -360,7 +360,7 @@
     <ClInclude Include="..\machine\a64\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\arm\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\i386\tcf\cpu-regs-gdb.h" />
-    <ClInclude Include="..\machine\microblazex\tcf\cpu-regs-gdb.h" />
+    <ClInclude Include="..\machine\microblaze64\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\microblaze\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\microblaze\tcf\cpudefs-mdep.h" />
     <ClInclude Include="..\machine\microblaze\tcf\disassembler-microblaze.h" />

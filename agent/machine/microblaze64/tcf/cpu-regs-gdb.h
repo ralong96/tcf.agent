@@ -13,14 +13,14 @@
  *     Xilinx - initial API and implementation
  *******************************************************************************/
 
-#ifndef D_cpu_regs_gdb_microblazex
-#define D_cpu_regs_gdb_microblazex
+#ifndef D_cpu_regs_gdb_microblaze64
+#define D_cpu_regs_gdb_microblaze64
 
 #include <tcf/config.h>
 
-static const char * cpu_regs_gdb_microblazex =
-"<architecture>microblazex</architecture>\n"
-"<feature name='org.gnu.gdb.microblazex.core'>\n"
+static const char * cpu_regs_gdb_microblaze64 =
+"<architecture>microblaze64</architecture>\n"
+"<feature name='org.gnu.gdb.microblaze64.core'>\n"
 "  <reg name='r0' bitsize='64' id='0' regnum='0'/>\n"
 "  <reg name='r1' bitsize='64' id='1' type='data_ptr'/>\n"
 "  <reg name='r2' bitsize='64' id='2'/>\n"
@@ -82,4 +82,4 @@ static const char * cpu_regs_gdb_microblazex =
 "  <reg name='shr' bitsize='64' id='58'/>\n"
 "</feature>\n";
 
-#endif /* D_cpu_regs_gdb_microblazex */
+#endif /* D_cpu_regs_gdb_microblaze64 */
