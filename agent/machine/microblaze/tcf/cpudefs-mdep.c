@@ -194,12 +194,14 @@ static int get_next_address(Context * ctx, ContextAddress * next_addr) {
         imm_bits = 16;
         imm = instr & 0xffff;
         if (read_mem(ctx, addr, &instr) < 0) return -1;
+        instr_addr = addr;
         addr += 4;
     }
     else if ((instr & 0xff000000) == 0xb2000000) {
         imm_bits = 24;
         imm = instr & 0xffffff;
         if (read_mem(ctx, addr, &instr) < 0) return -1;
+        instr_addr = addr;
         addr += 4;
     }
 
