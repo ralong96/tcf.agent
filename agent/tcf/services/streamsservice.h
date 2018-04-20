@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -14,7 +14,14 @@
  *******************************************************************************/
 
 /*
- * TCF Streams - generic streams service.
+ * TCF Streams - generic service to support streaming of data between host and remote agents.
+ *
+ * The service supports:
+ *  1. Asynchronous overlapped data streaming: multiple 'read' or 'write' command can be issued at same time, both peers
+ *  can continue data processing concurrently with data transmission.
+ *  2. Multicast: multiple clients can receive data from same stream.
+ *  3. Subscription model: clients are required to expressed interest in particular streams by subscribing for the service.
+ *  4. Flow control: peers can throttle data flow of individual streams by delaying 'read' and 'write' commands.
  */
 
 #ifndef D_streamsservice

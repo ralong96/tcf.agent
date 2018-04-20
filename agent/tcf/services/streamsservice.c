@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -14,7 +14,14 @@
  *******************************************************************************/
 
 /*
- * TCF Streams - generic streams service.
+ * TCF Streams - generic service to support streaming of data between host and remote agents.
+ *
+ * The service supports:
+ *  1. Asynchronous overlapped data streaming: multiple 'read' or 'write' command can be issued at same time, both peers
+ *  can continue data processing concurrently with data transmission.
+ *  2. Multicast: multiple clients can receive data from same stream.
+ *  3. Subscription model: clients are required to expressed interest in particular streams by subscribing for the service.
+ *  4. Flow control: peers can throttle data flow of individual streams by delaying 'read' and 'write' commands.
  */
 
 #include <tcf/config.h>
@@ -241,7 +248,7 @@ static void notify_data_available(void * args) {
     VirtualStream * stream = (VirtualStream *)args;
     assert(stream->magic == STREAM_MAGIC);
     stream->data_available_posted = 0;
-    if (stream->deleted || stream->eos_out) return;
+    if (stream->deleted || stream->eos_out || stream->callback == NULL) return;
     stream->callback(stream, VS_EVENT_DATA_AVAILABLE, stream->callback_args);
 }
 
@@ -249,7 +256,7 @@ static void notify_space_available(void * args) {
     VirtualStream * stream = (VirtualStream *)args;
     assert(stream->magic == STREAM_MAGIC);
     stream->space_available_posted = 0;
-    if (stream->deleted || stream->eos_inp) return;
+    if (stream->deleted || stream->eos_inp || stream->callback == NULL) return;
     stream->callback(stream, VS_EVENT_SPACE_AVAILABLE, stream->callback_args);
 }
 
@@ -702,7 +709,6 @@ static void command_read(char * token, Channel * c) {
          * Handle reply with an error. If none error was detected, the reply
          * was sent back by virtual_stream_read() or delayed.
          */
-
         write_stringz(&c->out, "R");
         write_stringz(&c->out, token);
         write_stringz(&c->out, "null");
@@ -797,7 +803,6 @@ static void command_write(char * token, Channel * c) {
          * Handle reply with an error. If none error was detected, the reply
          * was sent back by virtual_stream_write() or delayed.
          */
-
         write_stringz(&c->out, "R");
         write_stringz(&c->out, token);
         write_errno(&c->out, err);
