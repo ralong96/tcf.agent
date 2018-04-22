@@ -1491,7 +1491,6 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
                 if (state != EOF) {
                     Context * prs = ctx->parent;
                     Context * ctx2 = create_context(pid2id(child_pid, EXT(prs)->pid));
-                    trace(LOG_ALWAYS, "error: lost clone %s", ctx2->id);
                     EXT(ctx2)->pid = child_pid;
                     EXT(ctx2)->attach_mode = EXT(prs)->attach_mode;
                     EXT(ctx2)->detach_req = EXT(prs)->detach_req;
