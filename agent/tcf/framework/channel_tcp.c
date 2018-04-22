@@ -933,12 +933,12 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
                         err = set_errno(ERR_OTHER, "DH_check: not a safe prime");
                     }
                 }
-                if (err) {
-                    DH_free(ssl_dh);
-                    ssl_dh = NULL;
-                }
             }
             if (!err && !SSL_CTX_set_tmp_dh(ssl_ctx, ssl_dh)) err = set_ssl_errno();
+            if (ssl_dh != NULL) {
+                DH_free(ssl_dh);
+                ssl_dh = NULL;
+            }
             if (err) {
                 SSL_CTX_free(ssl_ctx);
                 ssl_ctx = NULL;
