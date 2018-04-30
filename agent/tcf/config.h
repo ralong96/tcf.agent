@@ -362,4 +362,8 @@
 #  define ENABLE_LibWebSockets    0
 #endif
 
+#if !defined(ENABLE_HttpServer)
+#  define ENABLE_HttpServer       0
+#endif
+
 #endif /* D_config */
