@@ -1422,7 +1422,8 @@ static void connect_callback(PortFwConfig * config, int error) {
             config->recv_req.u.sio.flags = 0;
             config->recv_req.u.sio.bufp = config->inbuf;
             config->recv_req.u.sio.bufsz = IN_BUF_SIZE;
-        } else {
+        }
+        else {
             config->send_req.type = AsyncReqUser;
             config->send_req.u.user.func = user_send_func;
             config->send_req.u.user.data = config;

@@ -185,8 +185,7 @@ static void read_stream_done(Channel *c, void *client_data, int error) {
     err_json_syntax: return;
 }
 
-static void read_getconfig_struct(InputStream * inp, const char * name,
-        void * x) {
+static void read_getconfig_struct(InputStream * inp, const char * name, void * x) {
     PortConnection * conn = (PortConnection *) x;
 
     if (strcmp(name, "InputStream") == 0) conn->in_stream_id =
@@ -231,7 +230,8 @@ static void portcreate_cb(Channel * c, void * x, int error) {
     }
     if (error) {
         connect_port_callback(conn, error);
-    } else {
+    }
+    else {
         conn->pending = protocol_send_command(conn->server->channel, "PortForward",
                 "getConfig", getconfig_cb, conn);
         json_write_string(&conn->server->channel->out, conn->id);
@@ -309,8 +309,7 @@ static int send_packet(PortConnection * conn, char * buffer, size_t size) {
 
     assert (is_dispatch_thread());
     assert (conn->pending_write_request < MAX_STREAM_WRITE);
-    protocol_send_command(conn->server->channel, "Streams", "write", write_stream_done,
-            conn);
+    protocol_send_command(conn->server->channel, "Streams", "write", write_stream_done, conn);
     json_write_string(&conn->server->channel->out, conn->out_stream_id);
     write_stream(&conn->server->channel->out, 0);
     json_write_long(&conn->server->channel->out, size);
@@ -330,8 +329,7 @@ static int send_packet(PortConnection * conn, char * buffer, size_t size) {
     return 0;
 }
 
-static void read_getcapabilities_struct(InputStream * inp, const char * name,
-        void * x) {
+static void read_getcapabilities_struct(InputStream * inp, const char * name, void * x) {
     json_skip_object(inp);
 }
 
@@ -355,7 +353,8 @@ static void getcapabilities_cb(Channel * c, void * x, int error) {
     }
     if (error) {
         connect_port_callback(conn, error);
-    } else {
+    }
+    else {
         conn->pending = protocol_send_command(conn->server->channel, "PortForward",
                 "create", portcreate_cb, conn);
         write_stream(out, '{');
@@ -772,9 +771,11 @@ static void port_server_accept_done(void * x) {
          */
         if (server->auto_connect == 0) {
             port_connection_open(server, fd);
-        } else if (server->list == NULL || !server->list->connected || server->list->fd != -1) {
+        }
+        else if (server->list == NULL || !server->list->connected || server->list->fd != -1) {
             closesocket(fd);
-        } else {
+        }
+        else {
             port_connection_bind(server->list, fd);
         }
     }
@@ -927,14 +928,13 @@ static PortServer * create_server(Channel * c, PortAttribute * attrs) {
             server->accreq.u.acc.addr = server->addr_buf;
             server->accreq.u.acc.addrlen = server->addr_len;
             async_req_post(&server->accreq);
-            }
-        else
-            {
+        }
+        else {
             /* For UDP, automatically connect to the port since there is no
              * connection request we can detect.
              */
             server->auto_connect = 1;
-            }
+        }
         server->auto_connect_period = auto_connect_period;
 
         list_add_last(&server->link, &server_list);
@@ -943,11 +943,9 @@ static PortServer * create_server(Channel * c, PortAttribute * attrs) {
         server->attrs = attrs;
     }
     if (error == 0) return server;
-    else {
-        if (sock != -1) closesocket(sock);
-        loc_free(server);
-        return NULL ;
-    }
+    if (sock != -1) closesocket(sock);
+    loc_free(server);
+    return NULL ;
 }
 
 static void event_channel_closed(Channel * c) {
@@ -994,19 +992,17 @@ PortServer * create_port_server(Channel * c, PortAttribute * attrs, PortConnectC
         free_port_redirection_attrs(attrs);
         return NULL;
     }
-    else {
-        server->connect_callback = connect_callback;
-        server->disconnect_callback = disconnect_callback;
-        server->recv_callback = recv_callback;
-        server->callback_data = callback_data;
-        if (server->auto_connect) {
-            /* If auto connect mode is set, immediately try to connect to the
-             * port.  */
-            if (server->auto_connect_period == 0) server->auto_connect_period = 3;
-            port_connection_open(server, server->is_udp ? server->sock : -1);
-        }
-        return server;
+    server->connect_callback = connect_callback;
+    server->disconnect_callback = disconnect_callback;
+    server->recv_callback = recv_callback;
+    server->callback_data = callback_data;
+    if (server->auto_connect) {
+        /* If auto connect mode is set, immediately try to connect to the
+            * port.  */
+        if (server->auto_connect_period == 0) server->auto_connect_period = 3;
+        port_connection_open(server, server->is_udp ? server->sock : -1);
     }
+    return server;
 }
 
 int get_port_server_info(PortServer * server, PortServerInfo * info) {

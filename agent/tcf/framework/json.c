@@ -270,7 +270,7 @@ static const char * char2str(int ch, char * buf) {
     if (ch == MARKER_EOM) return "<eom>";
     if (ch == MARKER_EOA) return "<eoa>";
     if (ch >= ' ' && ch < 127) sprintf(buf, "'%c'", ch);
-    else sprintf(buf, "'\\%3o'", ch);
+    else sprintf(buf, "'\\%03o'", ch);
     return buf;
 }
 

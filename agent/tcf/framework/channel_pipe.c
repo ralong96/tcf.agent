@@ -790,6 +790,6 @@ ChannelServer * channel_pipe_server(PeerServer * server) {
     return NULL;
 }
 
-void ini_channel_pipe() {
+void ini_channel_pipe(void) {
 }
 #endif

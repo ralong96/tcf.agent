@@ -124,7 +124,8 @@ static void command_locator_redirect(char * token, Channel * c, void * args) {
             char * server_properties = channel_peer_to_json(ps);
             trace(LOG_TCFLOG, "%d: C %s Locator redirect %s", proxy->instance, token, server_properties);
             loc_free(server_properties);
-        } else {
+        }
+        else {
             trace(LOG_TCFLOG, "%d: C %s Locator redirect %s", proxy->instance, token, id);
         }
     }
@@ -449,7 +450,8 @@ void proxy_create(Channel * c1, Channel * c2) {
     c1->client_data = NULL;
     if (!c2_connected) {
         assert(c2->protocol == NULL);
-    } else {
+    }
+    else {
         c2->state = ChannelStateHelloReceived;
         notify_channel_closed(c2);
         protocol_release(c2->protocol);

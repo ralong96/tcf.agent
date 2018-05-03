@@ -482,7 +482,8 @@ static int lws_tcf_callback(struct lws * wsi, enum lws_callback_reasons reason, 
                 if (n < 0) {
                     data->c->outbuf.written = -1;
                     data->c->outbuf.error = errno;
-                } else {
+                }
+                else {
                     data->c->outbuf.written = n;
                     data->c->outbuf.error = 0;
                 }
