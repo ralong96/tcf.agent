@@ -16,6 +16,7 @@
 #ifndef D_config
 
 #define USE_HW_BPS 0
-#include "../../agent/tcf/config.h"
+
+#include <tcf/framework/config.h>
 
 #endif /* D_config */

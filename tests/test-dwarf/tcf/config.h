@@ -98,7 +98,7 @@
 #define ENABLE_ProfilerSST                      0
 #define ENABLE_ContextIdHashTable               0
 #define ENABLE_SignalHandlers                   0
-#define ENABLE_PortForwardProxy                 0
-#define ENABLE_LibWebSockets                    0
+
+#include <tcf/framework/config.h>
 
 #endif /* D_config */
