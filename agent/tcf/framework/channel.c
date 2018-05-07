@@ -218,10 +218,12 @@ void notify_channel_opened(Channel * c) {
     assert(c->state == ChannelStateConnected);
     if (c->notified_open) return;
     c->notified_open = 1;
+    channel_lock(c);
     for (i = 0; i < open_listeners_cnt; i++) {
         open_listeners[i](c);
     }
     notify_client_connected(&c->client);
+    channel_unlock(c);
 }
 
 void notify_channel_closed(Channel * c) {
@@ -229,10 +231,12 @@ void notify_channel_closed(Channel * c) {
     assert(c->state != ChannelStateConnected);
     if (!c->notified_open) return;
     c->notified_open = 0;
+    channel_lock(c);
     notify_client_disconnected(&c->client);
     for (i = 0; i < close_listeners_cnt; i++) {
         close_listeners[i](c);
     }
+    channel_unlock(c);
 }
 
 TCFBroadcastGroup * broadcast_group_alloc(void) {
@@ -396,7 +400,8 @@ void channel_unlock_with_msg(Channel * c, const char * msg) {
 }
 
 int is_channel_closed(Channel * c) {
-    return c->is_closed(c);
+    if (c->is_closed) return c->is_closed(c);
+    return c->state == ChannelStateDisconnected;
 }
 
 PeerServer * channel_peer_from_url(const char * url) {

@@ -14,42 +14,17 @@
  *******************************************************************************/
 
 /*
- * Implementation of HTTP interface.
+ * This module supports execution of TCF commands over HTTP connection.
  */
 
-#ifndef D_http
-#define D_http
+#ifndef D_http_tcf
+#define D_http_tcf
 
 #include <tcf/config.h>
 
 #include <tcf/framework/channel.h>
 
-typedef struct HttpParam {
-    char * name;
-    char * value;
-    struct HttpParam * next;
-} HttpParam;
+extern void http_connection_closed(OutputStream * out);
+extern ChannelServer * ini_http_tcf(PeerServer * ps);
 
-extern OutputStream * get_http_stream(void);
-
-extern HttpParam * get_http_headers(void);
-extern HttpParam * get_http_params(void);
-
-extern void http_content_type(const char * type);
-extern void http_send(char ch);
-extern void http_send_block(const char * buf, size_t size);
-extern void http_printf(const char * fmt, ...);
-
-extern void http_suspend(void);
-extern void http_resume(OutputStream * out);
-extern void http_flush(void);
-
-typedef struct HttpListener {
-    int (*get_page)(const char * uri);
-} HttpListener;
-
-extern void add_http_listener(HttpListener * l);
-
-extern void ini_http(void);
-
-#endif /* D_http */
+#endif /* D_http_tcf */

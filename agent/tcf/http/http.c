@@ -28,22 +28,24 @@
 #include <tcf/framework/errors.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/myalloc.h>
-#include <tcf/framework/streams.h>
 #include <tcf/framework/mdep-inet.h>
 #include <tcf/framework/asyncreq.h>
+#include <tcf/framework/protocol.h>
 #include <tcf/framework/link.h>
+#include <tcf/http/http-tcf.h>
 #include <tcf/http/http.h>
 
 typedef struct HttpServer {
     LINK link_all;
     LINK link_clients;
+    LINK link_cons;
     AsyncReqInfo req_acc;
     struct sockaddr * addr_buf;
     int addr_len;
     int sock;
 } HttpServer;
 
-typedef struct HttpClient {
+typedef struct HttpConnection {
     LINK link_all;
     HttpServer * server;
     int sock;
@@ -51,6 +53,8 @@ typedef struct HttpClient {
     struct sockaddr * addr_buf;
     AsyncReqInfo req_rd;
     AsyncReqInfo req_wr;
+    int read_posted;
+    int write_posted;
     char * recv_buf;
     size_t recv_pos;
     size_t recv_max;
@@ -71,83 +75,91 @@ typedef struct HttpClient {
     int page_code;
     int page_cache;
     const char * page_type;
-} HttpClient;
+    int suspended;
+    int sse;
+} HttpConnection;
 
 static LINK server_list;
 static HttpListener ** listener_arr = NULL;
 static unsigned listener_cnt = 0;
 static unsigned listener_max = 0;
-static OutputStream * out = NULL;
+static HttpConnection * current_con = NULL;
 
-#define out2client(x)  ((HttpClient *)((char *)(x) - offsetof(HttpClient, out.out)))
+#define all2server(x) ((HttpServer *)((char *)(x) - offsetof(HttpServer, link_all)))
+#define all2con(x) ((HttpConnection *)((char *)(x) - offsetof(HttpConnection, link_all)))
 
-static void clear_client(HttpClient * client) {
-    loc_free(client->hdrs_data);
-    loc_free(client->send_data);
-    loc_free(client->http_method);
-    loc_free(client->http_uri);
-    loc_free(client->http_ver);
-    while (client->http_args != NULL) {
-        HttpParam * h = client->http_args;
-        client->http_args = h->next;
+static void clear_connection_state(HttpConnection * con) {
+    loc_free(con->hdrs_data);
+    loc_free(con->send_data);
+    loc_free(con->http_method);
+    loc_free(con->http_uri);
+    loc_free(con->http_ver);
+    while (con->http_args != NULL) {
+        HttpParam * h = con->http_args;
+        con->http_args = h->next;
         loc_free(h->name);
         loc_free(h->value);
         loc_free(h);
     }
-    while (client->http_hdrs != NULL) {
-        HttpParam * h = client->http_hdrs;
-        client->http_hdrs = h->next;
+    while (con->http_hdrs != NULL) {
+        HttpParam * h = con->http_hdrs;
+        con->http_hdrs = h->next;
         loc_free(h->name);
         loc_free(h->value);
         loc_free(h);
     }
-    memset(&client->req_wr, 0, sizeof(client->req_wr));
-    client->recv_pos = 0;
-    client->http_method = NULL;
-    client->http_uri = NULL;
-    client->http_ver = NULL;
-    client->read_request_done = 0;
-    client->keep_alive = 0;
-    client->hdrs_data = NULL;
-    client->hdrs_size = 0;
-    client->hdrs_done = 0;
-    client->send_data = NULL;
-    client->send_size = 0;
-    client->send_done = 0;
-    client->page_code = 0;
-    client->page_cache = 0;
-    client->page_type = 0;
+    memset(&con->req_wr, 0, sizeof(con->req_wr));
+    con->recv_pos = 0;
+    con->http_method = NULL;
+    con->http_uri = NULL;
+    con->http_ver = NULL;
+    con->read_request_done = 0;
+    con->keep_alive = 0;
+    con->hdrs_data = NULL;
+    con->hdrs_size = 0;
+    con->hdrs_done = 0;
+    con->send_data = NULL;
+    con->send_size = 0;
+    con->send_done = 0;
+    con->page_code = 0;
+    con->page_cache = 0;
+    con->page_type = NULL;
 }
 
-static void close_client(HttpClient * client) {
-    clear_client(client);
-    closesocket(client->sock);
-    list_remove(&client->link_all);
-    loc_free(client->recv_buf);
-    loc_free(client->addr_buf);
-    loc_free(client);
+static void close_connection(HttpConnection * con) {
+    assert(!con->read_posted);
+    assert(!con->write_posted);
+    http_connection_closed(&con->out.out);
+    clear_connection_state(con);
+    closesocket(con->sock);
+    list_remove(&con->link_all);
+    loc_free(con->recv_buf);
+    loc_free(con->addr_buf);
+    loc_free(con);
 }
 
 OutputStream * get_http_stream(void) {
-    return out;
+    return &current_con->out.out;
 }
 
 HttpParam * get_http_params(void) {
-    HttpClient * client = out2client(out);
-    return client->http_args;
+    return current_con->http_args;
 }
 
 HttpParam * get_http_headers(void) {
-    HttpClient * client = out2client(out);
-    return client->http_hdrs;
+    return current_con->http_hdrs;
+}
+
+void http_content_type(const char * type) {
+    current_con->page_type = type;
 }
 
 void http_send(char ch) {
-    write_stream(out, (unsigned char)ch);
+    write_stream(&current_con->out.out, (unsigned char)ch);
 }
 
 void http_send_block(const char * buf, size_t size) {
-    write_block_stream(out, buf, size);
+    write_block_stream(&current_con->out.out, buf, size);
 }
 
 void http_printf(const char * fmt, ...) {
@@ -173,178 +185,253 @@ void http_printf(const char * fmt, ...) {
         mem = loc_realloc(mem, len);
         buf = (char *)mem;
     }
-    write_block_stream(out, buf, n);
+    write_block_stream(&current_con->out.out, buf, n);
     if (mem != NULL) loc_free(mem);
 }
 
 static void http_send_done(void * x) {
     AsyncReqInfo * req = (AsyncReqInfo *)x;
-    HttpClient * client = (HttpClient *)req->client_data;
-    ssize_t len = client->req_wr.u.sio.rval;
+    HttpConnection * con = (HttpConnection *)req->client_data;
+    ssize_t len = con->req_wr.u.sio.rval;
 
+    assert(con->write_posted);
     assert(is_dispatch_thread());
+    con->write_posted = 0;
 
-    if (len < 0) {
-        trace(LOG_ALWAYS,  "Socket write error: %s", errno_to_str(req->error));
-    }
-    else {
-        if (client->hdrs_done < client->hdrs_size) {
-            assert(client->req_wr.u.sio.bufp == client->hdrs_data + client->hdrs_done);
-            assert(client->req_wr.u.sio.bufsz == client->hdrs_size - client->hdrs_done);
-            client->hdrs_done += len;
-            if (client->hdrs_done < client->hdrs_size) {
-                client->req_wr.u.sio.bufp = client->hdrs_data + client->hdrs_done;
-                client->req_wr.u.sio.bufsz = client->hdrs_size - client->hdrs_done;
-                async_req_post(&client->req_wr);
+    if (len >= 0) {
+        if (con->hdrs_done < con->hdrs_size) {
+            assert(con->req_wr.u.sio.bufp == con->hdrs_data + con->hdrs_done);
+            assert(con->req_wr.u.sio.bufsz == con->hdrs_size - con->hdrs_done);
+            con->hdrs_done += len;
+            if (con->hdrs_done < con->hdrs_size) {
+                con->req_wr.u.sio.bufp = con->hdrs_data + con->hdrs_done;
+                con->req_wr.u.sio.bufsz = con->hdrs_size - con->hdrs_done;
+                con->write_posted = 1;
+                async_req_post(&con->req_wr);
                 return;
             }
         }
         else {
-            assert(client->req_wr.u.sio.bufp == client->send_data + client->send_done);
-            assert(client->req_wr.u.sio.bufsz == client->send_size - client->send_done);
-            client->send_done += len;
+            assert(con->req_wr.u.sio.bufp == con->send_data + con->send_done);
+            assert(con->req_wr.u.sio.bufsz == con->send_size - con->send_done);
+            con->send_done += len;
         }
-        if (client->send_done < client->send_size) {
-            client->req_wr.u.sio.bufp = client->send_data + client->send_done;
-            client->req_wr.u.sio.bufsz = client->send_size - client->send_done;
-            async_req_post(&client->req_wr);
+        if (con->send_done < con->send_size) {
+            con->req_wr.u.sio.bufp = con->send_data + con->send_done;
+            con->req_wr.u.sio.bufsz = con->send_size - con->send_done;
+            con->write_posted = 1;
+            async_req_post(&con->req_wr);
             return;
         }
-        if (client->keep_alive) {
-            clear_client(client);
-            client->req_rd.u.sio.bufp = client->recv_buf;
-            client->req_rd.u.sio.bufsz = client->recv_max;
-            async_req_post(&client->req_rd);
+        if (con->sse) {
+            if (con->out.pos > 0) {
+                con->send_done = 0;
+                loc_free(con->send_data);
+                get_byte_array_output_stream_data(&con->out, &con->send_data, &con->send_size);
+                con->req_wr.u.sio.bufp = con->send_data + con->send_done;
+                con->req_wr.u.sio.bufsz = con->send_size - con->send_done;
+                con->write_posted = 1;
+                async_req_post(&con->req_wr);
+            }
+            return;
+        }
+        if (con->keep_alive) {
+            clear_connection_state(con);
+            con->req_rd.u.sio.bufp = con->recv_buf;
+            con->req_rd.u.sio.bufsz = con->recv_max;
+            con->read_posted = 1;
+            async_req_post(&con->req_rd);
             return;
         }
     }
-    close_client(client);
+    close_connection(con);
 }
 
-static void send_reply(HttpClient * client) {
-    const char * reason = "OK";
+static void send_reply(HttpConnection * con) {
     unsigned i;
-
-    out = create_byte_array_output_stream(&client->out);
+    current_con = con;
+    create_byte_array_output_stream(&con->out);
     for (i = 0; i < listener_cnt; i++) {
-        if (listener_arr[i]->get_page(client->http_uri)) break;
+        if (listener_arr[i]->get_page(con->http_uri)) break;
     }
-    if (client->out.pos == 0) {
-        reason = "NOT FOUND";
-        client->page_code = 404;
-        http_printf("Not found: %s\n", client->http_uri);
+    if (con->suspended) {
+        current_con = NULL;
     }
-    get_byte_array_output_stream_data(&client->out, &client->send_data, &client->send_size);
-
-    out = create_byte_array_output_stream(&client->out);
-    if (client->page_code == 0) client->page_code = 200;
-    if (client->page_type == NULL) client->page_type = "text/html";
-    http_printf("HTTP/1.1 %d %s\n", client->page_code, reason);
-    http_printf("Content-Type: %s\n", client->page_type);
-    if (client->page_cache) {
-        http_printf("Cache-Control: private, max-age=300\n");
+    else if (current_con != NULL) {
+        http_flush();
     }
-    else {
-        http_printf("Cache-Control: no-cache\n");
-    }
-    if (client->keep_alive) {
-        http_printf("Connection: keep-alive\n");
-    }
-    http_printf("Content-Length: %u\n", (unsigned)client->send_size);
-    http_send('\n');
-    get_byte_array_output_stream_data(&client->out, &client->hdrs_data, &client->hdrs_size);
-    out = NULL;
-
-    client->req_wr.done = http_send_done;
-    client->req_wr.client_data = client;
-    client->req_wr.type = AsyncReqSend;
-    client->req_wr.u.sio.sock = client->sock;
-    client->req_wr.u.sio.bufp = client->hdrs_data;
-    client->req_wr.u.sio.bufsz = client->hdrs_size;
-    client->req_wr.u.sio.flags = 0;
-    async_req_post(&client->req_wr);
 }
 
-static void read_http_request(HttpClient * client) {
-    while (client->recv_pos > 0 && !client->read_request_done) {
+static void read_http_request(HttpConnection * con) {
+    while (con->recv_pos > 0 && !con->read_request_done) {
         unsigned i = 0;
-        while (client->recv_buf[i++] != '\n') {
-            if (i >= client->recv_pos) return;
+        while (con->recv_buf[i++] != '\n') {
+            if (i >= con->recv_pos) return;
         }
         if (i > 0) {
-            if (client->http_method == NULL) {
+            if (con->http_method == NULL) {
                 unsigned j = 0;
                 unsigned k = 0;
                 while (j < i) {
-                    char * s = client->recv_buf + j;
-                    while (j < i && client->recv_buf[j] > ' ') j++;
-                    while (j < i && client->recv_buf[j] <= ' ') client->recv_buf[j++] = 0;
+                    char * s = con->recv_buf + j;
+                    while (j < i && con->recv_buf[j] > ' ') j++;
+                    while (j < i && con->recv_buf[j] <= ' ') con->recv_buf[j++] = 0;
                     switch (k++) {
-                    case 0: client->http_method = loc_strdup(s); break;
-                    case 1: client->http_uri = loc_strdup(s); break;
-                    case 2: client->http_ver = loc_strdup(s); break;
+                    case 0: con->http_method = loc_strdup(s); break;
+                    case 1: con->http_uri = loc_strdup(s); break;
+                    case 2: con->http_ver = loc_strdup(s); break;
                     }
                 }
             }
             else {
                 unsigned j = 0;
                 unsigned k = i;
-                while (k > 0 && client->recv_buf[k - 1] <= ' ') client->recv_buf[--k] = 0;
+                while (k > 0 && con->recv_buf[k - 1] <= ' ') con->recv_buf[--k] = 0;
                 if (k == 0) {
-                    client->read_request_done = 1;
+                    con->read_request_done = 1;
                 }
                 else {
-                    while (j < k && client->recv_buf[j] != ':') j++;
+                    while (j < k && con->recv_buf[j] != ':') j++;
                     if (j < k) {
                         HttpParam * h = (HttpParam *)loc_alloc_zero(sizeof(HttpParam));
-                        client->recv_buf[j++] = 0;
-                        while (j < k && client->recv_buf[j] == ' ') client->recv_buf[j++] = 0;
-                        h->name = loc_strdup(client->recv_buf);
-                        h->value = loc_strdup(client->recv_buf + j);
-                        h->next = client->http_hdrs;
+                        con->recv_buf[j++] = 0;
+                        while (j < k && con->recv_buf[j] == ' ') con->recv_buf[j++] = 0;
+                        h->name = loc_strdup(con->recv_buf);
+                        h->value = loc_strdup(con->recv_buf + j);
+                        h->next = con->http_hdrs;
                         if (strcmp(h->name, "Connection") == 0 && strcmp(h->value, "keep-alive") == 0) {
-                            client->keep_alive = 1;
+                            con->keep_alive = 1;
                         }
-                        client->http_hdrs = h;
+                        con->http_hdrs = h;
                     }
                 }
             }
         }
-        memmove(client->recv_buf, client->recv_buf + i, client->recv_pos - i);
-        client->recv_pos -= i;
+        memmove(con->recv_buf, con->recv_buf + i, con->recv_pos - i);
+        con->recv_pos -= i;
     }
 }
 
 static void http_read_done(void * x) {
     AsyncReqInfo * req = (AsyncReqInfo *)x;
-    HttpClient * client = (HttpClient *)req->client_data;
+    HttpConnection * con = (HttpConnection *)req->client_data;
     ssize_t len = 0;
 
+    assert(con->read_posted);
     assert(is_dispatch_thread());
-    assert(client->req_rd.u.sio.bufp == client->recv_buf + client->recv_pos);
-    assert(client->req_rd.u.sio.bufsz == client->recv_max - client->recv_pos);
-    len = client->req_rd.u.sio.rval;
+    assert(con->req_rd.u.sio.bufp == con->recv_buf + con->recv_pos);
+    assert(con->req_rd.u.sio.bufsz == con->recv_max - con->recv_pos);
+    len = con->req_rd.u.sio.rval;
+    con->read_posted = 0;
 
     if (len < 0) {
-        close_client(client);
+        close_connection(con);
     }
     else if (len > 0) {
-        client->recv_pos += len;
-        assert(client->recv_pos <= client->recv_max);
-        read_http_request(client);
-        if (client->read_request_done) {
-            send_reply(client);
+        con->recv_pos += len;
+        assert(con->recv_pos <= con->recv_max);
+        read_http_request(con);
+        if (con->read_request_done) {
+            send_reply(con);
         }
         else {
-            if (client->recv_pos >= client->recv_max) {
-                client->recv_max *= 2;
-                client->recv_buf = (char *)loc_realloc(client->recv_buf, client->recv_max);
+            if (con->recv_pos >= con->recv_max) {
+                con->recv_max *= 2;
+                con->recv_buf = (char *)loc_realloc(con->recv_buf, con->recv_max);
             }
-            req->u.sio.bufp = client->recv_buf + client->recv_pos;
-            req->u.sio.bufsz = client->recv_max - client->recv_pos;
-            async_req_post(req);
+            req->u.sio.bufp = con->recv_buf + con->recv_pos;
+            req->u.sio.bufsz = con->recv_max - con->recv_pos;
+            con->read_posted = 1;
+            async_req_post(&con->req_rd);
         }
     }
+}
+
+void http_suspend(void) {
+    current_con->suspended = 1;
+}
+
+void http_resume(OutputStream * out) {
+    if (current_con == NULL) {
+        LINK * l, *n;
+        for (l = server_list.next; l != &server_list; l = l->next) {
+            HttpServer * s = all2server(l);
+            for (n = s->link_cons.next; n != &s->link_cons; n = n->next) {
+                HttpConnection * c = all2con(n);
+                if (out == &c->out.out) {
+                    assert(c->suspended);
+                    c->suspended = 0;
+                    current_con = c;
+                    break;
+                }
+            }
+        }
+    }
+    assert(current_con == NULL || &current_con->out.out == out);
+}
+
+void http_flush(void) {
+    HttpConnection * con = current_con;
+    const char * reason = "OK";
+
+    if (con->sse) {
+        con->suspended = 1;
+        if (!con->write_posted) {
+            con->send_done = 0;
+            loc_free(con->send_data);
+            get_byte_array_output_stream_data(&con->out, &con->send_data, &con->send_size);
+            con->req_wr.u.sio.bufp = con->send_data + con->send_done;
+            con->req_wr.u.sio.bufsz = con->send_size - con->send_done;
+            con->write_posted = 1;
+            async_req_post(&con->req_wr);
+        }
+        current_con = NULL;
+        return;
+    }
+
+    if (con->out.pos == 0 && con->page_type == NULL) {
+        reason = "NOT FOUND";
+        con->page_code = 404;
+        http_printf("Not found: %s\n", con->http_uri);
+    }
+    get_byte_array_output_stream_data(&con->out, &con->send_data, &con->send_size);
+
+    create_byte_array_output_stream(&con->out);
+    if (con->page_code == 0) con->page_code = 200;
+    if (con->page_type == NULL) con->page_type = "text/html";
+    http_printf("HTTP/1.1 %d %s\n", con->page_code, reason);
+    http_printf("Content-Type: %s\n", con->page_type);
+    con->sse = strcmp(con->page_type, "text/event-stream") == 0;
+
+    if (con->page_cache) {
+        http_printf("Cache-Control: private, max-age=300\n");
+    }
+    else {
+        http_printf("Cache-Control: no-cache\n");
+    }
+    if (con->keep_alive) {
+        http_printf("Connection: keep-alive\n");
+    }
+    if (con->sse) {
+        con->suspended = 1;
+    }
+    else {
+        http_printf("Content-Length: %u\n", (unsigned)con->send_size);
+    }
+    http_send('\n');
+    get_byte_array_output_stream_data(&con->out, &con->hdrs_data, &con->hdrs_size);
+
+    current_con = NULL;
+
+    con->req_wr.done = http_send_done;
+    con->req_wr.client_data = con;
+    con->req_wr.type = AsyncReqSend;
+    con->req_wr.u.sio.sock = con->sock;
+    con->req_wr.u.sio.bufp = con->hdrs_data;
+    con->req_wr.u.sio.bufsz = con->hdrs_size;
+    con->req_wr.u.sio.flags = 0;
+    con->write_posted = 1;
+    async_req_post(&con->req_wr);
 }
 
 static void http_server_accept_done(void * x) {
@@ -355,6 +442,7 @@ static void http_server_accept_done(void * x) {
         /* Server closed. */
         assert(list_is_empty(&server->link_all));
         assert(list_is_empty(&server->link_clients));
+        assert(list_is_empty(&server->link_cons));
         loc_free(server->addr_buf);
         loc_free(server);
         return;
@@ -363,29 +451,30 @@ static void http_server_accept_done(void * x) {
         trace(LOG_ALWAYS, "HTTP Socket accept failed: %s", errno_to_str(req->error));
     }
     else {
-        HttpClient * client = (HttpClient *)loc_alloc_zero(sizeof(HttpClient));
-        list_add_first(&client->link_all, &server->link_clients);
-        client->server = server;
-        client->sock = req->u.acc.rval;
-        client->addr_buf = loc_alloc(server->addr_len);
-        memcpy(client->addr_buf, server->addr_buf, server->addr_len);
-        client->addr_len = server->addr_len;
-        client->recv_max = 0x300;
-        client->recv_buf = (char *)loc_alloc(client->recv_max);
-        client->req_rd.done = http_read_done;
-        client->req_rd.client_data = client;
-        client->req_rd.type = AsyncReqRecv;
-        client->req_rd.u.sio.sock = client->sock;
-        client->req_rd.u.sio.bufp = client->recv_buf;
-        client->req_rd.u.sio.bufsz = client->recv_max;
-        client->req_rd.u.sio.flags = 0;
-        async_req_post(&client->req_rd);
+        HttpConnection * con = (HttpConnection *)loc_alloc_zero(sizeof(HttpConnection));
+        list_add_first(&con->link_all, &server->link_cons);
+        con->server = server;
+        con->sock = req->u.acc.rval;
+        con->addr_buf = loc_alloc(server->addr_len);
+        memcpy(con->addr_buf, server->addr_buf, server->addr_len);
+        con->addr_len = server->addr_len;
+        con->recv_max = 0x300;
+        con->recv_buf = (char *)loc_alloc(con->recv_max);
+        con->req_rd.done = http_read_done;
+        con->req_rd.client_data = con;
+        con->req_rd.type = AsyncReqRecv;
+        con->req_rd.u.sio.sock = con->sock;
+        con->req_rd.u.sio.bufp = con->recv_buf;
+        con->req_rd.u.sio.bufsz = con->recv_max;
+        con->req_rd.u.sio.flags = 0;
+        con->read_posted = 1;
+        async_req_post(&con->req_rd);
     }
     server->req_acc.u.acc.addrlen = server->addr_len;
-    async_req_post(req);
+    async_req_post(&server->req_acc);
 }
 
-int start_http_server(const char * host, const char * port) {
+static HttpServer * start_http_server(const char * host, const char * port) {
     struct addrinfo hints;
     struct addrinfo * reslist = NULL;
     struct addrinfo * res;
@@ -406,7 +495,7 @@ int start_http_server(const char * host, const char * port) {
     if (error) {
         trace(LOG_ALWAYS, "getaddrinfo error: %s", loc_gai_strerror(error));
         set_gai_errno(error);
-        return -1;
+        return NULL;
     }
 
     for (res = reslist; res != NULL; res = res->ai_next) {
@@ -450,12 +539,13 @@ int start_http_server(const char * host, const char * port) {
     if (sock < 0) {
         trace(LOG_ALWAYS, "Socket %s error: %s", reason, errno_to_str(error));
         set_fmt_errno(error, "Socket %s error", reason);
-        return -1;
+        return NULL;
     }
 
     server = (HttpServer *)loc_alloc_zero(sizeof(HttpServer));
     list_add_first(&server->link_all, &server_list);
     list_init(&server->link_clients);
+    list_init(&server->link_cons);
     server->sock = sock;
 #if defined(_WRS_KERNEL)
     /* vxWorks requires buffer size to be exactly sizeof(struct sockaddr) */
@@ -474,7 +564,7 @@ int start_http_server(const char * host, const char * port) {
     server->req_acc.u.acc.addrlen = server->addr_len;
     async_req_post(&server->req_acc);
 
-    return 0;
+    return server;
 }
 
 void add_http_listener(HttpListener * l) {
@@ -485,8 +575,21 @@ void add_http_listener(HttpListener * l) {
     listener_arr[listener_cnt++] = l;
 }
 
+static ChannelServer * http_channel_server_create(PeerServer * ps) {
+    const char * host = peer_server_getprop(ps, "Host", NULL);
+    const char * port = peer_server_getprop(ps, "Port", NULL);
+    HttpServer * server = start_http_server(host, port);
+    if (server == NULL) return NULL;
+    return ini_http_tcf(ps);
+}
+
+static void http_channel_connect(PeerServer * ps,  ChannelConnectCallBack cb, void * args) {
+    cb(args, ERR_UNSUPPORTED, NULL);
+}
+
 void ini_http(void) {
     list_init(&server_list);
+    add_channel_transport("HTTP", http_channel_server_create, http_channel_connect);
 }
 
 #endif
