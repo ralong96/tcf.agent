@@ -332,7 +332,11 @@ extern int tkill(pid_t pid, int signal);
 #endif
 
 #ifndef MEM_USAGE_FACTOR
-#  define MEM_USAGE_FACTOR 32
+#  if defined(_WIN64) || (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ > 4)
+#    define MEM_USAGE_FACTOR 128
+#  else
+#    define MEM_USAGE_FACTOR 32
+#  endif
 #endif
 
 /* Convert the initial portion of the string pointed to by buf
