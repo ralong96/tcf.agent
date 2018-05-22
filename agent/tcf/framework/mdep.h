@@ -405,6 +405,8 @@ extern size_t strlcat(char * dst, const char * src, size_t size);
 #  endif
 #endif
 
+#define member_to_type(ptr, type, member) (type *)((char *)(ptr) - offsetof(type, member))
+
 /* Swap bytes in a buffer - change value endianness */
 extern void swap_bytes(void * buf, size_t size);
 #define SWAP(x) swap_bytes(&(x), sizeof(x))
