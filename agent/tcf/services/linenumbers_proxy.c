@@ -268,6 +268,11 @@ int address_to_line(Context * ctx, ContextAddress addr0, ContextAddress addr1, L
     unsigned h;
     Trap trap;
 
+    if (cache_channel() == NULL) {
+        /* This is needed for run control to work without a client connected */
+        return 0;
+    }
+
     if (!set_trap(&trap)) return -1;
 
     ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
