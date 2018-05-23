@@ -67,6 +67,7 @@ struct LINK {
 #define list_foreach(trav, list) \
     for (trav = (list)->next; trav != list; trav = trav->next)
 
-#define list_item_type(item, type, link) member_to_type(item, type, link)
+#define list_item_type(item, type, link) \
+    ((type *)((char *)(item) - offsetof(type, link)))
 
 #endif /* D_link */
