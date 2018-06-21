@@ -330,6 +330,8 @@
     <ClCompile Include="..\tcf\framework\streams.c" />
     <ClCompile Include="..\tcf\framework\trace.c" />
     <ClCompile Include="..\tcf\framework\waitpid.c" />
+    <ClCompile Include="..\tcf\http\http-tcf.c" />
+    <ClCompile Include="..\tcf\http\http.c" />
     <ClCompile Include="..\tcf\main\gdb-rsp.c" />
     <ClCompile Include="..\tcf\services\breakpoints.c" />
     <ClCompile Include="..\tcf\services\contextquery.c" />
@@ -374,6 +376,7 @@
     <ClInclude Include="..\tcf\framework\channel_lws.h" />
     <ClInclude Include="..\tcf\framework\channel_lws_ext.h" />
     <ClInclude Include="..\tcf\framework\client.h" />
+    <ClInclude Include="..\tcf\framework\config.h" />
     <ClInclude Include="..\tcf\framework\context-ext.h" />
     <ClInclude Include="..\tcf\framework\context-mux-ext.h" />
     <ClInclude Include="..\tcf\framework\context-mux.h" />
@@ -381,6 +384,8 @@
     <ClInclude Include="..\tcf\framework\cpudefs-mux.h" />
     <ClInclude Include="..\tcf\framework\mdep-fs.h" />
     <ClInclude Include="..\tcf\framework\mdep-ptrace.h" />
+    <ClInclude Include="..\tcf\http\http-tcf.h" />
+    <ClInclude Include="..\tcf\http\http.h" />
     <ClInclude Include="..\tcf\services\breakpoints-ext.h" />
     <ClInclude Include="..\tcf\services\dwarfecomp-ext.h" />
     <ClInclude Include="..\tcf\services\dwarfreloc-ext.h" />

@@ -67,6 +67,9 @@
     <Filter Include="machine\microblaze64">
       <UniqueIdentifier>{4e8ce030-4562-4d31-8bf8-3f970be0c354}</UniqueIdentifier>
     </Filter>
+    <Filter Include="http">
+      <UniqueIdentifier>{7deca403-7ce9-46a2-aa22-cf65f19024d3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\tcf\framework\asyncreq.c">
@@ -392,6 +395,12 @@
     </ClCompile>
     <ClCompile Include="..\machine\microblaze\tcf\disassembler-microblaze.c">
       <Filter>machine\microblaze</Filter>
+    </ClCompile>
+    <ClCompile Include="..\tcf\http\http.c">
+      <Filter>http</Filter>
+    </ClCompile>
+    <ClCompile Include="..\tcf\http\http-tcf.c">
+      <Filter>http</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -842,6 +851,15 @@
     </ClInclude>
     <ClInclude Include="..\machine\microblaze64\tcf\cpu-regs-gdb.h">
       <Filter>machine\microblaze64</Filter>
+    </ClInclude>
+    <ClInclude Include="..\tcf\http\http.h">
+      <Filter>http</Filter>
+    </ClInclude>
+    <ClInclude Include="..\tcf\http\http-tcf.h">
+      <Filter>http</Filter>
+    </ClInclude>
+    <ClInclude Include="..\tcf\framework\config.h">
+      <Filter>framework</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
