@@ -47,7 +47,8 @@ file(GLOB TCF_SRCS_REL RELATIVE ${TCF_BASE_DIR}
 	${TCF_BASE_DIR}/machine/${TCF_MACHINE}/tcf/*.c
 	${TCF_BASE_DIR}/tcf/framework/*.c
 	${TCF_BASE_DIR}/tcf/services/*.c
-	${TCF_BASE_DIR}/tcf/main/*.c)
+	${TCF_BASE_DIR}/tcf/main/*.c
+	${TCF_BASE_DIR}/tcf/http/*.c)
 
 # remove non-library files
 file(GLOB TCF_MAIN_REL RELATIVE ${TCF_BASE_DIR}
@@ -62,7 +63,8 @@ if(DEFINED TCF_EXTRA_DIR)
       ${extraDir}/machine/${TCF_MACHINE}/tcf/*.c
       ${extraDir}/tcf/framework/*.c
       ${extraDir}/tcf/services/*.c
-      ${extraDir}/tcf/main/*.c)
+      ${extraDir}/tcf/main/*.c
+      ${extraDir}/tcf/http/*.c)
 
     # Override regular files with extra files
     list (LENGTH TCF_EXTRA_SRCS_REL LEN_TCF_EXTRA_SRCS_REL)
