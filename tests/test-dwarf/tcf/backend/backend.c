@@ -978,6 +978,7 @@ static void loc_var_func(void * args, Symbol * sym) {
         }
         if (symbol_class == SYM_CLASS_TYPE && errcmp(err, "Wrong object kind") == 0) return;
         if (out_of_body && errcmp(err, "Object location is relative to owner") == 0) return;
+        if (obj == NULL && strcmp(name, "__local_cie") == 0) return; /* Diab .debug_frame symbol */
         errno = err;
         error_sym("get_symbol_value", sym);
     }
@@ -1901,7 +1902,12 @@ static void next_region(void) {
                         }
                         if (flags & SYM_FLAG_EXTERNAL) {
                             if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, func_name, &fnd_sym) < 0) {
-                                error("find_symbol_by_name");
+                                if (get_error_code(errno) == ERR_SYM_NOT_FOUND && func_object != NULL && func_object->mParent->mTag == TAG_namespace) {
+                                    /* OK - not visible in the global name space */
+                                }
+                                else {
+                                    error("find_symbol_by_name");
+                                }
                             }
                         }
                     }

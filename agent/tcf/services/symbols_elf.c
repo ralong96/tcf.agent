@@ -1285,6 +1285,7 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
         obj = children;
         while (obj != NULL) {
             switch (obj->mTag) {
+            case TAG_namespace:
             case TAG_compile_unit:
             case TAG_partial_unit:
             case TAG_module:
@@ -1774,6 +1775,7 @@ static int find_by_addr_in_unit(ObjectInfo * parent, int level, UnitAddress * ad
     ObjectInfo * obj = get_dwarf_children(parent);
     while (obj != NULL) {
         switch (obj->mTag) {
+        case TAG_namespace:
         case TAG_compile_unit:
         case TAG_partial_unit:
         case TAG_module:
@@ -1953,6 +1955,7 @@ static void enumerate_local_vars(ObjectInfo * parent, int level,
     ObjectInfo * obj = get_dwarf_children(parent);
     while (obj != NULL) {
         switch (obj->mTag) {
+        case TAG_namespace:
         case TAG_compile_unit:
         case TAG_partial_unit:
         case TAG_module:
