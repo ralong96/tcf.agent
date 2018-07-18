@@ -648,7 +648,7 @@ void dio_ReadUnit(DIO_UnitDescriptor * Unit, DIO_EntryCallBack CallBack) {
         sUnit->mVersion = 1;
         sUnit->mAddressSize = 4;
     }
-    sAddressSize = Unit->mAddressSize;
+    sAddressSize = sUnit->mAddressSize;
     if (sUnit->mVersion < 3) sRefAddressSize = sUnit->mAddressSize;
     else sRefAddressSize = sUnit->m64bit ? 8 : 4;
     while (sUnit->mUnitSize == 0 || sDataPos < sUnit->mUnitOffs + sUnit->mUnitSize) {
