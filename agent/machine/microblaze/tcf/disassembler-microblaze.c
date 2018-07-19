@@ -537,8 +537,8 @@ static InstructionInfo instruction_info[] = {
     { 0x16, OP(dbl),            INST_TYPE_RD_RA, 0 },
     { 0x16, OP(dlong),          INST_TYPE_RD_RA, 0 },
     { 0x16, OP(dsqrt),          INST_TYPE_RD_RA, 0 },
-    { 0x3a, OP(lli),            INST_TYPE_RD_RA_IMM, F_IMM },
-    { 0x3e, OP(sli),            INST_TYPE_RD_RA_IMM, F_IMM },
+    { 0x3b, OP(lli),            INST_TYPE_RD_RA_IMM, F_IMM },
+    { 0x3f, OP(sli),            INST_TYPE_RD_RA_IMM, F_IMM },
 };
 
 #define UNKNOWN_OPCODE ((enum Instructions)(sizeof(instruction_info) / sizeof(InstructionInfo)))
@@ -1131,14 +1131,6 @@ static int decode_instruction(void) {
         case 0x080: op = i_swea; break;
         default: return 0;
         }
-        break;
-
-    case 0x3a:
-        op = is_preceded_by_imml() ? i_lli : i_lwi;
-        break;
-
-    case 0x3e:
-        op = is_preceded_by_imml() ? i_sli : i_swi;
         break;
 
     }
