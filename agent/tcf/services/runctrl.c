@@ -637,7 +637,7 @@ static void command_get_state_cache_client(void * x) {
     if (ctx == NULL || !context_has_state(ctx)) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
 
-    if (ext != NULL) get_current_pc(ctx);
+    if (!err && ext != NULL && ext->intercepted) get_current_pc(ctx);
 
     cache_exit();
 
