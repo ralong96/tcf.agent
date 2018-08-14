@@ -1301,8 +1301,13 @@ static void add_addr(uint64_t addr) {
 }
 
 static int sext16(unsigned imm) {
-    if (imm & (1 << 15)) return ~(int)0xffff | imm;
-    return (int)imm;
+    if ((imm >> 15) & 1) return ~(int)0xffff | imm;
+    return (int)(imm & 0xffff);
+}
+
+static int64_t sext40(uint64_t imm) {
+    if ((imm >> 39) & 1) return ~(int64_t)0xffffffffff | imm;
+    return (int64_t)(imm & 0xffffffffff);
 }
 
 static int disassemble_instruction(void) {
@@ -1411,7 +1416,7 @@ static int disassemble_instruction(void) {
                     addr = ((state->instr & 0xffff) << 16) | instr_imm;
                 }
                 else if ((state->instr & 0xff000000) == 0xb2000000) {
-                    addr = ((uint64_t)(state->instr & 0xffffff) << 16) | instr_imm;
+                    addr = sext40(((uint64_t)(state->instr & 0xffffff) << 16) | instr_imm);
                 }
                 else {
                     addr = sext16(instr_imm);
@@ -1433,7 +1438,7 @@ static int disassemble_instruction(void) {
                 addr = ((state->instr & 0xffff) << 16) | instr_imm;
             }
             else if ((state->instr & 0xff000000) == 0xb2000000) {
-                addr = ((uint64_t)(state->instr & 0xffffff) << 16) | instr_imm;
+                addr = sext40(((uint64_t)(state->instr & 0xffffff) << 16) | instr_imm);
             }
             else {
                 addr = sext16(instr_imm);

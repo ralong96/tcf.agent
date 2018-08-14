@@ -43,36 +43,39 @@
 #define REG_MSR_INDEX       33
 
 typedef struct {
-    uint32_t v;
+    uint64_t v;
     uint32_t o;
+    unsigned size;
 } RegData;
 
 typedef struct {
-    uint32_t v[MEM_HASH_SIZE]; /* Value */
-    uint32_t a[MEM_HASH_SIZE]; /* Address */
+    uint64_t v[MEM_HASH_SIZE]; /* Value */
+    uint64_t a[MEM_HASH_SIZE]; /* Address */
+    uint8_t  size[MEM_HASH_SIZE];
     uint8_t  used[MEM_HASH_SIZE];
     uint8_t  valid[MEM_HASH_SIZE];
 } MemData;
 
 typedef struct {
-    uint32_t addr;
+    uint64_t addr;
     RegData reg_data[REG_DATA_SIZE];
     MemData mem_data;
 } BranchData;
 
 static Context * stk_ctx = NULL;
+static unsigned reg_size = 0;
 static RegData reg_data[REG_DATA_SIZE];
 static MemData mem_data;
 static unsigned mem_cache_idx = 0;
 
 static int trace_return = 0;
 static int trace_return_next = 0;
-static uint32_t trace_return_addr = 0;
+static uint64_t trace_return_addr = 0;
 static int trace_branch = 0;
 static int trace_branch_next = 0;
 static int trace_branch_conditional = 0;
 static int trace_branch_exit = 0;
-static uint32_t trace_branch_addr = 0;
+static uint64_t trace_branch_addr = 0;
 static uint32_t trace_imm = 0;
 
 static unsigned branch_pos = 0;
@@ -134,7 +137,19 @@ static int read_word(uint64_t addr, uint32_t * w) {
     return 0;
 }
 
-static int mem_hash_index(const uint32_t addr) {
+static int read_reg(uint64_t addr, uint64_t * w, unsigned size) {
+    unsigned i;
+    uint64_t n = 0;
+    for (i = 0; i < size; i++) {
+        uint8_t bt = 0;
+        if (read_byte(addr + i, &bt) < 0) return -1;
+        n |= (uint64_t)bt << (i * 8);
+    }
+    *w = n;
+    return 0;
+}
+
+static int mem_hash_index(const uint64_t addr) {
     int v = addr % MEM_HASH_SIZE;
     int s = v;
 
@@ -158,7 +173,7 @@ static int mem_hash_index(const uint32_t addr) {
     return -1;
 }
 
-static int mem_hash_read(uint32_t addr, uint32_t * data, int * valid) {
+static int mem_hash_read(uint64_t addr, uint64_t * data, int * valid) {
     int i = mem_hash_index(addr);
 
     if (i >= 0 && mem_data.used[i] && mem_data.a[i] == addr) {
@@ -172,24 +187,25 @@ static int mem_hash_read(uint32_t addr, uint32_t * data, int * valid) {
     return -1;
 }
 
-static int load_reg(uint64_t addr, int r) {
+static int load_reg(uint64_t addr, int r, unsigned size) {
     int valid = 0;
-
+    reg_data[r].size = size;
     /* Check if the value can be found in the hash */
-    if (addr < 0x100000000 && mem_hash_read((uint32_t)addr, &reg_data[r].v, &valid) == 0) {
+    if ((reg_size > 4 || addr < 0x100000000) && mem_hash_read(addr, &reg_data[r].v, &valid) == 0) {
         reg_data[r].o = valid ? REG_VAL_OTHER : 0;
     }
     else {
         /* Not in the hash, so read from real memory */
         reg_data[r].o = 0;
-        if (read_word(addr, &reg_data[r].v) < 0) return -1;
+        if (read_reg(addr, &reg_data[r].v, size) < 0) return -1;
         reg_data[r].o = REG_VAL_OTHER;
     }
     return 0;
 }
 
-static int load_reg_lazy(uint32_t addr, int r) {
+static int load_reg_lazy(uint64_t addr, int r, unsigned size) {
     int valid = 0;
+    reg_data[r].size = size;
     if (mem_hash_read(addr, &reg_data[r].v, &valid) == 0) {
         if (valid) {
             reg_data[r].o = REG_VAL_OTHER;
@@ -206,10 +222,10 @@ static int load_reg_lazy(uint32_t addr, int r) {
 
 static int chk_loaded(int r) {
     if (reg_data[r].o != REG_VAL_ADDR && reg_data[r].o != REG_VAL_STACK) return 0;
-    return load_reg(reg_data[r].v, r);
+    return load_reg(reg_data[r].v, r, reg_data[r].size);
 }
 
-static int mem_hash_write(uint32_t addr, uint32_t value, int valid) {
+static int mem_hash_write(uint64_t addr, uint64_t value, int valid, unsigned size) {
     int h = mem_hash_index(addr);
     unsigned i;
 
@@ -221,27 +237,28 @@ static int mem_hash_write(uint32_t addr, uint32_t value, int valid) {
     /* Fix lazy loaded registers */
     for (i = 0; i < REG_DATA_SIZE; i++) {
         if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
-        if (reg_data[i].v >= addr + 4) continue;
-        if (reg_data[i].v + 4 <= addr) continue;
-        if (load_reg(reg_data[i].v, i) < 0) return -1;
+        if (reg_data[i].v >= addr + size) continue;
+        if (reg_data[i].v + reg_data[i].size <= addr) continue;
+        if (load_reg(reg_data[i].v, i, reg_data[i].size) < 0) return -1;
     }
 
     /* Store the item */
     mem_data.used[h] = 1;
     mem_data.a[h] = addr;
     mem_data.v[h] = valid ? value : 0;
+    mem_data.size[h] = (uint8_t)size;
     mem_data.valid[h] = (uint8_t)valid;
     return 0;
 }
 
-static int store_reg(uint32_t addr, int r) {
+static int store_reg(uint64_t addr, int r, unsigned size) {
     if (chk_loaded(r) < 0) return -1;
     assert(reg_data[r].o != REG_VAL_ADDR);
     assert(reg_data[r].o != REG_VAL_STACK);
-    return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0);
+    return mem_hash_write(addr, reg_data[r].v, reg_data[r].o != 0, size);
 }
 
-static void add_branch(uint32_t addr) {
+static void add_branch(uint64_t addr) {
     if (branch_cnt < BRANCH_LIST_SIZE) {
         int add = 1;
         unsigned i = 0;
@@ -262,9 +279,14 @@ static void add_branch(uint32_t addr) {
     }
 }
 
-static uint32_t sext(uint32_t val) {
+static uint64_t sext16(uint64_t val) {
     /* Sign extend value, treated as a 16-bit signed integer */
-    return ((val >> 15) & 1) ? 0xffff0000 | val : 0x0000ffff & val;
+    return ((val >> 15) & 1) ? 0xffffffffffff0000 | val : 0x000000ffff & val;
+}
+
+static uint64_t sext40(uint64_t val) {
+    /* Sign extend value, treated as a 40-bit signed integer */
+    return ((val >> 39) & 1) ? 0xffffff0000000000 | val : 0xffffffffff & val;
 }
 
 static void set_msr_c(uint32_t to) {
@@ -272,35 +294,56 @@ static void set_msr_c(uint32_t to) {
     reg_data[REG_MSR_INDEX].v = (reg_data[REG_MSR_INDEX].v & 0xfffffffb) | (to << 2);
 }
 
-static void update_msr_c(uint32_t a, uint32_t b, uint32_t carry_in, uint32_t K) {
-    int32_t sa  = (int32_t)a;
-    int32_t sb  = (int32_t)b;
-
+static void update_msr_c(int mb64, uint64_t a, uint64_t b, uint32_t carry_in, uint32_t K) {
     /* Update Machine Status Register carry bit, C, unless K is set to keep its value */
-    if (K)
-        return;
 
-    if (carry_in) {
-        if ((sb > 0 && sa >= INT_MAX - sb) || (sb < 0 && sa <= INT_MIN - sb))
-            set_msr_c(1);
+    if (K) return;
+
+    if (mb64) {
+        int64_t sa = (int64_t)a;
+        int64_t sb = (int64_t)b;
+        int64_t m = 0x7fffffffffffffff;
+        if (carry_in) {
+            if ((sb > 0 && sa >= m - sb) || (sb < 0 && sa <= ~m - sb)) set_msr_c(1);
+        }
+        else {
+            if ((sb > 0 && sa > m - sb) || (sb < 0 && sa < ~m - sb)) set_msr_c(1);
+        }
     }
     else {
-        if ((sb > 0 && sa > INT_MAX - sb) || (sb < 0 && sa < INT_MIN - sb))
-            set_msr_c(1);
+        int32_t sa = (int32_t)a;
+        int32_t sb = (int32_t)b;
+        int32_t m = 0x7fffffff;
+        if (carry_in) {
+            if ((sb > 0 && sa >= m - sb) || (sb < 0 && sa <= ~m - sb)) set_msr_c(1);
+        }
+        else {
+            if ((sb > 0 && sa > m - sb) || (sb < 0 && sa < ~m - sb)) set_msr_c(1);
+        }
     }
 }
 
-static uint32_t arithmetic_right_shift(uint32_t val, uint32_t shift) {
+static uint64_t arithmetic_right_shift(int mb64, uint64_t val, uint64_t shift) {
     /* Compute the arithmetic right shift of the value, shifted according to shift */
-    shift = shift & 0x1f;
-    if (shift == 0)
-      return val;
-    if (val & 0x80000000)
-      return val >> shift | ~(0U >> shift);
-    return val >> shift;
+    if (mb64) {
+        int n = (val & ((uint64_t)1 << 63)) != 0;
+        shift = shift & 0x3f;
+        if (shift == 0) return val;
+        val = val >> shift;
+        if (n) val |= ~(~(uint64_t)0 >> shift);
+    }
+    else {
+        int n = (val & ((uint64_t)1 << 31)) != 0;
+        shift = shift & 0x1f;
+        if (shift == 0) return val;
+        val = val >> shift;
+        if (n) val |= ~(~(uint32_t)0 >> shift);
+        val &= 0xffffffff;
+    }
+    return val;
 }
 
-static void add_branch_delayslot(uint32_t addr, uint32_t D, int conditional) {
+static void add_branch_delayslot(uint64_t addr, int D, int conditional) {
     if (D) {
         /* Branch with delay slot, defer handling */
         trace_branch_addr = addr;
@@ -314,19 +357,23 @@ static void add_branch_delayslot(uint32_t addr, uint32_t D, int conditional) {
     }
 }
 
-#ifdef DEBUG_STACK_CRAWL
-#define DEBUG_TRACE(format, ...) trace(LOG_STACK, "Stack crawl: " #format, __VA_ARGS__)
-#else
+#ifdef NDEBUG
 #define DEBUG_TRACE(format, ...)
+#else
+#define DEBUG_TRACE(format, ...) trace(LOG_STACK, "Stack crawl: " format, __VA_ARGS__)
 #endif
 
 static int trace_microblaze(void) {
-    uint32_t pc, instr;
-    uint32_t rd, ra, rb, imm;
+    uint32_t instr;
+    unsigned rd, ra, rb;
+    uint64_t pc;
     uint32_t msr_c;
 
     int return_delayslot = trace_return_next;
     int branch_delayslot = trace_branch_next;
+
+    int is_preceded_by_imml = 0;
+    uint64_t imm = 0;
 
     assert(reg_data[REG_PC_INDEX].o != REG_VAL_ADDR);
 
@@ -345,7 +392,16 @@ static int trace_microblaze(void) {
     rd = (instr & 0x03e00000) >> 21;
     ra = (instr & 0x001f0000) >> 16;
     rb = (instr & 0x0000f800) >> 11;
-    imm = trace_imm + sext(instr & 0xffff);
+    if ((trace_imm & 0xffff0000) == 0xb0000000) { /* imm */
+        imm = ((trace_imm & 0xffff) << 16) | (instr & 0xffff);
+    }
+    else if ((trace_imm & 0xff000000) == 0xb2000000) { /* imml */
+        imm = sext40(((trace_imm & 0xffffff) << 16) | (instr & 0xffff));
+        is_preceded_by_imml = 1;
+    }
+    else {
+        imm = sext16(instr & 0xffff);
+    }
     trace_imm = 0;
 
     /* Handle delay slot. Trace both directions for conditional branch */
@@ -357,89 +413,97 @@ static int trace_microblaze(void) {
     if ((instr & 0xe4000000) == 0x00000000) { /* add */
         uint32_t K = (instr & 0x10000000) != 0;
         uint32_t C = (instr & 0x08000000) != 0;
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[ra].v + reg_data[rb].v + (msr_c & C);
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        update_msr_c(reg_data[ra].v, reg_data[rb].v, msr_c & C, K);
-        DEBUG_TRACE("%08x: %08x    add     r%d, r%d, r%d ; = 0x%08x", pc, instr, rd, ra, rb, reg_data[rd].v);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        update_msr_c(mb64, reg_data[ra].v, reg_data[rb].v, msr_c & C, K);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    add     r%u, r%u, r%u ; = 0x%08" PRIx64, pc, instr, rd, ra, rb, reg_data[rd].v);
     }
     else if ((instr & 0xe4000000) == 0x20000000) { /* addi */
         uint32_t K = (instr & 0x10000000) != 0;
         uint32_t C = (instr & 0x08000000) != 0;
+        int mb64 = reg_size > 4 && is_preceded_by_imml;
         chk_loaded(ra);
         reg_data[rd].v = reg_data[ra].v + imm + (msr_c & C);
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        update_msr_c(reg_data[ra].v, imm, msr_c & C, K);
-        DEBUG_TRACE("%08x: %08x    addi    r%d, r%d, %d ; = 0x%08x", pc, instr, rd, ra, imm, reg_data[rd].v);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        update_msr_c(mb64, reg_data[ra].v, imm, msr_c & C, K);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    addi    r%u, r%u, 0x%08" PRIx64 " ; = 0x%08" PRIx64, pc, instr, rd, ra, imm, reg_data[rd].v);
     }
     else if ((instr & 0xfc000000) == 0x84000000) { /* and */
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[ra].v & reg_data[rb].v;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    and     r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    and     r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000000) == 0xa4000000) { /* andi */
+        int mb64 = reg_size > 4 && is_preceded_by_imml;
         chk_loaded(ra);
         reg_data[rd].v = reg_data[ra].v & imm;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    andi    r%d, r%d, %d", pc, instr, rd, ra, imm);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    andi    r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xfc000000) == 0x8c000000) { /* andn */
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[ra].v & ~reg_data[rb].v;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    andn    r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    andn    r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000000) == 0xac000000) { /* andni */
+        int mb64 = reg_size > 4 && is_preceded_by_imml;
         chk_loaded(ra);
         reg_data[rd].v = reg_data[ra].v & ~imm;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    andni   r%d, r%d, %d", pc, instr, rd, ra, imm);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    andni   r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xfc000000) == 0x9c000000) { /* Conditional branch */
-        uint32_t D = (instr & 0x02000000) != 0;
-        uint32_t addr = reg_data[REG_PC_INDEX].v;
+        int D = (instr & 0x02000000) != 0;
+        uint64_t addr = reg_data[REG_PC_INDEX].v;
         chk_loaded(rb);
         addr += reg_data[rb].v;
         add_branch_delayslot(addr, D, 1);
-        DEBUG_TRACE("%08x: %08x    bxx     r%d", pc, instr, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bxx     r%u", pc, instr, rb);
     }
     else if ((instr & 0xfc000000) == 0xbc000000) { /* Conditional immediate branch */
-        uint32_t D = (instr & 0x02000000) != 0;
-        uint32_t addr = reg_data[REG_PC_INDEX].v;
+        int D = (instr & 0x02000000) != 0;
+        uint64_t addr = reg_data[REG_PC_INDEX].v;
         addr += imm;
         add_branch_delayslot(addr, D, 1);
-        DEBUG_TRACE("%08x: %08x    bxxi    0x%x", pc, instr, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bxxi    0x%08" PRIx64, pc, instr, imm);
     }
     else if ((instr & 0xfc0c0000) == 0x98080000) { /* Unconditional absolute branch */
-        uint32_t D = (instr & 0x00100000) != 0;
+        int D = (instr & 0x00100000) != 0;
         chk_loaded(rb);
         add_branch_delayslot(reg_data[rb].v, D, 0);
-        DEBUG_TRACE("%08x: %08x    bra     r%d", pc, instr, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bra     r%u", pc, instr, rb);
     }
     else if ((instr & 0xfc0c0000) == 0x98000000) { /* Unconditional relative branch */
-        uint32_t D = (instr & 0x00100000) != 0;
-        uint32_t addr = reg_data[REG_PC_INDEX].v;
+        int D = (instr & 0x00100000) != 0;
+        uint64_t addr = reg_data[REG_PC_INDEX].v;
         chk_loaded(rb);
         addr += reg_data[rb].v;
         add_branch_delayslot(addr, D, 0);
-        DEBUG_TRACE("%08x: %08x    br      r%d", pc, instr, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    br      r%u", pc, instr, rb);
     }
     else if ((instr & 0xfc0c0000) == 0xb8080000) { /* Unconditional immediate absolute branch */
-        uint32_t D = (instr & 0x00100000) != 0;
+        int D = (instr & 0x00100000) != 0;
         add_branch_delayslot(imm, D, 0);
-        DEBUG_TRACE("%08x: %08x    brai    0x%x", pc, instr, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    brai    0x%08" PRIx64, pc, instr, imm);
     }
     else if ((instr & 0xfc0c0000) == 0xb8000000) { /* Unconditional immediate relative branch */
-        uint32_t D = (instr & 0x00100000) != 0;
-        uint32_t addr = reg_data[REG_PC_INDEX].v;
+        int D = (instr & 0x00100000) != 0;
+        uint64_t addr = reg_data[REG_PC_INDEX].v;
         addr += imm;
         if (!D && imm == 0)
             /* Found "bri 0".  Exit stack crawl */
             trace_branch_exit = 1;
         else
             add_branch_delayslot(addr, D, 0);
-        DEBUG_TRACE("%08x: %08x    bri     0x%x", pc, instr, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bri     0x%08" PRIx64, pc, instr, imm);
     }
     else if ((instr & 0xdc040000) == 0x98040000) { /* Branch and link */
         /* Subroutines are expected to preserve the contents of r1, r2, r13, r14 and r19 to r31 */
@@ -447,48 +511,62 @@ static int trace_microblaze(void) {
         for (i = 3; i <= 18; i++) {
             if (i != 13 && i != 14) reg_data[i].o = 0;
         }
-        DEBUG_TRACE("%08x: %08x    brl", pc, instr);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    brl", pc, instr);
     }
     else if ((instr & 0xfc000400) == 0x44000400) { /* bsll */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
-        reg_data[rd].v = reg_data[ra].v << (reg_data[rb].v & 0x1f);
+        reg_data[rd].v = mb64 ?
+            reg_data[ra].v << (reg_data[rb].v & 0x3f) :
+            (reg_data[ra].v << (reg_data[rb].v & 0x1f)) & 0xffffffff;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    bsll    r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bsll    r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000600) == 0x44000000) { /* bsrl */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
-        reg_data[rd].v = reg_data[ra].v >> (reg_data[rb].v & 0x1f);
+        reg_data[rd].v = mb64 ?
+            reg_data[ra].v >> (reg_data[rb].v & 0x3f) :
+            (reg_data[ra].v >> (reg_data[rb].v & 0x1f)) & 0xffffffff;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    bsrl    r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bsrl    r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000600) == 0x44000200) { /* bsra */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
-        reg_data[rd].v = arithmetic_right_shift(reg_data[ra].v, reg_data[rb].v);
+        reg_data[rd].v = arithmetic_right_shift(mb64, reg_data[ra].v, reg_data[rb].v);
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    bsra    r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bsra    r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000400) == 0x64000400) { /* bslli */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra);
-        reg_data[rd].v = reg_data[ra].v << (imm & 0x1f);
+        reg_data[rd].v = mb64 ?
+            reg_data[ra].v << (imm & 0x3f) :
+            (reg_data[ra].v << (imm & 0x1f)) & 0xffffffff;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    bslli   r%d, r%d, %d", pc, instr, rd, ra, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bslli   r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xfc000600) == 0x64000000) { /* bsrli */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra);
-        reg_data[rd].v = reg_data[ra].v >> (imm & 0x1f);
+        reg_data[rd].v = mb64 ?
+            reg_data[ra].v >> (imm & 0x3f) :
+            (reg_data[ra].v >> (imm & 0x1f)) & 0xffffffff;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    bsrli   r%d, r%d, %d", pc, instr, rd, ra, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bsrli   r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xfc000600) == 0x64000200) { /* bsrai */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra);
-        reg_data[rd].v = arithmetic_right_shift(reg_data[ra].v, imm);
+        reg_data[rd].v = arithmetic_right_shift(mb64, reg_data[ra].v, imm);
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    bsrai   r%d, r%d, %d", pc, instr, rd, ra, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    bsrai   r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xfc00ffff) == 0x900000e0) { /* clz */
-        uint32_t val;
-        uint32_t n = 0;
-        uint32_t mask = 0x80000000;
+        uint64_t val;
+        uint64_t n = 0;
+        uint64_t mask = 0x80000000;
         chk_loaded(ra);
         val = reg_data[ra].v;
         while ((val & mask) == 0 && n < 32) {
@@ -496,39 +574,51 @@ static int trace_microblaze(void) {
         }
         reg_data[rd].v = n;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    clz     r%d, r%d", pc, instr, rd, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    clz     r%u, r%u", pc, instr, rd, ra);
     }
-    else if ((instr & 0xfc0007ff) == 0x14000001) { /* cmp */
-        uint32_t vala, valb;
+    else if ((instr & 0xfc0006ff) == 0x14000001) { /* cmp */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
-        vala = reg_data[ra].v;
-        valb = reg_data[rb].v;
-        if ((int32_t)vala > (int32_t)valb)
-           reg_data[rd].v = (valb - vala) | 0x80000000;
-        else
-           reg_data[rd].v = (valb - vala) & 0x7fffffff;
+        if (mb64) {
+            uint64_t vala = reg_data[ra].v;
+            uint64_t valb = reg_data[rb].v;
+            reg_data[rd].v = (valb - vala) & (((uint64_t)1 << 63) - 1);
+            if ((int64_t)vala > (int64_t)valb) reg_data[rd].v |= (uint64_t)1 << 63;
+        }
+        else {
+            uint32_t vala = (uint32_t)reg_data[ra].v;
+            uint32_t valb = (uint32_t)reg_data[rb].v;
+            reg_data[rd].v = (valb - vala) & (((uint64_t)1 << 31) - 1);
+            if ((int32_t)vala > (int32_t)valb) reg_data[rd].v |= (uint64_t)1 << 31;
+        }
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    cmp     r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    cmp     r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
-    else if ((instr & 0xfc0007ff) == 0x14000003) { /* cmpu */
-        uint32_t vala, valb;
+    else if ((instr & 0xfc0006ff) == 0x14000003) { /* cmpu */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
-        vala = reg_data[ra].v;
-        valb = reg_data[rb].v;
-        if (vala > valb)
-           reg_data[rd].v = (valb - vala) | 0x80000000;
-        else
-           reg_data[rd].v = (valb - vala) & 0x7fffffff;
+        if (mb64) {
+            uint64_t vala = reg_data[ra].v;
+            uint64_t valb = reg_data[rb].v;
+            reg_data[rd].v = (valb - vala) & (((uint64_t)1 << 63) - 1);
+            if (vala > valb) reg_data[rd].v |= (uint64_t)1 << 63;
+        }
+        else {
+            uint32_t vala = (uint32_t)reg_data[ra].v;
+            uint32_t valb = (uint32_t)reg_data[rb].v;
+            reg_data[rd].v = (valb - vala) & (((uint64_t)1 << 31) - 1);
+            if (vala > valb) reg_data[rd].v |= (uint64_t)1 << 31;
+        }
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    cmpu    r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    cmpu    r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000000) == 0x58000000) { /* Floating point instructions */
         reg_data[rd].o = 0; /* Not traced */
-        DEBUG_TRACE("%08x: %08x    fxxx    r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    fxxx    r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xdc000000) == 0x4c000000) { /* get, getd */
         reg_data[rd].o = 0; /* Not traced */
-        DEBUG_TRACE("%08x: %08x    getx    r%d", pc, instr, rd);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    getx    r%u", pc, instr, rd);
     }
     else if ((instr & 0xfc0007ff) == 0x48000000) { /* idiv */
         chk_loaded(ra); chk_loaded(rb);
@@ -540,7 +630,7 @@ static int trace_microblaze(void) {
             reg_data[rd].v = (uint32_t)((int32_t)reg_data[rb].v / (int32_t)reg_data[ra].v);
             reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
         }
-        DEBUG_TRACE("%08x: %08x    idiv    r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    idiv    r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc0007ff) == 0x48000002) { /* idivu */
         chk_loaded(ra); chk_loaded(rb);
@@ -552,50 +642,70 @@ static int trace_microblaze(void) {
             reg_data[rd].v = reg_data[rb].v / reg_data[ra].v;
             reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
         }
-        DEBUG_TRACE("%08x: %08x    idivu   r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    idivu   r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xffff0000) == 0xb0000000) { /* imm */
-        trace_imm = instr << 16;
-        DEBUG_TRACE("%08x: %08x    imm     0x%x", pc, instr, instr & 0xffff);
+        trace_imm = instr;
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    imm     0x%08" PRIx32, pc, instr, instr & 0xffff);
+    }
+    else if ((instr & 0xff000000) == 0xb2000000) { /* imml */
+        trace_imm = instr;
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    imml    0x%08" PRIx32, pc, instr, instr & 0xffffff);
     }
     else if ((instr & 0xf8000000) == 0xc0000000) { /* lbu, lhu, lbuea, lhuea */
         reg_data[rd].o = 0; /* Not traced */
-        DEBUG_TRACE("%08x: %08x    lb/lhu/lbuea/lhuea  r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    lb/lhu/lbuea/lhuea  r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xf8000000) == 0xe0000000) { /* lbui, lhui */
         reg_data[rd].o = 0; /* Not traced */
-        DEBUG_TRACE("%08x: %08x    lb/lhui r%d, r%d, %d", pc, instr, rd, ra, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    lb/lhui r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
-    else if ((instr & 0xf0000000) == 0xc0000000) { /* Load word */
+    else if ((instr & 0xfc000000) == 0xc8000000) { /* Load word */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
         if (reg_data[ra].o && reg_data[rb].o) {
-            if (instr & 0x80) {
-                load_reg(((uint64_t)reg_data[ra].v << 32) + reg_data[rb].v, rd);
+            if (!mb64 && (instr & 0x80) != 0) {
+                load_reg((reg_data[ra].v << 32) + (reg_data[rb].v & 0xffffffff), rd, 4);
+            }
+            else if (mb64) {
+                load_reg_lazy(reg_data[ra].v + reg_data[rb].v, rd, 8);
             }
             else {
-                load_reg_lazy(reg_data[ra].v + reg_data[rb].v, rd);
+                load_reg_lazy((reg_data[ra].v + reg_data[rb].v) & 0xffffffff, rd, 4);
             }
             if (instr & 0x200) {
                 chk_loaded(rd);
-                swap_bytes(&reg_data[rd].v, 4);
+                swap_bytes(&reg_data[rd].v, mb64 ? 8 : 4);
             }
         }
         else {
             reg_data[rd].o = 0;
         }
-        DEBUG_TRACE("%08x: %08x    lw/lwr/lwx/lwea r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    lw/lwr/lwx/lwea/ll r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
-    else if ((instr & 0xf0000000) == 0xe0000000) { /* Load word immediate */
-        uint32_t addr;
+    else if ((instr & 0xfc000000) == 0xe8000000) { /* Load word immediate */
+        uint64_t addr;
         chk_loaded(ra);
         if (reg_data[ra].o) {
-            addr = reg_data[ra].v + imm;
-            load_reg_lazy(addr, rd);
+            addr = (reg_data[ra].v + imm) & 0xffffffff;
+            load_reg_lazy(addr, rd, 4);
         }
         else {
             reg_data[rd].o = 0;
         }
-        DEBUG_TRACE("%08x: %08x    lwi     r%d, r%d, %d", pc, instr, rd, ra, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    lwi     r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
+    }
+    else if ((instr & 0xfc000000) == 0xec000000) { /* Load long immediate */
+        uint64_t addr;
+        chk_loaded(ra);
+        if (reg_data[ra].o) {
+            addr = reg_data[ra].v + imm;
+            load_reg_lazy(addr, rd, 8);
+        }
+        else {
+            reg_data[rd].o = 0;
+        }
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    lli     r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xfc1fc000) == 0x94008000) { /* mfs */
         if ((instr & 0xffff) == 0x0000) { /* PC */
@@ -609,23 +719,23 @@ static int trace_microblaze(void) {
         else {
             reg_data[rd].o = 0; /* Not traced */
         }
-        DEBUG_TRACE("%08x: %08x    mfs     r%d, 0x%x", pc, instr, rd, instr & 0x3fff);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    mfs     r%u, 0x%08" PRIx32, pc, instr, rd, instr & 0x3fff);
     }
     else if ((instr & 0xfc1fc000) == 0x94088000) { /* mfse */
         reg_data[rd].o = 0; /* Not traced */
-        DEBUG_TRACE("%08x: %08x    mfse    r%d, 0x%x", pc, instr, rd, instr & 0x3fff);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    mfse    r%u, 0x%08" PRIx32, pc, instr, rd, instr & 0x3fff);
     }
     else if ((instr & 0xfc1f8000) == 0x94110000) { /* msrclr */
         reg_data[rd].v = reg_data[REG_MSR_INDEX].v;
         reg_data[rd].o = REG_VAL_OTHER;
         reg_data[REG_MSR_INDEX].v = reg_data[REG_MSR_INDEX].v & ~(instr & 0x3fff);
-        DEBUG_TRACE("%08x: %08x    msrclr  r%d, 0x%x", pc, instr, rd, instr & 0x3fff);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    msrclr  r%u, 0x%08" PRIx32, pc, instr, rd, instr & 0x3fff);
     }
     else if ((instr & 0xfc1f8000) == 0x94100000) { /* msrset */
         reg_data[rd].v = reg_data[REG_MSR_INDEX].v;
         reg_data[rd].o = REG_VAL_OTHER;
         reg_data[REG_MSR_INDEX].v = reg_data[REG_MSR_INDEX].v | (instr & 0x3fff);
-        DEBUG_TRACE("%08x: %08x    msrset  r%d, 0x%x", pc, instr, rd, instr & 0x3fff);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    msrset  r%u, 0x%08" PRIx32, pc, instr, rd, instr & 0x3fff);
     }
     else if ((instr & 0xffe0c000) == 0x9400c000) { /* mts */
         if ((instr & 0xffff) == 0x0001) { /* MSR */
@@ -633,52 +743,56 @@ static int trace_microblaze(void) {
             reg_data[REG_MSR_INDEX].v = reg_data[ra].v;
         }
         /* Other registers not traced */
-        DEBUG_TRACE("%08x: %08x    mts     0x%x, r%d", pc, instr, instr & 0xffff, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    mts     0x%08" PRIx32 ", r%u", pc, instr, instr & 0xffff, ra);
     }
     else if ((instr & 0xfc0007ff) == 0x40000000) { /* mul */
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[ra].v * reg_data[rb].v;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    mul     r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    mul     r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc0007ff) == 0x40000001) { /* mulh */
         chk_loaded(ra); chk_loaded(rb);
-        reg_data[rd].v = (uint32_t)(((int64_t) reg_data[ra].v * (int64_t) reg_data[rb].v) >> 32LL);
+        reg_data[rd].v = (uint32_t)(((int64_t)reg_data[ra].v * (int64_t)reg_data[rb].v) >> 32LL);
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    mulh    r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    mulh    r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc0007ff) == 0x40000003) { /* mulhu */
         chk_loaded(ra); chk_loaded(rb);
-        reg_data[rd].v = (uint32_t)(((uint64_t) reg_data[ra].v * (uint64_t) reg_data[rb].v) >> 32LL);
+        reg_data[rd].v = (uint32_t)(((uint64_t)reg_data[ra].v * (uint64_t)reg_data[rb].v) >> 32LL);
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    mulhu   r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    mulhu   r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc0007ff) == 0x40000002) { /* mulhsu */
         chk_loaded(ra); chk_loaded(rb);
-        reg_data[rd].v = (uint32_t)(((int64_t) reg_data[ra].v * (uint64_t) reg_data[rb].v) >> 32LL);
+        reg_data[rd].v = (uint32_t)(((int64_t)reg_data[ra].v * (uint64_t)reg_data[rb].v) >> 32LL);
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    mulhsu  r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    mulhsu  r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000000) == 0x60000000) { /* muli */
         chk_loaded(ra);
         reg_data[rd].v = reg_data[ra].v * imm;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    muli    r%d, r%d, %d", pc, instr, rd, ra, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    muli    r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
-    else if ((instr & 0xfc0007ff) == 0x80000000) { /* or */
+    else if ((instr & 0xfc0006ff) == 0x80000000) { /* or */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[ra].v | reg_data[rb].v;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    or      r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    or      r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000000) == 0xa0000000) { /* ori */
+        int mb64 = reg_size > 4 && is_preceded_by_imml;
         chk_loaded(ra);
         reg_data[rd].v = reg_data[ra].v | imm;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    ori     r%d, r%d, %d", pc, instr, rd, ra, imm);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    ori     r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xfc0007ff) == 0x80000400) { /* pcmpbf */
-        uint32_t vala, valb;
+        uint64_t vala, valb;
         chk_loaded(ra); chk_loaded(rb);
         vala = reg_data[ra].v;
         valb = reg_data[rb].v;
@@ -693,41 +807,45 @@ static int trace_microblaze(void) {
         else
             reg_data[rd].v = 0;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    pcmpbf  r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    pcmpbf  r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc0007ff) == 0x88000400) { /* pcmpeq */
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[ra].v == reg_data[rb].v;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    pcmpeq  r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    pcmpeq  r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc0007ff) == 0x8c000400) { /* pcmpne */
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[ra].v != reg_data[rb].v;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    pcmpne  r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    pcmpne  r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xdfe08000) == 0x4c008000) { /* put, putd */
         /* NULL */
-        DEBUG_TRACE("%08x: %08x    pcmpne  r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    pcmpne  r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xe4000000) == 0x04000000) { /* rsub */
         uint32_t K = (instr & 0x10000000) != 0;
         uint32_t C = (instr & 0x08000000) != 0;
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[rb].v + ~reg_data[ra].v + (msr_c & C);
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        update_msr_c(reg_data[rb].v, ~reg_data[ra].v, msr_c & C, K);
-        DEBUG_TRACE("%08x: %08x    putx    r%d", pc, instr, rd);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        update_msr_c(mb64, reg_data[rb].v, ~reg_data[ra].v, msr_c & C, K);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    putx    r%u", pc, instr, rd);
     }
     else if ((instr & 0xe4000000) == 0x24000000) { /* rsubi */
         uint32_t K = (instr & 0x10000000) != 0;
         uint32_t C = (instr & 0x08000000) != 0;
+        int mb64 = reg_size > 4 && is_preceded_by_imml;
         chk_loaded(ra);
         reg_data[rd].v = imm + ~reg_data[ra].v + (msr_c & C);
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        update_msr_c(imm, ~reg_data[ra].v, msr_c & C, K);
-        DEBUG_TRACE("%08x: %08x    rsubi   r%d, r%d, %d", pc, instr, rd, ra, imm);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        update_msr_c(mb64, imm, ~reg_data[ra].v, msr_c & C, K);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    rsubi   r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xff000000) == 0xb6000000) { /* rtbd, rted, rtid, rtsd */
         chk_loaded(ra);
@@ -739,120 +857,146 @@ static int trace_microblaze(void) {
         /* Found the return address */
         trace_return_next = 1;
         trace_return_addr = reg_data[ra].v + imm;
-        DEBUG_TRACE("%08x: %08x    rtxd    r%d, %d ; = 0x%08x", pc, instr, ra, imm, trace_return_addr);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    rtxd    r%u, 0x%08" PRIx64 " ; = 0x%08" PRIx64, pc, instr, ra, imm, trace_return_addr);
     }
     else if ((instr & 0xf8000000) == 0xd0000000) { /* sb, sh, sbea, shea */
         /* Not traced */
-        DEBUG_TRACE("%08x: %08x    sb/sh/sbea/shea r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    sb/sh/sbea/shea r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xf8000000) == 0xf0000000) { /* sbi, shi */
         /* Not traced */
-        DEBUG_TRACE("%08x: %08x    sbi/shi r%d, r%d, %d", pc, instr, rd, ra, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    sbi/shi r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
-    else if ((instr & 0xf0000000) == 0xd0000000) { /* Store word */
+    else if ((instr & 0xfc000000) == 0xd8000000) { /* Store word */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
         if (reg_data[ra].o && reg_data[rb].o) {
             chk_loaded(rd);
-            if (instr & 0x80) {
+            if (!mb64 && (instr & 0x80) != 0) {
                 /* swea: Not traced */
             }
-            else {
-                uint32_t addr = reg_data[ra].v + reg_data[rb].v;
+            else if (mb64) {
+                uint64_t addr = reg_data[ra].v + reg_data[rb].v;
                 if (!reg_data[rd].o) {
-                    mem_hash_write(addr, 0, 0);
+                    mem_hash_write(addr, 0, 0, 8);
                 }
                 else if (instr & 0x200) {
-                    uint32_t v = reg_data[rd].v;
-                    swap_bytes(&v, 4);
-                    mem_hash_write(addr, v, 1);
+                    uint64_t v = (uint64_t)reg_data[rd].v;
+                    swap_bytes(&v, 8);
+                    mem_hash_write(addr, v, 1, 8);
                 }
                 else {
-                    store_reg(addr, rd);
+                    store_reg(addr, rd, 8);
+                }
+            }
+            else {
+                uint64_t addr = (reg_data[ra].v + reg_data[rb].v) & 0xffffffff;
+                if (!reg_data[rd].o) {
+                    mem_hash_write(addr, 0, 0, 4);
+                }
+                else if (instr & 0x200) {
+                    uint32_t v = (uint32_t)reg_data[rd].v;
+                    swap_bytes(&v, 4);
+                    mem_hash_write(addr, v, 1, 4);
+                }
+                else {
+                    store_reg(addr, rd, 4);
                 }
             }
         }
-        DEBUG_TRACE("%08x: %08x    sw/swr/swx/swea r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    sw/swr/swx/swea r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
-    else if ((instr & 0xf0000000) == 0xf0000000) { /* Store word immediate */
-        uint32_t addr;
+    else if ((instr & 0xfc000000) == 0xf8000000) { /* Store word immediate */
         chk_loaded(ra);
         if (reg_data[ra].o) {
-            addr = reg_data[ra].v + imm;
-            store_reg(addr, rd);
+            uint64_t addr = (reg_data[ra].v + imm) & 0xffffffff;
+            store_reg(addr, rd, 4);
         }
-        DEBUG_TRACE("%08x: %08x    swi     r%d, r%d, %d", pc, instr, rd, ra, imm);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    swi     r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
+    }
+    else if ((instr & 0xfc000000) == 0xfc000000) { /* Store long immediate */
+        chk_loaded(ra);
+        if (reg_data[ra].o) {
+            uint64_t addr = reg_data[ra].v + imm;
+            store_reg(addr, rd, 8);
+        }
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    sli     r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else if ((instr & 0xfc00ffff) == 0x90000061) { /* sext16 */
         chk_loaded(ra);
-        reg_data[rd].v = sext(reg_data[ra].v);
+        reg_data[rd].v = sext16(reg_data[ra].v);
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    sext16  r%d, r%d", pc, instr, rd, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    sext16  r%u, r%u", pc, instr, rd, ra);
     }
     else if ((instr & 0xfc00ffff) == 0x90000060) { /* sext8 */
-        uint32_t val;
+        uint64_t val;
         chk_loaded(ra);
         val = reg_data[ra].v;
-        reg_data[rd].v = ((val >> 7) & 1) ? 0xffffff00 | val : 0x000000ff & val;
+        reg_data[rd].v = ((val >> 7) & 1) ? 0xffffffffffffff00 | val : 0x000000ff & val;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    sext8   r%d, r%d", pc, instr, rd, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    sext8   r%u, r%u", pc, instr, rd, ra);
     }
     else if ((instr & 0xfc00ffff) == 0x90000000) { /* sra */
         chk_loaded(ra);
-        reg_data[rd].v = arithmetic_right_shift(reg_data[ra].v, 1);
+        reg_data[rd].v = arithmetic_right_shift(0, reg_data[ra].v, 1);
         set_msr_c(reg_data[ra].v & 1);
-        DEBUG_TRACE("%08x: %08x    sra     r%d, r%d", pc, instr, rd, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    sra     r%u, r%u", pc, instr, rd, ra);
     }
     else if ((instr & 0xfc00ffff) == 0x90000021) { /* src */
         chk_loaded(ra);
-        reg_data[rd].v = arithmetic_right_shift(reg_data[ra].v, 1) | (msr_c << 31);
+        reg_data[rd].v = arithmetic_right_shift(0, reg_data[ra].v, 1) | (msr_c << 31);
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    src     r%d, r%d", pc, instr, rd, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    src     r%u, r%u", pc, instr, rd, ra);
     }
     else if ((instr & 0xfc00ffff) == 0x90000041) { /* srl */
         chk_loaded(ra);
         reg_data[rd].v = reg_data[ra].v >> 1;
         set_msr_c(reg_data[ra].v & 1);
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    srl     r%d, r%d", pc, instr, rd, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    srl     r%u, r%u", pc, instr, rd, ra);
     }
     else if ((instr & 0xfc00ffff) == 0x900001e0) { /* swapb */
-        uint32_t val;
+        uint64_t val;
         chk_loaded(ra);
         val = reg_data[ra].v;
         reg_data[rd].v = (val & 0xff) << 24 | (val & 0xff00) << 8 | (val & 0xff0000) >> 8 | (val & 0xff000000) >> 24;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    swapb   r%d, r%d", pc, instr, rd, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    swapb   r%u, r%u", pc, instr, rd, ra);
     }
     else if ((instr & 0xfc00ffff) == 0x900001e2) { /* swaph */
-        uint32_t val;
+        uint64_t val;
         chk_loaded(ra);
         val = reg_data[ra].v;
         reg_data[rd].v = (val & 0xffff) << 16 | (val & 0xffff0000) >> 16;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    swaph   r%d, r%d", pc, instr, rd, ra);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    swaph   r%u, r%u", pc, instr, rd, ra);
     }
     else if ((instr & 0xffe003e1) == 0x90000060) { /* wdc, wic */
         /* NULL */
-        DEBUG_TRACE("%08x: %08x    wic/wdc r%d, r%d", pc, instr, ra, rb);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    wic/wdc r%u, r%u", pc, instr, ra, rb);
     }
-    else if ((instr & 0xfc0007ff) == 0x88000000) { /* xor */
+    else if ((instr & 0xfc0006ff) == 0x88000000) { /* xor */
+        int mb64 = reg_size > 4 && (instr & 0x100) != 0;
         chk_loaded(ra); chk_loaded(rb);
         reg_data[rd].v = reg_data[ra].v ^ reg_data[rb].v;
         reg_data[rd].o = reg_data[ra].o && reg_data[rb].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    xor     r%d, r%d, r%d", pc, instr, rd, ra, rb);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    xor     r%u, r%u, r%u", pc, instr, rd, ra, rb);
     }
     else if ((instr & 0xfc000000) == 0xa8000000) { /* xori */
+        int mb64 = reg_size > 4 && is_preceded_by_imml;
         chk_loaded(ra);
         reg_data[rd].v = reg_data[ra].v ^ imm;
         reg_data[rd].o = reg_data[ra].o ? REG_VAL_OTHER : 0;
-        DEBUG_TRACE("%08x: %08x    xori    r%d, r%d, %d", pc, instr, rd, ra, imm);
+        if (!mb64) reg_data[rd].v &= 0xffffffff;
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    xori    r%u, r%u, 0x%08" PRIx64, pc, instr, rd, ra, imm);
     }
     else {
         unsigned i;
         /* Unknown/undecoded.  May alter some register, so invalidate file */
         for (i = 2;  i < 15; i++) reg_data[i].o = 0;
         for (i = 16; i < 32; i++) reg_data[i].o = 0;
-        DEBUG_TRACE("%08x: %08x    unknown", pc, instr);
+        DEBUG_TRACE("%08" PRIx64 ": %08" PRIx32 "    unknown", pc, instr);
     }
 
     /* Ensure register 0 is always 0 */
@@ -884,7 +1028,7 @@ static int trace_instructions(void) {
     for (;;) {
         unsigned t = 0;
         BranchData * b = NULL;
-        uint32_t sp = 0;
+        uint64_t sp = 0;
         if (chk_loaded(REG_SP_INDEX)  < 0) return -1;
         if (chk_loaded(REG_PC_INDEX)  < 0) return -1;
         if (chk_loaded(REG_MSR_INDEX) < 0) return -1;
@@ -894,7 +1038,7 @@ static int trace_instructions(void) {
         trace_branch_exit = 0;
         trace_imm = 0;
         sp = reg_data[REG_SP_INDEX].v;
-        trace(LOG_STACK, "Stack crawl: pc 0x%08" PRIx32 ", sp 0x%08" PRIx32,
+        trace(LOG_STACK, "Stack crawl: pc 0x%08" PRIx64 ", sp 0x%08" PRIx64,
             reg_data[REG_PC_INDEX].o ? reg_data[REG_PC_INDEX].v : 0,
             reg_data[REG_SP_INDEX].o ? reg_data[REG_SP_INDEX].v : 0);
         for (t = 0; t < 200; t++) {
@@ -935,7 +1079,7 @@ static int trace_instructions(void) {
     for (i = 0; i < REG_DATA_SIZE; i++) reg_data[i].o = 0;
     if (org_regs[REG_PC_INDEX].o && org_regs[REG_PC_INDEX].v >= 0x08 && org_regs[REG_SP_INDEX].v != 0) {
         unsigned lr = REG_LR_INDEX;
-        uint32_t pc = org_regs[REG_PC_INDEX].v;
+        uint64_t pc = org_regs[REG_PC_INDEX].v;
         if (pc >= 0x10 && pc < 0x18) lr = 14;
         else if (pc >= 0x18 && pc < 0x20) lr = 16;
         else if (pc >= 0x20 && pc < 0x28) lr = 17;
@@ -951,13 +1095,14 @@ static int trace_instructions(void) {
 
 int crawl_stack_frame_microblaze(StackFrame * frame, StackFrame * down) {
     RegisterDefinition * def = NULL;
-    uint32_t pc = 0;
+    uint64_t pc = 0;
 
 #if USE_MEM_CACHE
     unsigned i;
     for (i = 0; i < MEM_CACHE_SIZE; i++) mem_cache[i].size = 0;
 #endif
 
+    reg_size = 4;
     stk_ctx = frame->ctx;
     memset(&reg_data, 0, sizeof(reg_data));
     memset(&mem_data, 0, sizeof(mem_data));
@@ -965,13 +1110,12 @@ int crawl_stack_frame_microblaze(StackFrame * frame, StackFrame * down) {
     branch_cnt = 0;
 
     for (def = get_reg_definitions(stk_ctx); def->name; def++) {
-        uint64_t v = 0;
+        if (def->dwarf_id == 0) reg_size = def->size;
         if (def->dwarf_id < 0 || def->dwarf_id >= REG_DATA_SIZE) continue;
-        if (read_reg_value(frame, def, &v) < 0) continue;
-        reg_data[def->dwarf_id].v = (uint32_t)v;
+        if (read_reg_value(frame, def, &reg_data[def->dwarf_id].v) < 0) continue;
         reg_data[def->dwarf_id].o = REG_VAL_OTHER;
-        if (def->dwarf_id == REG_PC_INDEX) pc = (uint32_t)v;
-        if (def->dwarf_id == REG_SP_INDEX && v == 0) return 0;
+        if (def->dwarf_id == REG_PC_INDEX) pc = reg_data[def->dwarf_id].v;
+        if (def->dwarf_id == REG_SP_INDEX && reg_data[def->dwarf_id].v == 0) return 0;
     }
 
     if (trace_instructions() < 0) return -1;
