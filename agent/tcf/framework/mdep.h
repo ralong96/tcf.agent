@@ -50,7 +50,7 @@
 #  pragma warning(disable:4996) /* 'strcpy': This function or variable may be unsafe */
 #  if _MSC_VER <= 1500
 #    pragma warning(disable:4702) /* unreachable code */
-#  elif _MSC_VER >= 1900 /* MSVC 2015*/
+#  elif _MSC_VER >= 1900 /* MSVC 2015 */
 #    ifndef _CRT_NO_TIME_T
 #      define _TIMESPEC_DEFINED
 #    endif
@@ -83,26 +83,34 @@
 #include <io.h>
 
 #if defined(_MSC_VER)
-   typedef signed __int8 int8_t;
-   typedef unsigned __int8 uint8_t;
-   typedef signed __int16 int16_t;
-   typedef unsigned __int16 uint16_t;
-   typedef signed __int32 int32_t;
-   typedef unsigned __int32 uint32_t;
-   typedef signed __int64 int64_t;
-   typedef unsigned __int64 uint64_t;
-  #if defined(_WIN64)
-   typedef __int64 ssize_t;
-  #elif defined(_WIN32)
-   typedef long ssize_t;
-  #endif
-#  define PRIx32 "I32x"
-#  define PRIu64 "I64u"
-#  define PRId64 "I64d"
-#  define PRIx64 "I64x"
-#  define PRIX64 "I64X"
-#  define SCNx64 "I64x"
-#  define PRIxPTR "Ix"
+#  if _MSC_VER >= 1800 /* MSVC 2013 */
+#    include <inttypes.h>
+#  else
+#    if  _MSC_VER >= 1600 /* MSVC 2010 */
+#      include <stdint.h>
+#    else
+       typedef signed __int8 int8_t;
+       typedef unsigned __int8 uint8_t;
+       typedef signed __int16 int16_t;
+       typedef unsigned __int16 uint16_t;
+       typedef signed __int32 int32_t;
+       typedef unsigned __int32 uint32_t;
+       typedef signed __int64 int64_t;
+       typedef unsigned __int64 uint64_t;
+#    endif
+#    define PRIx32 "I32x"
+#    define PRIu64 "I64u"
+#    define PRId64 "I64d"
+#    define PRIx64 "I64x"
+#    define PRIX64 "I64X"
+#    define SCNx64 "I64x"
+#    define PRIxPTR "Ix"
+#  endif
+#  if defined(_WIN64)
+     typedef __int64 ssize_t;
+#  elif defined(_WIN32)
+     typedef long ssize_t;
+#  endif
 #else
 #  include <inttypes.h>
 #endif
