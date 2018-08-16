@@ -1126,7 +1126,7 @@ int crawl_stack_frame_microblaze(StackFrame * frame, StackFrame * down) {
         if (!reg_data[def->dwarf_id].o) continue;
         if (write_reg_value(down, def, reg_data[def->dwarf_id].v) < 0) return -1;
         if (def->dwarf_id == REG_SP_INDEX) {
-            frame->fp = reg_data[def->dwarf_id].v;
+            frame->fp = (ContextAddress)reg_data[def->dwarf_id].v;
             if (pc < 0x50 && frame->fp > 4) frame->fp -= 4;
         }
     }
