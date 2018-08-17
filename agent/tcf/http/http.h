@@ -36,6 +36,8 @@ extern HttpParam * get_http_headers(void);
 extern HttpParam * get_http_params(void);
 
 extern void http_content_type(const char * type);
+extern void http_response_header(const char * name, const char * value);
+extern void http_response_status(int code, const char * reason);
 extern void http_send(char ch);
 extern void http_send_block(const char * buf, size_t size);
 extern void http_printf(const char * fmt, ...) ATTR_PRINTF(1, 2);

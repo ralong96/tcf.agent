@@ -73,8 +73,8 @@ typedef struct HttpConnection {
     size_t send_size;
     size_t send_done;
     int page_code;
-    int page_cache;
-    const char * page_type;
+    char * page_reason;
+    HttpParam * page_hdrs;
     int suspended;
     int sse;
 } HttpConnection;
@@ -108,6 +108,14 @@ static void clear_connection_state(HttpConnection * con) {
         loc_free(h->value);
         loc_free(h);
     }
+    while (con->page_hdrs != NULL) {
+        HttpParam * h = con->page_hdrs;
+        con->page_hdrs = h->next;
+        loc_free(h->name);
+        loc_free(h->value);
+        loc_free(h);
+    }
+    loc_free(con->page_reason);
     memset(&con->req_wr, 0, sizeof(con->req_wr));
     con->recv_pos = 0;
     con->http_method = NULL;
@@ -122,8 +130,7 @@ static void clear_connection_state(HttpConnection * con) {
     con->send_size = 0;
     con->send_done = 0;
     con->page_code = 0;
-    con->page_cache = 0;
-    con->page_type = NULL;
+    con->page_reason = NULL;
 }
 
 static void close_connection(HttpConnection * con) {
@@ -151,7 +158,30 @@ HttpParam * get_http_headers(void) {
 }
 
 void http_content_type(const char * type) {
-    current_con->page_type = type;
+    http_response_header("Content-Type", type);
+}
+
+void http_response_header(const char * name, const char * value) {
+    HttpParam ** p = &current_con->page_hdrs;
+    HttpParam * h = current_con->page_hdrs;
+    while (h != NULL) {
+        if (strcmp(h->name, name) == 0) {
+            loc_free(h->value);
+            h->value = loc_strdup(value);
+            return;
+        }
+        p = &h->next;
+        h = h->next;
+    }
+    *p = h = (HttpParam *)loc_alloc_zero(sizeof(HttpParam));
+    h->name = loc_strdup(name);
+    h->value = loc_strdup(value);
+}
+
+void http_response_status(int code, const char * reason) {
+    current_con->page_code = code;
+    loc_free(current_con->page_reason);
+    current_con->page_reason = loc_strdup(reason);
 }
 
 void http_send(char ch) {
@@ -372,7 +402,10 @@ void http_resume(OutputStream * out) {
 
 void http_flush(void) {
     HttpConnection * con = current_con;
-    const char * reason = "OK";
+    const char * reason = con->page_reason;
+    int code = con->page_code;
+    int cache_control = 0;
+    int content_type = 0;
 
     if (con->sse) {
         con->suspended = 1;
@@ -389,29 +422,32 @@ void http_flush(void) {
         return;
     }
 
-    if (con->out.pos == 0 && con->page_type == NULL) {
+    if (con->out.pos == 0 && con->page_hdrs == NULL) {
+        code = 404;
         reason = "NOT FOUND";
-        con->page_code = 404;
         http_printf("Not found: %s\n", con->http_uri);
     }
     get_byte_array_output_stream_data(&con->out, &con->send_data, &con->send_size);
 
     create_byte_array_output_stream(&con->out);
-    if (con->page_code == 0) con->page_code = 200;
-    if (con->page_type == NULL) con->page_type = "text/html";
-    http_printf("HTTP/1.1 %d %s\n", con->page_code, reason);
-    http_printf("Content-Type: %s\n", con->page_type);
-    con->sse = strcmp(con->page_type, "text/event-stream") == 0;
-
-    if (con->page_cache) {
-        http_printf("Cache-Control: private, max-age=300\n");
+    if (code == 0) code = 200;
+    if (reason == NULL) reason = "OK";
+    http_printf("HTTP/1.1 %d %s\n", code, reason);
+    if (con->page_hdrs) {
+        HttpParam * h = con->page_hdrs;
+        while (h != NULL) {
+            if (strcmp(h->name, "Content-Type")) {
+                con->sse = strcmp(h->value, "text/event-stream") == 0;
+                content_type = 1;
+            }
+            if (strcmp(h->name, "Cache-Control")) cache_control = 1;
+            http_printf("%s: %s\n", h->name, h->value);
+            h = h->next;
+        }
     }
-    else {
-        http_printf("Cache-Control: no-cache\n");
-    }
-    if (con->keep_alive) {
-        http_printf("Connection: keep-alive\n");
-    }
+    if (!content_type) http_printf("Content-Type: text/html\n");
+    if (!cache_control) http_printf("Cache-Control: no-cache\n");
+    if (con->keep_alive) http_printf("Connection: keep-alive\n");
     if (con->sse) {
         con->suspended = 1;
     }
