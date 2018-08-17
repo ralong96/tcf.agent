@@ -2450,12 +2450,12 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
             case 0x1b: /* und */ spsr_id = 132; break;
             }
         }
-        else if (def->dwarf_id == 13 || def->dwarf_id == 15) {
+        else if (def->dwarf_id >= 13 && def->dwarf_id <= 15) {
             if (read_reg_value(frame, def, &v) < 0) return -1;
             reg_data[def->dwarf_id].v = (uint32_t)v;
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
         }
-        else if (def->dwarf_id >= 0 && def->dwarf_id <= 14) {
+        else if (def->dwarf_id >= 0 && def->dwarf_id <= 15) {
             reg_data[def->dwarf_id].v = (uint32_t)(def - defs);
             reg_data[def->dwarf_id].o = REG_VAL_FRAME;
         }

@@ -202,18 +202,18 @@ static int mem_hash_read(uint64_t addr, uint64_t * data, int * valid) {
     return -1;
 }
 
-static int load_reg(uint64_t addr, int r) {
+static int load_reg(uint64_t addr, RegData * r) {
     int valid = 0;
 
     /* Check if the value can be found in the hash */
-    if (mem_hash_read(addr, &reg_data[r].v, &valid) == 0) {
-        reg_data[r].o = valid ? REG_VAL_OTHER : 0;
+    if (mem_hash_read(addr, &r->v, &valid) == 0) {
+        r->o = valid ? REG_VAL_OTHER : 0;
     }
     else {
         /* Not in the hash, so read from real memory */
-        reg_data[r].o = 0;
-        if (read_u64(addr, &reg_data[r].v) < 0) return -1;
-        reg_data[r].o = REG_VAL_OTHER;
+        r->o = 0;
+        if (read_u64(addr, &r->v) < 0) return -1;
+        r->o = REG_VAL_OTHER;
     }
     return 0;
 }
@@ -234,18 +234,20 @@ static int load_reg_lazy(uint64_t addr, int r) {
     return 0;
 }
 
-static int chk_loaded(int r) {
-    if (reg_data[r].o == 0) return 0;
-    if (reg_data[r].o == REG_VAL_OTHER) return 0;
-    if (reg_data[r].o == REG_VAL_FRAME) {
-        uint64_t v = 0;
-        RegisterDefinition * def = get_reg_definitions(stk_ctx) + reg_data[r].v;
-        if (read_reg_value(stk_frame, def, &v) < 0) return -1;
-        reg_data[r].v = v;
-        reg_data[r].o = REG_VAL_OTHER;
+static int chk_reg_loaded(RegData * r) {
+    if (r->o == 0) return 0;
+    if (r->o == REG_VAL_OTHER) return 0;
+    if (r->o == REG_VAL_FRAME) {
+        RegisterDefinition * def = get_reg_definitions(stk_ctx) + r->v;
+        if (read_reg_value(stk_frame, def, &r->v) < 0) return -1;
+        r->o = REG_VAL_OTHER;
         return 0;
     }
-    return load_reg(reg_data[r].v, r);
+    return load_reg(r->v, r);
+}
+
+static int chk_loaded(int r) {
+    return chk_reg_loaded(reg_data + r);
 }
 
 static int mem_hash_write(uint64_t addr, uint64_t value, int valid) {
@@ -262,7 +264,7 @@ static int mem_hash_write(uint64_t addr, uint64_t value, int valid) {
         if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
         if (reg_data[i].v >= addr + 8) continue;
         if (reg_data[i].v + 8 <= addr) continue;
-        if (load_reg(reg_data[i].v, i) < 0) return -1;
+        if (load_reg(reg_data[i].v, reg_data + i) < 0) return -1;
     }
 
     /* Store the item */
@@ -1064,6 +1066,7 @@ static int trace_instructions(void) {
     cpsr_data.o = 0;
     pc_data.o = 0;
     if (org_pc.o) {
+        if (chk_reg_loaded(&org_pc) < 0) return -1;
         if (stk_frame->frame == 0) {
             if (read_u32(org_pc.v, &instr) == 0) {
                 if ((instr & 0xffe07fff) == 0xa9a07bfd) {
@@ -1083,11 +1086,15 @@ static int trace_instructions(void) {
                 /* Prologue, prev instruction: stp x29,x30,[sp, #-xxx]! */
                 uint32_t imm = (instr >> 15) & 0x7f;
                 memcpy(reg_data, org_regs, sizeof(org_regs));
-                reg_data[REG_ID_SP].v += (0x80 - imm) << 3;
+                if (reg_data[REG_ID_SP].o) {
+                    if (chk_loaded(REG_ID_SP) < 0) return -1;
+                    reg_data[REG_ID_SP].v += (0x80 - imm) << 3;
+                }
                 pc_data = org_regs[REG_ID_LR];
                 return 0;
             }
         }
+        if (chk_reg_loaded(org_regs + REG_ID_FP) < 0) return -1;
         if (org_regs[REG_ID_FP].o && org_regs[REG_ID_FP].v != 0) {
             /* Retrieve chained fp and return address.
              * See page 16 & 30 of the following document:
@@ -1101,8 +1108,13 @@ static int trace_instructions(void) {
             }
         }
     }
-    if (pc_data.o == 0 && org_regs[REG_ID_SP].v != 0 && org_regs[REG_ID_LR].v != 0 && org_pc.v != org_regs[REG_ID_LR].v) {
-        pc_data = org_regs[REG_ID_LR];
+    if (pc_data.o == 0) {
+        if (chk_reg_loaded(&org_pc) < 0) return -1;
+        if (chk_reg_loaded(org_regs + REG_ID_LR) < 0) return -1;
+        if (chk_reg_loaded(org_regs + REG_ID_SP) < 0) return -1;
+        if (org_regs[REG_ID_SP].v != 0 && org_regs[REG_ID_LR].v != 0 && org_pc.v != org_regs[REG_ID_LR].v) {
+            pc_data = org_regs[REG_ID_LR];
+        }
     }
     return 0;
 }
@@ -1175,10 +1187,12 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
             if (write_reg_value(down, def, reg_data[r].v) < 0) return -1;
         }
         else if (strcmp(def->name, "cpsr") == 0) {
+            if (chk_reg_loaded(&cpsr_data) < 0) continue;
             if (!cpsr_data.o) continue;
             if (write_reg_value(down, def, cpsr_data.v) < 0) return -1;
         }
         else if (strcmp(def->name, "pc") == 0) {
+            if (chk_reg_loaded(&pc_data) < 0) continue;
             if (!pc_data.o) continue;
             if (write_reg_value(down, def, pc_data.v) < 0) return -1;
         }
