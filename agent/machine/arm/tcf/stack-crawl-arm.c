@@ -279,7 +279,11 @@ static int chk_loaded(int r) {
     if (reg_data[r].o == REG_VAL_FRAME) {
         uint64_t v = 0;
         RegisterDefinition * def = get_reg_definitions(stk_ctx) + reg_data[r].v;
-        if (read_reg_value(stk_frame, def, &v) < 0) return -1;
+        if (read_reg_value(stk_frame, def, &v) < 0) {
+            if (stk_frame->is_top_frame) return -1;
+            reg_data[r].o = 0;
+            return 0;
+        }
         reg_data[r].v = (uint32_t)v;
         reg_data[r].o = REG_VAL_OTHER;
         return 0;
@@ -2451,7 +2455,7 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
             }
         }
         else if (def->dwarf_id >= 13 && def->dwarf_id <= 15) {
-            if (read_reg_value(frame, def, &v) < 0) return -1;
+            if (read_reg_value(frame, def, &v) < 0) continue;
             reg_data[def->dwarf_id].v = (uint32_t)v;
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
         }

@@ -239,7 +239,11 @@ static int chk_reg_loaded(RegData * r) {
     if (r->o == REG_VAL_OTHER) return 0;
     if (r->o == REG_VAL_FRAME) {
         RegisterDefinition * def = get_reg_definitions(stk_ctx) + r->v;
-        if (read_reg_value(stk_frame, def, &r->v) < 0) return -1;
+        if (read_reg_value(stk_frame, def, &r->v) < 0) {
+            if (stk_frame->is_top_frame) return -1;
+            r->o = 0;
+            return 0;
+        }
         r->o = REG_VAL_OTHER;
         return 0;
     }
