@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1570,6 +1570,7 @@ static void loc_var_func(void * args, Symbol * sym) {
 
 static int is_in_segment(U8_T lt_addr) {
     unsigned j;
+    if (elf_file->debug_info_file) return 0;
     for (j = 0; j < elf_file->pheader_cnt; j++) {
         ELF_PHeader * p = elf_file->pheaders + j;
         if (p->type != PT_LOAD) continue;
@@ -1732,7 +1733,7 @@ static void next_region(void) {
     int loaded = mem_region_pos < 0;
     ContextAddress next_pc = pc + 1;
     UnitAddressRange * unit_range = NULL;
-    ContextAddress rage_rt_addr = 0;
+    ContextAddress range_rt_addr = 0;
     const char * isa = NULL;
     ContextAddress isa_range_addr = 0;
     ContextAddress isa_range_size = 0;
@@ -1934,11 +1935,12 @@ static void next_region(void) {
             }
         }
 
-        unit_range = elf_find_unit(elf_ctx, pc, pc, &rage_rt_addr);
+        unit_range = elf_find_unit(elf_ctx, pc, pc, &range_rt_addr);
         if (unit_range == NULL && errno) error("elf_find_unit");
         if (unit_range != NULL) {
-            ELF_Section * sec = unit_range->mUnit->mFile->sections + unit_range->mSection;
-            ContextAddress addr = elf_map_to_run_time_address(elf_ctx, sec->file, sec, unit_range->mAddr);
+            ELF_Section * sec = unit_range->mSection > 0 ? unit_range->mUnit->mFile->sections + unit_range->mSection : NULL;
+            ELF_File * sec_file = get_dwarf_file(sec != NULL ? sec->file : elf_file);
+            ContextAddress addr = elf_map_to_run_time_address(elf_ctx, sec_file, sec, unit_range->mAddr);
             if (addr > pc || addr + unit_range->mSize <= pc) {
                 set_errno(ERR_OTHER, "Invalid compile unit address");
                 error("elf_find_unit");
@@ -2165,7 +2167,6 @@ static void next_region(void) {
 static void next_file(void) {
     unsigned j, k;
     ELF_File * f = NULL;
-    int can_relocate = 0;
     struct stat st;
 
     if (pass_cnt == files_cnt) exit(0);
@@ -2199,65 +2200,70 @@ static void next_file(void) {
 
     file_addr_offs = 0;
     context_clear_memory_map(&mem_map);
-    for (j = 0; j < f->pheader_cnt; j++) {
-        ELF_PHeader * p = f->pheaders + j;
-        if (p->type != PT_LOAD) continue;
-        can_relocate = 1;
-    }
-    for (j = 0; j < f->pheader_cnt; j++) {
-        ELF_PHeader * p = f->pheaders + j;
-        if (p->type != PT_LOAD) continue;
-        for (k = 0; k < j; k++) {
-            ELF_PHeader * h = f->pheaders + k;
-            if (h->type != PT_LOAD) continue;
-            if (p->offset == h->offset) can_relocate = 0;
-        }
-    }
-    if (can_relocate) file_addr_offs = 0x10000;
 
-    for (j = 0; j < f->pheader_cnt; j++) {
-        MemoryRegion * r = NULL;
-        ELF_PHeader * p = f->pheaders + j;
-        if (p->type != PT_LOAD) continue;
-        if (p->file_size > 0) {
-            if (mem_map.region_cnt >= mem_map.region_max) {
-                mem_map.region_max += 8;
-                mem_map.regions = (MemoryRegion *)loc_realloc(mem_map.regions, sizeof(MemoryRegion) * mem_map.region_max);
-            }
-            r = mem_map.regions + mem_map.region_cnt++;
-            memset(r, 0, sizeof(MemoryRegion));
-            r->addr = (ContextAddress)p->address + file_addr_offs; /* Relocated */
-            r->file_name = loc_strdup(elf_file_name);
-            r->file_offs = p->offset;
-            r->size = (ContextAddress)p->file_size;
-            r->flags = MM_FLAG_R | MM_FLAG_W;
-            if (p->flags & PF_X) r->flags |= MM_FLAG_X;
-            r->valid = MM_VALID_ADDR | MM_VALID_SIZE | MM_VALID_FILE_OFFS;
-            r->dev = st.st_dev;
-            r->ino = st.st_ino;
+    if (!f->debug_info_file) {
+        int can_relocate = 0;
+        for (j = 0; j < f->pheader_cnt; j++) {
+            ELF_PHeader * p = f->pheaders + j;
+            if (p->type != PT_LOAD) continue;
+            can_relocate = 1;
         }
-        if (p->file_size < p->mem_size) {
-            if (mem_map.region_cnt >= mem_map.region_max) {
-                mem_map.region_max += 8;
-                mem_map.regions = (MemoryRegion *)loc_realloc(mem_map.regions, sizeof(MemoryRegion) * mem_map.region_max);
+        for (j = 0; j < f->pheader_cnt; j++) {
+            ELF_PHeader * p = f->pheaders + j;
+            if (p->type != PT_LOAD) continue;
+            for (k = 0; k < j; k++) {
+                ELF_PHeader * h = f->pheaders + k;
+                if (h->type != PT_LOAD) continue;
+                if (p->offset == h->offset) can_relocate = 0;
             }
-            r = mem_map.regions + mem_map.region_cnt++;
-            memset(r, 0, sizeof(MemoryRegion));
-            r->bss = 1;
-            r->addr = (ContextAddress)(p->address + p->file_size) + file_addr_offs; /* Relocated */
-            r->file_name = loc_strdup(elf_file_name);
-            r->file_offs = p->offset + p->file_size;
-            r->size = (ContextAddress)(p->mem_size - p->file_size);
-            r->flags = MM_FLAG_R | MM_FLAG_W;
-            if (p->flags & PF_X) r->flags |= MM_FLAG_X;
-            r->valid = MM_VALID_ADDR | MM_VALID_SIZE;
-            r->dev = st.st_dev;
-            r->ino = st.st_ino;
         }
-        if (r != NULL && (p->flags & PF_X) == 0 && (r->addr + r->size) % p->align != 0) {
-            r->size = r->size + p->align - (r->addr + r->size) % p->align;
+        if (can_relocate) file_addr_offs = 0x10000;
+
+        for (j = 0; j < f->pheader_cnt; j++) {
+            MemoryRegion * r = NULL;
+            ELF_PHeader * p = f->pheaders + j;
+            if (p->type != PT_LOAD) continue;
+            if (p->file_size > 0) {
+                if (mem_map.region_cnt >= mem_map.region_max) {
+                    mem_map.region_max += 8;
+                    mem_map.regions = (MemoryRegion *)loc_realloc(mem_map.regions, sizeof(MemoryRegion) * mem_map.region_max);
+                }
+                r = mem_map.regions + mem_map.region_cnt++;
+                memset(r, 0, sizeof(MemoryRegion));
+                r->addr = (ContextAddress)p->address + file_addr_offs; /* Relocated */
+                r->file_name = loc_strdup(elf_file_name);
+                r->file_offs = p->offset;
+                r->size = (ContextAddress)p->file_size;
+                r->flags = MM_FLAG_R | MM_FLAG_W;
+                if (p->flags & PF_X) r->flags |= MM_FLAG_X;
+                r->valid = MM_VALID_ADDR | MM_VALID_SIZE | MM_VALID_FILE_OFFS;
+                r->dev = st.st_dev;
+                r->ino = st.st_ino;
+            }
+            if (p->file_size < p->mem_size) {
+                if (mem_map.region_cnt >= mem_map.region_max) {
+                    mem_map.region_max += 8;
+                    mem_map.regions = (MemoryRegion *)loc_realloc(mem_map.regions, sizeof(MemoryRegion) * mem_map.region_max);
+                }
+                r = mem_map.regions + mem_map.region_cnt++;
+                memset(r, 0, sizeof(MemoryRegion));
+                r->bss = 1;
+                r->addr = (ContextAddress)(p->address + p->file_size) + file_addr_offs; /* Relocated */
+                r->file_name = loc_strdup(elf_file_name);
+                r->file_offs = p->offset + p->file_size;
+                r->size = (ContextAddress)(p->mem_size - p->file_size);
+                r->flags = MM_FLAG_R | MM_FLAG_W;
+                if (p->flags & PF_X) r->flags |= MM_FLAG_X;
+                r->valid = MM_VALID_ADDR | MM_VALID_SIZE;
+                r->dev = st.st_dev;
+                r->ino = st.st_ino;
+            }
+            if (r != NULL && (p->flags & PF_X) == 0 && (r->addr + r->size) % p->align != 0) {
+                r->size = r->size + p->align - (r->addr + r->size) % p->align;
+            }
         }
     }
+
     if (mem_map.region_cnt == 0) {
         ContextAddress addr = 0x10000;
         assert(file_addr_offs == 0);
