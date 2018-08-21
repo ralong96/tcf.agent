@@ -673,7 +673,45 @@ static void evaluate_expression(void) {
             inv_dwarf("Unsupported type in OP_GNU_regval_type");
             break;
         case OP_GNU_deref_type:
-            inv_dwarf("Unsupported type in OP_GNU_deref_type");
+            check_e_stack(1);
+            {
+                size_t mem_size = (size_t)read_u8leb128();
+                uint32_t fund_type = read_u4leb128();
+                uint32_t type_size = read_u4leb128();
+                switch (fund_type) {
+                case ATE_address:
+                case ATE_unsigned:
+                case ATE_unsigned_char:
+                case ATE_unsigned_fixed:
+                case ATE_UTF:
+                    if (mem_size > type_size) mem_size = (size_t)type_size;
+                    state->stk[state->stk_pos - 1] = read_memory(state->stk[state->stk_pos - 1], mem_size);
+                    state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
+                    break;
+                case ATE_boolean:
+                    if (mem_size > type_size) mem_size = (size_t)type_size;
+                    state->stk[state->stk_pos - 1] = read_memory(state->stk[state->stk_pos - 1], mem_size);
+                    if (state->type_stk[state->stk_pos - 1] != 0) state->type_stk[state->stk_pos - 1] = 1;
+                    state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
+                    break;
+                case ATE_signed:
+                case ATE_signed_char:
+                case ATE_signed_fixed:
+                    if (mem_size > type_size) mem_size = (size_t)type_size;
+                    state->stk[state->stk_pos - 1] = read_memory(state->stk[state->stk_pos - 1], mem_size);
+                    if (mem_size < 8) {
+                        uint64_t sign = (uint64_t)1 << (mem_size * 8 - 1);
+                        if (state->stk[state->stk_pos - 1] & sign) {
+                            state->stk[state->stk_pos - 1] |= ~(sign - 1);
+                        }
+                    }
+                    state->type_stk[state->stk_pos - 1] = TYPE_CLASS_INTEGER;
+                    break;
+                default:
+                    inv_dwarf("Unsupported type in OP_GNU_deref_type");
+                    break;
+                }
+            }
             break;
         case OP_GNU_convert:
             inv_dwarf("Unsupported type in OP_GNU_convert");
