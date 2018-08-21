@@ -233,6 +233,24 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
     return 0;
 }
 
+static int elf_symbol_has_address(ELF_SymbolInfo * info) {
+    switch (info->type) {
+    case STT_NOTYPE:
+        /* Check if the NOTYPE symbol is for a section allocated in memory */
+        if (info->section_index == SHN_ABS) return 1;
+        if (info->section == NULL) return 0;
+        if ((info->section->flags & SHF_ALLOC) == 0) return 0;
+        if (info->value < info->section->addr) return 0;
+        if (info->value > info->section->addr + info->section->size) return 0;
+        return 1;
+    case STT_OBJECT:
+    case STT_FUNC:
+    case STT_GNU_IFUNC:
+        return 1;
+    }
+    return 0;
+}
+
 int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * address) {
     ELF_File * file = info->sym_section->file;
     ELF_Section * sec = NULL;
@@ -244,10 +262,6 @@ int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * ad
 
     switch (info->type) {
     case STT_NOTYPE:
-        /* Check if the NOTYPE symbol is for a section allocated in memory */
-        if ((info->section == NULL || (info->section->flags & SHF_ALLOC) == 0)
-           && info->section_index != SHN_ABS) break;
-        /* fall through */
     case STT_OBJECT:
     case STT_FUNC:
         if (info->section_index == SHN_UNDEF) {
@@ -262,6 +276,7 @@ int elf_symbol_address(Context * ctx, ELF_SymbolInfo * info, ContextAddress * ad
             set_errno(ERR_OTHER, "Cannot get address of ELF symbol: the symbol is a common block");
             return -1;
         }
+        if (!elf_symbol_has_address(info)) break;
         if (info->section != NULL) {
             sec = info->section;
             if (file->type == ET_REL) {
@@ -311,12 +326,11 @@ int elf_tcf_symbol(Context * ctx, ELF_SymbolInfo * sym_info, Symbol ** symbol) {
 
     switch (sym_info->type) {
     case STT_NOTYPE:
-        /* Check if the NOTYPE symbol is for a section allocated in memory */
-        if (sym_info->section == NULL || (sym_info->section->flags & SHF_ALLOC) == 0) {
+        if (!elf_symbol_has_address(sym_info)) {
             sym->sym_class = SYM_CLASS_VALUE;
             break;
         }
-        if ((sym_info->section->flags & SHF_EXECINSTR) == 0) {
+        if (sym_info->section == NULL || (sym_info->section->flags & SHF_EXECINSTR) == 0) {
             sym->sym_class = SYM_CLASS_REFERENCE;
             break;
         }
@@ -1826,7 +1840,7 @@ static int is_valid_elf_symbol(ELF_SymbolInfo * info) {
     switch (info->type) {
     case STT_NOTYPE:
         if (info->name != NULL && info->name[0] == '$') break;
-        return 1;
+        return elf_symbol_has_address(info);
     case STT_FUNC:
     case STT_OBJECT:
         return 1;
@@ -3140,7 +3154,8 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
             *type_class = TYPE_CLASS_FUNCTION;
             return 0;
         }
-        if (info.type == STT_NOTYPE && info.section != NULL && (info.section->flags & SHF_EXECINSTR) != 0) {
+        if (info.type == STT_NOTYPE && elf_symbol_has_address(&info) &&
+                info.section != NULL && (info.section->flags & SHF_EXECINSTR) != 0) {
             *type_class = TYPE_CLASS_FUNCTION;
             return 0;
         }
@@ -4142,17 +4157,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                 return -1;
             }
         }
-        switch (elf_sym_info.type) {
-        case STT_NOTYPE:
-            /* Check if the NOTYPE symbol is for a section allocated in memory */
-            if ((elf_sym_info.section == NULL ||
-                (elf_sym_info.section->flags & SHF_ALLOC) == 0)
-               && elf_sym_info.section_index != SHN_ABS) break;
-
-            /* fall through */
-        case STT_OBJECT:
-        case STT_FUNC:
-        case STT_GNU_IFUNC:
+        if (elf_symbol_has_address(&elf_sym_info)) {
             if (elf_symbol_address(sym_ctx, &elf_sym_info, &address)) return -1;
             add_location_command(info, SFT_CMD_NUMBER)->args.num = address;
             return 0;
