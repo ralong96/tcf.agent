@@ -467,9 +467,9 @@ static void evaluate_expression(void) {
             break;
         case OP_skip:
             {
-            size_t offs = (int16_t)read_u2();
-            code_pos += offs;
-            if (code_pos > code_len) inv_dwarf("Invalid command");
+                size_t offs = (int16_t)read_u2();
+                code_pos += offs;
+                if (code_pos > code_len) inv_dwarf("Invalid command");
             }
             break;
         case OP_lit0:
@@ -756,12 +756,12 @@ static void evaluate_expression(void) {
             {
 #if SERVICE_StackTrace || ENABLE_ContextProxy
                 LocationExpressionState * s = state;
-                LocationExpressionState entry_state;
-                int frame = get_prev_frame(s->ctx, get_info_frame(s->ctx, s->stack_frame));
                 uint32_t size = read_u4leb128();
                 Trap trap;
                 get_state(s);
                 if (set_trap(&trap)) {
+                    LocationExpressionState entry_state;
+                    int frame = get_prev_frame(s->ctx, get_info_frame(s->ctx, s->stack_frame));
                     memset(&entry_state, 0, sizeof(entry_state));
                     entry_state.ctx = s->ctx;
                     if (get_frame_info(s->ctx, frame, &entry_state.stack_frame) < 0) exception(errno);
