@@ -187,6 +187,7 @@
   <ItemGroup>
     <ClCompile Include="..\..\agent\tcf\framework\channel_lws.c" />
     <ClCompile Include="..\..\agent\tcf\framework\client.c" />
+    <ClCompile Include="..\..\agent\tcf\framework\compression.c" />
     <ClCompile Include="..\..\agent\tcf\framework\plugins.c" />
     <ClCompile Include="..\..\agent\tcf\framework\signames.c" />
     <ClCompile Include="..\..\agent\tcf\framework\sigsets.c" />
@@ -252,6 +253,7 @@
     <ClInclude Include="..\..\agent\tcf\framework\channel_lws.h" />
     <ClInclude Include="..\..\agent\tcf\framework\channel_lws_ext.h" />
     <ClInclude Include="..\..\agent\tcf\framework\client.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\compression.h" />
     <ClInclude Include="..\..\agent\tcf\framework\context-dispatcher-ext.h" />
     <ClInclude Include="..\..\agent\tcf\framework\context-dispatcher.h" />
     <ClInclude Include="..\..\agent\tcf\framework\context-ext.h" />

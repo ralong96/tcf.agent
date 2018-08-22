@@ -237,6 +237,9 @@
     <ClCompile Include="..\..\..\agent\tcf\framework\client.c">
       <Filter>framework</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\agent\tcf\framework\compression.c">
+      <Filter>framework</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\agent\tcf\framework\asyncreq.h">
@@ -457,6 +460,9 @@
       <Filter>services</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\agent\tcf\framework\client.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\agent\tcf\framework\compression.h">
       <Filter>framework</Filter>
     </ClInclude>
   </ItemGroup>

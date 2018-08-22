@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2006-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -339,11 +339,12 @@ static U1_T * dio_LoadStringTable(ELF_File * File, U8_T * StringTableAddr, U4_T 
             str_exception(ERR_INV_DWARF, "Section .debug_str not found");
         }
 
-        Cache->mStringTableAddr = Section->addr;
-        Cache->mStringTableSize = (size_t)Section->size;
         if (elf_load(Section) < 0) {
             str_exception(errno, "Cannot read .debug_str section");
         }
+
+        Cache->mStringTableAddr = Section->addr;
+        Cache->mStringTableSize = (size_t)Section->size;
         Cache->mStringTable = (U1_T *)Section->data;
     }
 
@@ -660,7 +661,6 @@ void dio_ReadUnit(DIO_UnitDescriptor * Unit, DIO_EntryCallBack CallBack) {
 #define dio_AbbrevTableHash(Offset) (((unsigned)(Offset)) / 16 % ABBREV_TABLE_SIZE)
 
 void dio_LoadAbbrevTable(ELF_File * File) {
-    U4_T ID;
     U8_T TableOffset = 0;
     ELF_Section * Section = NULL;
     static U2_T * AttrBuf = NULL;
@@ -669,16 +669,17 @@ void dio_LoadAbbrevTable(ELF_File * File) {
     static U4_T AbbrevBufSize = 0;
     U4_T AbbrevBufPos = 0;
     DIO_Cache * Cache = dio_GetCache(File);
+    unsigned i;
 
     if (Cache->mAbbrevTable != NULL) return;
     Cache->mAbbrevTable = (DIO_AbbrevSet **)loc_alloc_zero(sizeof(DIO_AbbrevSet *) * ABBREV_TABLE_SIZE);
 
-    for (ID = 1; ID < File->section_cnt; ID++) {
-        if (strcmp(File->sections[ID].name, ".debug_abbrev") == 0) {
+    for (i = 1; i < File->section_cnt; i++) {
+        if (strcmp(File->sections[i].name, ".debug_abbrev") == 0) {
             if (Section != NULL) {
                 str_exception(ERR_INV_DWARF, "More then one .debug_abbrev section in a file");
             }
-            Section = File->sections + ID;
+            Section = File->sections + i;
         }
     }
     if (Section == NULL) return;

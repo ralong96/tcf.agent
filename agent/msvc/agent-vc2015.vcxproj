@@ -308,6 +308,7 @@
     <ClCompile Include="..\tcf\framework\channel_pipe.c" />
     <ClCompile Include="..\tcf\framework\channel_tcp.c" />
     <ClCompile Include="..\tcf\framework\client.c" />
+    <ClCompile Include="..\tcf\framework\compression.c" />
     <ClCompile Include="..\tcf\framework\context.c" />
     <ClCompile Include="..\tcf\framework\context-dispatcher.c" />
     <ClCompile Include="..\tcf\framework\cpudefs.c" />
@@ -376,6 +377,7 @@
     <ClInclude Include="..\tcf\framework\channel_lws.h" />
     <ClInclude Include="..\tcf\framework\channel_lws_ext.h" />
     <ClInclude Include="..\tcf\framework\client.h" />
+    <ClInclude Include="..\tcf\framework\compression.h" />
     <ClInclude Include="..\tcf\framework\config.h" />
     <ClInclude Include="..\tcf\framework\context-ext.h" />
     <ClInclude Include="..\tcf\framework\context-mux-ext.h" />

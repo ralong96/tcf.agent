@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -125,7 +125,6 @@
 #define STT_LOPROC      13
 #define STT_HIPROC      15
 #define STT_ARM_TFUNC   STT_LOPROC
-
 
 #define PT_NULL         0
 #define PT_LOAD         1
@@ -505,6 +504,11 @@ struct ELF_Section {
     U4_T link;
     U4_T info;
     U4_T entsize;
+
+    /* Compression info */
+    U4_T compressed_type;
+    U8_T compressed_size;
+    U8_T compressed_offset;
 
     void * mmap_addr;
     size_t mmap_size;

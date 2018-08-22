@@ -173,6 +173,7 @@
     <ClCompile Include="..\..\..\agent\tcf\framework\channel_pipe.c" />
     <ClCompile Include="..\..\..\agent\tcf\framework\channel_tcp.c" />
     <ClCompile Include="..\..\..\agent\tcf\framework\client.c" />
+    <ClCompile Include="..\..\..\agent\tcf\framework\compression.c" />
     <ClCompile Include="..\..\..\agent\tcf\framework\context.c" />
     <ClCompile Include="..\..\..\agent\tcf\framework\cpudefs.c" />
     <ClCompile Include="..\..\..\agent\tcf\framework\errors.c" />
@@ -248,6 +249,7 @@
     <ClInclude Include="..\..\..\agent\tcf\framework\channel_pipe.h" />
     <ClInclude Include="..\..\..\agent\tcf\framework\channel_tcp.h" />
     <ClInclude Include="..\..\..\agent\tcf\framework\client.h" />
+    <ClInclude Include="..\..\..\agent\tcf\framework\compression.h" />
     <ClInclude Include="..\..\..\agent\tcf\framework\context.h" />
     <ClInclude Include="..\..\..\agent\tcf\main\framework-ext.h" />
     <ClInclude Include="..\..\..\agent\tcf\main\framework.h" />
