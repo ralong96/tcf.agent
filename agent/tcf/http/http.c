@@ -436,7 +436,7 @@ void http_flush(void) {
     if (con->page_hdrs) {
         HttpParam * h = con->page_hdrs;
         while (h != NULL) {
-            if (strcmp(h->name, "Content-Type")) {
+            if (strcmp(h->name, "Content-Type") == 0) {
                 con->sse = strcmp(h->value, "text/event-stream") == 0;
                 content_type = 1;
             }
