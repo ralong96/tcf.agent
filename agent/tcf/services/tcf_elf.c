@@ -1497,7 +1497,15 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
             }
         }
         else if (r->size > 0 && r->addr <= addr1 && r->addr + r->size - 1 >= addr0) {
-            *add_region(res) = *r;
+            /* Even if the addresses are in the given range, we MUST check that the
+             * region actually belongs to an ELF file. Without the check below, we
+             * could end up using the ELF reader even if the region belongs to a
+             * PE/COFF file.
+             */
+            const ELF_File * file = elf_open_memory_region_file(r, NULL);
+            if (file) {
+                *add_region(res) = *r;
+            }
         }
         else if (r->size == 0 && r->sect_name != NULL && r->addr <= addr1 && r->addr >= addr0) {
             /* Special case: section symbol of a zero length section */
