@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 1996, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 1996-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -430,6 +430,9 @@
 #define OP_GNU_convert              0xf7
 #define OP_GNU_reinterpret          0xf9
 #define OP_GNU_parameter_ref        0xfa
+#define OP_GNU_addr_index           0xfb
+#define OP_GNU_const_index          0xfc
+#define OP_GNU_variable_value       0xfd
 /* TCF extensions */
 #define OP_TCF_switch               0xfe
 #define OP_TCF_offset               0xff

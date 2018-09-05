@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2006-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -332,6 +332,12 @@ extern U8_T get_numeric_property_value(PropertyValue * Value);
  * If 'range_rt_addr' not NULL, *range_rt_addr is assigned run-time address of the range.
  */
 extern struct UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress addr_min, ContextAddress addr_max, ContextAddress * range_rt_addr);
+
+/*
+ * Get the TCF Symbol from DWARF symbol info.
+ */
+typedef struct Symbol Symbol;
+extern void elf_object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res);
 
 #endif /* ENABLE_ELF && ENABLE_DebugContext */
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -669,6 +669,37 @@ static void op_call(void) {
     add_expression_list(info, 0, 0);
 }
 
+static void op_gnu_variable_value(void) {
+#if SERVICE_Symbols && (!ENABLE_SymbolsProxy || ENABLE_SymbolsMux) && ENABLE_ELF
+    U8_T ref_id = 0;
+    DIO_UnitDescriptor * desc = &expr->object->mCompUnit->mDesc;
+    U8_T dio_pos = 0;
+    ELF_Section * section = NULL;
+    int arg_size = desc->m64bit ? 8 : 4;
+    ObjectInfo * ref_obj = NULL;
+    Symbol * sym = NULL;
+    const char * id = NULL;
+
+    expr_pos++;
+    dio_pos = expr->expr_addr + expr_pos - (U1_T *)expr->section->data;
+    dio_EnterSection(desc, expr->section, dio_pos);
+    if (desc->mVersion < 3) arg_size = desc->mAddressSize;
+    ref_id = dio_ReadAddressX(&section, arg_size);
+    expr_pos += (size_t)(dio_GetPos() - dio_pos);
+    dio_ExitSection();
+
+    ref_obj = find_object(expr->object->mCompUnit->mDesc.mSection, ref_id);
+    if (ref_obj == NULL) str_exception(ERR_INV_DWARF, "Invalid reference in OP_GNU_variable_value");
+    elf_object2symbol(NULL, ref_obj, &sym);
+    id = symbol2id(sym);
+    add(OP_GNU_variable_value);
+    do add(*id++);
+    while (*id);
+#else
+    str_exception(ERR_INV_DWARF, "Cannot handle OP_GNU_variable_value without Symbols service");
+#endif
+}
+
 static void add_call_sites(ObjectInfo * obj, U8_T addr, U8_T size) {
     while (obj != NULL) {
         switch (obj->mTag) {
@@ -1131,7 +1162,9 @@ static void add_expression(DWARFExpressionInfo * info) {
                 else {
                     get_type(type, &fund_type, &byte_size);
                     switch (fund_type) {
+                    case ATE_address:
                     case ATE_unsigned:
+                    case ATE_unsigned_char:
                         if (byte_size < 8) {
                             add(OP_constu);
                             add_uleb128(((U8_T)1 << (byte_size * 8)) - 1);
@@ -1147,6 +1180,9 @@ static void add_expression(DWARFExpressionInfo * info) {
                     add_uleb128(byte_size);
                 }
             }
+            break;
+        case OP_GNU_variable_value:
+            op_gnu_variable_value();
             break;
         default:
             if (op >= OP_lo_user) {

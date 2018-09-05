@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -691,7 +691,7 @@ static void evaluate_expression(void) {
                 case ATE_boolean:
                     if (mem_size > type_size) mem_size = (size_t)type_size;
                     state->stk[state->stk_pos - 1] = read_memory(state->stk[state->stk_pos - 1], mem_size);
-                    if (state->type_stk[state->stk_pos - 1] != 0) state->type_stk[state->stk_pos - 1] = 1;
+                    if (state->stk[state->stk_pos - 1] != 0) state->stk[state->stk_pos - 1] = 1;
                     state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
                     break;
                 case ATE_signed:
@@ -714,7 +714,66 @@ static void evaluate_expression(void) {
             }
             break;
         case OP_GNU_convert:
-            inv_dwarf("Unsupported type in OP_GNU_convert");
+            check_e_stack(1);
+            {
+                uint32_t fund_type = read_u4leb128();
+                uint32_t type_size = read_u4leb128();
+                switch (fund_type) {
+                case ATE_address:
+                case ATE_unsigned:
+                case ATE_unsigned_char:
+                case ATE_unsigned_fixed:
+                case ATE_UTF:
+                    if (type_size < 8) {
+                        uint64_t sign = (uint64_t)1 << (type_size * 8 - 1);
+                        state->stk[state->stk_pos - 1] &= sign - 1;
+                    }
+                    state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
+                    break;
+                case ATE_boolean:
+                    if (state->stk[state->stk_pos - 1] != 0) state->stk[state->stk_pos - 1] = 1;
+                    state->type_stk[state->stk_pos - 1] = TYPE_CLASS_CARDINAL;
+                    break;
+                case ATE_signed:
+                case ATE_signed_char:
+                case ATE_signed_fixed:
+                    if (type_size < 8) {
+                        uint64_t sign = (uint64_t)1 << (type_size * 8 - 1);
+                        if (state->stk[state->stk_pos - 1] & sign) {
+                            state->stk[state->stk_pos - 1] |= ~(sign - 1);
+                        }
+                        else {
+                            state->stk[state->stk_pos - 1] &= sign - 1;
+                        }
+                    }
+                    state->type_stk[state->stk_pos - 1] = TYPE_CLASS_INTEGER;
+                    break;
+                default:
+                    inv_dwarf("Unsupported type in OP_GNU_convert");
+                    break;
+                }
+            }
+            break;
+        case OP_GNU_variable_value:
+            {
+                const char * id = (const char *)(code + code_pos);
+                Symbol * sym = NULL;
+                void * value = NULL;
+                size_t size = 0;
+                int big_endian = 0;
+                uint64_t v = 0;
+                unsigned i;
+                code_pos += strlen(id) + 1;
+                if (id2symbol(id, &sym) < 0) exception(errno);
+                if (get_symbol_value(sym, &value, &size, &big_endian) < 0) exception(errno);
+                for (i = 0; i < size; i++) {
+                    uint64_t b = *((uint8_t *)value + i);
+                    v |= b << (big_endian ? (size - i - 1) * 8 : i * 8);
+                }
+                state->stk[state->stk_pos] = v;
+                state->type_stk[state->stk_pos] = TYPE_CLASS_CARDINAL;
+                state->stk_pos++;
+            }
             break;
         case OP_TCF_switch:
             check_e_stack(1);
