@@ -363,7 +363,7 @@
 #endif
 
 #if !defined(ENABLE_HttpServer)
-#  define ENABLE_HttpServer       0
+#  define ENABLE_HttpServer       1
 #endif
 
 #endif /* D_framework_config */
