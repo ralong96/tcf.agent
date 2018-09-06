@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -502,10 +502,8 @@ static ChannelPIPE * create_channel(int fd_inp, int fd_out, ServerInstance * ser
 
 static void set_peer_name(ChannelPIPE * c) {
     /* Create a human readable channel name that uniquely identifies remote peer */
-    char name[256];
     static int pipe_cnt = 0;
-    snprintf(name, sizeof(name), "PIPE:%d", pipe_cnt++);
-    c->chan->peer_name = loc_strdup(name);
+    c->chan->peer_name = loc_printf("PIPE:%d", pipe_cnt++);
 }
 
 typedef struct ChannelConnectInfo {

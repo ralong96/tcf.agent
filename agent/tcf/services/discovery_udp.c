@@ -372,7 +372,8 @@ static int send_packet(ip_ifc_info * ifc, struct sockaddr_in * addr) {
 
 static int is_ip_peer(PeerServer * ps) {
     const char * prot = peer_server_getprop(ps, "TransportName", NULL);
-    return prot != NULL && (strcmp(prot, "TCP") == 0 || strcmp(prot, "SSL") == 0 || strcmp(prot, "WS") == 0 || strcmp(prot, "WSS") == 0);
+    return prot != NULL && (strcmp(prot, "TCP") == 0 || strcmp(prot, "SSL") == 0 ||
+        strcmp(prot, "WS") == 0 || strcmp(prot, "WSS") == 0 || strcmp(prot, "HTTP") == 0);
 }
 
 static int udp_send_peer_info(PeerServer * ps, void * arg) {

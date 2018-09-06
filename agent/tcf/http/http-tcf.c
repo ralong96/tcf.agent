@@ -22,6 +22,8 @@
 #if ENABLE_HttpServer
 
 #include <assert.h>
+#include <tcf/framework/ip_ifc.h>
+#include <tcf/framework/mdep-inet.h>
 #include <tcf/framework/json.h>
 #include <tcf/framework/trace.h>
 #include <tcf/framework/events.h>
@@ -32,6 +34,8 @@
 #include <tcf/framework/protocol.h>
 #include <tcf/http/http.h>
 #include <tcf/http/http-tcf.h>
+
+#define MAX_IFC 10
 
 #define BUF_SIZE 0x1000
 
@@ -66,6 +70,7 @@ typedef struct Message {
 
 static unsigned token_cnt = 0;
 static ChannelServer server = { NULL };
+static int server_sock = -1;
 static LINK link_clients;
 
 #define inp2channel(x)  ((Channel *)((char *)(x) - offsetof(Channel, inp)))
@@ -232,6 +237,7 @@ static void http_channel_unlock(Channel * channel) {
             list_remove(&e->link);
             free_message(e);
         }
+        loc_free(channel->peer_name);
         loc_free(cd->out_buf.mem);
         loc_free(cd->cmd_data);
         loc_free(cd->id);
@@ -268,6 +274,7 @@ static void http_channel_write(OutputStream * out, int byte) {
     if (ch->state == ChannelStateDisconnected) return;
     if (byte == MARKER_EOM) {
         Trap trap;
+        int reply = 0;
         char * data = NULL;
         size_t size = 0;
         ByteArrayInputStream inp_buf;
@@ -290,6 +297,7 @@ static void http_channel_write(OutputStream * out, int byte) {
             else if (strcmp(m->type, "R") == 0) {
                 read_stringz(inp, m->token, sizeof(m->token));
                 read_args(inp, m);
+                reply = 1;
             }
             else if (strcmp(m->type, "E") == 0) {
                 read_stringz(inp, m->service, sizeof(m->service));
@@ -298,6 +306,7 @@ static void http_channel_write(OutputStream * out, int byte) {
             }
             else if (strcmp(m->type, "N") == 0) {
                 read_stringz(inp, m->token, sizeof(m->token));
+                reply = 1;
             }
             else {
                 exception(ERR_PROTOCOL);
@@ -306,7 +315,6 @@ static void http_channel_write(OutputStream * out, int byte) {
         }
         m->error = trap.error;
         list_add_last(&m->link, &cd->link_messages);
-        int reply = strcmp(m->type, "R") == 0 || strcmp(m->type, "N") == 0;
         if (reply && cd->wait_token != NULL && strcmp(cd->wait_token, m->token) == 0) {
             assert(cd->http_out != NULL);
             cd->wait_done = 1;
@@ -367,6 +375,50 @@ static void timer_event(void * arg) {
     post_event_with_delay(timer_event, NULL, 60000000);
 }
 
+static void refresh_server_info(int sock, PeerServer * ps) {
+    unsigned i;
+    struct sockaddr_in sin;
+#if defined(_WRS_KERNEL)
+    int sinlen;
+#else
+    socklen_t sinlen;
+#endif
+    const char * str_port = peer_server_getprop(ps, "Port", NULL);
+    struct in_addr src_addr;
+    ip_ifc_info if_list[MAX_IFC];
+    int if_cnt = build_ifclist(sock, MAX_IFC, if_list);
+    sinlen = sizeof(sin);
+    if (getsockname(sock, (struct sockaddr *)&sin, &sinlen) != 0) {
+        trace(LOG_ALWAYS, "refresh_server_info: getsockname error: %s", errno_to_str(errno));
+        return;
+    }
+    while (if_cnt-- > 0) {
+        char str_host[64];
+        PeerServer * ps2;
+        if (sin.sin_addr.s_addr != INADDR_ANY &&
+            (if_list[if_cnt].addr & if_list[if_cnt].mask) !=
+            (sin.sin_addr.s_addr & if_list[if_cnt].mask)) {
+            continue;
+        }
+        src_addr.s_addr = if_list[if_cnt].addr;
+        ps2 = peer_server_alloc();
+        ps2->flags = ps->flags | PS_FLAG_LOCAL | PS_FLAG_DISCOVERABLE;
+        for (i = 0; i < ps->ind; i++) {
+            peer_server_addprop(ps2, loc_strdup(ps->list[i].name), loc_strdup(ps->list[i].value));
+        }
+        inet_ntop(AF_INET, &src_addr, str_host, sizeof(str_host));
+        peer_server_addprop(ps2, loc_strdup("ID"), loc_printf("HTTP:%s:%s", str_host, str_port));
+        peer_server_addprop(ps2, loc_strdup("Host"), loc_strdup(str_host));
+        peer_server_addprop(ps2, loc_strdup("Port"), loc_strdup(str_port));
+        peer_server_add(ps2, PEER_DATA_RETENTION_PERIOD * 2);
+    }
+}
+
+static void refresh_server_info_event(void * x) {
+    refresh_server_info(server_sock, server.ps);
+    post_event_with_delay(refresh_server_info_event, NULL, PEER_DATA_REFRESH_PERIOD * 1000000);
+}
+
 static ClientData * find_client(void) {
     ClientData * cd = NULL;
     HttpParam * h = get_http_headers();
@@ -399,6 +451,7 @@ static ClientData * find_client(void) {
     cd->channel.out.write = http_channel_write;
     cd->channel.out.write_block = http_channel_write_block;
     cd->channel.out.splice_block = http_channel_splice_block;
+    cd->channel.peer_name = loc_printf("HTTP:%s", id);
     create_byte_array_output_stream(&cd->out_buf);
     list_init(&cd->link_messages);
     cd->id = loc_strdup(id);
@@ -604,13 +657,15 @@ void http_connection_closed(OutputStream * out) {
     }
 }
 
-ChannelServer * ini_http_tcf(PeerServer * ps) {
+ChannelServer * ini_http_tcf(int sock, PeerServer * ps) {
     static HttpListener l = { get_page };
     assert(list_is_empty(&server.servlink));
     add_http_listener(&l);
+    server_sock = sock;
     server.ps = ps;
     list_init(&link_clients);
     list_add_last(&server.servlink, &channel_server_root);
+    post_event(refresh_server_info_event, NULL);
     return &server;
 }
 

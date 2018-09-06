@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2016-2017 Wind River Systems, Inc.
+ * Copyright (c) 2016-2018 Wind River Systems, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1166,7 +1166,6 @@ static void refresh_peer_server(int sock, PeerServer * ps) {
     ifcind = build_ifclist(sock, MAX_IFC, ifclist);
     while (ifcind-- > 0) {
         char str_host[64];
-        char str_id[64];
         PeerServer * ps2;
         src_addr.s_addr = ifclist[ifcind].addr;
         ps2 = peer_server_alloc();
@@ -1176,8 +1175,7 @@ static void refresh_peer_server(int sock, PeerServer * ps) {
                     loc_strdup(ps->list[i].value));
         }
         inet_ntop(AF_INET, &src_addr, str_host, sizeof(str_host));
-        snprintf(str_id, sizeof(str_id), "%s:%s:%s", transport, str_host, str_port);
-        peer_server_addprop(ps2, loc_strdup("ID"), loc_strdup(str_id));
+        peer_server_addprop(ps2, loc_strdup("ID"), loc_printf("%s:%s:%s", transport, str_host, str_port));
         peer_server_addprop(ps2, loc_strdup("Host"), loc_strdup(str_host));
         peer_server_addprop(ps2, loc_strdup("Port"), loc_strdup(str_port));
         peer_server_add(ps2, PEER_DATA_RETENTION_PERIOD * 2);
@@ -1197,16 +1195,14 @@ static void refresh_all_peer_servers(void * x) {
 static void set_peer_addr(ChannelWS * c, struct sockaddr * addr, int addr_len) {
     char nbuf[128];
     /* Create a human readable channel name that uniquely identifies remote peer */
-    char name[128];
     if (addr_len == 0) return;
     assert(addr->sa_family == AF_INET);
-    snprintf(name, sizeof(name), "%s:%s:%d",
+    c->chan->peer_name = loc_printf("%s:%s:%d",
             c->is_ssl ? "WSS" : "WS",
             inet_ntop(addr->sa_family,
             &((struct sockaddr_in *)addr)->sin_addr,
             nbuf, sizeof(nbuf)),
             ntohs(((struct sockaddr_in *)addr)->sin_port));
-    c->chan->peer_name = loc_strdup(name);
 }
 
 

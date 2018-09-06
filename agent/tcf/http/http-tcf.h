@@ -25,6 +25,6 @@
 #include <tcf/framework/channel.h>
 
 extern void http_connection_closed(OutputStream * out);
-extern ChannelServer * ini_http_tcf(PeerServer * ps);
+extern ChannelServer * ini_http_tcf(int sock, PeerServer * ps);
 
 #endif /* D_http_tcf */

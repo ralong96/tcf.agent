@@ -491,7 +491,7 @@ static void http_server_accept_done(void * x) {
         list_add_first(&con->link_all, &server->link_cons);
         con->server = server;
         con->sock = req->u.acc.rval;
-        con->addr_buf = loc_alloc(server->addr_len);
+        con->addr_buf = (struct sockaddr *)loc_alloc(server->addr_len);
         memcpy(con->addr_buf, server->addr_buf, server->addr_len);
         con->addr_len = server->addr_len;
         con->recv_max = 0x300;
@@ -616,7 +616,7 @@ static ChannelServer * http_channel_server_create(PeerServer * ps) {
     const char * port = peer_server_getprop(ps, "Port", NULL);
     HttpServer * server = start_http_server(host, port);
     if (server == NULL) return NULL;
-    return ini_http_tcf(ps);
+    return ini_http_tcf(server->sock, ps);
 }
 
 static void http_channel_connect(PeerServer * ps,  ChannelConnectCallBack cb, void * args) {
