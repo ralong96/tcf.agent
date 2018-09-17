@@ -47,6 +47,8 @@
 #    define USE_CLOCK_MONOTONIC 1
 #  elif (defined(_WIN32) || defined(__CYGWIN__)) && !defined(DISABLE_PTHREADS_WIN32)
 #    define USE_CLOCK_MONOTONIC 1
+#  elif (defined(__VXWORKS__))
+#    define USE_CLOCK_MONOTONIC 1
 #  else
 #    define USE_CLOCK_MONOTONIC 0
 #  endif
