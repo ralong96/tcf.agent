@@ -2248,8 +2248,8 @@ static int trace_instructions(void) {
     uint32_t func_size = 0;
 
     memcpy(org_4to11, reg_data + 4, sizeof(org_4to11));
+    memset(&org_spsr, 0, sizeof(org_spsr));
     if (org_spsr_id > 0) org_spsr = reg_data[org_spsr_id];
-    else org_spsr.o = 0;
 
 #if ENABLE_Symbols
     if (chk_loaded(15) == 0) {
