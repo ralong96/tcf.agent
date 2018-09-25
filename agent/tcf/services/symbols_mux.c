@@ -94,29 +94,38 @@ static int get_symbol_reader(Context * ctx, int frame, ContextAddress addr, Symb
 
 int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char * name, Symbol ** res) {
     unsigned i;
+    Context * symbol_ctx = NULL;
+    Symbol ** symbol_list = NULL;
 
+    *res = NULL;
     find_symbol_ctx = NULL;
-    for (i = 0; i < reader_cnt; i++) find_symbol_list[i] = NULL;
+    find_symbol_list = NULL;
 
     for (i = 0; i < reader_cnt; i++) {
         Symbol * sym = NULL;
         SymbolReader * reader = readers[i];
         if (reader->find_symbol_by_name(ctx, frame, ip, name, &sym) == 0) {
             assert(sym != NULL);
-            find_symbol_list[i] = sym;
-            if (find_symbol_ctx == NULL) {
-                if (reader->find_next_symbol(&find_symbol_list[i]) < 0) {
-                    find_symbol_list[i] = NULL;
-                }
-                find_symbol_ctx = ctx;
+            if (symbol_ctx == NULL) {
+                symbol_list = (Symbol **)tmp_alloc_zero(sizeof(Symbol *) * reader_cnt);
+                if (reader->find_next_symbol(&symbol_list[i]) < 0) symbol_list[i] = NULL;
+                symbol_ctx = ctx;
                 *res = sym;
+            }
+            else {
+                symbol_list[i] = sym;
             }
         }
         else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
             return -1;
         }
     }
-    if (find_symbol_ctx != NULL) return 0;
+    if (symbol_ctx != NULL) {
+        find_symbol_ctx = symbol_ctx;
+        find_symbol_list = symbol_list;
+        assert(*res != NULL);
+        return 0;
+    }
     errno = ERR_SYM_NOT_FOUND;
     return -1;
 }
@@ -124,9 +133,12 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
 int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * scope,
         const char * name, Symbol ** res) {
     unsigned i;
+    Context * symbol_ctx = NULL;
+    Symbol ** symbol_list = NULL;
 
+    *res = NULL;
     find_symbol_ctx = NULL;
-    for (i = 0; i < reader_cnt; i++) find_symbol_list[i] = NULL;
+    find_symbol_list = NULL;
 
     for (i = 0; i < reader_cnt; i++) {
         Symbol * sym = NULL;
@@ -134,39 +146,47 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress ip, Symbol * s
         if (scope != NULL && *(SymbolReader **)scope != reader) continue;
         if (reader->find_symbol_in_scope(ctx, frame, ip, scope, name, &sym) == 0) {
             assert(sym != NULL);
-            find_symbol_list[i] = sym;
-            if (find_symbol_ctx == NULL) {
-                if (reader->find_next_symbol(&find_symbol_list[i]) < 0) {
-                    find_symbol_list[i] = NULL;
-                }
-                find_symbol_ctx = ctx;
+            if (symbol_ctx == NULL) {
+                symbol_list = (Symbol **)tmp_alloc_zero(sizeof(Symbol *) * reader_cnt);
+                if (reader->find_next_symbol(&symbol_list[i]) < 0) symbol_list[i] = NULL;
+                symbol_ctx = ctx;
                 *res = sym;
+            }
+            else {
+                symbol_list[i] = sym;
             }
         }
         else if (get_error_code(errno) != ERR_SYM_NOT_FOUND) {
             return -1;
         }
     }
-    if (find_symbol_ctx != NULL) return 0;
+    if (symbol_ctx != NULL) {
+        find_symbol_ctx = symbol_ctx;
+        find_symbol_list = symbol_list;
+        assert(*res != NULL);
+        return 0;
+    }
     errno = ERR_SYM_NOT_FOUND;
     return -1;
 }
 
 int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol ** res) {
-    unsigned i;
     SymbolReader * reader;
 
+    *res = NULL;
     find_symbol_ctx = NULL;
-    for (i = 0; i < reader_cnt; i++) find_symbol_list[i] = NULL;
+    find_symbol_list = NULL;
 
     if (get_symbol_reader(ctx, frame, addr, &reader) < 0) return -1;
     if (reader != NULL) {
-        i = reader->reader_index;
+        Symbol ** symbol_list = NULL;
+        unsigned i = reader->reader_index;
         if (reader->find_symbol_by_addr(ctx, frame, addr, res) < 0) return -1;
-        if (reader->find_next_symbol(&find_symbol_list[i]) < 0) {
-            find_symbol_list[i] = NULL;
-        }
+        symbol_list = (Symbol **)tmp_alloc_zero(sizeof(Symbol *) * reader_cnt);
+        if (reader->find_next_symbol(&symbol_list[i]) < 0) symbol_list[i] = NULL;
         find_symbol_ctx = ctx;
+        find_symbol_list = symbol_list;
+        assert(*res != NULL);
         return 0;
     }
     errno = ERR_SYM_NOT_FOUND;
@@ -176,6 +196,7 @@ int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol **
 int find_next_symbol(Symbol ** sym) {
     unsigned i;
 
+    *sym = NULL;
     if (find_symbol_ctx == NULL) {
         errno = ERR_SYM_NOT_FOUND;
         return -1;
@@ -186,9 +207,12 @@ int find_next_symbol(Symbol ** sym) {
             if (readers[i]->find_next_symbol(&find_symbol_list[i]) < 0) {
                 find_symbol_list[i] = NULL;
             }
+            assert(*sym != NULL);
             return 0;
         }
     }
+    find_symbol_ctx = NULL;
+    find_symbol_list = NULL;
     errno = ERR_SYM_NOT_FOUND;
     return -1;
 }
@@ -371,16 +395,12 @@ int get_context_isa(Context * ctx, ContextAddress addr, const char ** isa,
 }
 
 int add_symbols_reader(SymbolReader * reader) {
-    unsigned i;
     if (reader_cnt >= max_reader_cnt) {
         max_reader_cnt += 2;
         readers = (SymbolReader **)loc_realloc(readers, max_reader_cnt * sizeof(SymbolReader *));
-        find_symbol_list = (Symbol **)loc_realloc(find_symbol_list, max_reader_cnt * sizeof(Symbol *));
     }
     reader->reader_index = reader_cnt;
     readers[reader_cnt++] = reader;
-    for (i = 0; i < reader_cnt; i++) find_symbol_list[i] = NULL;
-    find_symbol_ctx = NULL;
     return 0;
 }
 
