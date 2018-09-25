@@ -2195,9 +2195,12 @@ static void op_deref(int mode, Value * v) {
             v->constant = 0;
             set_value_endianness(v, NULL, type);
         }
-        v->sym_list = NULL;
         v->sym = NULL;
         v->reg = NULL;
+        v->function = 0;
+        v->func_cb = NULL;
+        v->field_cb = NULL;
+        v->sym_list = NULL;
     }
     v->type = type;
     if (get_symbol_type_class(v->type, &v->type_class) < 0) {
@@ -2445,14 +2448,17 @@ static void op_index(int mode, Value * v) {
             }
             v->address = (ContextAddress)to_uns(mode, v);
             v->remote = 1;
-            v->sym_list = NULL;
-            v->sym = NULL;
-            v->reg = NULL;
             v->loc = NULL;
             v->value = NULL;
             v->constant = 0;
             set_value_endianness(v, NULL, type);
         }
+        v->sym = NULL;
+        v->reg = NULL;
+        v->function = 0;
+        v->func_cb = NULL;
+        v->field_cb = NULL;
+        v->sym_list = NULL;
     }
     if (get_symbol_size(type, &size) < 0) {
         error(errno, "Cannot get array element size");
@@ -3202,15 +3208,17 @@ static void lazy_unary_expression(int mode, Value * v) {
                 else {
                     v->address = (ContextAddress)to_uns(mode, v);
                     v->remote = 1;
-                    v->sym_list = NULL;
-                    v->sym = NULL;
-                    v->reg = NULL;
-                    v->loc = NULL;
                     v->value = NULL;
                     v->size = type_size;
                     v->big_endian = expression_context->big_endian;
                     v->constant = 0;
                 }
+                v->sym = NULL;
+                v->reg = NULL;
+                v->function = 0;
+                v->func_cb = NULL;
+                v->field_cb = NULL;
+                v->sym_list = NULL;
                 v->type = type;
                 v->type_class = type_class;
             }
@@ -3284,6 +3292,8 @@ static void pm_expression(int mode, Value * v) {
             v->loc = NULL;
             v->remote = 1;
             v->function = 0;
+            v->func_cb = NULL;
+            v->field_cb = NULL;
             v->value = NULL;
             v->constant = 0;
             if (get_symbol_base_type(x.type, &v->type) < 0) {

@@ -145,6 +145,7 @@ typedef int test_array[10001];
 extern int tcf_test_func_int(int x, int y);
 extern long tcf_test_func_long(long x, long y);
 extern double tcf_test_func_double(double x, double y);
+extern void tcf_test_func4(void);
 extern void tcf_test_func3(void);
 extern int tcf_test_func2(void);
 extern void tcf_test_func1(void);
@@ -175,9 +176,13 @@ double tcf_test_func_double(double x, double y) {
     return x + y;
 }
 
+void tcf_test_func4(void) {
+}
+
 void tcf_test_func3(void) {
     tcf_test_char++;
     usleep(1000);
+    tcf_test_func4();
 }
 
 int tcf_test_func2(void) {
@@ -273,6 +278,7 @@ int find_test_symbol(Context * ctx, const char * name, void ** addr, int * sym_c
             else if (strcmp(name, "tcf_test_func1") == 0) *addr = (void *)tcf_test_func1;
             else if (strcmp(name, "tcf_test_func2") == 0) *addr = (void *)tcf_test_func2;
             else if (strcmp(name, "tcf_test_func3") == 0) *addr = (void *)tcf_test_func3;
+            else if (strcmp(name, "tcf_test_func4") == 0) *addr = (void *)tcf_test_func4;
         }
         if (*addr != NULL) return 0;
     }
