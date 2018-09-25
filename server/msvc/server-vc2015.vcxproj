@@ -192,6 +192,8 @@
     <ClCompile Include="..\..\agent\tcf\framework\signames.c" />
     <ClCompile Include="..\..\agent\tcf\framework\sigsets.c" />
     <ClCompile Include="..\..\agent\tcf\framework\waitpid.c" />
+    <ClCompile Include="..\..\agent\tcf\http\http-tcf.c" />
+    <ClCompile Include="..\..\agent\tcf\http\http.c" />
     <ClCompile Include="..\..\agent\tcf\services\disassembly.c" />
     <ClCompile Include="..\..\agent\tcf\services\elf-symbols.c" />
     <ClCompile Include="..\tcf\services\context-proxy.c" />
@@ -254,6 +256,7 @@
     <ClInclude Include="..\..\agent\tcf\framework\channel_lws_ext.h" />
     <ClInclude Include="..\..\agent\tcf\framework\client.h" />
     <ClInclude Include="..\..\agent\tcf\framework\compression.h" />
+    <ClInclude Include="..\..\agent\tcf\framework\config.h" />
     <ClInclude Include="..\..\agent\tcf\framework\context-dispatcher-ext.h" />
     <ClInclude Include="..\..\agent\tcf\framework\context-dispatcher.h" />
     <ClInclude Include="..\..\agent\tcf\framework\context-ext.h" />
@@ -269,6 +272,8 @@
     <ClInclude Include="..\..\agent\tcf\framework\pid-hash.h" />
     <ClInclude Include="..\..\agent\tcf\framework\sigsets.h" />
     <ClInclude Include="..\..\agent\tcf\framework\waitpid.h" />
+    <ClInclude Include="..\..\agent\tcf\http\http-tcf.h" />
+    <ClInclude Include="..\..\agent\tcf\http\http.h" />
     <ClInclude Include="..\..\agent\tcf\main\framework-ext.h" />
     <ClInclude Include="..\..\agent\tcf\services\disassembly.h" />
     <ClInclude Include="..\..\agent\tcf\services\elf-symbols-ext.h" />

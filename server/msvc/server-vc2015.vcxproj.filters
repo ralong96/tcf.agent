@@ -16,6 +16,9 @@
     <Filter Include="system\Windows">
       <UniqueIdentifier>{91c3a7f6-3c30-41b7-ace3-eefbe5d5fdca}</UniqueIdentifier>
     </Filter>
+    <Filter Include="http">
+      <UniqueIdentifier>{5a3bc312-6f1d-4348-9a1b-bca1e675bb69}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\tcf\services\context-proxy.c">
@@ -206,6 +209,12 @@
     </ClCompile>
     <ClCompile Include="..\..\agent\tcf\framework\compression.c">
       <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\http\http.c">
+      <Filter>http</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\http\http-tcf.c">
+      <Filter>http</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -443,6 +452,15 @@
     </ClInclude>
     <ClInclude Include="..\..\agent\tcf\framework\compression.h">
       <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\framework\config.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\http\http.h">
+      <Filter>http</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\http\http-tcf.h">
+      <Filter>http</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
