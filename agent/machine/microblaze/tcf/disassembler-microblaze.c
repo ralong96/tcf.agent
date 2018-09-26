@@ -1277,7 +1277,8 @@ static void add_hex_uint64(uint64_t n) {
 }
 
 static void add_addr(uint64_t addr) {
-    while (buf_pos < 16) add_char(' ');
+    if (!en_64_bit) addr &= 0xffffffff;
+    while (buf_pos < 32) buf[buf_pos++] = ' ';
     add_str("; addr=0x");
     add_hex_uint64(addr);
 #if ENABLE_Symbols
@@ -1421,8 +1422,6 @@ static int disassemble_instruction(void) {
                 else {
                     addr = sext16(instr_imm);
                 }
-                if (!en_64_bit) addr &= 0xffffffff;
-                while (buf_pos < 32) buf[buf_pos++] = ' ';
                 add_addr(addr);
             }
         }
@@ -1444,8 +1443,6 @@ static int disassemble_instruction(void) {
                 addr = sext16(instr_imm);
             }
             if ((instruction_info[instr_op].flags & F_ABS) == 0) addr += ctx_addr;
-            if (!en_64_bit) addr &= 0xffffffff;
-            while (buf_pos < 32) buf[buf_pos++] = ' ';
             add_addr(addr);
         }
     }
