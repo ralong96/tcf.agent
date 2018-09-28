@@ -21,6 +21,10 @@
 
 #if ENABLE_RCBP_TEST
 
+#ifndef ENABLE_TestSymbols
+#  define ENABLE_TestSymbols (SERVICE_Expressions && !ENABLE_ELF)
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -261,9 +265,10 @@ void test_proc(void) {
 }
 
 int find_test_symbol(Context * ctx, const char * name, void ** addr, int * sym_class) {
+#if ENABLE_TestSymbols
     /* This code allows to run TCF diagnostic tests when symbols info is not available */
+    *addr = NULL;
     if (is_test_process(ctx) && strncmp(name, "tcf_test_", 9) == 0) {
-        *addr = NULL;
         if (strcmp(name, "tcf_test_array") == 0) {
             *sym_class = SYM_CLASS_REFERENCE;
             *addr = &tcf_test_array;
@@ -282,6 +287,7 @@ int find_test_symbol(Context * ctx, const char * name, void ** addr, int * sym_c
         }
         if (*addr != NULL) return 0;
     }
+#endif
     errno = ERR_SYM_NOT_FOUND;
     return -1;
 }
@@ -350,7 +356,7 @@ int run_test_process(ContextAttachCallBack * done, void * data) {
         int fd = sysconf(_SC_OPEN_MAX);
         while (fd > 3) close(--fd);
         if (context_attach_self() < 0) exit(1);
-#if defined(__linux__)
+#if defined(__linux__) && !ENABLE_TestSymbols
         {
             char buf[32];
             char * fnm = NULL;
