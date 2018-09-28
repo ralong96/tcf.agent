@@ -157,8 +157,8 @@ static int read_mem(Context * ctx, ContextAddress addr, uint32_t * data) {
 }
 
 static int br_condition(uint32_t instr, ContextAddress data) {
-    uint32_t ra32 = (uint32_t)data;
-    uint64_t ra64 = (uint64_t)data;
+    int32_t ra32 = (int32_t)data;
+    int64_t ra64 = (int64_t)data;
     switch ((instr >> 21) & 0xf) {
     case  0: return ra32 == 0;
     case  1: return ra32 != 0;
