@@ -1036,7 +1036,7 @@ int context_get_memory_map(Context * ctx, MemoryMap * map) {
             &addr0, &addr1, permissions, &offset, &dev_ma, &dev_mi, &inode);
         if (cnt == 0 || cnt == EOF) break;
 
-        for (;;) {
+        for (i = 0;;) {
             int ch = fgetc(file);
             if (ch == '\n' || ch == EOF) break;
             if (i < FILE_PATH_SIZE - 1 && (ch != ' ' || i > 0)) {
@@ -1062,27 +1062,52 @@ int context_get_memory_map(Context * ctx, MemoryMap * map) {
         if (map->region_cnt > 0) prev = map->regions + (map->region_cnt - 1);
 
         if (inode != 0 && file_name[0] && file_name[0] != '[') {
-            MemoryRegion * r = map->regions + map->region_cnt++;
-            memset(r, 0, sizeof(MemoryRegion));
-            r->addr = addr0;
-            r->size = addr1 - addr0;
-            r->flags = flags;
-            r->file_offs = offset;
-            r->dev = MKDEV(dev_ma, dev_mi);
-            r->ino = (ino_t)inode;
-            r->file_name = loc_strdup(file_name);
+            if (prev != NULL && (prev->flags & MM_FLAG_X) == 0 &&
+                    prev->file_size == prev->size && prev->dev == MKDEV(dev_ma, dev_mi) && prev->ino == (ino_t)inode &&
+                    prev->file_offs + prev->file_size == offset && prev->addr + prev->size == addr0) {
+                prev->file_size += addr1 - addr0;
+                prev->size += addr1 - addr0;
+                prev->flags |= flags;
+            }
+            else {
+                MemoryRegion * r = map->regions + map->region_cnt++;
+                memset(r, 0, sizeof(MemoryRegion));
+                r->addr = addr0;
+                r->valid |= MM_VALID_ADDR;
+                r->size = addr1 - addr0;
+                r->valid |= MM_VALID_SIZE;
+                r->flags = flags;
+                r->file_offs = offset;
+                r->valid |= MM_VALID_FILE_OFFS;
+                r->file_size = addr1 - addr0;
+                r->valid |= MM_VALID_FILE_SIZE;
+                r->dev = MKDEV(dev_ma, dev_mi);
+                r->ino = (ino_t)inode;
+                r->file_name = loc_strdup(file_name);
+            }
         }
-        else if (file_name[0] == 0 && prev != NULL && prev->addr + prev->size == addr0) {
-            MemoryRegion * r = map->regions + map->region_cnt++;
-            memset(r, 0, sizeof(MemoryRegion));
-            r->bss = 1;
-            r->addr = addr0;
-            r->size = addr1 - addr0;
-            r->flags = flags;
-            r->file_offs = prev->file_offs + prev->size;
-            r->dev = prev->dev;
-            r->ino = prev->ino;
-            r->file_name = loc_strdup(prev->file_name);
+        else if ((file_name[0] == 0 || strcmp(file_name, "[heap]") == 0) &&
+                prev != NULL && prev->addr + prev->size == addr0) {
+            if ((prev->flags & MM_FLAG_X) == 0) {
+                prev->size += addr1 - addr0;
+                prev->flags |= flags;
+            }
+            else {
+                MemoryRegion * r = map->regions + map->region_cnt++;
+                memset(r, 0, sizeof(MemoryRegion));
+                r->bss = 1;
+                r->addr = addr0;
+                r->valid |= MM_VALID_ADDR;
+                r->size = addr1 - addr0;
+                r->valid |= MM_VALID_SIZE;
+                r->flags = flags;
+                r->file_offs = prev->file_offs + prev->size;
+                r->valid |= MM_VALID_FILE_OFFS;
+                r->valid |= MM_VALID_FILE_SIZE;
+                r->dev = prev->dev;
+                r->ino = prev->ino;
+                r->file_name = loc_strdup(prev->file_name);
+            }
         }
     }
     fclose(file);
