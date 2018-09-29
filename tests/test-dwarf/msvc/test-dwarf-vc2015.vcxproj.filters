@@ -16,6 +16,9 @@
     <Filter Include="system">
       <UniqueIdentifier>{9abc03ae-8339-45b1-96d8-2c130743c85e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="http">
+      <UniqueIdentifier>{916e392d-d5d6-41ac-9246-70ec11b7b76e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\agent\tcf\framework\asyncreq.c">
@@ -239,6 +242,12 @@
     </ClCompile>
     <ClCompile Include="..\..\..\agent\tcf\framework\compression.c">
       <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\agent\tcf\http\http.c">
+      <Filter>http</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\agent\tcf\http\http-tcf.c">
+      <Filter>http</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -464,6 +473,12 @@
     </ClInclude>
     <ClInclude Include="..\..\..\agent\tcf\framework\compression.h">
       <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\agent\tcf\http\http.h">
+      <Filter>http</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\agent\tcf\http\http-tcf.h">
+      <Filter>http</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
