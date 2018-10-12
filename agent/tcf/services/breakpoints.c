@@ -3054,7 +3054,7 @@ static void safe_skip_breakpoint(void * arg) {
 
     post_safe_event(ctx, safe_restore_breakpoint, ctx);
 
-    if (ctx->exited || ctx->exiting) return;
+    if (ctx->exited || ctx->exiting || is_intercepted(ctx)) return;
 
 #ifndef NDEBUG
     {
@@ -3062,7 +3062,6 @@ static void safe_skip_breakpoint(void * arg) {
         ContextAddress mem_addr = 0;
         ContextAddress pc = 0;
         assert(ctx->stopped);
-        assert(!is_intercepted(ctx));
         if (get_PC(ctx, &pc) == 0) {
             assert(context_get_canonical_addr(ctx, pc, &mem, &mem_addr, NULL, NULL) == 0);
             assert(bi->cb.address == mem_addr);
