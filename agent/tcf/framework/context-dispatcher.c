@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2013-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -29,6 +29,10 @@ typedef struct ContextExtensionMux {
 /* Last memory access error info */
 static MemoryErrorInfo mem_err_info;
 static int get_err_info_errno;
+#endif
+
+#if ENABLE_MemoryAccessModes
+static MemoryAccessMode def_mem_access_mode = { 0, 0, 0, 0 };
 #endif
 
 static size_t context_extension_offset = 0;
@@ -132,13 +136,29 @@ int context_single_step(Context * ctx) {
 
 int context_write_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
     ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_write_mem == NULL) return set_mem_error_info_unsupported(size);
+    if (ext->ctx_iface == NULL) return set_mem_error_info_unsupported(size);
+    if (ext->ctx_iface->context_write_mem == NULL) {
+#if ENABLE_MemoryAccessModes
+        if (ext->ctx_iface->context_write_mem_ext != NULL) {
+            return set_mem_error_info(ext, ext->ctx_iface->context_write_mem_ext(ctx, &def_mem_access_mode, address, buf, size));
+        }
+#endif
+        return set_mem_error_info_unsupported(size);
+    }
     return set_mem_error_info(ext, ext->ctx_iface->context_write_mem(ctx, address, buf, size));
 }
 
 int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
     ContextExtensionMux * ext = EXT(ctx);
-    if (ext->ctx_iface == NULL || ext->ctx_iface->context_read_mem == NULL) return set_mem_error_info_unsupported(size);
+    if (ext->ctx_iface == NULL) return set_mem_error_info_unsupported(size);
+    if (ext->ctx_iface->context_read_mem == NULL) {
+#if ENABLE_MemoryAccessModes
+        if (ext->ctx_iface->context_read_mem_ext != NULL) {
+            return set_mem_error_info(ext, ext->ctx_iface->context_read_mem_ext(ctx, &def_mem_access_mode, address, buf, size));
+        }
+#endif
+        return set_mem_error_info_unsupported(size);
+    }
     return set_mem_error_info(ext, ext->ctx_iface->context_read_mem(ctx, address, buf, size));
 }
 
