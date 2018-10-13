@@ -58,7 +58,7 @@ list(REMOVE_ITEM TCF_SRCS_REL ${TCF_MAIN_REL})
 if(DEFINED TCF_EXTRA_DIR)
   foreach(extraDir ${TCF_EXTRA_DIR})
     # get extra all source files
-    file(GLOB TCF_EXTRA_SRCS_REL RELATIVE ${extraDir}
+    file(GLOB_RECURSE TCF_EXTRA_SRCS_REL RELATIVE ${extraDir}
       ${extraDir}/system/${TCF_OPSYS}/tcf/*.c
       ${extraDir}/machine/${TCF_MACHINE}/tcf/*.c
       ${extraDir}/tcf/framework/*.c
