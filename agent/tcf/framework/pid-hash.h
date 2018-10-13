@@ -69,6 +69,7 @@ Context * id2ctx(const char * id) {
 #endif /* !ENABLE_USER_DEFINED_id2ctx */
 
 static void pid_hash_context_exited(Context * ctx, void * args) {
+    (void)args; /* Unused. */
     list_remove(ctx2pidlink(ctx));
 }
 
