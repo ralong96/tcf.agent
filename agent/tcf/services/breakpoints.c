@@ -2604,7 +2604,6 @@ static void command_get_status(char * token, Channel * c) {
     bp = find_breakpoint(id);
     if (bp == NULL || list_is_empty(&bp->link_clients)) err = ERR_INV_CONTEXT;
 
-    assert(*bp->id);
     write_stringz(&c->out, "R");
     write_stringz(&c->out, token);
     write_errno(&c->out, err);
