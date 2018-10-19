@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2015-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,6 +22,7 @@
 #define R_PPC64_NONE         R_PPC_NONE
 #define R_PPC64_ADDR32       R_PPC_ADDR32
 #define R_PPC64_UADDR32      R_PPC_UADDR32
+#define R_PPC64_REL32        R_PPC_REL32
 #define R_PPC64_ADDR64       38
 
 static void elf_relocate(void) {
@@ -44,7 +45,11 @@ static void elf_relocate(void) {
     case R_PPC64_ADDR32 :
     case R_PPC64_UADDR32 :
         if (data_size < 4) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
-        *(U4_T *)data_buf = (U4_T)((sym_value + reloc_addend) & 0xFFFFFFFF);
+        *(U4_T *)data_buf = (U4_T)(sym_value + reloc_addend);
+        break;
+    case R_PPC64_REL32:
+        if (data_size < 4) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
+        *(U4_T *)data_buf = (U4_T)(sym_value + reloc_addend - (section->addr + reloc_offset));
         break;
     default:
         str_exception(ERR_INV_FORMAT, "Unsupported relocation type");
