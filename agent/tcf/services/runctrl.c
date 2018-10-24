@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1474,6 +1474,7 @@ static int is_function_prologue(Context * ctx, ContextAddress ip, CodeArea * are
     ContextAddress sym_addr = 0;
     ContextAddress sym_size = 0;
     assert(ip >= area->start_address && ip < area->end_address);
+    if (area->prologue_end) return 0;
     if (find_symbol_by_addr(ctx, STACK_NO_FRAME, ip, &sym) < 0) return 0;
     if (get_symbol_class(sym, &sym_class) < 0) return 0;
     if (sym_class != SYM_CLASS_FUNCTION) return 0;
