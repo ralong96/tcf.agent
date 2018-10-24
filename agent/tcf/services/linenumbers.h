@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2015 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -43,6 +43,7 @@ typedef void LineNumbersCallBack(CodeArea *, void *);
 
 /*
  * Search line number information for given file, line and column.
+ * column = 0 means all columns in the line.
  */
 extern int line_to_address(Context * ctx, const char * file, int line, int column, LineNumbersCallBack * client, void * args);
 

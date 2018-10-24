@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -226,14 +226,14 @@ static void unit_line_to_address(Context * ctx, MemoryRegion * mem, CompUnit * u
             if (state->mFile < file) {
                 l = k + 1;
             }
-            else if (state->mFile > file || state->mLine > line || (state->mLine == line && state->mColumn > column)) {
+            else if (state->mFile > file || state->mLine > line || (column && state->mLine == line && state->mColumn > column)) {
                 h = k;
             }
             else {
                 LineNumbersState * next = get_next_in_text(unit, state);
                 U4_T next_line = next ? next->mLine : state->mLine + 1;
                 U4_T next_column = next ? next->mColumn : 0;
-                if (next_line < line || (next_line == line && next_column <= column)) {
+                if (next_line < line || (column && next_line == line && next_column <= column)) {
                     l = k + 1;
                 }
                 else {
@@ -258,7 +258,6 @@ static void unit_line_to_address(Context * ctx, MemoryRegion * mem, CompUnit * u
                                 if (next_line > line || (next_line == line && next_column > column)) {
                                     UNIT_TO_LINE_ADDR_LOCALS_HOOK
                                     assert(state->mLine <= line);
-                                    assert(state->mLine < line || state->mColumn <= column);
                                     UNIT_TO_LINE_ADDR_HOOK
                                     {
                                     call_client(ctx, unit, state, code_next, text_next, addr, client, args);
@@ -270,7 +269,7 @@ static void unit_line_to_address(Context * ctx, MemoryRegion * mem, CompUnit * u
                         state = unit->mStatesIndex[k];
                         if (state->mFile > file) break;
                         if (state->mLine > line) break;
-                        if (state->mColumn > column) break;
+                        if (column && state->mColumn > column) break;
                     }
                     break;
                 }
