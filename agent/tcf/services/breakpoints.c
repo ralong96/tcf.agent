@@ -265,7 +265,11 @@ static int planted_sw_bp_cnt = 0;
 
 static int bp_location_error = 0;
 #if ENABLE_LineNumbers
-static int bp_line_cnt = 0;
+static unsigned bp_line_cnt = 0;
+static unsigned bp_stmt_cnt = 0;
+static unsigned bp_line_addr_cnt = 0;
+static unsigned bp_line_addr_max = 0;
+static ContextAddress * bp_line_addr = NULL;
 #endif
 
 static TCFBroadcastGroup * broadcast_group = NULL;
@@ -1704,7 +1708,17 @@ static void plant_breakpoint_address_iterator(CodeArea * area, void * x) {
         /* Adjust breakpoint address <addr> if needed */
         BREAKPOINT_ADDR_ADJUST;
 #endif
-        plant_breakpoint(args->ctx, args->bp, addr, 1);
+        if ((addr == area->start_address && area->is_statement) || addr == area->next_stmt_address) {
+            plant_breakpoint(args->ctx, args->bp, addr, 1);
+            bp_stmt_cnt++;
+        }
+        else {
+            if (bp_line_addr_cnt >= bp_line_addr_max) {
+                bp_line_addr_max += 256;
+                bp_line_addr = (ContextAddress *)tmp_realloc(bp_line_addr, sizeof(ContextAddress) * bp_line_addr_max);
+            }
+            bp_line_addr[bp_line_addr_cnt++] = addr;
+        }
     }
     else {
         plant_at_address_expression(args->ctx, area->start_address, args->bp);
@@ -1871,11 +1885,21 @@ static void evaluate_bp_location(void * x) {
         if (bp->file != NULL) {
 #if ENABLE_LineNumbers
             bp_line_cnt = 0;
+            bp_stmt_cnt = 0;
+            bp_line_addr_cnt = 0;
+            bp_line_addr_max = 0;
+            bp_line_addr = NULL;
             if (line_to_address(ctx, bp->file, bp->line, bp->column, plant_breakpoint_address_iterator, args) < 0) {
                 bp_location_error = errno;
             }
             else if (bp_line_cnt == 0) {
                 bp_location_error = set_errno(ERR_OTHER, "Unresolved source line information");
+            }
+            else if (bp_stmt_cnt == 0) {
+                unsigned i;
+                for (i = 0; i < bp_line_addr_cnt; i++) {
+                    plant_breakpoint(ctx, bp, bp_line_addr[i], 1);
+                }
             }
 #else
             bp_location_error = set_errno(ERR_UNSUPPORTED, "LineNumbers service not available");
