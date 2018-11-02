@@ -714,6 +714,11 @@ static void command_terminate(char * token, Channel * c) {
     if (parent != 0) {
         err = ERR_INV_CONTEXT;
     }
+#if ENABLE_DebugContext
+    else if (is_attached(pid)) {
+        if (terminate_debug_context(id2ctx(id)) < 0) err = errno;
+    }
+#endif
     else {
 #if defined(_WIN32) || defined(__CYGWIN__)
         HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
@@ -1769,6 +1774,51 @@ static void command_set_win_size(char * token, Channel * c) {
 
 }
 
+static void command_get_capabilities(char * token, Channel * c) {
+    char id[256];
+    pid_t pid = 0, parent = 0;
+    OutputStream * out = &c->out;
+    int err = 0;
+
+    json_read_string(&c->inp, id, sizeof(id));
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    if (strlen(id) > 0) {
+        pid = id2pid(id, &parent);
+        if (find_process(pid) == NULL) {
+            err = ERR_INV_CONTEXT;
+        }
+    }
+
+    write_stringz(out, "R");
+    write_stringz(out, token);
+    write_errno(out, err);
+    if (err) {
+        write_stringz(&c->out, "null");
+    }
+    else {
+        write_stream(out, '{');
+        json_write_string(out, "ID");
+        write_stream(out, ':');
+        json_write_string(out, id);
+        write_stream(out, ',');
+        json_write_string(out, "CanTerminate");
+        write_stream(out, ':');
+        json_write_boolean(out, 1);
+#if ENABLE_DebugContext
+        write_stream(out, ',');
+        json_write_string(out, "CanTerminateAttached");
+        write_stream(out, ':');
+        json_write_boolean(out, 1);
+#endif
+        write_stream(out, '}');
+        write_stream(out, 0);
+    }
+
+    write_stream(out, MARKER_EOM);
+}
+
 void ini_processes_service(Protocol * proto) {
     int v;
     static int vs[] = { 0, 1 };
@@ -1789,6 +1839,7 @@ void ini_processes_service(Protocol * proto) {
 #endif /* ENABLE_DebugContext */
     }
     add_command_handler(proto, PROCESSES[1], "setWinSize", command_set_win_size);
+    add_command_handler(proto, PROCESSES[1], "getCapabilities", command_get_capabilities);
 }
 #endif /* SERVICE_Processes */
 
