@@ -31,6 +31,7 @@
 #include <tcf/framework/errors.h>
 #include <tcf/services/tcf_elf.h>
 #include <tcf/services/dwarfio.h>
+#include <tcf/services/symbols.h>
 
 #ifndef ENABLE_DWARF_LAZY_LOAD
 #  define ENABLE_DWARF_LAZY_LOAD 1
@@ -336,7 +337,6 @@ extern struct UnitAddressRange * elf_find_unit(Context * ctx, ContextAddress add
 /*
  * Get the TCF Symbol from DWARF symbol info.
  */
-typedef struct Symbol Symbol;
 extern void elf_object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res);
 
 #endif /* ENABLE_ELF && ENABLE_DebugContext */
