@@ -42,6 +42,10 @@
 #include <machine/microblaze/tcf/dwarfreloc-mdep.h>
 #undef elf_relocate
 
+#define elf_relocate elf_relocate_sparc
+#include <machine/sparc/tcf/dwarfreloc-mdep.h>
+#undef elf_relocate
+
 static ElfRelocateFunc elf_relocate_funcs[] = {
     { EM_386,       elf_relocate_i386 },
     { EM_X86_64,    elf_relocate_x86_64 },
@@ -50,5 +54,6 @@ static ElfRelocateFunc elf_relocate_funcs[] = {
     { EM_PPC,       elf_relocate_powerpc },
     { EM_PPC64,     elf_relocate_ppc64 },
     { EM_MICROBLAZE, elf_relocate_microblaze },
+    { EM_SPARC,     elf_relocate_sparc },
     { EM_NONE, NULL }
 };
