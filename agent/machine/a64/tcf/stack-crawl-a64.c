@@ -62,14 +62,18 @@ typedef struct {
     MemData mem_data;
 } BranchData;
 
+typedef struct {
+    RegData vbar;
+    RegData spsr;
+    RegData elr;
+    RegData sp;
+} ELData;
+
 static Context * stk_ctx = NULL;
 static StackFrame * stk_frame = NULL;
 static RegData reg_data[REG_DATA_SIZE];
 static RegData cpsr_data;
-static RegData vbar_el1_data;
-static RegData spsr_el1_data;
-static RegData elr_el1_data;
-static RegData sp_el0_data;
+static ELData el_data[4];
 static RegData pc_data;
 static MemData mem_data;
 static unsigned mem_cache_idx = 0;
@@ -1127,10 +1131,20 @@ static int trace_instructions(void) {
     return 0;
 }
 
+static int is_el_reg(RegisterDefinition * def, const char * name, unsigned * el) {
+    unsigned l = strlen(name);
+    if (strncmp(def->name, name, l) == 0 && strncmp(def->name + l, "_el", 3) == 0 &&
+        def->name[l + 3] >= '0' && def->name[l + 3] <= '3' && def->name[l + 4] == 0) {
+        *el = def->name[l + 3] - '0';
+        return 1;
+    }
+    return 0;
+}
+
 int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
     RegisterDefinition * defs = get_reg_definitions(frame->ctx);
     RegisterDefinition * def = NULL;
-    int use_sp_as_fp = 1;
+    int interrupt_handler = 0;
     unsigned i;
 
     stk_ctx = frame->ctx;
@@ -1139,16 +1153,14 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
     memset(&reg_data, 0, sizeof(reg_data));
     memset(&cpsr_data, 0, sizeof(cpsr_data));
     memset(&pc_data, 0, sizeof(pc_data));
-    memset(&vbar_el1_data, 0, sizeof(vbar_el1_data));
-    memset(&spsr_el1_data, 0, sizeof(spsr_el1_data));
-    memset(&elr_el1_data, 0, sizeof(elr_el1_data));
-    memset(&sp_el0_data, 0, sizeof(sp_el0_data));
+    memset(&el_data, 0, sizeof(el_data));
     branch_pos = 0;
     branch_cnt = 0;
 
     for (i = 0; i < MEM_CACHE_SIZE; i++) mem_cache[i].size = 0;
 
     for (def = defs; def->name; def++) {
+        unsigned el = 0;
         if (def->dwarf_id == REG_ID_SP) {
             if (read_reg_value(frame, def, &reg_data[REG_ID_SP].v) < 0) continue;
             if (reg_data[REG_ID_SP].v == 0) return 0;
@@ -1166,36 +1178,47 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
             if (read_reg_value(frame, def, &pc_data.v) < 0) continue;
             pc_data.o = REG_VAL_OTHER;
         }
-        else if (strcmp(def->name, "vbar_el1") == 0) {
-            if (read_reg_value(frame, def, &vbar_el1_data.v) < 0) continue;
-            vbar_el1_data.o = REG_VAL_OTHER;
+        else if (is_el_reg(def, "vbar", &el)) {
+            RegData * r = &el_data[el].vbar;
+            if (read_reg_value(frame, def, &r->v) < 0) continue;
+            r->o = REG_VAL_OTHER;
         }
-        else if (strcmp(def->name, "spsr_el1") == 0) {
-            if (read_reg_value(frame, def, &spsr_el1_data.v) < 0) continue;
-            spsr_el1_data.o = REG_VAL_OTHER;
+        else if (is_el_reg(def, "spsr", &el)) {
+            RegData * r = &el_data[el].spsr;
+            if (read_reg_value(frame, def, &r->v) < 0) continue;
+            r->o = REG_VAL_OTHER;
         }
-        else if (strcmp(def->name, "elr_el1") == 0) {
-            if (read_reg_value(frame, def, &elr_el1_data.v) < 0) continue;
-            elr_el1_data.o = REG_VAL_OTHER;
+        else if (is_el_reg(def, "elr", &el)) {
+            RegData * r = &el_data[el].elr;
+            if (read_reg_value(frame, def, &r->v) < 0) continue;
+            r->o = REG_VAL_OTHER;
         }
-        else if (strcmp(def->name, "sp_el0") == 0) {
-            if (read_reg_value(frame, def, &sp_el0_data.v) < 0) continue;
-            sp_el0_data.o = REG_VAL_OTHER;
+        else if (is_el_reg(def, "sp", &el)) {
+            RegData * r = &el_data[el].sp;
+            if (read_reg_value(frame, def, &r->v) < 0) continue;
+            r->o = REG_VAL_OTHER;
         }
     }
 
-    if (frame->is_top_frame && cpsr_data.o && (cpsr_data.v & 0x1f) == 5 && elr_el1_data.o &&
-            pc_data.o && vbar_el1_data.o && vbar_el1_data.v + 0x400 == (pc_data.v & ~(uint64_t)0x180)) {
-        /* Special case: first instruction of interrupt handler */
-        pc_data.v = elr_el1_data.v;
-        cpsr_data = spsr_el1_data;
-        if (reg_data[REG_ID_SP].o) frame->fp = (ContextAddress)reg_data[REG_ID_SP].v;
-        reg_data[REG_ID_SP] = sp_el0_data;
-        use_sp_as_fp = 0;
+    if (frame->is_top_frame && cpsr_data.o && pc_data.o) {
+        unsigned el = (cpsr_data.v & 0x0c) >> 2;
+        if (el_data[el].vbar.o && el_data[el].vbar.v == (pc_data.v & ~(uint64_t)0x780)) {
+            /* Special case: first instruction of interrupt handler */
+            pc_data = el_data[el].elr;
+            cpsr_data = el_data[el].spsr;
+            if (reg_data[REG_ID_SP].o) {
+                frame->fp = (ContextAddress)reg_data[REG_ID_SP].v;
+                reg_data[REG_ID_SP].o = 0;
+            }
+            if (cpsr_data.o) {
+                el = (cpsr_data.v & 0x0c) >> 2;
+                reg_data[REG_ID_SP] = el_data[(cpsr_data.v & 1) ? el : 0].sp;
+            }
+            interrupt_handler = 1;
+        }
     }
-    else {
-        if (trace_instructions() < 0) return -1;
-    }
+
+    if (!interrupt_handler && trace_instructions() < 0) return -1;
 
     for (def = defs; def->name; def++) {
         if (def->dwarf_id >= 0 && def->dwarf_id < REG_DATA_SIZE) {
@@ -1232,7 +1255,7 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
 #endif
             if (chk_loaded(r) < 0) continue;
             if (!reg_data[r].o) continue;
-            if (r == REG_ID_SP && use_sp_as_fp) frame->fp = (ContextAddress)reg_data[r].v;
+            if (r == REG_ID_SP && !interrupt_handler) frame->fp = (ContextAddress)reg_data[r].v;
             if (write_reg_value(down, def, reg_data[r].v) < 0) return -1;
         }
         else if (strcmp(def->name, "cpsr") == 0) {
