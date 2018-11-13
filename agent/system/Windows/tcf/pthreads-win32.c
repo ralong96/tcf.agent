@@ -448,7 +448,10 @@ int pthread_cond_broadcast(pthread_cond_t * cond) {
 
     if (have_waiters) {
         /* Wake up all the waiters atomically. */
-        if (!ReleaseSemaphore(p->sema, p->waiters_count, 0)) return set_win32_errno(GetLastError());
+        if (!ReleaseSemaphore(p->sema, p->waiters_count, 0)) {
+            LeaveCriticalSection(&p->waiters_count_lock);
+            return set_win32_errno(GetLastError());
+        }
 
         LeaveCriticalSection(&p->waiters_count_lock);
 
