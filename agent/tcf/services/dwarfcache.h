@@ -196,6 +196,8 @@ struct CompUnit {
     ELF_File * mFile;
     ELF_Section * mTextSection;
 
+    const char * mProducer;
+
     U2_T mLanguage;
 
     DIO_UnitDescriptor mDesc;

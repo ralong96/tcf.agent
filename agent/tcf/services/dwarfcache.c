@@ -906,6 +906,10 @@ static void read_object_info(U2_T Tag, U2_T Attr, U2_T Form) {
         case AT_base_types:
             Unit->mBaseTypes = add_comp_unit((ContextAddress)dio_gFormData);
             break;
+        case AT_producer:
+            dio_ChkString(Form);
+            Unit->mProducer = (char *)dio_gFormDataAddr;
+            break;
         case AT_language:
             dio_ChkData(Form);
             Unit->mLanguage = (U2_T)dio_gFormData;
@@ -1070,6 +1074,14 @@ static void add_object_addr_ranges(ObjectInfo * info) {
     }
 }
 
+static int is_debug_aranges_aligned(void) {
+    /* The DWARF standard does not require address range descriptors of .debug_aranges to be aligned,
+     * but some compilers (e.g. GCC) insert padding bytes to align descriptors at <address-size>*2 */
+    if (sCompUnit->mProducer == NULL) return 1;
+    if (strncmp(sCompUnit->mProducer, "IAR ", 4) == 0) return 0;
+    return 1;
+}
+
 static void load_addr_ranges(ELF_Section * debug_info) {
     Trap trap;
     unsigned idx;
@@ -1093,6 +1105,10 @@ static void load_addr_ranges(ELF_Section * debug_info) {
                         size = dio_ReadU8();
                     }
                     next = dio_GetPos() + size;
+                    if (next > sec->size) {
+                        trace(LOG_ELF, "Ignoring entry in .debug_aranges section: invalid entry size.");
+                        break;
+                    }
                     if (dio_ReadU2() == 2) {
                         ELF_Section * unit_sec = NULL;
                         U8_T unit_addr = dio_ReadAddressX(&unit_sec, dwarf64 ? 8 : 4);
@@ -1103,7 +1119,9 @@ static void load_addr_ranges(ELF_Section * debug_info) {
                         sCompUnit = find_comp_unit(unit_sec, (ContextAddress)unit_addr);
                         if (sCompUnit == NULL) str_exception(ERR_INV_DWARF, "invalid .debug_aranges section");
                         sCompUnit->mObject->mFlags |= DOIF_aranges;
-                        while (dio_GetPos() % (addr_size * 2) != 0) dio_Skip(1);
+                        if (is_debug_aranges_aligned()) {
+                            while (dio_GetPos() % (addr_size * 2) != 0) dio_Skip(1);
+                        }
                         for (;;) {
                             ELF_Section * addr_sec = NULL;
                             ELF_Section * size_sec = NULL;
@@ -1113,6 +1131,9 @@ static void load_addr_ranges(ELF_Section * debug_info) {
                             if (addr == 0 && size == 0 && dio_GetPos() + addr_size * 2 > next) break;
                             if (size != 0) add_addr_range(addr_sec, sCompUnit, addr, size);
                         }
+                    }
+                    else {
+                        trace(LOG_ELF, "Ignoring entry in .debug_aranges section: unsupported version.");
                     }
                     dio_SetPos(next);
                 }
