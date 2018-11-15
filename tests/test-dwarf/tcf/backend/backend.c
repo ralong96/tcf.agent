@@ -1963,7 +1963,6 @@ static void next_region(void) {
         }
 
         area_cnt = 0;
-        line_area_ok = 0;
         if (address_to_line(elf_ctx, pc, pc + 1, addr_to_line_callback, NULL) < 0) {
             error("address_to_line");
         }
@@ -1980,6 +1979,7 @@ static void next_region(void) {
             for (i = 0; i < area_cnt; i++) {
                 CodeArea area = area_buf[i];
                 char * elf_file_name = tmp_strdup(area.file);
+                line_area_ok = 0;
                 if (area.start_address > pc || area.end_address <= pc) {
                     errno = set_errno(ERR_OTHER, "Invalid line area address");
                     error("address_to_line");

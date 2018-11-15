@@ -242,7 +242,7 @@ static void unit_line_to_address(Context * ctx, MemoryRegion * mem, CompUnit * u
                         LineNumbersState * prev = unit->mStatesIndex[k - 1];
                         if (prev->mFile != state->mFile) break;
                         if (prev->mLine != state->mLine) break;
-                        if (prev->mColumn != state->mColumn) break;
+                        if (column && prev->mColumn != state->mColumn) break;
                         state = prev;
                         k--;
                     }
@@ -251,7 +251,7 @@ static void unit_line_to_address(Context * ctx, MemoryRegion * mem, CompUnit * u
                         ContextAddress addr = elf_run_time_address_in_region(ctx, mem, unit->mFile, sec, state->mAddress);
                         if (errno == 0) {
                             LineNumbersState * code_next = get_next_in_code(unit, state);
-                            if (code_next != NULL) {
+                            if (code_next != NULL && state->mAddress < code_next->mAddress) {
                                 LineNumbersState * text_next = get_next_in_text(unit, state);
                                 U4_T next_line = text_next ? text_next->mLine : state->mLine + 1;
                                 U4_T next_column = text_next ? text_next->mColumn : 0;
