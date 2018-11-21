@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2008-2018 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -47,6 +47,10 @@ and rebuild."
 static HINSTANCE dbghelp_dll = NULL;
 
 static wchar_t * pathes[] = {
+    L"%\\Microsoft Visual Studio 14.0\\Common7\\IDE\\dbghelp.dll",
+    L"%\\Microsoft Visual Studio 14.0\\Common7\\IDE\\Remote Debugger\\x64\\dbghelp.dll",
+    L"%\\Microsoft Visual Studio 14.0\\Common7\\IDE\\Remote Debugger\\x86\\dbghelp.dll",
+    L"%\\Microsoft Visual Studio 12.0\\Common7\\IDE\\dbghelp.dll",
     L"%\\Microsoft Visual Studio 10.0\\Common7\\IDE\\dbghelp.dll",
     L"%\\Microsoft Visual Studio 9.0\\Common7\\IDE\\dbghelp.dll",
     L"%\\Debugging Tools for Windows (x86)\\dbghelp.dll",
