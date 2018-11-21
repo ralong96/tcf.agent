@@ -2206,7 +2206,10 @@ static void op_deref(int mode, Value * v) {
     if (get_symbol_type_class(v->type, &v->type_class) < 0) {
         error(errno, "Cannot retrieve symbol type class");
     }
-    if (get_symbol_size(v->type, &v->size) < 0) {
+    if (v->type_class == TYPE_CLASS_FUNCTION) {
+        v->size = 0;
+    }
+    else if (get_symbol_size(v->type, &v->size) < 0) {
         error(errno, "Cannot retrieve symbol size");
     }
     set_value_props(v);
@@ -2460,7 +2463,10 @@ static void op_index(int mode, Value * v) {
         v->field_cb = NULL;
         v->sym_list = NULL;
     }
-    if (get_symbol_size(type, &size) < 0) {
+    if (type_class == TYPE_CLASS_FUNCTION) {
+        size = 0;
+    }
+    else if (get_symbol_size(type, &size) < 0) {
         error(errno, "Cannot get array element size");
     }
 

@@ -3242,6 +3242,10 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
     }
     if (is_constant_pseudo_symbol(sym)) return get_symbol_size(sym->base, size);
     if (is_array_type_pseudo_symbol(sym)) {
+        if (sym->base->sym_class == SYM_CLASS_FUNCTION) {
+            set_errno(ERR_OTHER, "Size of function type is not defined");
+            return -1;
+        }
         if (sym->length > 0) {
             if (get_symbol_size(sym->base, size)) return -1;
             *size *= sym->length;
