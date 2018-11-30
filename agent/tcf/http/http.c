@@ -22,8 +22,12 @@
 #if ENABLE_HttpServer
 
 #include <time.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <assert.h>
+#if defined(_WIN32) || defined(__CYGWIN__)
+#  include <ShlObj.h>
+#endif
 #include <tcf/framework/trace.h>
 #include <tcf/framework/errors.h>
 #include <tcf/framework/events.h>
@@ -83,6 +87,9 @@ static LINK server_list;
 static HttpListener ** listener_arr = NULL;
 static unsigned listener_cnt = 0;
 static unsigned listener_max = 0;
+static char ** directory_arr = NULL;
+static unsigned directory_cnt = 0;
+static unsigned directory_max = 0;
 static HttpConnection * current_con = NULL;
 
 #define all2server(x) ((HttpServer *)((char *)(x) - offsetof(HttpServer, link_all)))
@@ -281,8 +288,8 @@ static void send_reply(HttpConnection * con) {
     unsigned i;
     current_con = con;
     create_byte_array_output_stream(&con->out);
-    for (i = 0; i < listener_cnt; i++) {
-        if (listener_arr[i]->get_page(con->http_uri)) break;
+    for (i = listener_cnt; i > 0; i--) {
+        if (listener_arr[i - 1]->get_page(con->http_uri)) break;
     }
     if (con->suspended) {
         current_con = NULL;
@@ -470,6 +477,44 @@ void http_flush(void) {
     async_req_post(&con->req_wr);
 }
 
+static int get_page(const char * uri) {
+    unsigned i;
+    for (i = directory_cnt; i > 0; i--) {
+        struct stat statbuf;
+        char * fnm = tmp_strdup2(directory_arr[i - 1], uri);
+        if (stat(fnm, &statbuf) == 0 && statbuf.st_size > 0) {
+            int f = open(fnm, O_BINARY | O_RDONLY, 0);
+            if (f < 0) {
+                trace(LOG_ALWAYS, "HTTP: Cannot open file '%s': %s", fnm, errno_to_str(errno));
+            }
+            else {
+                char * buf = NULL;
+                size_t bsz = statbuf.st_size;
+                if (bsz > 0x10000) bsz = 0x10000;
+                buf = (char *)tmp_alloc(bsz);
+                for (;;) {
+                    int rd = read(f, buf, bsz);
+                    if (rd < 0) {
+                        trace(LOG_ALWAYS, "HTTP: Cannot read file '%s': %s", fnm, errno_to_str(errno));
+                        break;
+                    }
+                    if (rd == 0) break;
+                    http_send_block(buf, rd);
+                }
+                if (current_con->out.pos > 0) {
+                    size_t l = strlen(uri);
+                    if (strcmp(uri + l - 4, ".css") == 0) http_content_type("text/css");
+                    else if (strcmp(uri + l - 3, ".js") == 0) http_content_type("text/javascript");
+                    http_response_header("Cache-Control", "private, max-age=300");
+                }
+                close(f);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 static void http_server_accept_done(void * x) {
     AsyncReqInfo * req = (AsyncReqInfo *)x;
     HttpServer * server = (HttpServer *)req->client_data;
@@ -611,6 +656,14 @@ void add_http_listener(HttpListener * l) {
     listener_arr[listener_cnt++] = l;
 }
 
+void add_http_directory(const char * dir) {
+    if (directory_cnt >= directory_max) {
+        directory_max += 8;
+        directory_arr = (char **)loc_realloc(directory_arr, directory_max * sizeof(char *));
+    }
+    directory_arr[directory_cnt++] = loc_strdup(dir);
+}
+
 static ChannelServer * http_channel_server_create(PeerServer * ps) {
     const char * host = peer_server_getprop(ps, "Host", NULL);
     const char * port = peer_server_getprop(ps, "Port", NULL);
@@ -624,8 +677,25 @@ static void http_channel_connect(PeerServer * ps,  ChannelConnectCallBack cb, vo
 }
 
 void ini_http(void) {
+    static HttpListener l = { get_page };
     list_init(&server_list);
     add_channel_transport("HTTP", http_channel_server_create, http_channel_connect);
+#if defined(_WIN32) || defined(__CYGWIN__)
+    {
+        WCHAR fnm[MAX_PATH];
+        char buf[MAX_PATH];
+        if (SHGetFolderPathW(0, CSIDL_WINDOWS, NULL, 0, fnm) != S_OK) {
+            check_error(set_errno(ERR_OTHER, "Cannot get WINDOWS folder path"));
+        }
+        if (!WideCharToMultiByte(CP_UTF8, 0, fnm, -1, buf, sizeof(buf), NULL, NULL)) {
+            check_error(set_win32_errno(GetLastError()));
+        }
+        add_http_directory(tmp_strdup2(buf, "/TCF/http"));
+    }
+#else
+    add_http_directory("/etc/tcf/http");
+#endif
+    add_http_listener(&l);
 }
 
 #endif

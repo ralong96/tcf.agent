@@ -51,6 +51,7 @@ typedef struct HttpListener {
 } HttpListener;
 
 extern void add_http_listener(HttpListener * l);
+extern void add_http_directory(const char * dir);
 
 extern void ini_http(void);
 

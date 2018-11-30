@@ -215,7 +215,7 @@ static void sse_event(void * arg) {
     cd->sse_posted = 0;
     if (cd->sse_out != NULL && !list_is_empty(&cd->link_messages)) {
         http_resume(cd->sse_out);
-        http_printf("data: event\n");
+        http_printf("data: event\n\n");
         http_flush();
     }
 }
@@ -366,9 +366,11 @@ static void timer_event(void * arg) {
     while (l != &link_clients) {
         ClientData * x = all2client(l);
         l = l->next;
-        x->timeout++;
-        if (x->timeout > 10) {
-            close_client(x);
+        if (x->http_out == NULL && x->sse_out == NULL) {
+            x->timeout++;
+            if (x->timeout > 10) {
+                close_client(x);
+            }
         }
     }
     if (list_is_empty(&link_clients)) return;
@@ -435,7 +437,10 @@ static ClientData * find_client(void) {
 
     for (l = link_clients.next; l != &link_clients; l = l->next) {
         ClientData * x = all2client(l);
-        if (strcmp(x->id, id) == 0) return x;
+        if (strcmp(x->id, id) == 0) {
+            x->timeout = 0;
+            return x;
+        }
     }
 
     if (list_is_empty(&link_clients)) post_event_with_delay(timer_event, NULL, 60000000);
@@ -566,7 +571,6 @@ static int get_page(const char * uri) {
             cd->cmd_data = NULL;
             cd->cmd_size = 0;
             cd->wait_done = 0;
-            cd->timeout = 0;
             cd->http_out = get_http_stream();
             http_content_type("application/json");
             if (set_trap(&trap)) {
