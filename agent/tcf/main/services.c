@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -28,6 +28,7 @@
 #include <tcf/services/memoryservice.h>
 #include <tcf/services/memorymap.h>
 #include <tcf/services/contextquery.h>
+#include <tcf/services/contextreset.h>
 #include <tcf/services/registers.h>
 #include <tcf/services/stacktrace.h>
 #include <tcf/services/symbols.h>
@@ -57,6 +58,9 @@ void ini_services(Protocol * proto, TCFBroadcastGroup * bcg) {
 #endif
 #if SERVICE_ContextQuery
     ini_context_query_service(proto);
+#endif
+#if SERVICE_ContextReset
+    ini_context_reset_service(proto);
 #endif
 #if SERVICE_RunControl
     ini_run_ctrl_service(proto, bcg);

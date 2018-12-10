@@ -156,6 +156,9 @@
     <ClCompile Include="..\tcf\services\contextquery.c">
       <Filter>services</Filter>
     </ClCompile>
+    <ClCompile Include="..\tcf\services\contextreset.c">
+      <Filter>services</Filter>
+    </ClCompile>
     <ClCompile Include="..\tcf\services\diagnostics.c">
       <Filter>services</Filter>
     </ClCompile>
@@ -507,6 +510,9 @@
       <Filter>services</Filter>
     </ClInclude>
     <ClInclude Include="..\tcf\services\contextquery.h">
+      <Filter>services</Filter>
+    </ClInclude>
+    <ClInclude Include="..\tcf\services\contextreset.h">
       <Filter>services</Filter>
     </ClInclude>
     <ClInclude Include="..\tcf\services\diagnostics.h">

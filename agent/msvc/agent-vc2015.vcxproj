@@ -336,6 +336,7 @@
     <ClCompile Include="..\tcf\main\gdb-rsp.c" />
     <ClCompile Include="..\tcf\services\breakpoints.c" />
     <ClCompile Include="..\tcf\services\contextquery.c" />
+    <ClCompile Include="..\tcf\services\contextreset.c" />
     <ClCompile Include="..\tcf\services\diagnostics.c" />
     <ClCompile Include="..\tcf\services\disassembly.c" />
     <ClCompile Include="..\tcf\services\discovery.c" />
@@ -544,6 +545,7 @@
     <ClInclude Include="..\tcf\main\gdb-rsp.h" />
     <ClInclude Include="..\tcf\services\breakpoints.h" />
     <ClInclude Include="..\tcf\services\contextquery.h" />
+    <ClInclude Include="..\tcf\services\contextreset.h" />
     <ClInclude Include="..\tcf\services\diagnostics.h" />
     <ClInclude Include="..\tcf\services\disassembly.h" />
     <ClInclude Include="..\tcf\services\discovery.h" />

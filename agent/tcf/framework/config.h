@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -116,6 +116,9 @@
 #endif
 #if !defined(SERVICE_ContextQuery)
 #define SERVICE_ContextQuery    1
+#endif
+#if !defined(SERVICE_ContextReset)
+#define SERVICE_ContextReset    0
 #endif
 #if !defined(SERVICE_Terminals)
 #define SERVICE_Terminals       (TARGET_UNIX || TARGET_WINDOWS)
