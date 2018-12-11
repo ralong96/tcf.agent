@@ -1566,7 +1566,10 @@ static void load_value(Value * v) {
         v->value = buf;
         v->remote = 0;
     }
-    else if (v->value == NULL) {
+    else if (v->value != NULL) {
+        /* OK */
+    }
+    else if (v->loc != NULL) {
         size_t size = 0;
         void * value = NULL;
         LocationExpressionState * loc = v->loc;
@@ -1575,6 +1578,9 @@ static void load_value(Value * v) {
         v->value = value;
         v->size = (ContextAddress)size;
         sign_extend(v, loc);
+    }
+    else {
+        error(ERR_OTHER, "Has no value");
     }
 }
 
@@ -2962,7 +2968,7 @@ static void resolve_ref_type(int mode, Value * v) {
         if (get_symbol_type(type, &next) < 0) {
             error(errno, "Cannot retrieve symbol type");
         }
-        if (next == type) break;
+        if (next == NULL || next == type) break;
         type = next;
     }
 #endif

@@ -674,6 +674,7 @@ void elf_object2symbol(ObjectInfo * ref, ObjectInfo * obj, Symbol ** res) {
         sym->sym_class = SYM_CLASS_VARIANT;
         break;
     case TAG_label:
+        sym->sym_class = SYM_CLASS_REFERENCE;
         /* LLVM compiler uses TAG_label for assembly functions */
         is_assembly_function(sym);
         if (!sym->assembly_function) break;
@@ -4031,6 +4032,12 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                 else set_errno(ERR_OTHER, "Member location info not available");
                 return -1;
             }
+        }
+        if (obj->mTag == TAG_label && (obj->mFlags & DOIF_ranges) == 0 && (obj->mFlags & DOIF_low_pc) != 0) {
+            ContextAddress addr = elf_map_to_run_time_address(sym_ctx, obj->mCompUnit->mFile, obj->u.mCode.mSection, obj->u.mCode.mLowPC);
+            if (errno) return -1;
+            add_location_command(info, SFT_CMD_NUMBER)->args.num = addr;
+            return 0;
         }
 #if 0
 #if SERVICE_StackTrace || ENABLE_ContextProxy

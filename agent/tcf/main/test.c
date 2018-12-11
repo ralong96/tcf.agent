@@ -158,6 +158,7 @@ extern void tcf_test_func0(enum test_enum);
 /* Main purpose of this declaration is to pull basic types info into DWARF */
 char tcf_test_char = 0;
 short tcf_test_short = 0;
+int tcf_test_int = 0;
 long tcf_test_long = 0;
 const char * tcf_test_str = "abc";
 
@@ -196,6 +197,9 @@ int tcf_test_func2(void) {
     int * func2_local4 = NULL;
     test_bitfields func2_local5 = { 0, 1, 2, 3, 4, 7, 9, 17, 1, 2, 3, 4, 7, 9, 17 };
     const char * func2_local_str = "bcd";
+
+func2_label:
+    if (tcf_test_int) goto func2_label;
 
     func2_local3.f_struct = &func2_local3;
     tcf_test_short++;
