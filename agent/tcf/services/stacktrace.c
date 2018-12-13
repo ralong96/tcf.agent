@@ -258,7 +258,7 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
         add_frame(stack, &down);
     }
 
-    trace(LOG_STACK, "Stack trace, ctx %s", ctx->id);
+    trace(LOG_STACK, "Stack trace, ctx %s, max_frames %d", ctx->id, max_frames);
     while (stack->frame_cnt < max_frames) {
         int frame_idx = stack->frame_cnt - 1;
         StackFrame * frame = stack->frames + frame_idx;
@@ -268,7 +268,7 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             RegisterDefinition * def;
             trace(LOG_STACK, "Frame %d", stack->frame_cnt - 1);
             for (def = get_reg_definitions(ctx); def->name != NULL; def++) {
-                if (def->no_read || def->read_once || def->bits) continue;
+                if (def->no_read || def->read_once || def->bits || !def->size) continue;
                 if (read_reg_value(frame, def, &v) != 0) continue;
                 trace(LOG_STACK, "  %-8s %16" PRIx64, def->name, v);
             }
