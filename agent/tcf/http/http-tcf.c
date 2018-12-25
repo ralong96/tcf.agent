@@ -165,6 +165,7 @@ static void http_message(OutputStream * out, Message * m) {
 }
 
 static void send_http_reply(ClientData * cd) {
+    Channel * ch = &cd->channel;
     OutputStream * out = cd->http_out;
     write_string(out, "[\n");
     while (!list_is_empty(&cd->link_messages)) {
@@ -176,6 +177,11 @@ static void send_http_reply(ClientData * cd) {
         free_message(m);
     }
     write_string(out, "]\n");
+    ch->inp.cur = NULL;
+    ch->inp.end = NULL;
+    loc_free(cd->cmd_data);
+    cd->cmd_data = NULL;
+    cd->cmd_size = 0;
 }
 
 static void read_stringz(InputStream * inp, char * str, size_t size) {
@@ -421,7 +427,7 @@ static void refresh_server_info_event(void * x) {
     post_event_with_delay(refresh_server_info_event, NULL, PEER_DATA_REFRESH_PERIOD * 1000000);
 }
 
-static ClientData * find_client(void) {
+static ClientData * find_client(int alloc) {
     ClientData * cd = NULL;
     HttpParam * h = get_http_headers();
     const char * id = "";
@@ -442,6 +448,8 @@ static ClientData * find_client(void) {
             return x;
         }
     }
+
+    if (!alloc) return NULL;
 
     if (list_is_empty(&link_clients)) post_event_with_delay(timer_event, NULL, 60000000);
 
@@ -505,6 +513,17 @@ static void decode(char * s) {
 static int get_page(const char * uri) {
     int no_token = 0;
     const char * type = NULL;
+    if (strncmp(uri, "/tcf/stop/", 10) == 0) {
+        ClientData * cd = find_client(0);
+        if (cd != NULL) {
+            close_client(cd);
+            http_printf("OK\n");
+        }
+        else {
+            http_printf("Already stopped\n");
+        }
+        return 1;
+    }
     if (strncmp(uri, "/tcf/s/", 7) == 0) {
         type = "C"; no_token = 1;
     }
@@ -563,7 +582,7 @@ static int get_page(const char * uri) {
         }
         if (service != NULL && command != NULL) {
             Trap trap;
-            ClientData * cd = find_client();
+            ClientData * cd = find_client(1);
             Channel * ch = &cd->channel;
             ch->inp.cur = NULL;
             ch->inp.end = NULL;
@@ -635,7 +654,7 @@ static int get_page(const char * uri) {
         }
     }
     else if (strcmp(uri, "/tcf/sse") == 0) {
-        ClientData * cd = find_client();
+        ClientData * cd = find_client(1);
         cd->sse_out = get_http_stream();
         http_content_type("text/event-stream");
         return 1;

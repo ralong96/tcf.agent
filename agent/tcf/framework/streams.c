@@ -123,8 +123,30 @@ static void write_byte_array_output_stream(OutputStream * out, int byte) {
 }
 
 static void write_block_byte_array_output_stream(OutputStream * out, const char * bytes, size_t size) {
-    size_t pos = 0;
-    while (pos < size) write_byte_array_output_stream(out, ((const uint8_t *)bytes)[pos++]);
+    ByteArrayOutputStream * buf = (ByteArrayOutputStream *)((char *)out - offsetof(ByteArrayOutputStream, out));
+    if (buf->pos + size <= sizeof(buf->buf)) {
+        memcpy(buf->buf + buf->pos, bytes, size);
+        buf->pos += size;
+    }
+    else {
+        size_t pos = 0;
+        while (pos < size) {
+            size_t n = size - pos;
+            if (buf->mem == NULL) {
+                buf->mem = (char *)loc_alloc(buf->max = (buf->pos + n) * 2);
+                memcpy(buf->mem, buf->buf, buf->pos);
+            }
+            else if (buf->pos >= buf->max) {
+                buf->mem = (char *)loc_realloc(buf->mem, buf->max = (buf->pos + n) * 2);
+            }
+            else if (n > buf->max - buf->pos) {
+                n = buf->max - buf->pos;
+            }
+            memcpy(buf->mem + buf->pos, bytes + pos, n);
+            buf->pos += n;
+            pos += n;
+        }
+    }
 }
 
 OutputStream * create_byte_array_output_stream(ByteArrayOutputStream * buf) {

@@ -60,6 +60,7 @@ typedef struct HttpConnection {
     int read_posted;
     int write_posted;
     char * recv_buf;
+    size_t recv_len;
     size_t recv_pos;
     size_t recv_max;
     char * http_method;
@@ -124,6 +125,7 @@ static void clear_connection_state(HttpConnection * con) {
     }
     loc_free(con->page_reason);
     memset(&con->req_wr, 0, sizeof(con->req_wr));
+    con->recv_len = 0;
     con->recv_pos = 0;
     con->http_method = NULL;
     con->http_uri = NULL;
@@ -300,52 +302,52 @@ static void send_reply(HttpConnection * con) {
 }
 
 static void read_http_request(HttpConnection * con) {
-    while (con->recv_pos > 0 && !con->read_request_done) {
+    while (con->recv_len > con->recv_pos && !con->read_request_done) {
         unsigned i = 0;
-        while (con->recv_buf[i++] != '\n') {
-            if (i >= con->recv_pos) return;
+        while (con->recv_buf[con->recv_pos++] != '\n') {
+            if (con->recv_pos >= con->recv_len) return;
         }
-        if (i > 0) {
-            if (con->http_method == NULL) {
-                unsigned j = 0;
-                unsigned k = 0;
-                while (j < i) {
-                    char * s = con->recv_buf + j;
-                    while (j < i && con->recv_buf[j] > ' ') j++;
-                    while (j < i && con->recv_buf[j] <= ' ') con->recv_buf[j++] = 0;
-                    switch (k++) {
-                    case 0: con->http_method = loc_strdup(s); break;
-                    case 1: con->http_uri = loc_strdup(s); break;
-                    case 2: con->http_ver = loc_strdup(s); break;
-                    }
+        i = con->recv_pos;
+        if (con->http_method == NULL) {
+            unsigned j = 0;
+            unsigned k = 0;
+            while (j < i) {
+                char * s = con->recv_buf + j;
+                while (j < i && con->recv_buf[j] > ' ') j++;
+                while (j < i && con->recv_buf[j] <= ' ') con->recv_buf[j++] = 0;
+                switch (k++) {
+                case 0: con->http_method = loc_strdup(s); break;
+                case 1: con->http_uri = loc_strdup(s); break;
+                case 2: con->http_ver = loc_strdup(s); break;
                 }
+            }
+        }
+        else {
+            unsigned j = 0;
+            unsigned k = i;
+            while (k > 0 && con->recv_buf[k - 1] <= ' ') con->recv_buf[--k] = 0;
+            if (k == 0) {
+                con->read_request_done = 1;
             }
             else {
-                unsigned j = 0;
-                unsigned k = i;
-                while (k > 0 && con->recv_buf[k - 1] <= ' ') con->recv_buf[--k] = 0;
-                if (k == 0) {
-                    con->read_request_done = 1;
-                }
-                else {
-                    while (j < k && con->recv_buf[j] != ':') j++;
-                    if (j < k) {
-                        HttpParam * h = (HttpParam *)loc_alloc_zero(sizeof(HttpParam));
-                        con->recv_buf[j++] = 0;
-                        while (j < k && con->recv_buf[j] == ' ') con->recv_buf[j++] = 0;
-                        h->name = loc_strdup(con->recv_buf);
-                        h->value = loc_strdup(con->recv_buf + j);
-                        h->next = con->http_hdrs;
-                        if (strcmp(h->name, "Connection") == 0 && strcmp(h->value, "keep-alive") == 0) {
-                            con->keep_alive = 1;
-                        }
-                        con->http_hdrs = h;
+                while (j < k && con->recv_buf[j] != ':') j++;
+                if (j < k) {
+                    HttpParam * h = (HttpParam *)loc_alloc_zero(sizeof(HttpParam));
+                    con->recv_buf[j++] = 0;
+                    while (j < k && con->recv_buf[j] == ' ') con->recv_buf[j++] = 0;
+                    h->name = loc_strdup(con->recv_buf);
+                    h->value = loc_strdup(con->recv_buf + j);
+                    h->next = con->http_hdrs;
+                    if (strcmp(h->name, "Connection") == 0 && strcmp(h->value, "keep-alive") == 0) {
+                        con->keep_alive = 1;
                     }
+                    con->http_hdrs = h;
                 }
             }
         }
-        memmove(con->recv_buf, con->recv_buf + i, con->recv_pos - i);
-        con->recv_pos -= i;
+        memmove(con->recv_buf, con->recv_buf + i, con->recv_len - i);
+        con->recv_len -= i;
+        con->recv_pos = 0;
     }
 }
 
@@ -356,8 +358,8 @@ static void http_read_done(void * x) {
 
     assert(con->read_posted);
     assert(is_dispatch_thread());
-    assert(con->req_rd.u.sio.bufp == con->recv_buf + con->recv_pos);
-    assert(con->req_rd.u.sio.bufsz == con->recv_max - con->recv_pos);
+    assert(con->req_rd.u.sio.bufp == con->recv_buf + con->recv_len);
+    assert(con->req_rd.u.sio.bufsz == con->recv_max - con->recv_len);
     len = con->req_rd.u.sio.rval;
     con->read_posted = 0;
 
@@ -365,19 +367,19 @@ static void http_read_done(void * x) {
         close_connection(con);
     }
     else if (len > 0) {
-        con->recv_pos += len;
-        assert(con->recv_pos <= con->recv_max);
+        con->recv_len += len;
+        assert(con->recv_len <= con->recv_max);
         read_http_request(con);
         if (con->read_request_done) {
             send_reply(con);
         }
         else {
-            if (con->recv_pos >= con->recv_max) {
+            if (con->recv_len >= con->recv_max) {
                 con->recv_max *= 2;
                 con->recv_buf = (char *)loc_realloc(con->recv_buf, con->recv_max);
             }
-            req->u.sio.bufp = con->recv_buf + con->recv_pos;
-            req->u.sio.bufsz = con->recv_max - con->recv_pos;
+            req->u.sio.bufp = con->recv_buf + con->recv_len;
+            req->u.sio.bufsz = con->recv_max - con->recv_len;
             con->read_posted = 1;
             async_req_post(&con->req_rd);
         }
@@ -518,6 +520,7 @@ static int get_page(const char * uri) {
 static void http_server_accept_done(void * x) {
     AsyncReqInfo * req = (AsyncReqInfo *)x;
     HttpServer * server = (HttpServer *)req->client_data;
+    const int i = 1;
 
     if (server->sock < 0) {
         /* Server closed. */
@@ -530,6 +533,10 @@ static void http_server_accept_done(void * x) {
     }
     if (req->error) {
         trace(LOG_ALWAYS, "HTTP Socket accept failed: %s", errno_to_str(req->error));
+    }
+    else if (setsockopt(req->u.acc.rval, IPPROTO_TCP, TCP_NODELAY, (char *)&i, sizeof(i)) < 0) {
+        trace(LOG_ALWAYS, "Can't set TCP_NODELAY option on a socket: %s", errno_to_str(errno));
+        closesocket(req->u.acc.rval);
     }
     else {
         HttpConnection * con = (HttpConnection *)loc_alloc_zero(sizeof(HttpConnection));
