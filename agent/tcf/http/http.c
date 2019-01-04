@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2018 Xilinx, Inc. and others.
+ * Copyright (c) 2018-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -449,7 +449,7 @@ void http_flush(void) {
                 con->sse = strcmp(h->value, "text/event-stream") == 0;
                 content_type = 1;
             }
-            if (strcmp(h->name, "Cache-Control")) cache_control = 1;
+            if (strcmp(h->name, "Cache-Control") == 0) cache_control = 1;
             http_printf("%s: %s\n", h->name, h->value);
             h = h->next;
         }
@@ -480,10 +480,14 @@ void http_flush(void) {
 }
 
 static int get_page(const char * uri) {
-    unsigned i;
+    unsigned i = 0;
+    char * nm = tmp_strdup(uri);
+    while (nm[i] != 0 && nm[i] != '?') i++;
+    if (i <= 1) return 0;
+    nm[i] = 0;
     for (i = directory_cnt; i > 0; i--) {
         struct stat statbuf;
-        char * fnm = tmp_strdup2(directory_arr[i - 1], uri);
+        char * fnm = tmp_strdup2(directory_arr[i - 1], nm);
         if (stat(fnm, &statbuf) == 0 && statbuf.st_size > 0) {
             int f = open(fnm, O_BINARY | O_RDONLY, 0);
             if (f < 0) {
@@ -504,9 +508,13 @@ static int get_page(const char * uri) {
                     http_send_block(buf, rd);
                 }
                 if (current_con->out.pos > 0) {
-                    size_t l = strlen(uri);
-                    if (strcmp(uri + l - 4, ".css") == 0) http_content_type("text/css");
-                    else if (strcmp(uri + l - 3, ".js") == 0) http_content_type("text/javascript");
+                    size_t l = strlen(fnm) - 1;
+                    while (l > 0 && fnm[l] != '/' && fnm[l] != '.') l--;
+                    if (strcmp(fnm + l, ".css") == 0) http_content_type("text/css");
+                    else if (strcmp(fnm + l, ".js") == 0) http_content_type("text/javascript");
+                    else if (strcmp(fnm + l, ".gif") == 0) http_content_type("image/gif");
+                    else if (strcmp(fnm + l, ".jpg") == 0) http_content_type("image/jpeg");
+                    else if (strcmp(fnm + l, ".png") == 0) http_content_type("image/png");
                     http_response_header("Cache-Control", "private, max-age=300");
                 }
                 close(f);
