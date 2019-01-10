@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -2391,6 +2391,7 @@ int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
         case EM_V800       : *isa = "V800"; break;
         case EM_V850       : *isa = "V850"; break;
         case EM_AARCH64    : *isa = "A64"; break;
+        case EM_RISCV      : *isa = file->elf64 ? "Riscv64" : NULL; break;
         }
     }
     {

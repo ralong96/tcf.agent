@@ -70,6 +70,9 @@
     <Filter Include="http">
       <UniqueIdentifier>{7deca403-7ce9-46a2-aa22-cf65f19024d3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="machine\riscv64">
+      <UniqueIdentifier>{33878318-fdc6-4e2e-9642-182293971a42}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\tcf\framework\asyncreq.c">
@@ -407,6 +410,9 @@
     </ClCompile>
     <ClCompile Include="..\tcf\framework\compression.c">
       <Filter>framework</Filter>
+    </ClCompile>
+    <ClCompile Include="..\machine\riscv64\tcf\cpudefs-mdep.c">
+      <Filter>machine\riscv64</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -872,6 +878,15 @@
     </ClInclude>
     <ClInclude Include="..\tcf\framework\compression.h">
       <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\riscv64\tcf\cpudefs-mdep.h">
+      <Filter>machine\riscv64</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\riscv64\tcf\dwarfreloc-mdep.h">
+      <Filter>machine\riscv64</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\riscv64\tcf\regset-mdep.h">
+      <Filter>machine\riscv64</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

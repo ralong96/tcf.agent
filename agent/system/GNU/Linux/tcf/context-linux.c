@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1134,6 +1134,8 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     isa->def = "MicroBlaze";
 #elif defined(__MICROBLAZE64__)
     isa->def = "MicroBlaze64";
+#elif defined(__riscv) && __riscv_xlen == 64
+    isa->def = "Riscv64";
 #else
     isa->def = NULL;
 #endif
@@ -1167,6 +1169,10 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
         else if (strcmp(s, "MicroBlaze") == 0 || strcmp(s, "MicroBlaze64") == 0) {
             isa->max_instruction_size = 4;
             isa->alignment = 4;
+        }
+       else if (strcmp(s, "Riscv64") == 0) {
+            isa->max_instruction_size = 4;
+            isa->alignment = 2;
         }
     }
     return 0;
