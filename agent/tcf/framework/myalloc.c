@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -163,6 +163,13 @@ char * tmp_strdup2(const char * s1, const char * s2) {
     char * rval = (char *)tmp_alloc(l1 + l2 + 1);
     memcpy(rval, s1, l1);
     memcpy(rval + l1, s2, l2 + 1);
+    return rval;
+}
+
+char * tmp_strndup(const char * s, size_t len) {
+    char * rval = (char *)tmp_alloc(len + 1);
+    strncpy(rval, s, len);
+    rval[len] = '\0';
     return rval;
 }
 
