@@ -39,6 +39,7 @@
 #include <tcf/framework/context.h>
 #include <tcf/framework/events.h>
 #include <tcf/framework/errors.h>
+#include <tcf/framework/cache.h>
 #include <tcf/framework/trace.h>
 #include <tcf/framework/json.h>
 #include <tcf/framework/myalloc.h>
@@ -451,7 +452,7 @@ static const char * get_ptrace_cmd_name(int cmd) {
 }
 #endif
 
-static int do_single_step(Context * ctx) {
+static int try_single_step(Context * ctx) {
     uint32_t is_cont = 0;
     ContextExtensionLinux * ext = EXT(ctx);
     int cmd = PTRACE_SINGLESTEP;
@@ -482,6 +483,18 @@ static int do_single_step(Context * ctx) {
     ext->pending_step = 1;
     send_context_started_event(ctx);
     add_waitpid_process(ext->pid);
+    return 0;
+}
+
+static int do_single_step(Context * ctx) {
+    if (try_single_step(ctx) < 0) {
+        if (ctx->stopped) {
+            int error = errno;
+            cpu_disable_stepping_mode(ctx);
+            errno = error;
+        }
+        return -1;
+    }
     return 0;
 }
 
@@ -1140,7 +1153,9 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     isa->def = NULL;
 #endif
 #if SERVICE_Symbols
-    if (get_context_isa(ctx, addr, &isa->isa, &isa->addr, &isa->size) < 0) return -1;
+    if (cache_channel() != NULL) {
+        if (get_context_isa(ctx, addr, &isa->isa, &isa->addr, &isa->size) < 0) return -1;
+    }
 #endif
     s = isa->isa ? isa->isa : isa->def;
     if (s) {
@@ -1159,6 +1174,9 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
             isa->alignment = 4;
         }
         else if (strcmp(s, "Thumb") == 0 || strcmp(s, "ThumbEE") == 0) {
+            static uint8_t bp_thumb[] = { 0x00, 0xbe };
+            isa->bp_encoding = bp_thumb;
+            isa->bp_size = 2;
             isa->max_instruction_size = 4;
             isa->alignment = 2;
         }

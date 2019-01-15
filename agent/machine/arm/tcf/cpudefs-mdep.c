@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2018 Stanislav Yakovlev and others.
+ * Copyright (c) 2013-2019 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -105,7 +105,9 @@ static RegisterDefinition * cpsr_def = NULL;
 typedef struct ContextExtensionARM {
     int sw_stepping;
     char opcode[sizeof(BREAK_INST)];
-    ContextAddress addr;
+    unsigned opcode_size;
+    ContextAddress step_addr;
+    int step_to_thumb;
 
 #if ENABLE_HardwareBreakpoints
 #define MAX_HBP 16
@@ -134,7 +136,7 @@ static size_t context_extension_offset = 0;
 
 #define EXT(ctx) ((ContextExtensionARM *)((char *)(ctx) + context_extension_offset))
 
-static int arm_get_next_address(Context * ctx, ContextAddress * next_addr);
+static int arm_get_next_address(Context * ctx, ContextExtensionARM * ext);
 
 RegisterDefinition * get_PC_definition(Context * ctx) {
     if (!context_has_state(ctx)) return NULL;
@@ -221,13 +223,14 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
         if (i == 0 && ext->hw_stepping) {
             uint32_t vr = 0;
             if (ext->hw_stepping == 1) {
-                vr = (uint32_t)ext->addr;
+                vr = (uint32_t)ext->step_addr & ~0x1;
+                cr |= 0x3 << 5;
             }
             else {
                 vr = (uint32_t)pc;
-                cr |= 1u << 22;
+                cr |= 0x1 << 22;
+                cr |= 0xf << 5;
             }
-            cr |= 0xfu << 5;
             cr |= 0x7u;
             if (ptrace(PTRACE_SETHBPREGS, pid, 1, &vr) < 0) return -1;
         }
@@ -242,11 +245,12 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                 *step_over_hw_bp = 1;
             }
             else {
-                uint32_t vr = (uint32_t)(cb->address & ~3);
+                uint32_t vr = (uint32_t)cb->address & ~0x1;
                 if (i < bps->bp_cnt) {
-                    cr |= 0xfu << 5;
+                    cr |= 0x3 << 5;
                 }
                 else {
+                    vr = (uint32_t)cb->address & ~0x3;
                     for (j = 0; j < 4; j++) {
                         if (vr + j < cb->address) continue;
                         if (vr + j >= cb->address + cb->length) continue;
@@ -255,14 +259,14 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                     if (cb->access_types & CTX_BP_ACCESS_DATA_READ) cr |= 1 << 3;
                     if (cb->access_types & CTX_BP_ACCESS_DATA_WRITE) cr |= 1 << 4;
                 }
-                cr |= 0x7u;
+                cr |= 0x7;
                 if (i < bps->bp_cnt) {
                     if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 1, &vr) < 0) return -1;
                 }
                 else {
                     if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 1), &vr) < 0) return -1;
                 }
-                ext->armed |= 1u << i;
+                ext->armed |= 1 << i;
             }
         }
         if (cr == 0) {
@@ -288,13 +292,15 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
 static int enable_hw_stepping_mode(Context * ctx, int mode) {
     int step = 0;
     ContextExtensionARM * ext = EXT(ctx);
-    if (mode == 1 && arm_get_next_address(ctx, &ext->addr) < 0) return -1;
+    if (mode == 1 && arm_get_next_address(ctx, ext) < 0) return -1;
+    trace(LOG_CONTEXT, "enable_hw_stepping_mode %s 0x%08x", ctx->id, (unsigned)ext->step_addr);
     ext->hw_stepping = mode;
     return set_debug_regs(ctx, &step);
 }
 
 static int disable_hw_stepping_mode(Context * ctx) {
     ContextExtensionARM * ext = EXT(ctx);
+    trace(LOG_CONTEXT, "disable_hw_stepping_mode %s", ctx->id);
     if (ext->hw_stepping) {
         ext->hw_stepping = 0;
         ext->hw_bps_regs_generation--;
@@ -446,13 +452,37 @@ static uint32_t arm_instr;
 static uint32_t arm_cpsr;
 static uint32_t arm_next;
 
-static int arm_evaluate_condition(void) {
+static int arm_read_reg(unsigned n, uint32_t * res) {
+    unsigned i;
+    uint8_t buf[4];
+    *res = 0;
+    assert(regs_index[n].size == 4);
+    assert(!regs_index[n].big_endian);
+    if (context_read_reg(arm_ctx, regs_index + n, 0, 4, buf) < 0) return -1;
+    for (i = 0; i < 4; i++) *res |= (uint32_t)buf[i] << (i * 8);
+    return 0;
+}
+
+static int arm_read_mem(uint32_t addr, uint32_t * res, unsigned size) {
+    unsigned i;
+    uint8_t buf[4];
+    *res = 0;
+    assert(size <= 4);
+    if (context_read_mem(arm_ctx, addr, buf, size) < 0) return -1;
+    for (i = 0; i < size; i++) {
+        /* TODO: big-endian support */
+        *res |= (uint32_t)buf[i] << (i * 8);
+    }
+    return 0;
+}
+
+static int arm_evaluate_condition(uint32_t cond) {
     int N = ( arm_cpsr >> 31 ) & 1;
     int Z = ( arm_cpsr >> 30 ) & 1;
     int C = ( arm_cpsr >> 29 ) & 1;
     int V = ( arm_cpsr >> 28 ) & 1;
 
-    switch (arm_instr >> 28) {
+    switch (cond) {
     case 0 : return Z;
     case 1 : return Z == 0;
     case 2 : return C;
@@ -512,9 +542,18 @@ static uint32_t arm_calc_shift(uint32_t shift_type, uint32_t shift_imm, uint32_t
     return val;
 }
 
-static int arm_get_next_bx(void) {
+static int arm_get_next_bx(int * to_thumb) {
     uint32_t Rm = arm_instr & 0xf;
-    return context_read_reg(arm_ctx, regs_index + Rm, 0, 4, &arm_next);
+    if (arm_read_reg(Rm, &arm_next) < 0) return -1;
+    if (arm_next & 1) {
+        arm_next &= ~(uint32_t)1;
+        *to_thumb = 1;
+    }
+    else {
+        arm_next &= ~(uint32_t)3;
+        *to_thumb = 0;
+    }
+    return 0;
 }
 
 static int arm_get_next_data_processing(void) {
@@ -554,14 +593,14 @@ static int arm_get_next_data_processing(void) {
                 return 0;
             }
             else {
-                if (context_read_reg(arm_ctx, regs_index + Rs, 0, 4, &shift_dist) < 0) return -1;
+                if (arm_read_reg(Rs, &shift_dist) < 0) return -1;
             }
         }
         else {
             shift_dist  = (operand2 & 0x0f80) >> 7;
         }
 
-        if (context_read_reg(arm_ctx, regs_index + Rm, 0, 4, &mval) < 0) return -1;
+        if (arm_read_reg(Rm, &mval) < 0) return -1;
 
         if (shift_type == 0 && shift_dist == 0 && opcode == 13) {
             /* MOV Rd,Rm */
@@ -608,7 +647,7 @@ static int arm_get_next_data_processing(void) {
         }
     }
 
-    if (context_read_reg(arm_ctx, regs_index + Rn, 0, 4, &nval) < 0) return -1;
+    if (arm_read_reg(Rn, &nval) < 0) return -1;
     /* Account for pre-fetch by adjusting PC */
     if (Rn == 15) {
         /* If the shift amount is specified in the instruction,
@@ -682,13 +721,12 @@ static int arm_get_next_ldr(void) {
     int L = (arm_instr & (1 << 20)) != 0;
     uint32_t Rn = (arm_instr >> 16) & 0xf;
     uint32_t Rd = (arm_instr >> 12) & 0xf;
-    ContextAddress addr = 0;
+    uint32_t addr = 0;
     unsigned size = B ? 1 : 4;
-    uint8_t bt = 0;
 
     if (!L || Rd != 15) return 0;
 
-    if (read_reg(arm_ctx, regs_index + Rn, 4, &addr) < 0) return -1;
+    if (arm_read_reg(Rn, &addr) < 0) return -1;
     if (Rn == 15) addr += 8;
 
     if (!I && P) {
@@ -698,7 +736,7 @@ static int arm_get_next_ldr(void) {
     else if (I && P) {
         uint8_t Rm = arm_instr & 0xf;
         uint32_t offs = 0;
-        if (context_read_reg(arm_ctx, regs_index + Rm, 0, 4, &offs) < 0) return -1;
+        if (arm_read_reg(Rm, &offs) < 0) return -1;
         if ((arm_instr & 0x00000ff0) == 0x00000000) {
             addr = U ? addr + offs : addr - offs;
         }
@@ -715,36 +753,44 @@ static int arm_get_next_ldr(void) {
 
     switch (size) {
     case 1:
-        if (context_read_mem(arm_ctx, addr, &bt, 1) < 0) return -1;
-        arm_next = bt;
+        if (arm_read_mem(addr, &arm_next, 1) < 0) return -1;
         break;
     case 4:
-        if (context_read_mem(arm_ctx, addr, &arm_next, 4) < 0) return -1;
+        if (arm_read_mem(addr, &arm_next, 4) < 0) return -1;
         break;
     }
     return 0;
 }
 
-static int arm_get_next_ldm(void) {
+static int arm_get_next_ldm(int * to_thumb) {
     int P = (arm_instr & (1 << 24)) != 0;
     int U = (arm_instr & (1 << 23)) != 0;
     int S = (arm_instr & (1 << 22)) != 0;
     int L = (arm_instr & (1 << 20)) != 0;
     uint32_t Rn = (arm_instr >> 16) & 0xf;
-    ContextAddress addr = 0;
+    uint32_t addr = 0;
 
     if (!L || S || Rn == 15) return 0;
     if ((arm_instr & (1 << 15)) == 0) return 0;
 
-    if (read_reg(arm_ctx, regs_index + Rn, 4, &addr) < 0) return -1;
+    if (arm_read_reg(Rn, &addr) < 0) return -1;
     if (U) {
-        int i;
+        unsigned i;
         for (i = 0; i < 15; i++) {
             if (arm_instr & (1 << i)) addr += 4;
         }
     }
     if (P) addr = U ? addr + 4 : addr - 4;
-    return context_read_mem(arm_ctx, addr, &arm_next, 4);
+    if (arm_read_mem(addr, &arm_next, 4) < 0) return -1;
+    if (arm_next & 1) {
+        arm_next &= ~(uint32_t)1;
+        *to_thumb = 1;
+    }
+    else {
+        arm_next &= ~(uint32_t)3;
+        *to_thumb = 0;
+    }
+    return 0;
 }
 
 static int arm_get_next_branch(void) {
@@ -755,52 +801,247 @@ static int arm_get_next_branch(void) {
     return 0;
 }
 
-static int arm_get_next_address(Context * ctx, ContextAddress * next_addr) {
+static int thumb_get_next_pop(int * to_thumb) {
     ContextAddress addr = 0;
-    ContextAddress cpsr = 0;
+    unsigned i;
 
-    /* read opcode at PC */
-    if (read_reg(ctx, pc_def, pc_def->size, &addr) < 0) return -1;
-    if (read_reg(ctx, cpsr_def, cpsr_def->size, &cpsr) < 0) return -1;
-    if (context_read_mem(ctx, addr, &arm_instr, 4) < 0) return -1;
+    if ((arm_instr & (1 << 8)) == 0) return 0;
+
+    if (arm_read_reg(13, &addr) < 0) return -1;
+    for (i = 0; i < 8; i++) {
+        if (arm_instr & (1 << i)) addr += 4;
+    }
+    if (arm_read_mem(addr, &arm_next, 4) < 0) return -1;
+    if (arm_next & 1) {
+        arm_next &= ~(uint32_t)1;
+        *to_thumb = 1;
+    }
+    else {
+        arm_next &= ~(uint32_t)3;
+        *to_thumb = 0;
+    }
+    return 0;
+}
+
+static int thumb_get_next_bx(int * to_thumb) {
+    uint32_t Rm = (arm_instr >> 3) & 0xf;
+    if (arm_read_reg(Rm, &arm_next) < 0) return -1;
+    if (arm_next & 1) {
+        arm_next &= ~(uint32_t)1;
+        *to_thumb = 1;
+    }
+    else {
+        arm_next &= ~(uint32_t)3;
+        *to_thumb = 0;
+    }
+    return 0;
+}
+
+static int thumb_get_next_mov_pc(void) {
+    uint32_t Rm = (arm_instr >> 3) & 0xf;
+    if (arm_read_reg(Rm, &arm_next) < 0) return -1;
+    arm_next &= ~(uint32_t)1;
+    return 0;
+}
+
+static int thumb_get_next_cbz(void) {
+    uint32_t reg = 0;
+    uint32_t Rn = arm_instr & 7;
+    int N = (arm_instr & (1 << 11)) != 0;
+    if (arm_read_reg(Rn, &reg) < 0) return -1;
+    if (N ^ (reg == 0)) {
+        uint32_t offs = (arm_instr >> 3) & 0x1f;
+        if (arm_instr & (1 << 9)) offs |= 0x20;
+        arm_next = arm_pc + (offs << 1);
+    }
+    return 0;
+}
+
+static int thumb_get_next_bc(int * to_thumb) {
+    int J1 = (arm_instr & (1 << 13)) != 0;
+    int J2 = (arm_instr & (1 << 11)) != 0;
+    int S = (arm_instr & (1 << 26)) != 0;
+    if ((arm_instr & 0xf800d000) == 0xf0008000) {
+        if (arm_evaluate_condition((arm_instr >> 22) & 0xf)) {
+            uint32_t offs = arm_instr & 0x7ff;
+            offs |= ((arm_instr >> 16) & 0x3f) << 11;
+            if (J1) offs |= 1 << 17;
+            if (J2) offs |= 1 << 18;
+            if (S) offs |= ~(uint32_t)0 << 19;
+            arm_next = arm_pc + (offs << 1) + 4;
+        }
+    }
+    else {
+        uint32_t offs = arm_instr & 0x7ff;
+        offs |= ((arm_instr >> 16) & 0x3ff) << 11;
+        if (!(J2 ^ S)) offs |= 1 << 21;
+        if (!(J1 ^ S)) offs |= 1 << 22;
+        if (S) offs |= ~(uint32_t)0 << 23;
+        arm_next = arm_pc + (offs << 1) + 4;
+        if ((arm_instr & 0xf800d000) == 0xf000c000) {
+            arm_next &= ~(uint32_t)3;
+            *to_thumb = 0;
+        }
+    }
+    return 0;
+}
+
+static int thumb_get_next_ldr(void) {
+    uint32_t Rn = (arm_instr >> 16) & 0xf;
+    uint32_t Rt = (arm_instr >> 12) & 0xf;
+    if (Rt == 15) {
+        int U = (arm_instr & (1 << 23)) != 0 || (arm_instr & (1 << 9)) != 0;
+        int P = (arm_instr & (1 << 23)) != 0 || (arm_instr & (1 << 10)) != 0;
+        uint32_t imm32 = arm_instr & (1 << 23) ? arm_instr & 0xfff : arm_instr & 0xff;
+        uint32_t addr = 0;
+        if (arm_read_reg(Rn, &addr) < 0) return -1;
+        if (P) addr = U ? addr + imm32 : addr - imm32;
+        if (arm_read_mem(addr, &arm_next, 4) < 0) return -1;
+    }
+    return 0;
+}
+
+static int thumb_get_next_tb(void) {
+    uint32_t Rn = (arm_instr >> 16) & 0xf;
+    uint32_t Rm = arm_instr & 0xf;
+    int H = (arm_instr & (1 << 4)) != 0;
+    uint32_t addr = 0;
+    uint32_t offs = 0;
+    if (arm_read_reg(Rn, &addr) < 0) return -1;
+    if (Rn == 15) addr += 4;
+    if (arm_read_reg(Rm, &offs) < 0) return -1;
+    if (H) {
+        if (arm_read_mem(addr + (offs << 1), &offs, 2) < 0) return -1;
+    }
+    else {
+        if (arm_read_mem(addr + offs, &offs, 1) < 0) return -1;
+    }
+    arm_next = arm_pc + offs * 2 + 4;
+    return 0;
+}
+
+static int arm_get_next_address(Context * ctx, ContextExtensionARM * ext) {
+    int to_thumb = 0;
 
     arm_ctx = ctx;
-    arm_pc = (uint32_t)addr;
-    arm_cpsr = (uint32_t)cpsr;
-    trace(LOG_CONTEXT, "pc 0x%x, opcode 0x%x", arm_pc, arm_instr);
+
+    /* read opcode at PC */
+    if (arm_read_reg(15, &arm_pc) < 0) return -1;
+    if (arm_read_reg(cpsr_def - regs_index, &arm_cpsr) < 0) return -1;
+    if (arm_read_mem(arm_pc, &arm_instr, 4) < 0) return -1;
+
+    trace(LOG_CONTEXT, "pc 0x%08x, opcode 0x%08x", arm_pc, arm_instr);
 
     /* decode opcode */
-    arm_next = arm_pc + 4;
-    if (arm_evaluate_condition()) {
-        switch ((arm_instr >> 25) & 7) {
-        case 0:
-        case 1:
-            if ((arm_instr & 0x0ffffff0) == 0x012fff10) {
-                /* Branch and Exchange */
-                if (arm_get_next_bx() < 0) return -1;
+    if ((arm_cpsr & (1 << 5)) == 0) {
+        to_thumb = 0;
+        arm_next = arm_pc + 4;
+        if ((arm_instr >> 28) == 15) {
+            switch ((arm_instr >> 25) & 7) {
+            case 5:
+                if (arm_get_next_branch() < 0) return -1;
+                if (arm_instr & (1 << 24)) arm_next |= 2;
+                to_thumb = 1;
                 break;
             }
-            if (arm_get_next_data_processing() < 0) return -1;
-            break;
-        case 2:
-        case 3: /* Load */
-            if (arm_get_next_ldr() < 0) return -1;
-            break;
-        case 4: /* Load/store multiple */
-            if (arm_get_next_ldm() < 0) return -1;
-            break;
-        case 5: /* Branch and branch with link */
-            if (arm_get_next_branch() < 0) return -1;
-            break;
+        }
+        else if (arm_evaluate_condition(arm_instr >> 28)) {
+            switch ((arm_instr >> 25) & 7) {
+            case 0:
+            case 1:
+                if ((arm_instr & 0x0ffffff0) == 0x012fff10) {
+                    /* Branch and Exchange */
+                    if (arm_get_next_bx(&to_thumb) < 0) return -1;
+                    break;
+                }
+                if (arm_get_next_data_processing() < 0) return -1;
+                break;
+            case 2:
+            case 3: /* Load */
+                if (arm_get_next_ldr() < 0) return -1;
+                break;
+            case 4: /* Load/store multiple */
+                if (arm_get_next_ldm(&to_thumb) < 0) return -1;
+                break;
+            case 5: /* Branch and branch with link */
+                if (arm_get_next_branch() < 0) return -1;
+                break;
+            }
+        }
+    }
+    else {
+        /* Thumb mode */
+        to_thumb = 1;
+        if (((arm_instr >> 11) & 0x1f) >= 0x1d) {
+            arm_next = arm_pc + 4;
+            arm_instr = (arm_instr << 16) | (arm_instr >> 16);
+            if ((arm_instr & 0xfe000000) == 0xe8000000) {
+                /* Load/store multiple */
+                if (arm_get_next_ldm(&to_thumb) < 0) return -1;
+            }
+            else if ((arm_instr & 0xf8008000) == 0xf0008000) {
+                /* Branches and miscellaneous control */
+                if (thumb_get_next_bc(&to_thumb) < 0) return -1;
+            }
+            else if ((arm_instr & 0xff700000) == 0xf8500000) {
+                /* Load word */
+                if (thumb_get_next_ldr() < 0) return -1;
+            }
+            else if ((arm_instr & 0xfff000e0) == 0xe8d00000) {
+                /* Table Branch */
+                if (thumb_get_next_tb() < 0) return -1;
+            }
+        }
+        else {
+            arm_next = arm_pc + 2;
+            arm_instr &= 0xffff;
+            if ((arm_instr & 0xfe00) == 0xbc00) {
+                if (thumb_get_next_pop(&to_thumb) < 0) return -1;
+            }
+            else if ((arm_instr & 0xf000) == 0xd000) {
+                /* Conditional branch */
+                if (arm_evaluate_condition((arm_instr >> 8) & 0xf)) {
+                    uint32_t offs = (arm_instr & 0xff) << 1;
+                    if (offs & 0x100) offs |= 0xfffffe00;
+                    arm_next = arm_pc + offs + 4;
+                }
+            }
+            else if ((arm_instr & 0xf800) == 0xe000) {
+                /* Unconditional branch */
+                uint32_t offs = (arm_instr & 0x7ff) << 1;
+                if (offs & 0x800) offs |= 0xfffff000;
+                arm_next = arm_pc + offs + 4;
+            }
+            else if ((arm_instr & 0xff00) == 0x4700) {
+                /* Branch and Exchange */
+                if (thumb_get_next_bx(&to_thumb) < 0) return -1;
+            }
+            else if ((arm_instr & 0xff87) == 0x4687) {
+                /* mov pc, reg */
+                if (thumb_get_next_mov_pc() < 0) return -1;
+            }
+            else if ((arm_instr & 0xf500) == 0xb100) {
+                /* cbnz, cbz */
+                if (thumb_get_next_cbz() < 0) return -1;
+            }
         }
     }
 
-    addr = arm_next;
-    if (addr >= 0xffff0000) {
+    if (arm_next >= 0xffff0000) {
         /* Linux kernel user-mode helpers space - run to return address */
-        if (read_reg(ctx, lr_def, lr_def->size, &addr) < 0) return -1;
+        if (arm_read_reg(lr_def - regs_index, &arm_next) < 0) return -1;
+        if (arm_next & 1) {
+            arm_next &= ~(uint32_t)1;
+            to_thumb = 1;
+        }
+        else {
+            arm_next &= ~(uint32_t)3;
+            to_thumb = 0;
+        }
     }
-    *next_addr = addr;
+
+    ext->step_to_thumb = to_thumb;
+    ext->step_addr = arm_next;
     return 0;
 }
 
@@ -809,10 +1050,19 @@ static int enable_sw_stepping_mode(Context * ctx) {
     ContextExtensionARM * ext = EXT(grp);
     assert(!grp->exited);
     assert(!ext->sw_stepping);
-    if (arm_get_next_address(ctx, &ext->addr) < 0) return -1;
-    trace(LOG_CONTEXT, "enable_sw_stepping_mode %s 0x%x", ctx->id, (unsigned)ext->addr);
-    if (context_read_mem(grp, ext->addr, ext->opcode, sizeof(BREAK_INST)) < 0) return -1;
-    if (context_write_mem(grp, ext->addr, BREAK_INST, sizeof(BREAK_INST)) < 0) return -1;
+    if (arm_get_next_address(ctx, ext) < 0) return -1;
+    trace(LOG_CONTEXT, "enable_sw_stepping_mode %s 0x%08x", ctx->id, (unsigned)ext->step_addr);
+    if (ext->step_to_thumb) {
+        static uint8_t bp_thumb[] = { 0x00, 0xbe };
+        ext->opcode_size = sizeof(bp_thumb);
+        if (context_read_mem(grp, ext->step_addr, ext->opcode, ext->opcode_size) < 0) return -1;
+        if (context_write_mem(grp, ext->step_addr, bp_thumb, ext->opcode_size) < 0) return -1;
+    }
+    else {
+        ext->opcode_size = sizeof(BREAK_INST);
+        if (context_read_mem(grp, ext->step_addr, ext->opcode, ext->opcode_size) < 0) return -1;
+        if (context_write_mem(grp, ext->step_addr, BREAK_INST, ext->opcode_size) < 0) return -1;
+    }
     ext->sw_stepping = 1;
     run_ctrl_lock();
     return 0;
@@ -826,7 +1076,7 @@ static int disable_sw_stepping_mode(Context * ctx) {
         run_ctrl_unlock();
         ext->sw_stepping = 0;
         if (grp->exited) return 0;
-        return context_write_mem(grp, ext->addr, ext->opcode, sizeof(BREAK_INST));
+        return context_write_mem(grp, ext->step_addr, ext->opcode, ext->opcode_size);
     }
     return 0;
 }
