@@ -301,6 +301,9 @@
     <ClCompile Include="..\machine\powerpc\tcf\disassembler-powerpc.c" />
     <ClCompile Include="..\machine\riscv64\tcf\cpudefs-mdep.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\machine\x86_64\tcf\disassembler-x86_64.c" />
     <ClCompile Include="..\tcf\framework\asyncreq.c" />
