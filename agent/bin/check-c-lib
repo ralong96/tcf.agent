@@ -64,4 +64,21 @@ else
   OPTS="$OPTS -DUSE_strlcpy_strlcat=0"
 fi
 
+cat >$TEMP << EOF
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+int main() {
+  unsigned long hwcap = getauxval(AT_HWCAP);
+  retur (hwcap & HWCAP_ARM_VFP) == 0;
+}
+EOF
+$CC 1>/dev/null 2>&1
+if [ "$?" = 0 ] ; then
+  OPTS="$OPTS -DUSE_getauxval=1"
+else
+  OPTS="$OPTS -DUSE_getauxval=0"
+fi
+
+rm $TEMP
+
 echo $OPTS
