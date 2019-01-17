@@ -337,7 +337,7 @@
 #endif
 
 #if !defined(ENABLE_ContextISA)
-#  define ENABLE_ContextISA SERVICE_Disassembly
+#  define ENABLE_ContextISA 1
 #endif
 
 #if !defined(ENABLE_ProfilerSST)
