@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2018 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -707,7 +707,7 @@ static int trace_thumb_load_store_32(uint16_t instr, uint16_t suffix) {
         /* Load/store register dual */
         uint32_t rn = instr & 0xf;
         chk_loaded(rn);
-        if (reg_data[rn].o == REG_VAL_OTHER) {
+        if (reg_data[rn].o) {
             int L = (instr & (1u << 4)) != 0;
             int W = (instr & (1u << 5)) != 0;
             int U = (instr & (1u << 7)) != 0;
@@ -736,6 +736,30 @@ static int trace_thumb_load_store_32(uint16_t instr, uint16_t suffix) {
 
     if ((instr & 0xfff0) == 0xe8d0 && (suffix & 0x00e0) == 0x0000) {
         /* Table Branch */
+        uint32_t rn = instr & 0xf;
+        uint32_t rm = suffix & 0xf;
+        int H = (suffix & (1 << 4)) != 0;
+        chk_loaded(rn);
+        chk_loaded(rm);
+        if (reg_data[rn].o && reg_data[rm].o) {
+            uint32_t addr = reg_data[rn].v;
+            uint32_t offs = reg_data[rm].v;
+            if (rn == 15) addr += 4;
+            if (H) {
+                uint16_t offs16 = 0;
+                if (read_half(addr + (offs << 1), &offs16) < 0) return -1;
+                offs = offs16;
+            }
+            else {
+                uint8_t offs8 = 0;
+                if (read_byte(addr + offs, &offs8) < 0) return -1;
+                offs = offs8;
+            }
+            reg_data[15].v = reg_data[15].v + offs * 2 + 4;
+        }
+        else {
+            reg_data[15].o = 0;
+        }
         return 0;
     }
 
