@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -256,13 +256,12 @@ static void clean_flush_list(LINK * list) {
     if (!list_is_empty(list)) {
         LINK * l;
         unsigned list_count = 0;
-        unsigned flush_count;
+        unsigned flush_count = 1;
 
         list_foreach(l, list) list_count++;
-
         /* drain faster if we have reached the cache threshold */
         if (list_count > SYMBOLS_CACHE_THRESHOLD) flush_count = (list_count - SYMBOLS_CACHE_THRESHOLD) / 2 + 1;
-        else flush_count = 1;
+
         l = list->next;
         while (flush_count-- > 0) {
             LINK * n = l;
@@ -1429,6 +1428,16 @@ static void validate_address_info(Channel * c, void * args, int error) {
     else {
         error = trap.error;
     }
+    if (f->range_addr != 0 || f->range_size != 0) {
+        if (f->range_addr + f->range_size < f->range_addr) {
+            f->range_size = ~f->range_addr + 1;
+        }
+        if (f->addr < f->range_addr || f->addr > f->range_addr + f->range_size - 1) {
+            if (!error) error = set_errno(ERR_OTHER, "Invalid reply of getAddressInfo command");
+            f->range_addr = f->addr;
+            f->range_size = 1;
+        }
+    }
     f->error = get_error_report(error);
     cache_notify_later(&f->cache);
     if (f->disposed) free_address_info_cache(f);
@@ -1457,9 +1466,11 @@ static int get_address_info(Context * ctx, ContextAddress addr, AddressInfoCache
             if (c->pending != NULL) {
                 cache_wait(&c->cache);
             }
-            else if (c->range_addr <= addr &&
-                        (c->range_addr + c->range_size < c->range_addr ||
-                            c->range_addr + c->range_size > addr)) {
+            else if (c->range_addr == 0 && c->range_size == 0) {
+                f = c;
+                break;
+            }
+            else if (addr >= c->range_addr && addr <= c->range_addr + c->range_size - 1) {
                 f = c;
                 break;
             }
