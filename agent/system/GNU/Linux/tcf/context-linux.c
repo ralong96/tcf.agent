@@ -404,11 +404,6 @@ static int flush_regs(Context * ctx) {
         while (def->name != NULL && (def->offset > i || def->offset + def->size <= i)) def++;
         trace(LOG_ALWAYS, "error: writing register %s failed: ctx %#" PRIxPTR ", id %s, error %d %s",
             def->name ? def->name : "?", (uintptr_t)ctx, ctx->id, err, errno_to_str(err));
-        if (err == ESRCH) {
-            ctx->exiting = 1;
-            memset(ext->regs_dirty, 0, sizeof(REG_SET));
-            return 0;
-        }
         if (def->name) err = set_fmt_errno(err, "Cannot write register %s", def->name);
     }
     errno = err;
@@ -456,6 +451,7 @@ static int try_single_step(Context * ctx) {
     uint32_t is_cont = 0;
     ContextExtensionLinux * ext = EXT(ctx);
     int cmd = PTRACE_SINGLESTEP;
+    int error = 0;
 
     assert(!ext->pending_step);
 
@@ -463,20 +459,23 @@ static int try_single_step(Context * ctx) {
     if (!ctx->stopped) return 0;
 
     trace(LOG_CONTEXT, "context: single step ctx %#" PRIxPTR ", id %s", (uintptr_t)ctx, ctx->id);
-    if (cpu_enable_stepping_mode(ctx, &is_cont) < 0) return -1;
-    if (flush_regs(ctx) < 0) return -1;
+    if (cpu_enable_stepping_mode(ctx, &is_cont) < 0) error = errno;
+    if (!error && flush_regs(ctx) < 0) error = errno;
     if (is_cont) cmd = PTRACE_CONT;
-    if (ptrace(cmd, ext->pid, 0, 0) < 0) {
-        int err = errno;
+    if (!error && ptrace(cmd, ext->pid, 0, 0) < 0) {
+        error = errno;
         trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
-            get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, err, errno_to_str(err));
-        if (err == ESRCH) {
+            get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+    }
+    if (error) {
+        if (get_error_code(error) == ESRCH) {
             ctx->exiting = 1;
+            memset(ext->regs_dirty, 0, sizeof(REG_SET));
             send_context_started_event(ctx);
             add_waitpid_process(ext->pid);
             return 0;
         }
-        errno = err;
+        errno = error;
         return -1;
     }
 
@@ -528,6 +527,7 @@ int context_continue(Context * ctx) {
 #else
     int cmd = PTRACE_CONT;
 #endif
+    int error = 0;
 
     assert(is_dispatch_thread());
     assert(ctx->stopped);
@@ -536,23 +536,28 @@ int context_continue(Context * ctx) {
     assert(!ext->pending_step);
     assert(!ctx->exited);
 
-    if (cpu_bp_on_resume(ctx, &cpu_bp_step) < 0) return -1;
-    if (cpu_bp_step) return do_single_step(ctx);
-    if (skip_breakpoint(ctx, 0)) return 0;
+    if (sigset_get(&ctx->pending_signals, SIGKILL)) {
+        signal = SIGKILL;
+    }
+    else {
+        if (cpu_bp_on_resume(ctx, &cpu_bp_step) < 0) return -1;
+        if (cpu_bp_step) return do_single_step(ctx);
+        if (skip_breakpoint(ctx, 0)) return 0;
 
-    if (!ext->syscall_enter && !ext->ptrace_event) {
-        unsigned n = 0;
-        while (sigset_get_next(&ctx->pending_signals, &n)) {
-            if (sigset_get(&ctx->sig_dont_pass, n)) {
-                sigset_set(&ctx->pending_signals, n, 0);
+        if (!ext->syscall_enter && !ext->ptrace_event) {
+            unsigned n = 0;
+            while (sigset_get_next(&ctx->pending_signals, &n)) {
+                if (sigset_get(&ctx->sig_dont_pass, n)) {
+                    sigset_set(&ctx->pending_signals, n, 0);
+                }
+                else {
+                    signal = n;
+                    break;
+                }
             }
-            else {
-                signal = n;
-                break;
-            }
+            assert(signal != SIGSTOP);
+            assert(signal != SIGTRAP);
         }
-        assert(signal != SIGSTOP);
-        assert(signal != SIGTRAP);
     }
 
     trace(LOG_CONTEXT, "context: resuming ctx %#" PRIxPTR ", id %s, with signal %d", (uintptr_t)ctx, ctx->id, signal);
@@ -562,24 +567,30 @@ int context_continue(Context * ctx) {
         memset(ext->regs_dirty + offsetof(REG_SET, user.regs.eflags), 0xff, 4);
     }
 #endif
-    if (flush_regs(ctx) < 0) return -1;
+    if (flush_regs(ctx) < 0) error = errno;
     if (ext->detach_req && !ext->sigstop_posted &&
             sigset_is_empty(&ctx->pending_signals)) cmd = PTRACE_DETACH;
-    if (ptrace(cmd, ext->pid, 0, signal) < 0) {
-        int err = errno;
+    if (!error && ptrace(cmd, ext->pid, 0, signal) < 0) {
+        error = errno;
         trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
-            get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, err, errno_to_str(err));
-        if (err == ESRCH) {
+            get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+    }
+    if (error) {
+        if (get_error_code(error) == ESRCH) {
             ctx->exiting = 1;
+            memset(ext->regs_dirty, 0, sizeof(REG_SET));
             send_context_started_event(ctx);
             add_waitpid_process(ext->pid);
             return 0;
         }
-        errno = err;
+        errno = error;
         return -1;
     }
     sigset_set(&ctx->pending_signals, signal, 0);
-    if (signal == SIGKILL) ext->sigkill_posted = 1;
+    if (signal == SIGKILL) {
+        ext->sigkill_posted = 1;
+        ctx->exiting = 1;
+    }
     if (syscall_never_returns(ctx)) {
         ext->syscall_enter = 0;
         ext->syscall_exit = 0;
@@ -1500,6 +1511,12 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             add_waitpid_process(msg);
             if (get_thread_group_id(msg) != (pid_t)msg) {
                 prs2 = ctx->parent;
+                if (EXT(prs2)->sigkill_posted) {
+                    /* Parent is already killed, the child must be a zombie.
+                     * Don't try to trace it - it will not work anyway. */
+                    ptrace(PTRACE_CONT, msg, 0, SIGKILL);
+                    return;
+                }
             }
             else {
                 prs2 = create_context(pid2id(msg, 0));
