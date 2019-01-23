@@ -448,6 +448,7 @@ static unsigned get_spsr_id(void) {
 
 static void return_from_exception(void) {
     /* Return from exception - copies the SPSR to the CPSR */
+    RegisterDefinition * defs = get_reg_definitions(stk_ctx);
     RegisterDefinition * def;
     unsigned spsr_id = get_spsr_id();
     if (spsr_id == 0) {
@@ -455,9 +456,16 @@ static void return_from_exception(void) {
         return;
     }
     chk_loaded(spsr_id);
-    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+    for (def = defs; def->name; def++) {
         int r = is_banked_reg_visible(def, reg_data[spsr_id].v & 0x1f);
-        if (r > 0) reg_data[r] = reg_data[def->dwarf_id];
+        if (r <= 0) continue;
+        if (reg_data[def->dwarf_id].o) {
+            reg_data[r] = reg_data[def->dwarf_id];
+        }
+        else {
+            reg_data[r].v = (uint32_t)(def - defs);
+            reg_data[r].o = REG_VAL_FRAME;
+        }
     }
     reg_data[REG_ID_CPSR] = reg_data[spsr_id];
 }
@@ -2432,12 +2440,12 @@ static int trace_instructions(void) {
             reg_data[i].o = 0;
         }
     }
-    if (org_cpsr.o && org_spsr.o && ((org_spsr.v & 0x1f) > 0x10) && org_lr.o) {
+    if (org_cpsr.o && org_spsr.o && ((org_cpsr.v & 0x1f) > 0x10) && org_lr.o) {
         reg_data[REG_ID_CPSR] = org_cpsr;
         reg_data[org_spsr_id] = org_spsr;
         reg_data[15] = org_lr;
-        bx_write_pc();
         return_from_exception();
+        bx_write_pc();
         return 0;
     }
     if (org_sp.v != 0 && org_lr.v != 0 && org_pc.v != org_lr.v) {
