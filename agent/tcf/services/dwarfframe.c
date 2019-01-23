@@ -196,12 +196,15 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
             }
             break;
         case EM_ARM:
-            min_reg_cnt = 14;
+            min_reg_cnt = 129;
             if (n >= 4 && n <= 11) { /* Local variables */
                 regs->regs[n].rule = RULE_SAME_VALUE;
             }
             else if (n == 13) { /* Stack pointer */
                 regs->regs[n].rule = RULE_VAL_OFFSET;
+            }
+            else if (n == 128) { /* CPSR, it is needed for stack crawl */
+                regs->regs[n].rule = RULE_SAME_VALUE;
             }
             else if (n == rules.return_address_register) {
                 regs->regs[n].rule = RULE_REGISTER;
