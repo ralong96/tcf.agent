@@ -368,16 +368,24 @@ static ssize_t http_channel_splice_block(OutputStream * out, int fd, size_t size
 }
 
 static void timer_event(void * arg) {
-    LINK * l = link_clients.next;
-    while (l != &link_clients) {
-        ClientData * x = all2client(l);
-        l = l->next;
-        if (x->http_out == NULL && x->sse_out == NULL) {
-            x->timeout++;
-            if (x->timeout > 10) {
-                close_client(x);
+    unsigned timeout = 10;
+    for (;;) {
+        unsigned cnt = 0;
+        LINK * l = link_clients.next;
+        while (l != &link_clients) {
+            ClientData * x = all2client(l);
+            l = l->next;
+            if (x->http_out == NULL && x->sse_out == NULL) {
+                x->timeout++;
+                if (x->timeout > timeout) {
+                    close_client(x);
+                    continue;
+                }
+                cnt++;
             }
         }
+        if (cnt < 8 || timeout <= 2) break;
+        timeout--;
     }
     if (list_is_empty(&link_clients)) return;
     post_event_with_delay(timer_event, NULL, 60000000);
