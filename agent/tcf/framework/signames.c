@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -181,29 +181,38 @@ static SignalInfo * get_info(int signal) {
     static SignalInfo ** index = NULL;
     if (index_len == 0) {
         int i;
-#if defined(SIGRTMIN) && defined(SIGRTMAX)
+#if defined(SIGRTMAX)
         index_len = SIGRTMAX + 1;
 #else
         for (i = 0; i < INFO_CNT; i++) {
             if (info[i].signal >= index_len) index_len = info[i].signal + 1;
         }
 #endif
+        if (index_len < 65) index_len = 65;
         index = (SignalInfo **)loc_alloc_zero(sizeof(SignalInfo *) * index_len);
         for (i = 0; i < INFO_CNT; i++) {
             index[info[i].signal] = &info[i];
         }
 #if defined(SIGRTMIN) && defined(SIGRTMAX)
         for (i = SIGRTMIN; i <= SIGRTMAX; i++) {
-            char buf[32];
-            SignalInfo * s = (SignalInfo *)loc_alloc_zero(sizeof(SignalInfo));
-            snprintf(buf, sizeof(buf), "SIGRTMIN+%d", i - SIGRTMIN);
-            s->name = loc_strdup(buf);
-            snprintf(buf, sizeof(buf), "Real-time Signal %d", i);
-            s->desc = loc_strdup(buf);
-            s->signal = i;
-            index[i] = s;
+            if (index[i] == NULL) {
+                SignalInfo * s = (SignalInfo *)loc_alloc_zero(sizeof(SignalInfo));
+                s->name = loc_printf("SIGRTMIN+%d", i - SIGRTMIN);
+                s->desc = loc_printf("Real-time Signal %d", i);
+                s->signal = i;
+                index[i] = s;
+            }
         }
 #endif
+        for (i = 1; i < index_len; i++) {
+            if (index[i] == NULL) {
+                SignalInfo * s = (SignalInfo *)loc_alloc_zero(sizeof(SignalInfo));
+                s->name = loc_printf("SIGNAL%d", i);
+                s->desc = loc_printf("Reserved Signal %d", i);
+                s->signal = i;
+                index[i] = s;
+            }
+        }
     }
     if (signal < 0 || signal >= index_len) return NULL;
     return index[signal];
