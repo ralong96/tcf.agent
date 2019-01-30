@@ -1401,6 +1401,7 @@ static void send_event_context_resumed(Context * grp) {
 
 static void send_event_context_exception(Context * ctx) {
     OutputStream * out = &broadcast_group->out;
+    const char * msg = NULL;
 
     write_stringz(out, "E");
     write_stringz(out, RUN_CONTROL);
@@ -1410,20 +1411,20 @@ static void send_event_context_exception(Context * ctx) {
     json_write_string(out, ctx->id);
     write_stream(out, 0);
 
-    /* String: Human readable description of the exception */
+    /* String: Human-readable description of the exception */
     if (ctx->exception_description) {
-        json_write_string(out, ctx->exception_description);
+        msg = ctx->exception_description;
     }
     else if (ctx->signal > 0) {
-        char buf[128];
         const char * desc = signal_description(ctx->signal);
         if (desc == NULL) desc = signal_name(ctx->signal);
-        snprintf(buf, sizeof(buf), desc == NULL ? "Signal %d" : "Signal %d: %s", ctx->signal, desc);
-        json_write_string(out, buf);
+        if (desc == NULL) msg = tmp_printf("Signal %d", ctx->signal);
+        else msg = tmp_printf("Signal %d: %s", ctx->signal, desc);
     }
     else {
-        json_write_string(out, context_suspend_reason(ctx));
+        msg = context_suspend_reason(ctx);
     }
+    json_write_string(out, msg);
     write_stream(out, 0);
 
     write_stream(out, MARKER_EOM);
