@@ -34,6 +34,7 @@
 #include <tcf/framework/channel_tcp.h>
 #include <tcf/framework/plugins.h>
 #include <tcf/services/discovery.h>
+#include <tcf/http/http.h>
 #include <tcf/main/test.h>
 #include <tcf/main/cmdline.h>
 #include <tcf/main/services.h>
@@ -227,6 +228,9 @@ static const char * help_text[] = {
 #if ENABLE_Plugins
     "  -P<dir>          set agent plugins directory name",
 #endif
+#if ENABLE_HttpServer
+    "  -H<dir>          add HTML directory name",
+#endif
 #if ENABLE_SSL
     "  -c               generate SSL certificate and exit",
 #endif
@@ -352,6 +356,9 @@ int main(int argc, char ** argv) {
 #if ENABLE_Plugins
             case 'P':
 #endif
+#if ENABLE_HttpServer
+            case 'H':
+#endif
                 if (*s == '\0') {
                     if (++ind >= argc) {
                         fprintf(stderr, "%s: error: no argument given to option '%c'\n", progname, c);
@@ -391,6 +398,21 @@ int main(int argc, char ** argv) {
 #if ENABLE_Plugins
                 case 'P':
                     plugins_path = s;
+                    break;
+#endif
+#if ENABLE_HttpServer
+                case 'H':
+                    {
+                        struct stat st;
+                        char * fnm = canonicalize_file_name(s);
+                        if (fnm == NULL || stat(fnm, &st) < 0) {
+                            fprintf(stderr, "%s: invalid option '-H %s': %s\n", progname, s, errno_to_str(errno));
+                            free(fnm);
+                            exit(1);
+                        }
+                        add_http_directory(fnm);
+                        free(fnm);
+                    }
                     break;
 #endif
                 }
