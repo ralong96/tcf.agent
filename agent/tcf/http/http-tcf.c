@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2018 Xilinx, Inc. and others.
+ * Copyright (c) 2018-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -435,18 +435,19 @@ static void refresh_server_info_event(void * x) {
     post_event_with_delay(refresh_server_info_event, NULL, PEER_DATA_REFRESH_PERIOD * 1000000);
 }
 
-static ClientData * find_client(int alloc) {
+static ClientData * find_client(int alloc, const char * id) {
     ClientData * cd = NULL;
     HttpParam * h = get_http_headers();
-    const char * id = "";
     LINK * l = NULL;
 
-    while (h != NULL) {
-        if (strcmp(h->name, "X-Session-ID") == 0) {
-            id = h->value;
-            break;
+    if (id[0] == 0) {
+        while (h != NULL) {
+            if (strcmp(h->name, "X-Session-ID") == 0) {
+                id = h->value;
+                break;
+            }
+            h = h->next;
         }
-        h = h->next;
     }
 
     for (l = link_clients.next; l != &link_clients; l = l->next) {
@@ -521,8 +522,20 @@ static void decode(char * s) {
 static int get_page(const char * uri) {
     int no_token = 0;
     const char * type = NULL;
-    if (strncmp(uri, "/tcf/stop/", 10) == 0) {
-        ClientData * cd = find_client(0);
+    const char * session = "";
+    if (strncmp(uri, "/tcf/", 5) != 0) return 0;
+    uri += 4;
+    if (strncmp(uri, "/ses/", 5) == 0) {
+        unsigned i = 5;
+        while (uri[i] != '/') {
+            if (uri[i] == 0) return 0;
+            i++;
+        }
+        session = tmp_strndup(uri + 5, i - 5);
+        uri += i;
+    }
+    if (strncmp(uri, "/stop/", 6) == 0) {
+        ClientData * cd = find_client(0, session);
         if (cd != NULL) {
             close_client(cd);
             http_printf("OK\n");
@@ -532,13 +545,11 @@ static int get_page(const char * uri) {
         }
         return 1;
     }
-    if (strncmp(uri, "/tcf/s/", 7) == 0) {
-        type = "C"; no_token = 1;
-    }
-    else if (strncmp(uri, "/tcf/c/", 7) == 0) type = "C";
-    else if (strncmp(uri, "/tcf/e/", 7) == 0) type = "E";
+    if (strncmp(uri, "/s/", 3) == 0) { type = "C"; no_token = 1; }
+    else if (strncmp(uri, "/c/", 3) == 0) type = "C";
+    else if (strncmp(uri, "/e/", 3) == 0) type = "E";
     if (type != NULL) {
-        unsigned i = 7;
+        unsigned i = 3;
         unsigned j = i;
         char * token = NULL;
         char * service = NULL;
@@ -590,7 +601,7 @@ static int get_page(const char * uri) {
         }
         if (service != NULL && command != NULL) {
             Trap trap;
-            ClientData * cd = find_client(1);
+            ClientData * cd = find_client(1, session);
             Channel * ch = &cd->channel;
             ch->inp.cur = NULL;
             ch->inp.end = NULL;
@@ -609,7 +620,7 @@ static int get_page(const char * uri) {
                     notify_channel_opened(ch);
                     if (ch->connected) ch->connected(ch);
                 }
-                assert(cd->wait_token == NULL);
+                if (cd->wait_token != NULL) exception(set_errno(ERR_OTHER, "Blocked by pending command"));
                 write_stringz(out, type);
                 if (type[0] == 'C') {
                     if (token != NULL) {
@@ -647,6 +658,12 @@ static int get_page(const char * uri) {
                 OutputStream * out = cd->http_out;
                 write_string(out, "[\n");
                 write_string(out, "{\n");
+                if (token != NULL) {
+                    json_write_string(out, "Token");
+                    write_string(out, " : ");
+                    json_write_string(out, token);
+                    write_string(out, ",\n");
+                }
                 json_write_string(out, "Error");
                 write_string(out, " : ");
                 json_write_string(out, errno_to_str(trap.error));
@@ -661,8 +678,8 @@ static int get_page(const char * uri) {
             return 1;
         }
     }
-    else if (strcmp(uri, "/tcf/sse") == 0) {
-        ClientData * cd = find_client(1);
+    else if (strcmp(uri, "/sse") == 0) {
+        ClientData * cd = find_client(1, session);
         cd->sse_out = get_http_stream();
         http_content_type("text/event-stream");
         return 1;
