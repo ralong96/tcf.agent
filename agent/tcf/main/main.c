@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -271,9 +271,11 @@ int main(int argc, char ** argv) {
 #endif
     int interactive = 0;
     int print_server_properties = 0;
-    const char * url = DEFAULT_SERVER_URL;
-    TCFBroadcastGroup * bcg;
-    Protocol * proto;
+    unsigned url_cnt = 0;
+    unsigned url_max = 0;
+    const char ** url_arr = NULL;
+    TCFBroadcastGroup * bcg = NULL;
+    Protocol * proto = NULL;
 
     PRE_INIT_HOOK;
     ini_framework();
@@ -383,7 +385,8 @@ int main(int argc, char ** argv) {
                     break;
 
                 case 's':
-                    url = s;
+                    if (url_cnt >= url_max) url_arr = (const char **)loc_realloc((void *)url_arr, sizeof(const char *) * (url_max += 16));
+                    url_arr[url_cnt++] = s;
                     break;
 
 #if ENABLE_GdbRemoteSerialProtocol
@@ -461,11 +464,26 @@ int main(int argc, char ** argv) {
     }
 #endif
 
-    if (ini_server(url, proto, bcg) < 0) {
-        fprintf(stderr, "Cannot create listening port: %s\n", errno_to_str(errno));
-        exit(1);
+    {
+        unsigned i;
+
+        if (url_cnt == 0) {
+            if (url_cnt >= url_max) url_arr = (const char **)loc_realloc((void *)url_arr, sizeof(const char *) * (url_max += 16));
+            url_arr[url_cnt++] = DEFAULT_SERVER_URL;
+        }
+
+        for (i = 0; i < url_cnt; i++) {
+            if (ini_server(url_arr[i], proto, bcg) < 0) {
+                fprintf(stderr, "Cannot create listening port: %s\n", errno_to_str(errno));
+                exit(1);
+            }
+        }
+        loc_free(url_arr);
+        url_cnt = 0;
+        url_cnt = 0;
+
+        discovery_start();
     }
-    discovery_start();
 
     if (print_server_properties) {
         ChannelServer * s;
