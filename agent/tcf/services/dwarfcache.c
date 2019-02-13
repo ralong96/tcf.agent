@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -2065,30 +2065,31 @@ DWARFCache * get_dwarf_cache(ELF_File * file) {
     return Cache;
 }
 
-static void add_dir(CompUnit * Unit, char * Name) {
-    if (Unit->mDirsCnt >= Unit->mDirsMax) {
-        Unit->mDirsMax = Unit->mDirsMax == 0 ? 16 : Unit->mDirsMax * 2;
-        Unit->mDirs = (char **)loc_realloc(Unit->mDirs, sizeof(char *) * Unit->mDirsMax);
+static void add_dir(CompUnit * unit, char * name) {
+    if (unit->mDirsCnt >= unit->mDirsMax) {
+        unit->mDirsMax = unit->mDirsMax == 0 ? 16 : unit->mDirsMax * 2;
+        unit->mDirs = (char **)loc_realloc(unit->mDirs, sizeof(char *) * unit->mDirsMax);
     }
-    Unit->mDirs[Unit->mDirsCnt++] = Name;
+    unit->mDirs[unit->mDirsCnt++] = name;
 }
 
-static void add_file(CompUnit * Unit, FileInfo * file) {
+static void add_file(FileInfo * file) {
+    CompUnit * unit = file->mCompUnit;
     file->mNameHash = calc_file_name_hash(file->mName);
-    if (Unit->mFilesCnt >= Unit->mFilesMax) {
-        Unit->mFilesMax = Unit->mFilesMax == 0 ? 16 : Unit->mFilesMax * 2;
-        Unit->mFiles = (FileInfo *)loc_realloc(Unit->mFiles, sizeof(FileInfo) * Unit->mFilesMax);
+    if (unit->mFilesCnt >= unit->mFilesMax) {
+        unit->mFilesMax = unit->mFilesMax == 0 ? 16 : unit->mFilesMax * 2;
+        unit->mFiles = (FileInfo *)loc_realloc(unit->mFiles, sizeof(FileInfo) * unit->mFilesMax);
     }
-    if (file->mDir == NULL) file->mDir = Unit->mDir;
-    Unit->mFiles[Unit->mFilesCnt++] = *file;
+    if (file->mDir == NULL) file->mDir = unit->mDir;
+    unit->mFiles[unit->mFilesCnt++] = *file;
 }
 
-static void add_state(CompUnit * Unit, LineNumbersState * state) {
-    if (state->mFile >= Unit->mFilesCnt) {
+static void add_state(CompUnit * unit, LineNumbersState * state) {
+    if (state->mFile >= unit->mFilesCnt) {
         /* Workaround: Diab compiler generates invalid file indices for an empty compilation unit */
         return;
     }
-    if (Unit->mFiles[state->mFile].mAreaCnt++ == 0) {
+    if (unit->mFiles[state->mFile].mAreaCnt++ == 0) {
         /* Workaround: compilers don't produce mapping for first lines in a source file.
          * Such mapping is needed, for example, for re-positioning of source line breakpoints.
          * We add artificial entry for that.
@@ -2099,13 +2100,13 @@ static void add_state(CompUnit * Unit, LineNumbersState * state) {
         s.mFile = state->mFile;
         s.mSection = state->mSection;
         s.mAddress = state->mAddress;
-        add_state(Unit, &s);
+        add_state(unit, &s);
     }
-    if (Unit->mStatesCnt >= Unit->mStatesMax) {
-        Unit->mStatesMax = Unit->mStatesMax == 0 ? 128 : Unit->mStatesMax * 2;
-        Unit->mStates = (LineNumbersState *)loc_realloc(Unit->mStates, sizeof(LineNumbersState) * Unit->mStatesMax);
+    if (unit->mStatesCnt >= unit->mStatesMax) {
+        unit->mStatesMax = unit->mStatesMax == 0 ? 128 : unit->mStatesMax * 2;
+        unit->mStates = (LineNumbersState *)loc_realloc(unit->mStates, sizeof(LineNumbersState) * unit->mStatesMax);
     }
-    Unit->mStates[Unit->mStatesCnt++] = *state;
+    unit->mStates[unit->mStatesCnt++] = *state;
 }
 
 static int state_address_comparator(const void * x1, const void * x2) {
@@ -2167,11 +2168,24 @@ static void compute_reverse_lookup_indices(DWARFCache * Cache, CompUnit * Unit) 
         Cache->mFileInfoHash = (FileInfo **)loc_alloc_zero(sizeof(FileInfo *) * Cache->mFileInfoHashSize);
     }
     for (i = 0; i < Unit->mFilesCnt; i++) {
-        FileInfo * File = Unit->mFiles + i;
-        unsigned h = File->mNameHash % Cache->mFileInfoHashSize;
-        File->mCompUnit = Unit;
-        File->mNextInHash = Cache->mFileInfoHash[h];
-        Cache->mFileInfoHash[h] = File;
+        FileInfo * file = Unit->mFiles + i;
+        unsigned h = file->mNameHash % Cache->mFileInfoHashSize;
+        FileInfo * list = Cache->mFileInfoHash[h];
+        assert(file->mCompUnit == Unit);
+        if (file->mAreaCnt == 0) continue;
+        /* Check for duplicate entries */
+        while (list != NULL) {
+            assert(h == list->mNameHash % Cache->mFileInfoHashSize);
+            if (file->mNameHash == list->mNameHash && file->mCompUnit == list->mCompUnit && strcmp(file->mName, list->mName) == 0) {
+                if (file->mDir && list->mDir && strcmp(file->mDir, list->mDir) == 0) break;
+                if (file->mDir == list->mDir) break;
+            }
+            list = list->mNextInHash;
+        }
+        if (list == NULL) {
+            file->mNextInHash = Cache->mFileInfoHash[h];
+            Cache->mFileInfoHash[h] = file;
+        }
     }
 }
 
@@ -2226,9 +2240,9 @@ static void load_line_numbers_v2(CompUnit * Unit, U8_T unit_size, int dwarf64) {
 
     /* Read directory names */
     for (;;) {
-        char * Name = dio_ReadString();
-        if (Name == NULL) break;
-        add_dir(Unit, Name);
+        char * name = dio_ReadString();
+        if (name == NULL) break;
+        add_dir(Unit, name);
     }
 
     /* Read source files info */
@@ -2240,9 +2254,10 @@ static void load_line_numbers_v2(CompUnit * Unit, U8_T unit_size, int dwarf64) {
         if (file.mName == NULL) break;
         dir = dio_ReadULEB128();
         if (dir > 0 && dir <= Unit->mDirsCnt) file.mDir = Unit->mDirs[dir - 1];
+        file.mCompUnit = Unit;
         file.mModTime = dio_ReadULEB128();
         file.mSize = dio_ReadULEB128();
-        add_file(Unit, &file);
+        add_file(&file);
     }
 
     if (header_pos + header_size != dio_GetPos()) {
@@ -2283,9 +2298,10 @@ static void load_line_numbers_v2(CompUnit * Unit, U8_T unit_size, int dwarf64) {
                 file.mName = dio_ReadString();
                 dir = dio_ReadULEB128();
                 if (dir > 0 && dir <= Unit->mDirsCnt) file.mDir = Unit->mDirs[dir - 1];
+                file.mCompUnit = Unit;
                 file.mModTime = dio_ReadULEB128();
                 file.mSize = dio_ReadULEB128();
-                add_file(Unit, &file);
+                add_file(&file);
                 break;
             }
             case DW_LNE_end_sequence:
@@ -2370,9 +2386,10 @@ void load_line_numbers(CompUnit * Unit) {
         U8_T unit_size = 0;
         FileInfo file;
         memset(&file, 0, sizeof(file));
+        file.mCompUnit = Unit;
         file.mDir = Unit->mDir;
         file.mName = Unit->mObject->mName;
-        add_file(Unit, &file);
+        add_file(&file);
         /* Read header */
         unit_size = dio_ReadU4();
         if (Unit->mDesc.mVersion <= 1) {
