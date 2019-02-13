@@ -2102,6 +2102,20 @@ static void add_state(CompUnit * unit, LineNumbersState * state) {
         s.mAddress = state->mAddress;
         add_state(unit, &s);
     }
+    if (unit->mStatesCnt > 0) {
+        /* Workaround: malformed gnu-8.1.0.0 line info when -gstatement-frontiers is used.
+         * See https://bugs.eclipse.org/bugs/show_bug.cgi?id=544359
+         */
+        LineNumbersState * last = unit->mStates + unit->mStatesCnt - 1;
+        if (last->mAddress == state->mAddress && last->mSection == state->mSection &&
+            last->mFile == state->mFile && last->mLine == state->mLine && last->mColumn == state->mColumn &&
+            (last->mFlags & ~(LINE_IsStmt | LINE_BasicBlock)) == state->mFlags) {
+            last->mISA = state->mISA;
+            last->mOpIndex = state->mOpIndex;
+            last->mDiscriminator = state->mDiscriminator;
+            return;
+        }
+    }
     if (unit->mStatesCnt >= unit->mStatesMax) {
         unit->mStatesMax = unit->mStatesMax == 0 ? 128 : unit->mStatesMax * 2;
         unit->mStates = (LineNumbersState *)loc_realloc(unit->mStates, sizeof(LineNumbersState) * unit->mStatesMax);
