@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1353,9 +1353,6 @@ static void command_mkdir(char * token, Channel * c) {
     char path[FILE_PATH_SIZE];
     FileAttrs attrs;
     int err = 0;
-#if !defined(_WRS_KERNEL)
-    int mode;
-#endif
 
     read_path(&c->inp, path, sizeof(path));
     json_test_char(&c->inp, MARKER_EOA);
@@ -1367,11 +1364,15 @@ static void command_mkdir(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-#if defined(_WRS_KERNEL)
+#if defined(_WRS_KERNEL) && !defined(_WRS_CONFIG_CORE_POSIX_MKDIR)
     if (mkdir(path) < 0) err = errno;
 #else
-    mode = (attrs.flags & ATTR_PERMISSIONS) ? attrs.permissions : 0777;
-    if (mkdir(path, mode) < 0) err = errno;
+    if (attrs.flags & ATTR_PERMISSIONS) {
+        if (mkdir(path, attrs.permissions) < 0) err = errno;
+    }
+    else {
+        if (mkdir(path, 0777) < 0) err = errno;
+    }
 #endif
 #if defined(_WIN32) || defined(__CYGWIN__)
     if (attrs.win32_attrs != INVALID_FILE_ATTRIBUTES) {
