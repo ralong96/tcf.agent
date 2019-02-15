@@ -1592,7 +1592,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         sigset_set(&ctx->pending_signals, signal, 1);
 #if defined(__arm__)
         /* On ARM, Linux kernel appears to use SIGILL to lazily enable vector registers */
-        if (signal == SIGILL && !ext->crt0_done) {
+        if (signal == SIGILL && !EXT(ctx->mem)->crt0_done) {
             /* Ignore */
         }
         else
@@ -1796,7 +1796,7 @@ static void eventpoint_at_loader(Context * ctx, void * args) {
 
 static void eventpoint_at_main(Context * ctx, void * args) {
     if (EXT(ctx)->pid == 0) return;
-    EXT(ctx)->crt0_done = 1;
+    EXT(ctx->mem)->crt0_done = 1;
     send_context_changed_event(ctx->mem);
     memory_map_event_mapping_changed(ctx->mem);
     if ((EXT(ctx)->attach_mode & CONTEXT_ATTACH_NO_MAIN) == 0) {
