@@ -1730,6 +1730,18 @@ static int expression_identifier_callback(Context * ctx, int frame, char * name,
         default: assert(0);
         }
         v->remote = 1;
+#if defined(__arm__)
+        {
+            /* On ARM, r_debug.r_brk can have bit 0 set to 1 to indicate Thumb ISA.
+             * We need to clear the bit to make a valid breakpoint address. */
+            size_t size = (size_t)v->size;
+            uint8_t * buf = (uint8_t *)tmp_alloc(size);
+            if (context_read_mem(ctx, v->address, buf, size) < 0) exception(errno);
+            buf[v->big_endian ? size - 1 : 0] &= ~1;
+            v->value = buf;
+            v->remote = 0;
+        }
+#endif
         return 1;
     }
     if (strcmp(name, "$loader_state") == 0) {
@@ -1739,6 +1751,7 @@ static int expression_identifier_callback(Context * ctx, int frame, char * name,
         case 8: v->address += 24; break;
         default: assert(0);
         }
+        v->type_class = TYPE_CLASS_INTEGER;
         v->remote = 1;
         return 1;
     }

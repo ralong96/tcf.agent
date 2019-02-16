@@ -235,7 +235,7 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
             if (ptrace(PTRACE_SETHBPREGS, pid, 1, &vr) < 0) return -1;
         }
         else if (cb != NULL) {
-            if (i < bps->bp_cnt && cb->address == pc) {
+            if (i < bps->bp_cnt && ((uint32_t)cb->address & ~0x1) == pc) {
                 /* Skipping the breakpoint */
                 *step_over_hw_bp = 1;
             }
@@ -408,7 +408,7 @@ int cpu_bp_on_suspend(Context * ctx, int * triggered) {
         if (bps->bp_cnt > 0) {
             for (i = 0; i < bps->bp_cnt; i++) {
                 ContextBreakpoint * cb = bps->hw_bps[i];
-                if (cb != NULL && cb->address == pc && (ext->armed & (1u << i))) {
+                if (cb != NULL && ((uint32_t)cb->address & ~0x1) == pc && (ext->armed & (1u << i))) {
                     ext->triggered_hw_bps[cb_cnt++] = cb;
                 }
             }
