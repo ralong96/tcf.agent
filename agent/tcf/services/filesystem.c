@@ -1364,7 +1364,7 @@ static void command_mkdir(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-#if defined(_WRS_KERNEL) && !defined(_WRS_CONFIG_CORE_POSIX_MKDIR)
+#if defined(_WRS_KERNEL) && !defined(_WRS_CONFIG_CORE__POSIX_MKDIR)
     if (mkdir(path) < 0) err = errno;
 #else
     if (attrs.flags & ATTR_PERMISSIONS) {
