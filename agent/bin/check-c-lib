@@ -69,7 +69,7 @@ cat >$TEMP << EOF
 #include <asm/hwcap.h>
 int main() {
   unsigned long hwcap = getauxval(AT_HWCAP);
-  retur (hwcap & HWCAP_ARM_VFP) == 0;
+  return (hwcap & HWCAP_ARM_VFP) == 0;
 }
 EOF
 $CC 1>/dev/null 2>&1
