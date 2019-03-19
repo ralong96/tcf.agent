@@ -14,6 +14,7 @@
 #if SERVICE_ContextReset
 
 #include <tcf/framework/context.h>
+#include <tcf/framework/cache.h>
 #include <tcf/framework/json.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/trace.h>
@@ -27,6 +28,7 @@ typedef struct ContextExtensionReset {
     ResetInfo * resets;
     unsigned resets_cnt;
     unsigned resets_max;
+    int group;
 } ContextExtensionRS;
 
 struct ResetInfo {
@@ -56,7 +58,6 @@ static ResetInfo * find_reset(Context * ctx, const char * type) {
 void add_reset(Context * ctx, const char * type, const char * desc, ContextReset * reset) {
     ContextExtensionRS * ext = EXT(ctx);
     ResetInfo * ri;
-    assert(ctx == context_get_group(ctx, CONTEXT_GROUP_CPU));
 
     ri = find_reset(ctx, type);
     if (ri == NULL) {
@@ -72,6 +73,17 @@ void add_reset(Context * ctx, const char * type, const char * desc, ContextReset
     }
     ri->desc = loc_strdup(desc);
     ri->reset = reset;
+}
+
+void set_reset_group(Context * ctx, int group) {
+    ContextExtensionRS * ext = EXT(ctx);
+    ext->group = group;
+}
+
+static Context * get_reset_context(Context * ctx) {
+    ContextExtensionRS * ext = EXT(ctx);
+    if (ext->group > 0) return context_get_group(ctx, ext->group);
+    return context_get_group(ctx, CONTEXT_GROUP_CPU);
 }
 
 static void command_get_capabilities(char * token, Channel * c) {
@@ -93,8 +105,8 @@ static void command_get_capabilities(char * token, Channel * c) {
     write_errno(out, err);
     write_stream(out, '[');
     if (!err) {
-        ContextExtensionRS * ext = EXT(context_get_group(ctx, CONTEXT_GROUP_CPU));
         unsigned i;
+        ContextExtensionRS * ext = EXT(get_reset_context(ctx));
         for (i = 0; i < ext->resets_cnt; i++) {
             ResetInfo * ri = ext->resets + i;
             if (i > 0) write_stream(&c->out, ',');
@@ -114,6 +126,46 @@ static void command_get_capabilities(char * token, Channel * c) {
     write_stream(out, MARKER_EOM);
 }
 
+typedef struct CommandResetArgs {
+    char token[256];
+    char id[256];
+    char type[256];
+    ResetParams params;
+} CommandResetArgs;
+
+static void command_reset_cache_client(void * x) {
+    CommandResetArgs * args = (CommandResetArgs *)x;
+    Channel * c = cache_channel();
+    Context * ctx = id2ctx(args->id);
+    OutputStream * out = &c->out;
+    int err = 0;
+
+    if (ctx == NULL) err = ERR_INV_CONTEXT;
+    else if (ctx->exited) err = ERR_ALREADY_EXITED;
+
+    if (!err) {
+        Context * grp = get_reset_context(ctx);
+        ResetInfo * rst = find_reset(grp, args->type);
+        if (rst == NULL) err = set_errno(ERR_OTHER, "Unsupported reset type");
+        else if (rst->reset(ctx, &args->params) < 0) err = errno;
+    }
+
+    cache_exit();
+
+    while (args->params.list != NULL) {
+        ResetParameter * p = args->params.list;
+        args->params.list = p->next;
+        loc_free(p->name);
+        loc_free(p->value);
+        loc_free(p);
+    }
+
+    write_stringz(out, "R");
+    write_stringz(out, args->token);
+    write_errno(out, err);
+    write_stream(out, MARKER_EOM);
+}
+
 static void read_reset_params(InputStream * inp, const char * name, void * x) {
     ResetParams * params = (ResetParams *)x;
 
@@ -130,45 +182,19 @@ static void read_reset_params(InputStream * inp, const char * name, void * x) {
 }
 
 static void command_reset(char * token, Channel * c) {
-    char id[256];
-    char type[256];
-    Context * ctx;
-    OutputStream * out = &c->out;
-    ResetParams params;
-    int err = 0;
+    CommandResetArgs args;
 
-    memset(&params, 0, sizeof(params));
-    json_read_string(&c->inp, id, sizeof(id));
+    memset(&args, 0, sizeof(args));
+    json_read_string(&c->inp, args.id, sizeof(args.id));
     json_test_char(&c->inp, MARKER_EOA);
-    json_read_string(&c->inp, type, sizeof(type));
+    json_read_string(&c->inp, args.type, sizeof(args.type));
     json_test_char(&c->inp, MARKER_EOA);
-    json_read_struct(&c->inp, read_reset_params, &params);
+    json_read_struct(&c->inp, read_reset_params, &args.params);
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    ctx = id2ctx(id);
-    if (ctx == NULL) err = ERR_INV_CONTEXT;
-    else if (ctx->exited) err = ERR_ALREADY_EXITED;
-
-    write_stringz(out, "R");
-    write_stringz(out, token);
-    if (!err) {
-        Context * cpu = context_get_group(ctx, CONTEXT_GROUP_CPU);
-        ResetInfo * rst = find_reset(cpu, type);
-        if (rst == NULL) err = set_errno(ERR_OTHER, "Unsupported reset type");
-        else if (rst->reset(ctx, &params) < 0) err = errno;
-    }
-    while (params.list != NULL) {
-        ResetParameter * p = params.list;
-        params.list = p->next;
-        loc_free(p->name);
-        loc_free(p->value);
-        loc_free(p);
-    }
-
-    write_errno(out, err);
-    write_stream(out, 0);
-    write_stream(out, MARKER_EOM);
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(command_reset_cache_client, c, &args, sizeof(args));
 }
 
 static void event_context_disposed(Context * ctx, void * args) {

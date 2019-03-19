@@ -31,7 +31,14 @@ typedef struct ResetParams {
 /* Reset callback. */
 typedef int ContextReset(Context * /* ctx */, const ResetParams * /* params */);
 
+/* Register reset callback function for a context */
 extern void add_reset(Context * ctx, const char * type, const char * desc, ContextReset * reset);
+
+/*
+ * Set reset group of a context .
+ * By default, a reset function is shared by members of CONTEXT_GROUP_CPU.
+ */
+extern void set_reset_group(Context * ctx, int group);
 
 extern void ini_context_reset_service(Protocol * proto);
 
