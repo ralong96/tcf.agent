@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -453,7 +453,7 @@ PeerServer * channel_peer_from_url(const char * url) {
         value = loc_strndup(url, s - url);
         peer_server_addprop(ps, name, value);
     }
-    if (*s != '\0') {
+    if (*s) {
         peer_server_free(ps);
         return NULL;
     }
@@ -475,7 +475,7 @@ char * channel_peer_to_json(PeerServer * ps) {
         json_write_string(out, ps->list[i].value);
     }
     write_stream(out, '}');
-    write_stream(out, '\0');
+    write_stream(out, 0);
     get_byte_array_output_stream_data(&buf, &rval, NULL);
     return rval;
 }
@@ -485,11 +485,15 @@ char * channel_peer_to_json(PeerServer * ps) {
  */
 ChannelServer * channel_server(PeerServer * ps) {
     const char * transportname = peer_server_getprop(ps, "TransportName", NULL);
+    const char * hidden = peer_server_getprop(ps, "Hidden", NULL);
 
     if (transportname == NULL) {
         transportname = "TCP";
         peer_server_addprop(ps, loc_strdup("TransportName"), loc_strdup(transportname));
     }
+
+    ps->flags |= PS_FLAG_LOCAL;
+    if (hidden == NULL || atoi(hidden) == 0) ps->flags |= PS_FLAG_DISCOVERABLE;
 
     if (strcmp(transportname, "TCP") == 0 || strcmp(transportname, "SSL") == 0) {
         return channel_tcp_server(ps);

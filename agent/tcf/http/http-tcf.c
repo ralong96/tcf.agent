@@ -418,7 +418,7 @@ static void refresh_server_info(int sock, PeerServer * ps) {
         }
         src_addr.s_addr = if_list[if_cnt].addr;
         ps2 = peer_server_alloc();
-        ps2->flags = ps->flags | PS_FLAG_LOCAL | PS_FLAG_DISCOVERABLE;
+        ps2->flags = ps->flags;
         for (i = 0; i < ps->ind; i++) {
             peer_server_addprop(ps2, loc_strdup(ps->list[i].name), loc_strdup(ps->list[i].value));
         }

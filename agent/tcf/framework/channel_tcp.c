@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1072,7 +1072,7 @@ static void refresh_peer_server(int sock, PeerServer * ps) {
     if (strcmp(transport, "UNIX") == 0) {
         PeerServer * ps2 = peer_server_alloc();
         char * str_id = loc_printf("%s:%s", transport, peer_server_getprop(ps, "Host", ""));
-        ps2->flags = ps->flags | PS_FLAG_LOCAL | PS_FLAG_DISCOVERABLE;
+        ps2->flags = ps->flags;
         for (i = 0; i < ps->ind; i++) {
             peer_server_addprop(ps2, loc_strdup(ps->list[i].name), loc_strdup(ps->list[i].value));
         }
@@ -1110,7 +1110,7 @@ static void refresh_peer_server(int sock, PeerServer * ps) {
             }
             src_addr.s_addr = ifclist[ifcind].addr;
             ps2 = peer_server_alloc();
-            ps2->flags = ps->flags | PS_FLAG_LOCAL | PS_FLAG_DISCOVERABLE;
+            ps2->flags = ps->flags;
             for (i = 0; i < ps->ind; i++) {
                 peer_server_addprop(ps2, loc_strdup(ps->list[i].name), loc_strdup(ps->list[i].value));
             }

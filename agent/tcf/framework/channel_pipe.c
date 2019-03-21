@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -675,7 +675,7 @@ static void register_server(ServerPIPE * s) {
     const char * path = peer_server_getprop(ps, attr_pipe_name, def_pipe_name);
     char id[256];
 
-    ps2->flags = ps->flags | PS_FLAG_LOCAL | PS_FLAG_DISCOVERABLE;
+    ps2->flags = ps->flags;
     for (i = 0; i < ps->ind; i++) {
         peer_server_addprop(ps2, loc_strdup(ps->list[i].name), loc_strdup(ps->list[i].value));
     }
