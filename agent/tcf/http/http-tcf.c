@@ -243,6 +243,7 @@ static void http_channel_unlock(Channel * channel) {
             list_remove(&e->link);
             free_message(e);
         }
+        cancel_event(sse_event, cd, 0);
         loc_free(channel->peer_name);
         loc_free(cd->out_buf.mem);
         loc_free(cd->cmd_data);
