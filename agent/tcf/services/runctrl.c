@@ -2241,6 +2241,23 @@ static Channel * select_skip_prologue_channel(void) {
 }
 #endif
 
+#ifndef NDEBUG
+extern int print_not_stopped_contexts(Context * ctx) {
+    LINK * l;
+    Context * grp;
+    if (is_all_stopped(ctx)) return 1;
+    grp = context_get_group(ctx, CONTEXT_GROUP_STOP);
+    fprintf(stderr, "Context group '%s':\n", grp->name ? grp->name : grp->id);
+    for (l = context_root.next; l != &context_root; l = l->next) {
+        Context * c = ctxl2ctxp(l);
+        if (context_get_group(c, CONTEXT_GROUP_STOP) != grp) continue;
+        fprintf(stderr, "  ID %s, stopped %d, exiting %d, exited %d, signal %d\n",
+            c->id, c->stopped, c->exiting, c->exited, c->signal);
+    }
+    return 0;
+}
+#endif
+
 static void sync_run_state(void) {
     int err_cnt = 0;
     LINK * l;
@@ -2266,7 +2283,7 @@ static void sync_run_state(void) {
         }
         else if (ext->step_mode == RM_TERMINATE || ext->step_mode == RM_DETACH) {
             int md = ext->step_mode;
-            assert(is_all_stopped(ctx));
+            assert_all_stopped(ctx);
             if (context_resume(ctx, md, 0, 0) < 0) {
                 if (cache_miss_count() > 0) return;
                 resume_error(ctx, errno);
@@ -2502,7 +2519,7 @@ static void run_safe_events(void * arg) {
             }
             break;
         }
-        assert(is_all_stopped(i->ctx));
+        assert_all_stopped(i->ctx);
         safe_event_list = i->next;
         if (safe_event_list == NULL) safe_event_last = NULL;
         if (i->done != NULL) {

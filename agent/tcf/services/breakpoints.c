@@ -289,23 +289,6 @@ static unsigned get_bp_access_types(BreakpointInfo * bp, int virtual_addr) {
     return access_types;
 }
 
-#ifndef NDEBUG
-static int print_not_stopped_contexts(Context * ctx) {
-    LINK * l;
-    Context * grp;
-    if (is_all_stopped(ctx)) return 1;
-    grp = context_get_group(ctx, CONTEXT_GROUP_STOP);
-    fprintf(stderr, "Context group '%s':\n", grp->name ? grp->name : grp->id);
-    for (l = context_root.next; l != &context_root; l = l->next) {
-        Context * c = ctxl2ctxp(l);
-        if (context_get_group(c, CONTEXT_GROUP_STOP) != grp) continue;
-        fprintf(stderr, "  ID %s, stopped %d, exiting %d, exited %d, signal %d\n",
-            c->id, c->stopped, c->exiting, c->exited, c->signal);
-    }
-    return 0;
-}
-#endif
-
 static int select_sw_breakpoint_isa(BreakInstruction * sw, uint8_t ** bp_encoding, size_t * bp_size) {
     /* Software breakpoint should be rejected if opcode is unknown or ambiguous */
     size_t size = 0;
@@ -354,7 +337,7 @@ static void plant_instruction(BreakInstruction * bi) {
     assert(bi->valid);
     assert(bi->ref_cnt > 0);
     assert(bi->address_error == NULL);
-    assert(print_not_stopped_contexts(bi->cb.ctx));
+    assert_all_stopped(bi->cb.ctx);
 
     bi->saved_size = 0;
     bi->unsupported = 0;
@@ -430,7 +413,7 @@ static int remove_instruction(BreakInstruction * bi) {
     assert(bi->planted);
     assert(bi->planting_error == NULL);
     assert(bi->address_error == NULL);
-    assert(print_not_stopped_contexts(bi->cb.ctx));
+    assert_all_stopped(bi->cb.ctx);
     if (bi->saved_size) {
         if (!bi->cb.ctx->exited) {
             int r = 0;
@@ -506,7 +489,7 @@ static BreakInstruction * add_instruction(Context * ctx, int virtual_addr,
 
 static void clear_instruction_refs(Context * ctx, BreakpointInfo * bp) {
     LINK * l = instructions.next;
-    assert(print_not_stopped_contexts(ctx));
+    assert_all_stopped(ctx);
     while (l != &instructions) {
         unsigned i;
         BreakInstruction * bi = link_all2bi(l);

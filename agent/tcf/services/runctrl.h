@@ -113,6 +113,13 @@ extern int safe_context_single_step(Context * ctx);
  */
 extern void check_all_stopped(Context * ctx);
 
+#ifdef NDEBUG
+#  define assert_all_stopped(ctx) ((void)0)
+#else
+#  define assert_all_stopped(ctx) assert(print_not_stopped_contexts(ctx))
+extern int print_not_stopped_contexts(Context * ctx);
+#endif
+
 /*
  * Suspend current ACPM transaction until pending safe events are precessed.
  */
