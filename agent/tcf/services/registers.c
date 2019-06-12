@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -308,6 +308,21 @@ static void command_get_children_cache_client(void * x) {
     write_errno(&c->out, trap.error);
 
     write_stream(&c->out, '[');
+#if ENABLE_RegisterChildrenRefs
+    if (defs != NULL && (defs->children != NULL || defs->sibling != NULL) &&
+            defs->parent == NULL && (frame < 0 || frame_info->is_top_frame)) {
+        int cnt = 0;
+        RegisterDefinition * reg_def = parent == NULL ? defs : parent->children;
+        while (reg_def != NULL) {
+            assert(reg_def->parent == parent);
+            if (cnt > 0) write_stream(&c->out, ',');
+            json_write_string(&c->out, register2id(ctx, frame, reg_def));
+            reg_def = reg_def->sibling;
+            cnt++;
+        }
+        defs = NULL;
+    }
+#endif
     if (defs != NULL) {
         int cnt = 0;
         RegisterDefinition * reg_def;

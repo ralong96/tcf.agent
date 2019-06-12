@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -32,6 +32,32 @@
 #include <tcf/services/symbols.h>
 
 #include <tcf/framework/cpudefs-ext.h>
+
+void create_reg_children_refs(RegisterDefinition * defs) {
+#if ENABLE_RegisterChildrenRefs
+    RegisterDefinition * r = NULL;
+    RegisterDefinition ** p = NULL;
+    RegisterDefinition * c = NULL;
+    unsigned size = 0;
+    assert(defs->parent == NULL);
+    assert(defs->children == NULL);
+    for (r = defs; r->name != NULL; r++) size++;
+    p = (RegisterDefinition **)tmp_alloc_zero(sizeof(RegisterDefinition *) * size);
+    for (r = defs; r->name != NULL; r++) {
+        assert(r->sibling == NULL);
+        if (r->parent == NULL) {
+            if (c != NULL) c->sibling = r;
+            c = r;
+        }
+        else {
+            RegisterDefinition ** y = p + (r->parent - defs);
+            if (*y == NULL) r->parent->children = r;
+            else (*y)->sibling = r;
+            *y = r;
+        }
+    }
+#endif
+}
 
 int read_reg_value(StackFrame * frame, RegisterDefinition * reg_def, uint64_t * value) {
     uint8_t buf[8];

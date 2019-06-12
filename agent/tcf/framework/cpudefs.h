@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -42,6 +42,10 @@ typedef uintptr_t ContextAddress;
 #define ENABLE_StackRegisterLocations 0
 #endif
 
+#ifndef ENABLE_RegisterChildrenRefs
+#define ENABLE_RegisterChildrenRefs 0
+#endif
+
 #define REGNUM_DWARF    1
 #define REGNUM_EH_FRAME 2
 
@@ -80,6 +84,11 @@ struct RegisterDefinition {
     const char *    role;          /* the role the register plays in a program execution */
     const char *    description;   /* the description of the register */
     void *          ext;           /* to be used by debug context implementation */
+#if ENABLE_RegisterChildrenRefs
+    /* Optional support for faster browsing of register definitions */
+    RegisterDefinition * children;
+    RegisterDefinition * sibling;
+#endif
 };
 
 typedef struct RegisterIdScope {
@@ -245,6 +254,9 @@ typedef struct StackFrame {
 
 /* Return array of CPU register definitions. Last item in the array has name == NULL */
 extern RegisterDefinition * get_reg_definitions(Context * ctx);
+
+/* Set 'children' and 'siblings' fields of register definitions */
+extern void create_reg_children_refs(RegisterDefinition * defs);
 
 /* Search register definition for given register ID, return NULL if not found */
 extern RegisterDefinition * get_reg_by_id(Context * ctx, unsigned id, RegisterIdScope * scope);
