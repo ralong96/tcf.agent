@@ -408,19 +408,16 @@ int set_errno(int no, const char * msg) {
                 m->text = loc_strdup(errno_to_str(no));
             }
             else {
-                const char * text0 = tmp_strdup(msg);
-                const char * text1 = errno_to_str(no);
-                if (text0[msg_len - 1] == '.' || text0[msg_len - 1] == '\n') {
-                    size_t len = msg_len + strlen(text1) + 2;
-                    char * text2 = (char *)loc_alloc(len);
-                    snprintf(text2, len, "%s %s", text0, text1);
-                    m->text = text2;
+                const char * str = errno_to_str(no);
+                if (msg[msg_len - 1] == '.' || msg[msg_len - 1] == '\n') {
+                    size_t len = msg_len + strlen(str) + 2;
+                    m->text = (char *)loc_alloc(len);
+                    snprintf(m->text, len, "%s %s", msg, str);
                 }
                 else {
-                    size_t len = msg_len + strlen(text1) + 3;
-                    char * text2 = (char *)loc_alloc(len);
-                    snprintf(text2, len, "%s. %s", text0, text1);
-                    m->text = text2;
+                    size_t len = msg_len + strlen(str) + 3;
+                    m->text = (char *)loc_alloc(len);
+                    snprintf(m->text, len, "%s. %s", msg, str);
                 }
             }
         }
