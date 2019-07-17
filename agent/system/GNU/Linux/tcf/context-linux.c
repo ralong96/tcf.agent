@@ -146,10 +146,10 @@ const char * context_suspend_reason(Context * ctx) {
 
 int context_attach_self(void) {
     if (ptrace(PTRACE_TRACEME, 0, 0, 0) < 0) {
-        int err = errno;
+        int error = errno;
         trace(LOG_ALWAYS, "error: ptrace(PTRACE_TRACEME) failed: pid %d, error %d %s",
-              getpid(), err, errno_to_str(err));
-        errno = err;
+              getpid(), error, errno_to_str(error));
+        errno = error;
         return -1;
     }
     return 0;
@@ -191,10 +191,10 @@ int context_attach(pid_t pid, ContextAttachCallBack * done, void * data, int mod
     assert(done != NULL);
     trace(LOG_CONTEXT, "context: attaching pid %d", pid);
     if ((mode & CONTEXT_ATTACH_SELF) == 0 && ptrace(PTRACE_ATTACH, pid, 0, 0) < 0) {
-        int err = errno;
+        int error = errno;
         trace(LOG_ALWAYS, "error: ptrace(PTRACE_ATTACH) failed: pid %d, error %d %s",
-            pid, err, errno_to_str(err));
-        errno = err;
+            pid, error, errno_to_str(error));
+        errno = error;
         return -1;
     }
     add_waitpid_process(pid);
@@ -288,16 +288,16 @@ int context_stop(Context * ctx) {
     }
     if (!ext->sigstop_posted) {
         if (tkill(ext->pid, SIGSTOP) < 0) {
-            int err = errno;
-            if (err == ESRCH) {
+            int error = errno;
+            if (error == ESRCH) {
                 set_context_state_name(ctx, "Exited");
                 ctx->exiting = 1;
                 return 0;
             }
             trace(LOG_ALWAYS,
                 "error: tkill(SIGSTOP) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
-                (uintptr_t)ctx, ctx->id, err, errno_to_str(err));
-            errno = err;
+                (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+            errno = error;
             return -1;
         }
         ext->sigstop_posted = 1;
@@ -329,7 +329,7 @@ static void alloc_regs(Context * ctx) {
 static int flush_regs(Context * ctx) {
     ContextExtensionLinux * ext = EXT(ctx);
     size_t i = 0;
-    int err = 0;
+    int error = 0;
 
     for (i = 0; i < sizeof(REG_SET); i++) {
         if (!ext->regs_dirty[i]) continue;
@@ -340,7 +340,7 @@ static int flush_regs(Context * ctx) {
             size_t j = i + 1;
             while (j < offsetof(REG_SET, other) + sizeof(ext->regs->other) && ext->regs_dirty[j]) j++;
             if (mdep_set_other_regs(ext->pid, ext->regs, i, j - i, &offs, &size) < 0) {
-                err = errno;
+                error = errno;
                 break;
             }
             assert(i >= offs);
@@ -355,7 +355,7 @@ static int flush_regs(Context * ctx) {
             buf.iov_base = &ext->regs->gp;
             buf.iov_len = sizeof(ext->regs->gp);
             if (ptrace(PTRACE_SETREGSET, ext->pid, REGSET_GP, &buf) < 0) {
-                err = errno;
+                error = errno;
                 break;
             }
             memset(ext->regs_dirty + offsetof(REG_SET, gp), 0, sizeof(ext->regs->gp));
@@ -366,7 +366,7 @@ static int flush_regs(Context * ctx) {
             buf.iov_base = &ext->regs->fp;
             buf.iov_len = sizeof(ext->regs->fp);
             if (ptrace(PTRACE_SETREGSET, ext->pid, REGSET_FP, &buf) < 0) {
-                err = errno;
+                error = errno;
                 break;
             }
             memset(ext->regs_dirty + offsetof(REG_SET, fp), 0, sizeof(ext->regs->fp));
@@ -379,7 +379,7 @@ static int flush_regs(Context * ctx) {
 #else
             if (ptrace(PTRACE_SETFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
 #endif
-                err = errno;
+                error = errno;
                 break;
             }
             memset(ext->regs_dirty + offsetof(REG_SET, fp), 0, sizeof(ext->regs->fp));
@@ -389,7 +389,7 @@ static int flush_regs(Context * ctx) {
             size_t j = i - (i - offsetof(REG_SET, user)) % sizeof(ContextAddress);
             assert(*(ContextAddress *)(ext->regs_valid + j) == ~(ContextAddress)0);
             if (ptrace(PTRACE_POKEUSER, ext->pid, (void *)j, (void *)*(ContextAddress *)((uint8_t *)&ext->regs->user + j)) < 0) {
-                err = errno;
+                error = errno;
                 break;
             }
             *(ContextAddress *)(ext->regs_dirty + j) = 0;
@@ -397,17 +397,19 @@ static int flush_regs(Context * ctx) {
 #endif
     }
 
-    if (!err) return 0;
-
-    {
+    if (error) {
         RegisterDefinition * def = get_reg_definitions(ctx);
         while (def->name != NULL && (def->offset > i || def->offset + def->size <= i)) def++;
-        trace(LOG_ALWAYS, "error: writing register %s failed: ctx %#" PRIxPTR ", id %s, error %d %s",
-            def->name ? def->name : "?", (uintptr_t)ctx, ctx->id, err, errno_to_str(err));
-        if (def->name) err = set_fmt_errno(err, "Cannot write register %s", def->name);
+        if (error != ESRCH || !ext->sigkill_posted) {
+            trace(LOG_ALWAYS, "error: writing register %s failed: ctx %#" PRIxPTR ", id %s, error %d %s",
+                def->name ? def->name : "?", (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+        }
+        if (def->name) error = set_fmt_errno(error, "Cannot write register %s", def->name);
+        errno = error;
+        return -1;
     }
-    errno = err;
-    return -1;
+
+    return 0;
 }
 
 static void free_regs(Context * ctx) {
@@ -464,8 +466,10 @@ static int try_single_step(Context * ctx) {
     if (is_cont) cmd = PTRACE_CONT;
     if (!error && ptrace(cmd, ext->pid, 0, 0) < 0) {
         error = errno;
-        trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
-            get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+        if (error != ESRCH || !ext->sigkill_posted) {
+            trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
+                get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+        }
     }
     if (error) {
         if (get_error_code(error) == ESRCH) {
@@ -572,8 +576,10 @@ int context_continue(Context * ctx) {
             sigset_is_empty(&ctx->pending_signals)) cmd = PTRACE_DETACH;
     if (!error && ptrace(cmd, ext->pid, 0, signal) < 0) {
         error = errno;
-        trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
-            get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+        if (error != ESRCH || !ext->sigkill_posted) {
+            trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
+                get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+        }
     }
     if (error) {
         if (get_error_code(error) == ESRCH) {
@@ -894,7 +900,7 @@ int context_write_reg(Context * ctx, RegisterDefinition * def, unsigned offs, un
 int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, unsigned size, void * buf) {
     ContextExtensionLinux * ext = EXT(ctx);
     size_t i = 0;
-    int err = 0;
+    int error = 0;
 
     assert(is_dispatch_thread());
     assert(context_has_state(ctx));
@@ -911,7 +917,7 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
             size_t j = i + 1;
             while (j < def->offset + offs + size && !ext->regs_valid[j]) j++;
             if (mdep_get_other_regs(ext->pid, ext->regs, i, j - i, &offs, &size) < 0) {
-                err = errno;
+                error = errno;
                 break;
             }
             assert(i >= offs);
@@ -926,7 +932,7 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
             buf.iov_base = &ext->regs->gp;
             buf.iov_len = sizeof(ext->regs->gp);
             if (ptrace(PTRACE_GETREGSET, ext->pid, REGSET_GP, &buf) < 0 && errno != ESRCH) {
-                err = errno;
+                error = errno;
                 break;
             }
             memset(ext->regs_valid + offsetof(REG_SET, gp), 0xff, sizeof(ext->regs->gp));
@@ -937,7 +943,7 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
             buf.iov_base = &ext->regs->fp;
             buf.iov_len = sizeof(ext->regs->fp);
             if (ptrace(PTRACE_GETREGSET, ext->pid, REGSET_FP, &buf) < 0 && errno != ESRCH) {
-                err = errno;
+                error = errno;
                 break;
             }
             memset(ext->regs_valid + offsetof(REG_SET, fp), 0xff, sizeof(ext->regs->fp));
@@ -958,7 +964,7 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
 #else
             if (ptrace(PTRACE_GETFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
 #endif
-                err = errno;
+                error = errno;
                 break;
             }
             memset(ext->regs_valid + offsetof(REG_SET, fp), 0xff, sizeof(ext->regs->fp));
@@ -973,10 +979,10 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
 #endif
     }
 
-    if (err) {
+    if (error) {
         trace(LOG_ALWAYS, "error: reading registers failed: ctx %#" PRIxPTR ", id %s, error %d %s",
-            (uintptr_t)ctx, ctx->id, err, errno_to_str(err));
-        errno = err;
+            (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+        errno = error;
         return -1;
     }
 
@@ -1511,12 +1517,6 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             add_waitpid_process(msg);
             if (get_thread_group_id(msg) != (pid_t)msg) {
                 prs2 = ctx->parent;
-                if (EXT(prs2)->sigkill_posted) {
-                    /* Parent is already killed, the child must be a zombie.
-                     * Don't try to trace it - it will not work anyway. */
-                    ptrace(PTRACE_CONT, msg, 0, SIGKILL);
-                    return;
-                }
             }
             else {
                 prs2 = create_context(pid2id(msg, 0));
