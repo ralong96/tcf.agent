@@ -81,6 +81,7 @@ typedef struct HttpConnection {
     char * page_reason;
     HttpParam * page_hdrs;
     int suspended;
+    int close;
     int sse;
 } HttpConnection;
 
@@ -262,26 +263,33 @@ static void http_send_done(void * x) {
             async_req_post(&con->req_wr);
             return;
         }
-        if (con->sse) {
-            if (con->out.pos > 0) {
-                con->send_done = 0;
-                loc_free(con->send_data);
-                get_byte_array_output_stream_data(&con->out, &con->send_data, &con->send_size);
-                con->req_wr.u.sio.bufp = con->send_data + con->send_done;
-                con->req_wr.u.sio.bufsz = con->send_size - con->send_done;
-                con->write_posted = 1;
-                async_req_post(&con->req_wr);
+        if (!con->close) {
+            if (con->sse) {
+                if (con->out.pos > 0) {
+                    con->send_done = 0;
+                    loc_free(con->send_data);
+                    get_byte_array_output_stream_data(&con->out, &con->send_data, &con->send_size);
+                    con->req_wr.u.sio.bufp = con->send_data + con->send_done;
+                    con->req_wr.u.sio.bufsz = con->send_size - con->send_done;
+                    con->write_posted = 1;
+                    async_req_post(&con->req_wr);
+                }
+                return;
             }
-            return;
+            if (con->keep_alive) {
+                clear_connection_state(con);
+                con->req_rd.u.sio.bufp = con->recv_buf;
+                con->req_rd.u.sio.bufsz = con->recv_max;
+                con->read_posted = 1;
+                async_req_post(&con->req_rd);
+                return;
+            }
         }
-        if (con->keep_alive) {
-            clear_connection_state(con);
-            con->req_rd.u.sio.bufp = con->recv_buf;
-            con->req_rd.u.sio.bufsz = con->recv_max;
-            con->read_posted = 1;
-            async_req_post(&con->req_rd);
-            return;
-        }
+    }
+    if (con->read_posted) {
+        shutdown(con->sock, SHUT_RDWR);
+        con->close = 1;
+        return;
     }
     close_connection(con);
 }
@@ -364,6 +372,11 @@ static void http_read_done(void * x) {
     con->read_posted = 0;
 
     if (len < 0) {
+        if (con->write_posted) {
+            shutdown(con->sock, SHUT_RDWR);
+            con->close = 1;
+            return;
+        }
         close_connection(con);
     }
     else if (len > 0) {
@@ -456,7 +469,7 @@ void http_flush(void) {
     }
     if (!content_type) http_printf("Content-Type: text/html\n");
     if (!cache_control) http_printf("Cache-Control: no-cache\n");
-    if (con->keep_alive) http_printf("Connection: keep-alive\n");
+    if (con->keep_alive && !con->close) http_printf("Connection: keep-alive\n");
     if (con->sse) {
         con->suspended = 1;
     }
@@ -477,6 +490,10 @@ void http_flush(void) {
     con->req_wr.u.sio.flags = 0;
     con->write_posted = 1;
     async_req_post(&con->req_wr);
+}
+
+void http_close(void) {
+    current_con->close = 1;
 }
 
 static int get_page(const char * uri) {

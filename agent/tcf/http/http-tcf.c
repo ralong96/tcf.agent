@@ -537,12 +537,17 @@ static int get_page(const char * uri) {
     }
     if (strncmp(uri, "/stop/", 6) == 0) {
         ClientData * cd = find_client(0, session);
+        http_printf(cd != NULL ? "OK\n" : "Already stopped\n");
+        http_close();
+        http_flush();
         if (cd != NULL) {
+            if (cd->sse_out != NULL) {
+                http_resume(cd->sse_out);
+                http_printf("data: stop\n\n");
+                http_close();
+                http_flush();
+            }
             close_client(cd);
-            http_printf("OK\n");
-        }
-        else {
-            http_printf("Already stopped\n");
         }
         return 1;
     }

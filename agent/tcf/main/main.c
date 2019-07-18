@@ -480,7 +480,7 @@ int main(int argc, char ** argv) {
         }
         loc_free(url_arr);
         url_cnt = 0;
-        url_cnt = 0;
+        url_max = 0;
 
         discovery_start();
     }

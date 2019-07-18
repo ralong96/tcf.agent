@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2018 Xilinx, Inc. and others.
+ * Copyright (c) 2018-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -45,6 +45,7 @@ extern void http_printf(const char * fmt, ...) ATTR_PRINTF(1, 2);
 extern void http_suspend(void);
 extern void http_resume(OutputStream * out);
 extern void http_flush(void);
+extern void http_close(void);
 
 typedef struct HttpListener {
     int (*get_page)(const char * uri);
