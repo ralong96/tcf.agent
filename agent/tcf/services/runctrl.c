@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -2251,8 +2251,8 @@ extern int print_not_stopped_contexts(Context * ctx) {
     for (l = context_root.next; l != &context_root; l = l->next) {
         Context * c = ctxl2ctxp(l);
         if (context_get_group(c, CONTEXT_GROUP_STOP) != grp) continue;
-        fprintf(stderr, "  ID %s, stopped %d, exiting %d, exited %d, signal %d\n",
-            c->id, c->stopped, c->exiting, c->exited, c->signal);
+        fprintf(stderr, "  ID %s, stopped %d, exiting %d, exited %d, signal %d, cannot stop %d\n",
+            c->id, c->stopped, c->exiting, c->exited, c->signal, EXT(c)->cannot_stop);
     }
     return 0;
 }
@@ -2523,6 +2523,8 @@ static void run_safe_events(void * arg) {
         safe_event_list = i->next;
         if (safe_event_list == NULL) safe_event_last = NULL;
         if (i->done != NULL) {
+            assert(EXT(i->ctx)->stop_group_mark);
+            assert(!EXT(i->ctx)->pending_safe_event);
             safe_event_active = 1;
             if (set_trap(&trap)) {
                 i->done(i->arg);
@@ -2718,9 +2720,9 @@ void rem_run_control_event_listener(RunControlEventListener * listener) {
 static void stop_if_safe_events(Context * ctx) {
     ContextExtensionRC * ext = EXT(ctx);
     if (safe_event_active && EXT(ctx)->stop_group_mark &&
-            !ctx->exiting && !ctx->stopped && context_has_state(ctx)) {
+            !ctx->exiting && context_has_state(ctx)) {
         assert(run_ctrl_lock_cnt > 0);
-        if (!ext->safe_single_step) {
+        if (!ext->safe_single_step && !ctx->stopped) {
             context_stop(ctx);
         }
         if (!ext->pending_safe_event) {
