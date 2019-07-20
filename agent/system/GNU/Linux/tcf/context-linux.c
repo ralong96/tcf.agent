@@ -400,7 +400,7 @@ static int flush_regs(Context * ctx) {
     if (error) {
         RegisterDefinition * def = get_reg_definitions(ctx);
         while (def->name != NULL && (def->offset > i || def->offset + def->size <= i)) def++;
-        if (error != ESRCH || !ext->sigkill_posted) {
+        if (error != ESRCH || !EXT(ctx->parent)->sigkill_posted) {
             trace(LOG_ALWAYS, "error: writing register %s failed: ctx %#" PRIxPTR ", id %s, error %d %s",
                 def->name ? def->name : "?", (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
         }
@@ -466,7 +466,7 @@ static int try_single_step(Context * ctx) {
     if (is_cont) cmd = PTRACE_CONT;
     if (!error && ptrace(cmd, ext->pid, 0, 0) < 0) {
         error = errno;
-        if (error != ESRCH || !ext->sigkill_posted) {
+        if (error != ESRCH || !EXT(ctx->parent)->sigkill_posted) {
             trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
                 get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
         }
@@ -576,7 +576,7 @@ int context_continue(Context * ctx) {
             sigset_is_empty(&ctx->pending_signals)) cmd = PTRACE_DETACH;
     if (!error && ptrace(cmd, ext->pid, 0, signal) < 0) {
         error = errno;
-        if (error != ESRCH || !ext->sigkill_posted) {
+        if (error != ESRCH || !EXT(ctx->parent)->sigkill_posted) {
             trace(LOG_ALWAYS, "error: ptrace(%s, ...) failed: ctx %#" PRIxPTR ", id %s, error %d %s",
                 get_ptrace_cmd_name(cmd), (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
         }
@@ -594,7 +594,7 @@ int context_continue(Context * ctx) {
     }
     sigset_set(&ctx->pending_signals, signal, 0);
     if (signal == SIGKILL) {
-        ext->sigkill_posted = 1;
+        EXT(ctx->parent)->sigkill_posted = 1;
         ctx->exiting = 1;
     }
     if (syscall_never_returns(ctx)) {
@@ -1549,7 +1549,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
         memory_map_event_mapping_changed(ctx->mem);
         break;
     case PTRACE_EVENT_EXIT:
-        if (ext->sigkill_posted) {
+        if (EXT(ctx->parent)->sigkill_posted) {
             /* SIGKILL can override PTRACE_EVENT_CLONE event with PTRACE_EVENT_EXIT */
             unsigned long child_pid = get_child_pid(EXT(ctx->parent)->pid);
             if (child_pid) {
