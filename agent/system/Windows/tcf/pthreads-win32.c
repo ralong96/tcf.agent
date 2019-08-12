@@ -308,10 +308,20 @@ int pthread_cond_init(pthread_cond_t * cond, const pthread_condattr_t * attr) {
     p->waiters_count = 0;
     p->was_broadcast = 0;
     p->sema = CreateSemaphore(NULL, 0, 0x7fffffff, NULL);
-    if (p->sema == NULL) return set_win32_errno(GetLastError());
+    if (p->sema == NULL) {
+        DWORD last_error = GetLastError();
+        loc_free(p);
+        return set_win32_errno(last_error);
+    }
     InitializeCriticalSection(&p->waiters_count_lock);
     p->waiters_done = CreateEvent(NULL, FALSE, FALSE, NULL);
-    if (p->waiters_done == NULL) return set_win32_errno(GetLastError());
+    if (p->waiters_done == NULL) {
+        DWORD last_error = GetLastError();
+        CloseHandle(p->sema);
+        DeleteCriticalSection(&p->waiters_count_lock);
+        loc_free(p);
+        return set_win32_errno(last_error);
+    }
     *cond = (pthread_cond_t)p;
     return 0;
 }

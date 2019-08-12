@@ -405,7 +405,9 @@ static wchar_t * str_to_wide_char(const char * str) {
     }
     len = MultiByteToWideChar(CP_UTF8, 0, str, -1, res, len);
     if (len == 0) {
-        set_win32_errno(GetLastError());
+        DWORD last_error = GetLastError();
+        free(res);
+        set_win32_errno(last_error);
         return NULL;
     }
     return res;
@@ -1366,16 +1368,16 @@ static NTSTATUS disable_handle_inheritance(void) {
     return status;
 }
 
-static char *make_cmd_from_args(char **args) {
+static char * make_cmd_from_args(char ** args) {
     int i = 0;
     int cmd_size = 0;
     int cmd_pos = 0;
-    char *cmd = NULL;
+    char * cmd = NULL;
 
 #  define cmd_append(ch) { \
         if (cmd_pos >= cmd_size) { \
             cmd_size += 0x1000; \
-            cmd = (char *)loc_realloc(cmd, cmd_size); \
+            cmd = (char *)tmp_realloc(cmd, cmd_size); \
         } \
         cmd[cmd_pos++] = (ch); \
     }
@@ -1405,7 +1407,7 @@ int is_daemon(void) {
 #    define pipe(fds) _pipe((fds), 1024, 0)
 #  endif
 
-void become_daemon(char **args) {
+void become_daemon(char ** args) {
     int fdpairs[4];
     int npairs = 2;
     char fnm[FILE_PATH_SIZE];
