@@ -2099,12 +2099,14 @@ static int update_step_machine_state(Context * ctx) {
         if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_INTO)) return 0;
         break;
     case RM_STEP_OVER_RANGE:
+        if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_OVER)) return 0;
         if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_INTO_RANGE)) return 0;
         break;
     case RM_REVERSE_STEP_OVER:
         if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_INTO)) return 0;
         break;
     case RM_REVERSE_STEP_OVER_RANGE:
+        if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_OVER)) return 0;
         if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_INTO_RANGE)) return 0;
         break;
     case RM_SKIP_PROLOGUE:
