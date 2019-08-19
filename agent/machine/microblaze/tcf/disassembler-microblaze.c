@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2018 Xilinx, Inc. and others.
+ * Copyright (c) 2018-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -134,6 +134,9 @@ enum Instructions {
     i_addlikc,        i_rsublikc,       i_mull,
     i_bslll,          i_bslra,          i_bslrl,          i_bsllli,
     i_bslrai,         i_bslrli,         i_bslefi,         i_bslifi,
+    i_addli2,         i_rsubli2,        i_addli2c,        i_rsubli2c,
+    i_addli2k,        i_rsubli2k,       i_addli2kc,       i_rsubli2kc,
+    i_orli2,          i_andli2,         i_xorli2,         i_andnli2,
     i_orl,            i_andl,           i_xorl,           i_andnl,
     i_pcmplbf,        i_pcmpleq,        i_pcmplne,
     i_srla,           i_srlc,           i_srll,
@@ -447,6 +450,18 @@ static InstructionInfo instruction_info[] = {
     { 0x19, OP(bslrli),         INST_TYPE_RD_RA_IMM6, F_IMM },
     { 0x19, OP(bslefi),         INST_TYPE_RD_RA_IMM6_IMM6, F_IMM },
     { 0x19, OP(bslifi),         INST_TYPE_RD_RA_IMM6_IMM6, F_IMM },
+    { 0x1a, i_addli2,    "addli",    INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_rsubli2,   "rsubli",   INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_addli2c,   "addlic",   INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_rsubli2c,  "rsublic",  INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_addli2k,   "addlik",   INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_rsubli2k,  "rsublik",  INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_addli2kc,  "addlikc",  INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_rsubli2kc, "rsublikc", INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_orli2,     "orli",     INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_andli2,    "andli",    INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_xorli2,    "xorli",    INST_TYPE_RD_IMM, F_IMM },
+    { 0x1a, i_andnli2,   "andnli",   INST_TYPE_RD_IMM, F_IMM },
     { 0x20, OP(orl),            INST_TYPE_RD_RA_RB, 0 },
     { 0x21, OP(andl),           INST_TYPE_RD_RA_RB, 0 },
     { 0x22, OP(xorl),           INST_TYPE_RD_RA_RB, 0 },
@@ -803,6 +818,24 @@ static int decode_instruction(void) {
         case 0x2400: op = i_bsllli; break;
         case 0x6000: op = i_bslefi; break;
         case 0xa000: op = i_bslifi; break;
+        default: return 0;
+        }
+        break;
+
+    case 0x1a:
+        switch ((instr_bits >> 16) & 0x1f) {
+        case 0x00: op = i_addli2; break;
+        case 0x01: op = i_rsubli2; break;
+        case 0x02: op = i_addli2c; break;
+        case 0x03: op = i_rsubli2c; break;
+        case 0x04: op = i_addli2k; break;
+        case 0x05: op = i_rsubli2k; break;
+        case 0x06: op = i_addli2kc; break;
+        case 0x07: op = i_rsubli2kc; break;
+        case 0x10: op = i_orli2; break;
+        case 0x11: op = i_andli2; break;
+        case 0x12: op = i_xorli2; break;
+        case 0x13: op = i_andnli2; break;
         default: return 0;
         }
         break;
