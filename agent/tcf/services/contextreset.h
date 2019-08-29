@@ -14,6 +14,7 @@
 
 #include <tcf/config.h>
 #include <tcf/framework/protocol.h>
+#include <tcf/framework/context.h>
 
 typedef struct ResetParameter ResetParameter;
 
