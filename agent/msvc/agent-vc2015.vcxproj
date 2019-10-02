@@ -305,6 +305,20 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="..\machine\riscv64\tcf\disassembler-riscv64.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\machine\riscv64\tcf\stack-crawl-riscv64.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\machine\riscv\tcf\disassembler-riscv.c" />
+    <ClCompile Include="..\machine\riscv\tcf\stack-crawl-riscv.c" />
     <ClCompile Include="..\machine\x86_64\tcf\disassembler-x86_64.c" />
     <ClCompile Include="..\tcf\framework\asyncreq.c" />
     <ClCompile Include="..\tcf\framework\base64.c" />
@@ -381,8 +395,12 @@
     <ClInclude Include="..\machine\ppc64\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\machine\ppc64\tcf\dwarfreloc-mdep.h" />
     <ClInclude Include="..\machine\riscv64\tcf\cpudefs-mdep.h" />
+    <ClInclude Include="..\machine\riscv64\tcf\disassembler-riscv64.h" />
     <ClInclude Include="..\machine\riscv64\tcf\dwarfreloc-mdep.h" />
     <ClInclude Include="..\machine\riscv64\tcf\regset-mdep.h" />
+    <ClInclude Include="..\machine\riscv64\tcf\stack-crawl-riscv64.h" />
+    <ClInclude Include="..\machine\riscv\tcf\disassembler-riscv.h" />
+    <ClInclude Include="..\machine\riscv\tcf\stack-crawl-riscv.h" />
     <ClInclude Include="..\machine\x86_64\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\tcf\framework\channel_lws.h" />
     <ClInclude Include="..\tcf\framework\channel_lws_ext.h" />

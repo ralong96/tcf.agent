@@ -1164,8 +1164,12 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     isa->def = "MicroBlaze";
 #elif defined(__MICROBLAZE64__)
     isa->def = "MicroBlaze64";
+#elif defined(__riscv) && __riscv_xlen == 32
+    isa->def = "Riscv32";
 #elif defined(__riscv) && __riscv_xlen == 64
     isa->def = "Riscv64";
+#elif defined(__riscv) && __riscv_xlen == 128
+    isa->def = "Riscv128";
 #else
     isa->def = NULL;
 #endif
@@ -1205,7 +1209,15 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
             isa->max_instruction_size = 4;
             isa->alignment = 4;
         }
-       else if (strcmp(s, "Riscv64") == 0) {
+        else if (strcmp(s, "Riscv32") == 0) {
+            isa->max_instruction_size = 4;
+            isa->alignment = 2;
+        }
+        else if (strcmp(s, "Riscv64") == 0) {
+           isa->max_instruction_size = 4;
+           isa->alignment = 2;
+        }
+        else if (strcmp(s, "Riscv128") == 0) {
             isa->max_instruction_size = 4;
             isa->alignment = 2;
         }

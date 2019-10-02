@@ -2391,7 +2391,7 @@ int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
         case EM_V800       : *isa = "V800"; break;
         case EM_V850       : *isa = "V850"; break;
         case EM_AARCH64    : *isa = "A64"; break;
-        case EM_RISCV      : *isa = file->elf64 ? "Riscv64" : NULL; break;
+        case EM_RISCV      : *isa = file->elf64 ? "Riscv64" : "Riscv32"; break;
         }
     }
     {

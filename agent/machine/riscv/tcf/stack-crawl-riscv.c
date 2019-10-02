@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright (c) 2019.
+* Copyright (c) 2019 Xilinx, Inc. and others.
 * All rights reserved. This program and the accompanying materials
 * are made available under the terms of the Eclipse Public License v1.0
 * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -9,23 +9,30 @@
 * http://www.eclipse.org/org/documents/edl-v10.php.
 * You may elect to redistribute this code under either of these licenses.
 *
+* Contributors:
+*     Xilinx - initial API and implementation
 *******************************************************************************/
 
 /*
- * This module provides CPU specific definitions for riscv64.
- */
+* This module implements stack crawl for RISC-V processor.
+*/
 
-#include <tcf/regset.h>
+#include <tcf/config.h>
 
-extern RegisterDefinition * regs_index;
-extern unsigned char BREAK_INST[2];
+#if ENABLE_DebugContext
 
-#if !defined(ENABLE_add_cpudefs_disassembler)
-#define ENABLE_add_cpudefs_disassembler 1
-extern void add_cpudefs_disassembler(Context * cpu_ctx);
-#endif
+#include <machine/riscv/tcf/stack-crawl-riscv.h>
 
-#if !defined(ENABLE_ini_cpudefs_mdep)
-#  define ENABLE_ini_cpudefs_mdep 1
-extern void ini_cpudefs_mdep(void);
-#endif
+int crawl_stack_frame_riscv32(StackFrame * frame, StackFrame * down) {
+    return 0;
+}
+
+int crawl_stack_frame_riscv64(StackFrame * frame, StackFrame * down) {
+    return 0;
+}
+
+int crawl_stack_frame_riscv128(StackFrame * frame, StackFrame * down) {
+    return 0;
+}
+
+#endif /* ENABLE_DebugContext */

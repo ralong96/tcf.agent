@@ -20,6 +20,8 @@
 #if ENABLE_ContextMux
 #include <tcf/framework/cpudefs-mdep-mux.h>
 #endif
+#include <tcf/disassembler-riscv64.h>
+#include <tcf/stack-crawl-riscv64.h>
 #include <tcf/cpudefs-mdep.h>
 
 unsigned char BREAK_INST[] = {0x02, 0x90};
@@ -68,8 +70,14 @@ RegisterDefinition * get_PC_definition(Context * ctx) {
 }
 
 int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
-    return 0;
+    return crawl_stack_frame_riscv64(frame, down);
 }
+
+#if defined(ENABLE_add_cpudefs_disassembler) && ENABLE_add_cpudefs_disassembler
+void add_cpudefs_disassembler(Context * cpu_ctx) {
+    add_disassembler(cpu_ctx, "Riscv64", disassemble_riscv64);
+}
+#endif
 
 #if ENABLE_ini_cpudefs_mdep
 void ini_cpudefs_mdep(void) {

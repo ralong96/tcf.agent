@@ -73,6 +73,9 @@
     <Filter Include="machine\riscv64">
       <UniqueIdentifier>{33878318-fdc6-4e2e-9642-182293971a42}</UniqueIdentifier>
     </Filter>
+    <Filter Include="machine\riscv">
+      <UniqueIdentifier>{6c2e59c7-2deb-4834-b754-0f5e47f6b7e2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\tcf\framework\asyncreq.c">
@@ -412,6 +415,18 @@
       <Filter>framework</Filter>
     </ClCompile>
     <ClCompile Include="..\machine\riscv64\tcf\cpudefs-mdep.c">
+      <Filter>machine\riscv64</Filter>
+    </ClCompile>
+    <ClCompile Include="..\machine\riscv\tcf\disassembler-riscv.c">
+      <Filter>machine\riscv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\machine\riscv\tcf\stack-crawl-riscv.c">
+      <Filter>machine\riscv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\machine\riscv64\tcf\disassembler-riscv64.c">
+      <Filter>machine\riscv64</Filter>
+    </ClCompile>
+    <ClCompile Include="..\machine\riscv64\tcf\stack-crawl-riscv64.c">
       <Filter>machine\riscv64</Filter>
     </ClCompile>
   </ItemGroup>
@@ -886,6 +901,18 @@
       <Filter>machine\riscv64</Filter>
     </ClInclude>
     <ClInclude Include="..\machine\riscv64\tcf\regset-mdep.h">
+      <Filter>machine\riscv64</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\riscv\tcf\disassembler-riscv.h">
+      <Filter>machine\riscv</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\riscv\tcf\stack-crawl-riscv.h">
+      <Filter>machine\riscv</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\riscv64\tcf\disassembler-riscv64.h">
+      <Filter>machine\riscv64</Filter>
+    </ClInclude>
+    <ClInclude Include="..\machine\riscv64\tcf\stack-crawl-riscv64.h">
       <Filter>machine\riscv64</Filter>
     </ClInclude>
   </ItemGroup>
