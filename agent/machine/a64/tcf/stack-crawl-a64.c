@@ -56,7 +56,7 @@ typedef struct {
 
 typedef struct {
     uint64_t addr;
-    RegData reg_data[32];
+    RegData reg_data[REG_DATA_SIZE];
     RegData cpsr_data;
     RegData pc_data;
     MemData mem_data;

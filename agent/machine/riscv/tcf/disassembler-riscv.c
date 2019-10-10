@@ -41,6 +41,13 @@ static const int imm_bits_sw_sp[32] = { 9, 10, 11, 12, 7, 8 };
 static const int imm_bits_sd_sp[32] = { 10, 11, 12, 7, 8, 9 };
 static const int imm_bits_sq_sp[32] = { 11, 12, 7, 8, 9, 10 };
 
+static const int imm_bits_s[32] = { 7, 8, 9, 10, 11, 25, 26, 27, 28, 29, 30, 31 };
+static const int imm_bits_j[32] = { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 20, 12, 13, 14, 15, 16, 17, 18, 19, 31 };
+static const int imm_bits_b[32] = { 8, 9, 10, 11, 25, 26, 27, 28, 29, 30, 7, 31 };
+static const int imm_bits_jc[32] = { 3, 4, 5, 11, 2, 7, 6, 9, 10, 8, 12 };
+static const int imm_bits_bc[32] = { 3, 4, 10, 11, 2, 5, 6, 12 };
+
+static const int imm_bits_addi_sp[32] = { 6, 2, 5, 3, 4, 12 };
 static const int imm_bits_addi_spn[32] = { 6, 5, 11, 12, 7, 8, 9, 10 };
 static const int imm_bits_shift[32] = { 2, 3, 4, 5, 6, 12 };
 
@@ -280,8 +287,7 @@ static void disassemble_rv32i(void) {
         return;
     }
     if ((instr & 0x0000007f) == 0x0000006f) {
-        static const int imm_bits[32] = { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 20, 12, 13, 14, 15, 16, 17, 18, 19, 31 };
-        int32_t imm = get_imm_se(imm_bits);
+        int32_t imm = get_imm_se(imm_bits_j);
         if (rd == 0) {
             add_str("j ");
         }
@@ -317,8 +323,7 @@ static void disassemble_rv32i(void) {
         return;
     }
     if ((instr & 0x0000007f) == 0x00000063) {
-        static const int imm_bits[32] = { 8, 9, 10, 11, 25, 26, 27, 28, 29, 30, 7, 31 };
-        int32_t imm = get_imm_se(imm_bits);
+        int32_t imm = get_imm_se(imm_bits_b);
         if (rs2 == 0) {
             switch ((instr >> 12) & 7) {
             case 0:
@@ -436,8 +441,7 @@ static void disassemble_rv32i(void) {
         }
     }
     if ((instr & 0x0000007f) == 0x00000023) {
-        static const int imm_bits[32] = { 7, 8, 9, 10, 11, 25, 26, 27, 28, 29, 30, 31 };
-        int32_t imm = get_imm_se(imm_bits);
+        int32_t imm = get_imm_se(imm_bits_s);
         switch ((instr >> 12) & 7) {
         case 0:
             add_str("sb ");
@@ -769,8 +773,7 @@ static void disassemble_rv32f(void) {
         case 4: sz_char = 'q'; break;
         }
         if (sz_char) {
-            static const int imm_bits[32] = { 7, 8, 9, 10, 11, 25, 26, 27, 28, 29, 30, 31 };
-            int32_t imm = get_imm_se(imm_bits);
+            int32_t imm = get_imm_se(imm_bits_s);
             add_str("fs");
             add_char(sz_char);
             add_char(' ');
@@ -1011,8 +1014,7 @@ static void disassemble_rv64i(void) {
         }
     }
     if ((instr & 0x0000307f) == 0x00003023) {
-        static const int imm_bits[32] = { 7, 8, 9, 10, 11, 25, 26, 27, 28, 29, 30, 31 };
-        int32_t imm = get_imm_se(imm_bits);
+        int32_t imm = get_imm_se(imm_bits_s);
         add_str("sd ");
         add_reg((instr >> 20) & 0x1f);
         add_str(", ");
@@ -1217,7 +1219,7 @@ static void disassemble_rv64f(void) {
 }
 
 static void disassemble_rv32c(void) {
-    // Quadrant 0
+    /* Quadrant 0 */
     if ((instr & 0xffff) == 0x0000) {
         add_str("illegal instruction");
         return;
@@ -1265,7 +1267,7 @@ static void disassemble_rv32c(void) {
         return;
     }
 
-    // Quadrant 1
+    /* Quadrant 1 */
     if ((instr & 0xef83) == 0x0001) {
         add_str("nop");
         return;
@@ -1288,8 +1290,7 @@ static void disassemble_rv32c(void) {
         }
     }
     if ((instr & 0x6003) == 0x2001) {
-        static const int imm_bits[32] = { 3, 4, 5, 11, 2, 7, 6, 9, 10, 8, 12 };
-        int32_t imm = get_imm_se(imm_bits);
+        int32_t imm = get_imm_se(imm_bits_jc);
         if (instr & 0x8000) {
             add_str("j ");
         }
@@ -1327,8 +1328,7 @@ static void disassemble_rv32c(void) {
     if ((instr & 0xe003) == 0x6001) {
         unsigned rd = (instr >> 7) & 0x1f;
         if (rd == 2) {
-            static const int imm_bits[32] = { 6, 2, 5, 3, 4, 12 };
-            int32_t imm = get_imm_se(imm_bits);
+            int32_t imm = get_imm_se(imm_bits_addi_sp);
             if (imm != 0) {
                 add_str("addi sp, sp, ");
                 if (imm < 0) {
@@ -1411,8 +1411,7 @@ static void disassemble_rv32c(void) {
         return;
     }
     if ((instr & 0xc003) == 0xc001) {
-        static const int imm_bits[32] = { 3, 4, 10, 11, 2, 5, 6, 12 };
-        int32_t imm = get_imm_se(imm_bits);
+        int32_t imm = get_imm_se(imm_bits_bc);
         add_str(instr & 0x2000 ? "bnez " : "beqz ");
         add_rvc_reg((instr >> 7) & 7);
         add_str(", ");
@@ -1428,7 +1427,7 @@ static void disassemble_rv32c(void) {
         return;
     }
 
-    // Quadrant 2
+    /* Quadrant 2 */
     if ((instr & 0xe003) == 0x4002) {
         unsigned rd = (instr >> 7) & 0x1f;
         if (rd != 0) {
