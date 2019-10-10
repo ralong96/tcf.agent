@@ -754,6 +754,7 @@ static void evaluate_expression(void) {
                 }
             }
             break;
+#if ENABLE_Symbols
         case OP_GNU_variable_value:
             {
                 const char * id = (const char *)(code + code_pos);
@@ -775,6 +776,7 @@ static void evaluate_expression(void) {
                 state->stk_pos++;
             }
             break;
+#endif
         case OP_TCF_switch:
             check_e_stack(1);
             {

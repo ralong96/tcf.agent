@@ -1035,6 +1035,7 @@ typedef struct LineOffsCheckArgs {
     char * file;
 } LineOffsCheckArgs;
 
+#if ENABLE_LineNumbers
 static void line_offs_check(CodeArea * area, void * x) {
     LineOffsCheckArgs * args = (LineOffsCheckArgs *)x;
     assert(area->start_address <= args->bi->cb.address);
@@ -1054,6 +1055,7 @@ static void line_offs_check(CodeArea * area, void * x) {
         args->line_offs_ok = strcmp(args->file, file) == 0;
     }
 }
+#endif
 
 static void verify_line_offset(BreakInstruction * bi, InstructionRef * ref) {
     ref->line_offs_error = 0;
@@ -1623,6 +1625,7 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
     ContextAddress addr = 0;
     ContextAddress size = 1;
     int error = 0;
+#if ENABLE_Expressions
     Value v;
     SymbolProperties props;
 
@@ -1636,6 +1639,7 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
         /* If the symbol is not a PPC64 function, offset should be 0, so it is safe to add */
         addr += props.local_entry_offset;
     }
+#endif
 #if ENABLE_SkipPrologueWhenPlanting
     /* Even if addr is incremented by local_entry_offset, we still should be on right code area */
     if (!error && bp->skip_prologue && v.sym != NULL && skip_function_prologue(ctx, v.sym, &addr) < 0) error = errno;
@@ -1835,6 +1839,7 @@ static void evaluate_condition(void * x) {
 
         if (check_context_ids_condition(bp, ctx)) {
             if (bp->condition != NULL) {
+#if ENABLE_Expressions
                 Value v;
                 int b = 0;
                 if (evaluate_expression(ctx, STACK_TOP_FRAME, 0, bp->condition, 1, &v) < 0 ||
@@ -1849,6 +1854,7 @@ static void evaluate_condition(void * x) {
                 else if (b) {
                     ce->condition_ok = 1;
                 }
+#endif
             }
             else {
                 ce->condition_ok = 1;
