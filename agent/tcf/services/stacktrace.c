@@ -786,6 +786,7 @@ static void delete_stack_trace(Context * ctx, void * args) {
     memset(EXT(ctx), 0, sizeof(StackTrace));
 }
 
+#if SERVICE_MemoryMap
 static void event_map_changed(Context * ctx, void * client_data) {
     if (ctx->mem_access && context_get_group(ctx, CONTEXT_GROUP_PROCESS) == ctx) {
         /* If the context is a memory space, we need to invalidate
@@ -801,6 +802,7 @@ static void event_map_changed(Context * ctx, void * client_data) {
         }
     }
 }
+#endif
 
 void ini_stack_trace_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     static ContextEventListener context_listener = {
