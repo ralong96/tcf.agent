@@ -401,6 +401,7 @@
     <ClInclude Include="..\machine\riscv64\tcf\stack-crawl-riscv64.h" />
     <ClInclude Include="..\machine\riscv\tcf\disassembler-riscv.h" />
     <ClInclude Include="..\machine\riscv\tcf\stack-crawl-riscv.h" />
+    <ClInclude Include="..\machine\riscv\tcf\uxlen.h" />
     <ClInclude Include="..\machine\x86_64\tcf\cpu-regs-gdb.h" />
     <ClInclude Include="..\tcf\framework\channel_lws.h" />
     <ClInclude Include="..\tcf\framework\channel_lws_ext.h" />

@@ -915,5 +915,8 @@
     <ClInclude Include="..\machine\riscv64\tcf\stack-crawl-riscv64.h">
       <Filter>machine\riscv64</Filter>
     </ClInclude>
+    <ClInclude Include="..\machine\riscv\tcf\uxlen.h">
+      <Filter>machine\riscv</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

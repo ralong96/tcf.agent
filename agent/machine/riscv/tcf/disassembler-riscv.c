@@ -669,8 +669,8 @@ static void disassemble_rv_z(void) {
                 return;
             }
             if (rd == 0) {
-                const char * nms[4] = { NULL, "csrw", "csrs", "csrc" };
-                add_str(nms[func & 3]);
+                const char * nms_rd0[4] = { NULL, "csrw", "csrs", "csrc" };
+                add_str(nms_rd0[func & 3]);
                 if (func >= 4) add_char('i');
                 add_char(' ');
             }
@@ -1032,7 +1032,6 @@ static void disassemble_rv64i(void) {
     }
     if ((instr & 0xbc00007f) == 0x00000013) {
         unsigned rs = rs1;
-        unsigned rd = (instr >> 7) & 0x1f;
         uint32_t imm = (instr >> 20) & 0x3f;
         switch (func) {
         case 1:
@@ -1052,7 +1051,6 @@ static void disassemble_rv64i(void) {
         }
     }
     if ((instr & 0x0000707f) == 0x0000001b) {
-        unsigned rd = (instr >> 7) & 0x1f;
         int32_t imm = get_imm_rse(20, 12);
         if (imm == 0) {
             add_str("sext.w ");
@@ -1075,7 +1073,6 @@ static void disassemble_rv64i(void) {
         return;
     }
     if ((instr & 0xbe00007f) == 0x0000001b) {
-        unsigned rd = (instr >> 7) & 0x1f;
         uint32_t imm = (instr >> 20) & 0x1f;
         switch (func) {
         case 1:
@@ -1360,14 +1357,7 @@ static void disassemble_rv32c(void) {
                 if (xlen == 128) imm = 64;
                 else return;
             }
-            switch (func) {
-            case 0:
-                add_str("srli ");
-                break;
-            case 1:
-                add_str("srai ");
-                break;
-            }
+            add_str(func ? "srai " : "srli ");
             add_rvc_reg(rd);
             add_str(", ");
             add_rvc_reg(rd);
