@@ -899,15 +899,14 @@ static void monitor_ps(GdbClient * c, const char * args) {
     LINK * l;
     unsigned cnt = 0;
     for (l = c->link_c2p.next; l != &c->link_c2p; l = l->next) {
-        char s[256];
-        char * m = s;
+        char * m = NULL;
         GdbProcess * p = link_c2p(l);
         if (context_has_state(p->ctx)) {
             const char * state = get_context_state_name(p->ctx);
-            snprintf(s, sizeof(s), "%u: %s (%s)\n", (unsigned)p->pid, p->ctx->name ? p->ctx->name : p->ctx->id, state);
+            m = tmp_printf("%u: %s (%s)\n", (unsigned)p->pid, p->ctx->name ? p->ctx->name : p->ctx->id, state);
         }
         else {
-            snprintf(s, sizeof(s), "%u: %s\n", (unsigned)p->pid, p->ctx->name ? p->ctx->name : p->ctx->id);
+            m = tmp_printf("%u: %s\n", (unsigned)p->pid, p->ctx->name ? p->ctx->name : p->ctx->id);
         }
         while (*m) add_res_hex8(c, *m++);
         cnt++;
