@@ -237,9 +237,11 @@ static char * str_buf = NULL;
 static unsigned str_buf_max = 0;
 static unsigned str_buf_pos = 0;
 
+#if !SERVICE_MemoryMap
 static MMListener * mm_listeners = NULL;
 static unsigned mm_listener_cnt = 0;
 static unsigned mm_listener_max = 0;
+#endif
 
 static size_t context_extension_offset = 0;
 
@@ -1747,6 +1749,7 @@ int context_get_memory_map(Context * ctx, MemoryMap * map) {
     return 0;
 }
 
+#if !SERVICE_MemoryMap
 int memory_map_get(Context * ctx, MemoryMap ** client_map, MemoryMap ** target_map) {
     ContextCache * cache = get_memory_map_cache(ctx);
     if (cache == NULL) return -1;
@@ -1774,6 +1777,7 @@ void memory_map_event_mapping_changed(Context * ctx) {
         l->listener->mapping_changed(ctx, l->args);
     }
 }
+#endif
 
 static void read_ids_item(InputStream * inp, void * args) {
     int n;

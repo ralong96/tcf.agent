@@ -32,6 +32,7 @@
 #include <tcf/services/disassembly.h>
 #include <tcf/services/context-proxy.h>
 #include <tcf/services/stacktrace.h>
+#include <tcf/services/memorymap.h>
 #include <tcf/main/server.h>
 #include <tcf/main/server_hooks.h>
 
@@ -98,6 +99,9 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if SERVICE_StackTrace
         int service_st = 0;
 #endif
+#if SERVICE_MemoryMap
+        int service_mm = 0;
+#endif
 #if ENABLE_DebugContext && ENABLE_ContextProxy
         int forward_pm = 0;
 #endif
@@ -124,6 +128,9 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if SERVICE_StackTrace
             if (strcmp(nm, "StackTrace") == 0) service_st = 1;
 #endif
+#if SERVICE_MemoryMap
+            if (strcmp(nm, "MemoryMap") == 0) service_mm = 1;
+#endif
             TARGET_SERVICE_CHECK_HOOK;
         }
 #if SERVICE_PathMap
@@ -144,6 +151,10 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if SERVICE_StackTrace
         if (!service_st) ini_stack_trace_service(host->protocol,
                                                  EXT(host)->serv->bcg);
+#endif
+#if SERVICE_MemoryMap
+        if (!service_mm) ini_memory_map_service(host->protocol,
+                                                EXT(host)->serv->bcg);
 #endif
 #if SERVICE_Expressions
         ini_expressions_service(host->protocol);
