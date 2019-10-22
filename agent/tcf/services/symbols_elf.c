@@ -3323,16 +3323,16 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
                 if (find_symbol_list != NULL) return get_symbol_size(find_symbol_list, size);
             }
             switch (info.type) {
-            case STT_NOTYPE:
-            case STT_OBJECT:
-            case STT_FUNC:
-                *size = (ContextAddress)info.size;
-                break;
             case STT_GNU_IFUNC:
                 set_errno(ERR_OTHER, "Size not available: indirect symbol");
                 return -1;
             default:
-                *size = info.sym_section->file->elf64 ? 8 : 4;
+                if (elf_symbol_has_address(&info)) {
+                    *size = (ContextAddress)info.size;
+                }
+                else {
+                    *size = info.sym_section->file->elf64 ? 8 : 4;
+                }
                 break;
             }
         }

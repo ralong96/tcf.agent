@@ -1748,6 +1748,16 @@ static uint64_t to_uns_fixed_point(int mode, Value * v) {
             }
         }
     }
+    if (v->type_class == TYPE_CLASS_UNKNOWN) {
+        load_value(v);
+        to_host_endianness(v);
+        switch (v->size) {
+        case 1: return *(uint8_t *)v->value;
+        case 2: return *(uint16_t *)v->value;
+        case 4: return *(uint32_t *)v->value;
+        case 8: return *(uint64_t *)v->value;
+        }
+    }
 
     error(ERR_INV_EXPRESSION, "Operation is not applicable for the value type");
     return 0;
