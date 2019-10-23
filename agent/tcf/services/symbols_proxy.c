@@ -841,13 +841,19 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress addr, const cha
         Channel * c = get_channel(syms);
         f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
         list_add_first(&f->link_syms, syms->link_find_by_name + h);
-        list_add_last(&f->link_flush, &flush_mm);
+        if (ip) {
+            list_add_last(&f->link_flush, &flush_rc);
+            f->update_policy = UPDATE_ON_EXE_STATE_CHANGES;
+        }
+        else {
+            list_add_last(&f->link_flush, &flush_mm);
+            f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
+        }
         context_lock(f->ctx = ctx);
         f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
         f->name = loc_strdup(name);
-        f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
         f->pending = protocol_send_command(c, SYMBOLS, "findByName", validate_find, f);
         if (frame != STACK_NO_FRAME) {
             json_write_string(&c->out, frame2id(ctx, frame));
@@ -984,14 +990,20 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress addr, Symbol *
         Channel * c = get_channel(syms);
         f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
         list_add_first(&f->link_syms, syms->link_find_in_scope + h);
-        list_add_last(&f->link_flush, &flush_mm);
+        if (ip) {
+            list_add_last(&f->link_flush, &flush_rc);
+            f->update_policy = UPDATE_ON_EXE_STATE_CHANGES;
+        }
+        else {
+            list_add_last(&f->link_flush, &flush_mm);
+            f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
+        }
         context_lock(f->ctx = ctx);
         f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
         if (scope != NULL) f->scope = loc_strdup(scope->cache->id);
         f->name = loc_strdup(name);
-        f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
         f->pending = protocol_send_command(c, SYMBOLS, "findInScope", validate_find, f);
         if (frame != STACK_NO_FRAME) {
             json_write_string(&c->out, frame2id(ctx, frame));
@@ -1064,12 +1076,18 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * func,
         Channel * c = get_channel(syms);
         f = (FindSymCache *)loc_alloc_zero(sizeof(FindSymCache));
         list_add_first(&f->link_syms, syms->link_list + h);
-        list_add_last(&f->link_flush, &flush_mm);
+        if (ip) {
+            list_add_last(&f->link_flush, &flush_rc);
+            f->update_policy = UPDATE_ON_EXE_STATE_CHANGES;
+        }
+        else {
+            list_add_last(&f->link_flush, &flush_mm);
+            f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
+        }
         context_lock(f->ctx = ctx);
         f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
-        f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
         f->pending = protocol_send_command(c, SYMBOLS, "list", validate_find, f);
         if (frame != STACK_NO_FRAME) {
             json_write_string(&c->out, frame2id(ctx, frame));
