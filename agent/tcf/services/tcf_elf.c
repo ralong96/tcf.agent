@@ -1878,7 +1878,7 @@ ContextAddress elf_map_to_run_time_address(Context * ctx, ELF_File * file, ELF_S
         errno = 0;
         return addr;
     }
-    errno = set_errno(ERR_INV_ADDRESS, "Invalid memory map, cannot compute run-time address");
+    set_errno(ERR_INV_ADDRESS, "Invalid memory map, cannot compute run-time address");
     return 0;
 }
 
@@ -2434,7 +2434,7 @@ int elf_get_plt_entry_size(ELF_File * file, unsigned * first_size, unsigned * en
         *entry_size = 16;
         return 0;
     }
-    errno = set_errno(ERR_OTHER, "Unknown PLT entry size");
+    set_errno(ERR_OTHER, "Unknown PLT entry size");
     return -1;
 }
 
