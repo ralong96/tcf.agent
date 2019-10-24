@@ -518,6 +518,5 @@ int main(int argc, char ** argv) {
 
     PRE_EXIT_HOOK;
 
-    fprintf(stderr, "\n");
     return 0;
 }
