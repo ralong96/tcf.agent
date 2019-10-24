@@ -331,7 +331,7 @@ static int mem_hash_write(uxlen_t addr, uxlen_t v, unsigned bytes, int valid) {
     /* Store the item */
     mem_data.a[n] = addr;
     mem_data.v[n] = v;
-    mem_data.size[n] = bytes;
+    mem_data.size[n] = (uint8_t)bytes;
     mem_data.valid[n] = (uint8_t)valid;
     return 0;
 }
@@ -1318,7 +1318,7 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
             assert(r != 0 || uxlen_to_l(reg_data[r].v) == 0);
             if (chk_loaded(r) < 0) continue;
             if (!reg_data[r].o) continue;
-            if (r == REG_ID_SP) frame->fp = uxlen_to_l(reg_data[r].v);
+            if (r == REG_ID_SP) frame->fp = (ContextAddress)uxlen_to_l(reg_data[r].v);
             if (write_reg128(down, def, reg_data[r].v) < 0) return -1;
         }
         else if (strcmp(def->name, "pc") == 0) {
