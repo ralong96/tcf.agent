@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -357,6 +357,7 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
         break;
     }
 
+    run_ctrl_lock();
     strlcpy(buf.token, token, sizeof(buf.token));
     return &buf;
 }
@@ -472,6 +473,7 @@ static void memory_set_cache_client(void * parm) {
         write_stream(out, MARKER_EOM);
     }
     loc_free(args->buf);
+    run_ctrl_unlock();
 }
 
 static void command_set(char * token, Channel * c) {
@@ -567,6 +569,7 @@ static void memory_get_cache_client(void * parm) {
         write_stream(out, MARKER_EOM);
     }
     loc_free(args->buf);
+    run_ctrl_unlock();
 }
 
 static void command_get(char * token, Channel * c) {
@@ -633,6 +636,7 @@ static void memory_fill_cache_client(void * parm) {
         write_stream(out, MARKER_EOM);
     }
     loc_free(args->buf);
+    run_ctrl_unlock();
 }
 
 static void command_fill(char * token, Channel * c) {

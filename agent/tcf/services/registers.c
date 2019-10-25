@@ -445,12 +445,16 @@ static void command_get_cache_client(void * x) {
 
     cache_exit();
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    write_errno(&c->out, trap.error);
-    json_write_binary(&c->out, bbf, bbf_pos);
-    write_stream(&c->out, 0);
-    write_stream(&c->out, MARKER_EOM);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        write_errno(&c->out, trap.error);
+        json_write_binary(&c->out, bbf, bbf_pos);
+        write_stream(&c->out, 0);
+        write_stream(&c->out, MARKER_EOM);
+    }
+
+    run_ctrl_unlock();
 }
 
 static void command_get(char * token, Channel * c) {
@@ -460,6 +464,7 @@ static void command_get(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    run_ctrl_lock();
     strlcpy(args.token, token, sizeof(args.token));
     cache_enter(command_get_cache_client, c, &args, sizeof(args));
 }
@@ -504,12 +509,15 @@ static void command_set_cache_client(void * x) {
 
     if (notify) send_event_register_changed(args->id);
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    write_errno(&c->out, trap.error);
-    write_stream(&c->out, MARKER_EOM);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        write_errno(&c->out, trap.error);
+        write_stream(&c->out, MARKER_EOM);
+    }
 
     loc_free(args->data);
+    run_ctrl_unlock();
 }
 
 static void command_set(char * token, Channel * c) {
@@ -521,6 +529,7 @@ static void command_set(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    run_ctrl_lock();
     strlcpy(args.token, token, sizeof(args.token));
     cache_enter(command_set_cache_client, c, &args, sizeof(args));
 }
@@ -642,14 +651,17 @@ static void command_getm_cache_client(void * x) {
 
     cache_exit();
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    write_errno(&c->out, trap.error);
-    json_write_binary(&c->out, bbf, bbf_pos);
-    write_stream(&c->out, 0);
-    write_stream(&c->out, MARKER_EOM);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        write_errno(&c->out, trap.error);
+        json_write_binary(&c->out, bbf, bbf_pos);
+        write_stream(&c->out, 0);
+        write_stream(&c->out, MARKER_EOM);
+    }
 
     loc_free(args->locs);
+    run_ctrl_unlock();
 }
 
 static void command_getm(char * token, Channel * c) {
@@ -659,6 +671,7 @@ static void command_getm(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    run_ctrl_lock();
     strlcpy(args.token, token, sizeof(args.token));
     cache_enter(command_getm_cache_client, c, &args, sizeof(args));
 }
@@ -704,13 +717,16 @@ static void command_setm_cache_client(void * x) {
         }
     }
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    write_errno(&c->out, trap.error);
-    write_stream(&c->out, MARKER_EOM);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        write_errno(&c->out, trap.error);
+        write_stream(&c->out, MARKER_EOM);
+    }
 
     loc_free(args->locs);
     loc_free(args->data);
+    run_ctrl_unlock();
 }
 
 static void command_setm(char * token, Channel * c) {
@@ -722,6 +738,7 @@ static void command_setm(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    run_ctrl_lock();
     strlcpy(args.token, token, sizeof(args.token));
     cache_enter(command_setm_cache_client, c, &args, sizeof(args));
 }

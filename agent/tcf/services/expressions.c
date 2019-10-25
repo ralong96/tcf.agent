@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -4203,19 +4203,21 @@ static void get_context_cache_client(void * x) {
 
     cache_exit();
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    write_errno(&c->out, err);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        write_errno(&c->out, err);
 
-    if (err) {
-        write_stringz(&c->out, "null");
-    }
-    else {
-        write_context(&c->out, expr);
-        write_stream(&c->out, 0);
-    }
+        if (err) {
+            write_stringz(&c->out, "null");
+        }
+        else {
+            write_context(&c->out, expr);
+            write_stream(&c->out, 0);
+        }
 
-    write_stream(&c->out, MARKER_EOM);
+        write_stream(&c->out, MARKER_EOM);
+    }
 }
 
 static void command_get_context(char * token, Channel * c) {
@@ -4279,35 +4281,37 @@ static void get_children_cache_client(void * x) {
 
     cache_exit();
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
 
-    write_errno(&c->out, err);
+        write_errno(&c->out, err);
 
-    write_stream(&c->out, '[');
+        write_stream(&c->out, '[');
 #if ENABLE_Symbols && (SERVICE_StackTrace || ENABLE_ContextProxy)
-    {
-        int i;
-        for (i = 0; i < sym_cnt; i++) {
-            const char * s = parent_id;
-            if (i > 0) write_stream(&c->out, ',');
-            write_stream(&c->out, '"');
-            write_stream(&c->out, 'S');
-            while (*s) {
-                if (*s == '.') write_stream(&c->out, '.');
-                json_write_char(&c->out, *s++);
+        {
+            int i;
+            for (i = 0; i < sym_cnt; i++) {
+                const char * s = parent_id;
+                if (i > 0) write_stream(&c->out, ',');
+                write_stream(&c->out, '"');
+                write_stream(&c->out, 'S');
+                while (*s) {
+                    if (*s == '.') write_stream(&c->out, '.');
+                    json_write_char(&c->out, *s++);
+                }
+                write_stream(&c->out, '.');
+                s = symbol2id(sym_buf[i]);
+                while (*s) json_write_char(&c->out, *s++);
+                write_stream(&c->out, '"');
             }
-            write_stream(&c->out, '.');
-            s = symbol2id(sym_buf[i]);
-            while (*s) json_write_char(&c->out, *s++);
-            write_stream(&c->out, '"');
         }
-    }
 #endif
-    write_stream(&c->out, ']');
-    write_stream(&c->out, 0);
+        write_stream(&c->out, ']');
+        write_stream(&c->out, 0);
 
-    write_stream(&c->out, MARKER_EOM);
+        write_stream(&c->out, MARKER_EOM);
+    }
 }
 
 static void command_get_children(char * token, Channel * c) {
@@ -4374,23 +4378,27 @@ static void command_create_cache_client(void * x) {
 
     cache_exit();
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    write_errno(&c->out, err);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        write_errno(&c->out, err);
 
-    if (err) {
-        write_stringz(&c->out, "null");
-        loc_free(args->script);
-    }
-    else {
-        *(e = (Expression *)loc_alloc(sizeof(Expression))) = buf;
-        list_add_last(&e->link_all, &expressions);
-        list_add_last(&e->link_id, id2exp + expression_hash(e->id));
-        write_context(&c->out, e);
-        write_stream(&c->out, 0);
+        if (err) {
+            write_stringz(&c->out, "null");
+            loc_free(args->script);
+        }
+        else {
+            *(e = (Expression *)loc_alloc(sizeof(Expression))) = buf;
+            list_add_last(&e->link_all, &expressions);
+            list_add_last(&e->link_id, id2exp + expression_hash(e->id));
+            write_context(&c->out, e);
+            write_stream(&c->out, 0);
+        }
+
+        write_stream(&c->out, MARKER_EOM);
     }
 
-    write_stream(&c->out, MARKER_EOM);
+    run_ctrl_unlock();
     command_done();
 }
 
@@ -4406,6 +4414,7 @@ static void command_create(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    run_ctrl_lock();
     args.use_state = 1;
     strlcpy(args.token, token, sizeof(args.token));
     command_start(command_create_cache_client, c, &args, sizeof(args));
@@ -4429,6 +4438,7 @@ static void command_create_in_scope(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    run_ctrl_lock();
     strlcpy(args.token, token, sizeof(args.token));
     command_start(command_create_cache_client, c, &args, sizeof(args));
 }
@@ -4480,168 +4490,172 @@ static void command_evaluate_cache_client(void * x) {
 
     cache_exit();
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    if (err) {
-        write_stringz(&c->out, "null");
-    }
-    else if (!value.remote) {
-        json_write_binary(&c->out, value.value, (size_t)value.size);
-        write_stream(&c->out, 0);
-    }
-    else if (buf != NULL) {
-        json_write_binary(&c->out, buf, (size_t)value.size);
-        write_stream(&c->out, 0);
-    }
-    else {
-        write_stringz(&c->out, "null");
-    }
-    write_errno(&c->out, err);
-    if (!value_ok) {
-        write_stringz(&c->out, "null");
-    }
-    else {
-        int cnt = 0;
-        write_stream(&c->out, '{');
-
-        if (value.type_class != TYPE_CLASS_UNKNOWN) {
-            json_write_string(&c->out, "Class");
-            write_stream(&c->out, ':');
-            json_write_long(&c->out, value.type_class);
-            cnt++;
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        if (err) {
+            write_stringz(&c->out, "null");
         }
-
-#if ENABLE_Symbols
-        if (value.type != NULL) {
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "Type");
-            write_stream(&c->out, ':');
-            json_write_string(&c->out, symbol2id(value.type));
-            cnt++;
+        else if (!value.remote) {
+            json_write_binary(&c->out, value.value, (size_t)value.size);
+            write_stream(&c->out, 0);
         }
-
-        if (value.sym != NULL) {
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "Symbol");
-            write_stream(&c->out, ':');
-            json_write_string(&c->out, symbol2id(value.sym));
-            cnt++;
-        }
-#endif
-        if (value.bit_stride != 0) {
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "BitStride");
-            write_stream(&c->out, ':');
-            json_write_ulong(&c->out, value.bit_stride);
-            cnt++;
-        }
-
-        if (value.binary_scale != 0) {
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "BinaryScale");
-            write_stream(&c->out, ':');
-            json_write_long(&c->out, value.binary_scale);
-            cnt++;
-        }
-
-        if (value.decimal_scale != 0) {
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "DecimalScale");
-            write_stream(&c->out, ':');
-            json_write_long(&c->out, value.decimal_scale);
-            cnt++;
-        }
-
-        if (implicit_pointer) {
-            if (cnt > 0) write_stream(&c->out, ',');
-            json_write_string(&c->out, "ImplicitPointer");
-            write_stream(&c->out, ':');
-            json_write_boolean(&c->out, 1);
-            cnt++;
+        else if (buf != NULL) {
+            json_write_binary(&c->out, buf, (size_t)value.size);
+            write_stream(&c->out, 0);
         }
         else {
-            if (value.reg != NULL) {
-                int reg_frame = value.loc->ctx == ctx ? frame : STACK_NO_FRAME;
-                if (cnt > 0) write_stream(&c->out, ',');
-                json_write_string(&c->out, "Register");
+            write_stringz(&c->out, "null");
+        }
+        write_errno(&c->out, err);
+        if (!value_ok) {
+            write_stringz(&c->out, "null");
+        }
+        else {
+            unsigned cnt = 0;
+            write_stream(&c->out, '{');
+
+            if (value.type_class != TYPE_CLASS_UNKNOWN) {
+                json_write_string(&c->out, "Class");
                 write_stream(&c->out, ':');
-                json_write_string(&c->out, register2id(value.loc->ctx, reg_frame, value.reg));
+                json_write_long(&c->out, value.type_class);
                 cnt++;
             }
 
-            if (value.remote) {
+#if ENABLE_Symbols
+            if (value.type != NULL) {
                 if (cnt > 0) write_stream(&c->out, ',');
-                json_write_string(&c->out, "Address");
+                json_write_string(&c->out, "Type");
                 write_stream(&c->out, ':');
-                json_write_uint64(&c->out, value.address);
+                json_write_string(&c->out, symbol2id(value.type));
                 cnt++;
             }
 
-            if (value.loc != NULL && value.loc->pieces_cnt > 0 && value.reg == NULL) {
-                unsigned i;
+            if (value.sym != NULL) {
                 if (cnt > 0) write_stream(&c->out, ',');
-                json_write_string(&c->out, "Pieces");
+                json_write_string(&c->out, "Symbol");
                 write_stream(&c->out, ':');
-                write_stream(&c->out, '[');
-                for (i = 0; i < value.loc->pieces_cnt; i++) {
-                    LocationPiece * piece = value.loc->pieces + i;
-                    if (i > 0) write_stream(&c->out, ',');
-                    write_stream(&c->out, '{');
-                    if (piece->size) {
-                        json_write_string(&c->out, "Size");
-                        write_stream(&c->out, ':');
-                        json_write_ulong(&c->out, piece->size);
-                    }
-                    else {
-                        json_write_string(&c->out, "BitSize");
-                        write_stream(&c->out, ':');
-                        json_write_ulong(&c->out, piece->bit_size);
-                    }
-                    if (piece->bit_offs) {
-                        write_stream(&c->out, ',');
-                        json_write_string(&c->out, "BitOffs");
-                        write_stream(&c->out, ':');
-                        json_write_ulong(&c->out, piece->bit_offs);
-                    }
-                    if (!piece->optimized_away) {
-                        write_stream(&c->out, ',');
-                        if (piece->reg) {
-                            Context * reg_ctx = value.loc->ctx;
-                            int reg_frame = get_info_frame(value.loc->ctx, value.loc->stack_frame);
-                            json_write_string(&c->out, "Register");
-                            write_stream(&c->out, ':');
-                            json_write_string(&c->out, register2id(reg_ctx, reg_frame, piece->reg));
-                        }
-                        else if (piece->value) {
-                            json_write_string(&c->out, "Value");
-                            write_stream(&c->out, ':');
-                            json_write_binary(&c->out, piece->value, piece->size);
-                        }
-                        else {
-                            json_write_string(&c->out, "Address");
-                            write_stream(&c->out, ':');
-                            json_write_uint64(&c->out, piece->addr);
-                        }
-                    }
-                    write_stream(&c->out, '}');
-                }
-                write_stream(&c->out, ']');
+                json_write_string(&c->out, symbol2id(value.sym));
+                cnt++;
+            }
+#endif
+            if (value.bit_stride != 0) {
+                if (cnt > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, "BitStride");
+                write_stream(&c->out, ':');
+                json_write_ulong(&c->out, value.bit_stride);
                 cnt++;
             }
 
-            if (value.big_endian) {
+            if (value.binary_scale != 0) {
                 if (cnt > 0) write_stream(&c->out, ',');
-                json_write_string(&c->out, "BigEndian");
+                json_write_string(&c->out, "BinaryScale");
+                write_stream(&c->out, ':');
+                json_write_long(&c->out, value.binary_scale);
+                cnt++;
+            }
+
+            if (value.decimal_scale != 0) {
+                if (cnt > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, "DecimalScale");
+                write_stream(&c->out, ':');
+                json_write_long(&c->out, value.decimal_scale);
+                cnt++;
+            }
+
+            if (implicit_pointer) {
+                if (cnt > 0) write_stream(&c->out, ',');
+                json_write_string(&c->out, "ImplicitPointer");
                 write_stream(&c->out, ':');
                 json_write_boolean(&c->out, 1);
                 cnt++;
             }
-        }
+            else {
+                if (value.reg != NULL) {
+                    int reg_frame = value.loc->ctx == ctx ? frame : STACK_NO_FRAME;
+                    if (cnt > 0) write_stream(&c->out, ',');
+                    json_write_string(&c->out, "Register");
+                    write_stream(&c->out, ':');
+                    json_write_string(&c->out, register2id(value.loc->ctx, reg_frame, value.reg));
+                    cnt++;
+                }
 
-        write_stream(&c->out, '}');
-        write_stream(&c->out, 0);
+                if (value.remote) {
+                    if (cnt > 0) write_stream(&c->out, ',');
+                    json_write_string(&c->out, "Address");
+                    write_stream(&c->out, ':');
+                    json_write_uint64(&c->out, value.address);
+                    cnt++;
+                }
+
+                if (value.loc != NULL && value.loc->pieces_cnt > 0 && value.reg == NULL) {
+                    unsigned i;
+                    if (cnt > 0) write_stream(&c->out, ',');
+                    json_write_string(&c->out, "Pieces");
+                    write_stream(&c->out, ':');
+                    write_stream(&c->out, '[');
+                    for (i = 0; i < value.loc->pieces_cnt; i++) {
+                        LocationPiece * piece = value.loc->pieces + i;
+                        if (i > 0) write_stream(&c->out, ',');
+                        write_stream(&c->out, '{');
+                        if (piece->size) {
+                            json_write_string(&c->out, "Size");
+                            write_stream(&c->out, ':');
+                            json_write_ulong(&c->out, piece->size);
+                        }
+                        else {
+                            json_write_string(&c->out, "BitSize");
+                            write_stream(&c->out, ':');
+                            json_write_ulong(&c->out, piece->bit_size);
+                        }
+                        if (piece->bit_offs) {
+                            write_stream(&c->out, ',');
+                            json_write_string(&c->out, "BitOffs");
+                            write_stream(&c->out, ':');
+                            json_write_ulong(&c->out, piece->bit_offs);
+                        }
+                        if (!piece->optimized_away) {
+                            write_stream(&c->out, ',');
+                            if (piece->reg) {
+                                Context * reg_ctx = value.loc->ctx;
+                                int reg_frame = get_info_frame(value.loc->ctx, value.loc->stack_frame);
+                                json_write_string(&c->out, "Register");
+                                write_stream(&c->out, ':');
+                                json_write_string(&c->out, register2id(reg_ctx, reg_frame, piece->reg));
+                            }
+                            else if (piece->value) {
+                                json_write_string(&c->out, "Value");
+                                write_stream(&c->out, ':');
+                                json_write_binary(&c->out, piece->value, piece->size);
+                            }
+                            else {
+                                json_write_string(&c->out, "Address");
+                                write_stream(&c->out, ':');
+                                json_write_uint64(&c->out, piece->addr);
+                            }
+                        }
+                        write_stream(&c->out, '}');
+                    }
+                    write_stream(&c->out, ']');
+                    cnt++;
+                }
+
+                if (value.big_endian) {
+                    if (cnt > 0) write_stream(&c->out, ',');
+                    json_write_string(&c->out, "BigEndian");
+                    write_stream(&c->out, ':');
+                    json_write_boolean(&c->out, 1);
+                    cnt++;
+                }
+            }
+
+            write_stream(&c->out, '}');
+            write_stream(&c->out, 0);
+        }
+        write_stream(&c->out, MARKER_EOM);
     }
-    write_stream(&c->out, MARKER_EOM);
+
+    run_ctrl_unlock();
     command_done();
 }
 
@@ -4652,6 +4666,7 @@ static void command_evaluate(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    run_ctrl_lock();
     strlcpy(args.token, token, sizeof(args.token));
     command_start(command_evaluate_cache_client, c, &args, sizeof(args));
 }
@@ -4721,11 +4736,15 @@ static void command_assign_cache_client(void * x) {
 
     cache_exit();
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    write_errno(&c->out, err);
-    write_stream(&c->out, MARKER_EOM);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        write_errno(&c->out, err);
+        write_stream(&c->out, MARKER_EOM);
+    }
+
     loc_free(args->value_buf);
+    run_ctrl_unlock();
     command_done();
 }
 
@@ -4738,6 +4757,7 @@ static void command_assign(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    run_ctrl_lock();
     strlcpy(args.token, token, sizeof(args.token));
     command_start(command_assign_cache_client, c, &args, sizeof(args));
 }
@@ -4762,10 +4782,13 @@ static void command_dispose_cache_client(void * x) {
         err = ERR_INV_CONTEXT;
     }
 
-    write_stringz(&c->out, "R");
-    write_stringz(&c->out, args->token);
-    write_errno(&c->out, err);
-    write_stream(&c->out, MARKER_EOM);
+    if (!is_channel_closed(c)) {
+        write_stringz(&c->out, "R");
+        write_stringz(&c->out, args->token);
+        write_errno(&c->out, err);
+        write_stream(&c->out, MARKER_EOM);
+    }
+
     command_done();
 }
 

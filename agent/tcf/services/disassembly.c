@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2018 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -452,6 +452,7 @@ static void disassemble_cache_client(void * x) {
     }
 
     loc_free(data);
+    run_ctrl_unlock();
 }
 
 static void read_disassembly_params(InputStream * inp, const char * name, void * x) {
@@ -488,6 +489,7 @@ static void command_disassemble(char * token, Channel * c) {
     if (read_stream(&c->inp) != 0) exception(ERR_JSON_SYNTAX);
     if (read_stream(&c->inp) != MARKER_EOM) exception(ERR_JSON_SYNTAX);
 
+    run_ctrl_lock();
     strlcpy(args.token, token, sizeof(args.token));
     cache_enter(disassemble_cache_client, c, &args, sizeof(DisassembleCmdArgs));
 }
