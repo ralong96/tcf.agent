@@ -437,25 +437,29 @@ static void write_map_region(OutputStream * out, MemoryRegion * m) {
     write_stream(out, '}');
 }
 
-static void command_get(char * token, Channel * c) {
+typedef struct CommandGetArgs {
+    char token[256];
     char id[256];
-    int err = 0;
+} CommandGetArgs;
+
+static void command_get_cache_client(void * x) {
+    CommandGetArgs * args = (CommandGetArgs *)x;
+    Channel * c = cache_channel();
     Context * ctx = NULL;
     MemoryMap * client_map = NULL;
     MemoryMap * target_map = NULL;
+    int err = 0;
 
-    json_read_string(&c->inp, id, sizeof(id));
-    json_test_char(&c->inp, MARKER_EOA);
-    json_test_char(&c->inp, MARKER_EOM);
-
-    ctx = id2ctx(id);
+    ctx = id2ctx(args->id);
     if (ctx == NULL) err = ERR_INV_CONTEXT;
     else ctx = get_mem_context(ctx);
 
     if (!err && memory_map_get(ctx, &client_map, &target_map) < 0) err = errno;
 
+    cache_exit();
+
     write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
+    write_stringz(&c->out, args->token);
     write_errno(&c->out, err);
     if (err) {
         write_stringz(&c->out, "null");
@@ -479,6 +483,20 @@ static void command_get(char * token, Channel * c) {
     }
 
     write_stream(&c->out, MARKER_EOM);
+}
+
+static void command_get(char * token, Channel * c) {
+    char id[256];
+    CommandGetArgs args;
+
+    json_read_string(&c->inp, id, sizeof(id));
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    strlcpy(args.token, token, sizeof(token));
+    strlcpy(args.id, id, sizeof(args.id));
+
+    cache_enter(command_get_cache_client, c, &args, sizeof(args));
 }
 
 static void read_map_attribute(InputStream * inp, const char * name, void * args) {
