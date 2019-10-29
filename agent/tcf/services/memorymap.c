@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -493,7 +493,7 @@ static void command_get(char * token, Channel * c) {
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
-    strlcpy(args.token, token, sizeof(token));
+    strlcpy(args.token, token, sizeof(args.token));
     strlcpy(args.id, id, sizeof(args.id));
 
     cache_enter(command_get_cache_client, c, &args, sizeof(args));
