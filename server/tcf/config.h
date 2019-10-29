@@ -151,6 +151,10 @@
 #define ENABLE_ContextExtraProperties           0
 #endif
 
+#if !defined(ENABLE_ServiceOverride)
+#define ENABLE_ServiceOverride                  0
+#endif
+
 #define ENABLE_RCBP_TEST        0
 
 #define ENABLE_ContextMemoryProperties          0

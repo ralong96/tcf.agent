@@ -111,16 +111,12 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
              * services below are defined (note that nm may be used
              * in TARGET_SERVICE_CHECK_HOOK() macro). */
             (void)nm;
+#if !ENABLE_ServiceOverride
 #if SERVICE_LineNumbers
             if (strcmp(nm, "LineNumbers") == 0) service_ln = 1;
 #endif
 #if SERVICE_Symbols
             if (strcmp(nm, "Symbols") == 0) service_sm = 1;
-#endif
-#if SERVICE_PathMap
-#  if ENABLE_DebugContext && ENABLE_ContextProxy
-            if (strcmp(nm, "PathMap") == 0) service_pm = 1;
-#  endif
 #endif
 #if SERVICE_Disassembly
             if (strcmp(nm, "Disassembly") == 0) service_da = 1;
@@ -130,6 +126,13 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #endif
 #if SERVICE_MemoryMap
             if (strcmp(nm, "MemoryMap") == 0) service_mm = 1;
+#endif
+#endif /* ENABLE_ServiceOverride */
+
+#if SERVICE_PathMap
+#  if ENABLE_DebugContext && ENABLE_ContextProxy
+            if (strcmp(nm, "PathMap") == 0) service_pm = 1;
+#  endif
 #endif
             TARGET_SERVICE_CHECK_HOOK;
         }
