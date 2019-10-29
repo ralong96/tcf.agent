@@ -608,6 +608,71 @@ static void disassemble_rv32i(void) {
             return;
         }
     }
+    if ((instr & 0x0000707f) == 0x0000000f) {
+        unsigned fm = instr >> 28;
+        unsigned p = (instr >> 24) & 0xf;
+        unsigned s = (instr >> 20) & 0xf;
+        if (p != 0 && s != 0) {
+            add_str("fence");
+            if (fm == 8) add_str(".tso");
+            add_char(' ');
+            if (p & 8) add_char('i');
+            if (p & 4) add_char('o');
+            if (p & 2) add_char('r');
+            if (p & 1) add_char('w');
+            add_str(", ");
+            if (s & 8) add_char('i');
+            if (s & 4) add_char('o');
+            if (s & 2) add_char('r');
+            if (s & 1) add_char('w');
+            return;
+        }
+    }
+    if (instr == 0x00000073) {
+        add_str("ecall");
+        return;
+    }
+    if (instr == 0x00100073) {
+        add_str("ebreak");
+        return;
+    }
+}
+
+static void disassemble_rv32a(void) {
+    unsigned rs2 = (instr >> 20) & 0x1f;
+    unsigned rs1 = (instr >> 15) & 0x1f;
+    unsigned rd = (instr >> 7) & 0x1f;
+    if ((instr & 0x0000307f) == 0x0000202f) {
+        unsigned func = (instr >> 27) & 0x1f;
+        switch (func) {
+        case  2: if (rs2 == 0) add_str("lr.w"); break;
+        case  3: add_str("sc.w"); break;
+        case  1: add_str("amoswap.w"); break;
+        case  0: add_str("amoadd.w"); break;
+        case  4: add_str("amoxor.w"); break;
+        case 12: add_str("amoand.w"); break;
+        case  8: add_str("amoor.w"); break;
+        case 16: add_str("amomin.w"); break;
+        case 20: add_str("amomax.w"); break;
+        case 24: add_str("amominu.w"); break;
+        case 28: add_str("amomaxu.w"); break;
+        }
+        if (buf_pos > 0) {
+            if (instr & (1 << 26)) add_str(".aq");
+            if (instr & (1 << 25)) add_str(".rl");
+            add_char(' ');
+            add_reg(rd);
+            add_str(", ");
+            if (func != 2) {
+                add_reg(rs2);
+                add_str(", ");
+            }
+            add_char('(');
+            add_reg(rs1);
+            add_char(')');
+            return;
+        }
+    }
 }
 
 static void disassemble_rv_z(void) {
@@ -736,7 +801,7 @@ static void disassemble_rv32f(void) {
     unsigned rs1 = (instr >> 15) & 0x1f;
     unsigned rd = (instr >> 7) & 0x1f;
     unsigned rm = (instr >> 12) & 0x7;
-    if ((instr & 0x0000007f) == 0x00000007) {
+    if ((instr & 0x0000005f) == 0x00000007) {
         unsigned size = (instr >> 12) & 7;
         char sz_char = 0;
         switch (size) {
@@ -745,39 +810,21 @@ static void disassemble_rv32f(void) {
         case 4: sz_char = 'q'; break;
         }
         if (sz_char) {
-            int32_t imm = get_imm_rse(20, 12);
-            add_str("fl");
-            add_char(sz_char);
-            add_char(' ');
-            add_freg(rd);
-            add_str(", ");
-            if (imm < 0) {
-                add_char('-');
-                add_dec_uint32(-imm);
+            int32_t imm = 0;
+            if (instr & 0x00000020) {
+                imm = get_imm_se(imm_bits_s);
+                add_str("fs");
+                add_char(sz_char);
+                add_char(' ');
+                add_freg(rs2);
             }
             else {
-                add_dec_uint32(imm);
+                imm = get_imm_rse(20, 12);
+                add_str("fl");
+                add_char(sz_char);
+                add_char(' ');
+                add_freg(rd);
             }
-            add_char('(');
-            add_reg(rs1);
-            add_char(')');
-            return;
-        }
-    }
-    if ((instr & 0x0000007f) == 0x00000027) {
-        unsigned size = (instr >> 12) & 7;
-        char sz_char = 0;
-        switch (size) {
-        case 2: sz_char = 'w'; break;
-        case 3: sz_char = 'd'; break;
-        case 4: sz_char = 'q'; break;
-        }
-        if (sz_char) {
-            int32_t imm = get_imm_se(imm_bits_s);
-            add_str("fs");
-            add_char(sz_char);
-            add_char(' ');
-            add_freg(rs2);
             add_str(", ");
             if (imm < 0) {
                 add_char('-');
@@ -812,8 +859,7 @@ static void disassemble_rv32f(void) {
             add_freg(rs2);
             add_str(", ");
             add_freg((instr >> 27) & 0x1f);
-            add_str(", ");
-            add_dec_uint32(rm);
+            add_rm(rm);
             return;
         }
     }
@@ -875,13 +921,16 @@ static void disassemble_rv32f(void) {
                 no_rs2 = 1;
                 if (rs2 == 0 && size == 1) add_str("fcvt.d.s");
                 if (rs2 == 1 && size == 0) add_str("fcvt.s.d");
+                if (rs2 == 0 && size == 3) add_str("fcvt.q.s");
+                if (rs2 == 3 && size == 0) add_str("fcvt.s.q");
+                if (rs2 == 1 && size == 3) add_str("fcvt.q.d");
+                if (rs2 == 3 && size == 1) add_str("fcvt.d.q");
                 if (buf_pos > 0) {
                     add_char(' ');
                     add_freg(rd);
                     add_str(", ");
                     add_freg(rs1);
-                    if (rs2 == 0 && size == 1) return;
-                    add_rm(rm);
+                    if (rs2 > size) add_rm(rm);
                     return;
                 }
                 break;
@@ -913,9 +962,9 @@ static void disassemble_rv32f(void) {
                 if (buf_pos > 0) {
                     add_char(sz_char);
                     add_char(' ');
-                    add_freg(rd);
+                    add_reg(rd);
                     add_str(", ");
-                    add_reg(rs1);
+                    add_freg(rs1);
                     add_rm(rm);
                     return;
                 }
@@ -928,9 +977,10 @@ static void disassemble_rv32f(void) {
                     add_char('.');
                     add_char('w');
                     if (rs2 == 1) add_char('u');
-                    add_reg(rd);
+                    add_char(' ');
+                    add_freg(rd);
                     add_str(", ");
-                    add_freg(rs1);
+                    add_reg(rs1);
                     add_rm(rm);
                     return;
                 }
@@ -941,6 +991,7 @@ static void disassemble_rv32f(void) {
                 if (rs2 == 0) {
                     if (rm == 0) {
                         add_str("fmv.x.");
+                        if (sz_char == 's') sz_char = 'w';
                         add_char(sz_char);
                         add_char(' ');
                         add_reg(rd);
@@ -1122,6 +1173,44 @@ static void disassemble_rv64i(void) {
     disassemble_rv32i();
 }
 
+static void disassemble_rv64a(void) {
+    unsigned rs2 = (instr >> 20) & 0x1f;
+    unsigned rs1 = (instr >> 15) & 0x1f;
+    unsigned rd = (instr >> 7) & 0x1f;
+    if ((instr & 0x0000307f) == 0x0000302f) {
+        unsigned func = (instr >> 27) & 0x1f;
+        switch (func) {
+        case  2: if (rs2 == 0) add_str("lr.d"); break;
+        case  3: add_str("sc.d"); break;
+        case  1: add_str("amoswap.d"); break;
+        case  0: add_str("amoadd.d"); break;
+        case  4: add_str("amoxor.d"); break;
+        case 12: add_str("amoand.d"); break;
+        case  8: add_str("amoor.d"); break;
+        case 16: add_str("amomin.d"); break;
+        case 20: add_str("amomax.d"); break;
+        case 24: add_str("amominu.d"); break;
+        case 28: add_str("amomaxu.d"); break;
+        }
+        if (buf_pos > 0) {
+            if (instr & (1 << 26)) add_str(".aq");
+            if (instr & (1 << 25)) add_str(".rl");
+            add_char(' ');
+            add_reg(rd);
+            add_str(", ");
+            if (func != 2) {
+                add_reg(rs2);
+                add_str(", ");
+            }
+            add_char('(');
+            add_reg(rs1);
+            add_char(')');
+            return;
+        }
+    }
+    disassemble_rv32a();
+}
+
 static void disassemble_rv64m(void) {
     unsigned func = (instr >> 12) & 7;
     if ((instr & 0xfe00007f) == 0x0200003b) {
@@ -1213,6 +1302,18 @@ static void disassemble_rv64f(void) {
         }
     }
     disassemble_rv32f();
+}
+
+static void disassemble_rv128i(void) {
+    disassemble_rv64i();
+}
+
+static void disassemble_rv128m(void) {
+    disassemble_rv64m();
+}
+
+static void disassemble_rv128f(void) {
+    disassemble_rv64f();
 }
 
 static void disassemble_rv32c(void) {
@@ -1638,20 +1739,38 @@ static void disassemble_rv128c(void) {
 
 static void disassemble_rv32(void) {
     disassemble_rv32i();
+    if (buf_pos > 0) return;
+    disassemble_rv32a();
+    if (buf_pos > 0) return;
     disassemble_rv32m();
+    if (buf_pos > 0) return;
     disassemble_rv32f();
+    if (buf_pos > 0) return;
     disassemble_rv_z();
 }
 
 static void disassemble_rv64(void) {
     disassemble_rv64i();
+    if (buf_pos > 0) return;
+    disassemble_rv64a();
+    if (buf_pos > 0) return;
     disassemble_rv64m();
+    if (buf_pos > 0) return;
     disassemble_rv64f();
+    if (buf_pos > 0) return;
     disassemble_rv_z();
 }
 
 static void disassemble_rv128(void) {
-    disassemble_rv64();
+    disassemble_rv128i();
+    if (buf_pos > 0) return;
+    disassemble_rv64a();
+    if (buf_pos > 0) return;
+    disassemble_rv128m();
+    if (buf_pos > 0) return;
+    disassemble_rv128f();
+    if (buf_pos > 0) return;
+    disassemble_rv_z();
 }
 
 static DisassemblyResult * disassemble_riscv(uint8_t * code,
