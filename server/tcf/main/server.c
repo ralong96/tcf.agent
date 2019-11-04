@@ -48,6 +48,11 @@
 #define SERVER_ADDPROP_HOOK do {} while(0)
 #endif
 
+/* Hook for initializing extra services */
+#ifndef EXTRA_SERVICE_INIT_HOOK
+#define EXTRA_SERVICE_INIT_HOOK do {} while(0)
+#endif
+
 #ifndef PROXY_NAME
 #define PROXY_NAME "TCF Proxy"
 #endif
@@ -162,6 +167,7 @@ static void channel_redirection_listener(Channel * host, Channel * target) {
 #if SERVICE_Expressions
         ini_expressions_service(host->protocol);
 #endif
+        EXTRA_SERVICE_INIT_HOOK;
 #if ENABLE_DebugContext && ENABLE_ContextProxy
         create_context_proxy(host, target, forward_pm);
 #endif
