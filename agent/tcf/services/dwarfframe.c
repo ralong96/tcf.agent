@@ -281,6 +281,22 @@ static RegisterRules * get_reg(StackFrameRegisters * regs, int reg) {
                 regs->regs[n].offset = 30; /* LR */
             }
             break;
+        case EM_RISCV:
+            min_reg_cnt = 28;
+            if (n == 0) { /* Always same - reads as zero */
+                regs->regs[n].rule = RULE_SAME_VALUE;
+            }
+            else if ((n >= 8 && n <= 9) || (n >= 18 && n <= 27)) { /* Callee-saved registers */
+                regs->regs[n].rule = RULE_SAME_VALUE;
+            }
+            else if (n == 2) { /* Stack pointer */
+                regs->regs[n].rule = RULE_VAL_OFFSET;
+            }
+            else if (n == rules.return_address_register) {
+                regs->regs[n].rule = RULE_REGISTER;
+                regs->regs[n].offset = 1; /* RA */
+            }
+            break;
         }
     }
     return regs->regs + reg;
@@ -1015,6 +1031,12 @@ static void generate_plt_section_commands(Context * ctx, ELF_File * file, U8_T o
         rules.return_address_register = 30; /* LR */
         frame_regs.cfa_rule = RULE_OFFSET;
         frame_regs.cfa_register = 31; /* SP */
+        generate_commands();
+        break;
+    case EM_RISCV:
+        rules.return_address_register = 1; /* RA */
+        frame_regs.cfa_rule = RULE_OFFSET;
+        frame_regs.cfa_register = 2; /* SP */
         generate_commands();
         break;
     }
