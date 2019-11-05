@@ -26,6 +26,8 @@ struct regset_fp {
     uint64_t _unused_;
 };
 
+#define MDEP_OtherRegisters uint64_t
+
 #endif
 
 /* Offset to be applied to the PC after a software trap */

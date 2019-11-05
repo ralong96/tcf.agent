@@ -14,6 +14,7 @@
 
 #if ENABLE_DebugContext && !ENABLE_ContextProxy
 
+#include <assert.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/context.h>
 #include <tcf/framework/myalloc.h>
@@ -25,11 +26,16 @@
 #include <tcf/cpudefs-mdep.h>
 
 unsigned char BREAK_INST[] = {0x02, 0x90};
-
 RegisterDefinition * regs_index;
 
+static RegisterDefinition * reg_pc;
+static unsigned regs_cnt;
+static unsigned regs_max;
+
+#define REG_OFFSET(name) offsetof(REG_SET, name)
+
 static const RegisterDefinition rv_regs[] = {
-    {.name="pc", .description="Program counter", .role="PC"},
+    {.name="zero", .description="Zero register", .offset=REG_OFFSET(other), .no_write = 1},
     {.name="ra", .description="Return address", .role="RET"},
     {.name="sp", .description="Stack pointer", .role="SP"},
     {.name="gp", .description="Global pointer"},
@@ -37,10 +43,10 @@ static const RegisterDefinition rv_regs[] = {
     {.name="t0", .description="Temporary register"},
     {.name="t1", .description="Temporary register"},
     {.name="t2", .description="Temporary register"},
-    {.name="s0", .description="Saved register"},
+    {.name="s0", .description="Saved register / frame pointer"},
     {.name="s1", .description="Saved register"},
-    {.name="a0", .description="Function argument / frame pointer"},
-    {.name="a1", .description="Function argument / frame pointer"},
+    {.name="a0", .description="Function argument / return value"},
+    {.name="a1", .description="Function argument"},
     {.name="a2", .description="Function argument"},
     {.name="a3", .description="Function argument"},
     {.name="a4", .description="Function argument"},
@@ -64,9 +70,47 @@ static const RegisterDefinition rv_regs[] = {
     {NULL}
 };
 
+static RegisterDefinition * alloc_reg(void) {
+    RegisterDefinition * r = regs_index + regs_cnt++;
+    assert(regs_cnt <= regs_max);
+    return r;
+}
+
+static RegisterDefinition * alloc_spr(const char * name, size_t offset, size_t size, int16_t id, const char * desc) {
+    RegisterDefinition * reg = alloc_reg();
+    reg->name = loc_strdup(name);
+    reg->description = loc_strdup(desc);
+    reg->dwarf_id = id;
+    reg->eh_frame_id = id;
+    reg->offset = offset;
+    reg->size = size;
+    return reg;
+}
+
+int mdep_get_other_regs(pid_t pid, REG_SET * data, size_t data_offs, size_t data_size,
+        size_t * done_offs, size_t * done_size) {
+    assert(data_offs >= REG_OFFSET(other));
+    assert(data_offs + data_size <= REG_OFFSET(other) + sizeof(data->other));
+    (void)pid;
+    data->other = 0;
+    *done_offs = REG_OFFSET(other);
+    *done_size = sizeof(data->other);
+    return 0;
+}
+
+int mdep_set_other_regs(pid_t pid, REG_SET * data, size_t data_offs, size_t data_size,
+        size_t * done_offs, size_t * done_size) {
+    assert(data_offs >= REG_OFFSET(other));
+    assert(data_offs + data_size <= REG_OFFSET(other) + sizeof(data->other));
+    (void)pid;
+    *done_offs = REG_OFFSET(other);
+    *done_size = sizeof(data->other);
+    return 0;
+}
+
 RegisterDefinition * get_PC_definition(Context * ctx) {
     if (!context_has_state(ctx)) return NULL;
-    return regs_index;
+    return reg_pc;
 }
 
 int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
@@ -79,19 +123,22 @@ void add_cpudefs_disassembler(Context * cpu_ctx) {
 }
 #endif
 
-#if ENABLE_ini_cpudefs_mdep
 void ini_cpudefs_mdep(void) {
-    regs_index = (RegisterDefinition *)loc_alloc_zero(sizeof(rv_regs));
     int i;
+    regs_cnt = 0;
+    regs_max = 128;
+    regs_index = (RegisterDefinition *)loc_alloc_zero(sizeof(RegisterDefinition) * regs_max);
+
     for (i = 0; rv_regs[i].name != NULL; ++i) {
-        RegisterDefinition * r = regs_index + i;
+        RegisterDefinition * r = alloc_reg();
         *r = rv_regs[i];
-        r->offset = i * 8;
         r->size = 8;
         r->dwarf_id = i;
         r->eh_frame_id = i;
-  }
+        if (r->offset == 0) r->offset = i * 8;
+    }
+    reg_pc = alloc_spr("pc", REG_OFFSET(gp.pc), 8, -1, "Program counter");
+    reg_pc->role = "PC";
 }
-#endif
 
 #endif /* ENABLE_DebugContext && !ENABLE_ContextProxy */
