@@ -1259,6 +1259,7 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
 
     for (def = defs; def->name; def++) {
         if (def->dwarf_id == 0) {
+            assert(xlen == def->size * 8);
             reg_data[def->dwarf_id].v = uxlen_from_u(0);
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
         }
@@ -1339,12 +1340,12 @@ int crawl_stack_frame_riscv32(StackFrame * frame, StackFrame * down) {
 }
 
 int crawl_stack_frame_riscv64(StackFrame * frame, StackFrame * down) {
-    xlen = 32;
+    xlen = 64;
     return crawl_stack_frame_riscv(frame, down);
 }
 
 int crawl_stack_frame_riscv128(StackFrame * frame, StackFrame * down) {
-    xlen = 32;
+    xlen = 128;
     return crawl_stack_frame_riscv(frame, down);
 }
 
