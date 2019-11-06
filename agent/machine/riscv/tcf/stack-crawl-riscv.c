@@ -1314,7 +1314,7 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
                 }
             }
 #endif
-            assert(r != 0 || reg_data[r].o == REG_VAL_OTHER);
+            assert(r != 0 || reg_data[r].o == REG_VAL_OTHER || reg_data[r].o == 0);
             assert(r != 0 || uxlen_to_l(reg_data[r].v) == 0);
             if (chk_loaded(r) < 0) continue;
             if (!reg_data[r].o) continue;
