@@ -232,6 +232,7 @@ extern void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg);
 #define is_safe_event() 0
 #define post_safe_event(ctx, done, arg) ((void)ctx, post_event(done, arg))
 #define check_all_stopped(x) do {} while(0)
+extern int is_all_stopped(Context * ctx);
 
 #endif /* SERVICE_RunControl */
 

@@ -2887,4 +2887,23 @@ void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     add_context_query_comparator("ProcessID", cmp_process_id);
 }
 
+#else
+
+#include <tcf/services/runctrl.h>
+
+int is_all_stopped(Context * grp) {
+#if ENABLE_DebugContext
+    LINK * l;
+    grp = context_get_group(grp, CONTEXT_GROUP_STOP);
+    for (l = context_root.next; l != &context_root; l = l->next) {
+        Context * ctx = ctxl2ctxp(l);
+        if (ctx->stopped || ctx->exited || ctx->exiting) continue;
+        if (!context_has_state(ctx)) continue;
+        if (context_get_group(ctx, CONTEXT_GROUP_STOP) != grp) continue;
+        return 0;
+    }
+#endif
+    return 1;
+}
+
 #endif /* SERVICE_RunControl */

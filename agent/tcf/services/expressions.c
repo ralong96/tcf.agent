@@ -1559,8 +1559,13 @@ static void load_value(Value * v) {
     if (v->remote) {
         size_t size = (size_t)v->size;
         void * buf = tmp_alloc(size);
+        Context * ctx = expression_context;
+        Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
         assert(!v->constant);
-        if (context_read_mem(expression_context, v->address, buf, size) < 0) {
+        if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
+            if (!is_all_stopped(ctx)) error(ERR_IS_RUNNING, "Cannot read memory if not stopped");
+        }
+        if (context_read_mem(ctx, v->address, buf, size) < 0) {
             error(errno, "Can't read variable value");
         }
         v->value = buf;
@@ -4359,7 +4364,10 @@ static void command_create_cache_client(void * x) {
             err = errno;
         }
         if (!err) {
-            check_all_stopped(ctx);
+            Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+            if ((mem->mem_access & MEM_ACCESS_RD_STOP) != 0 || (ctx->reg_access & REG_ACCESS_RD_STOP) != 0) {
+                check_all_stopped(ctx);
+            }
             expression_context = ctx;
             expression_frame = frame;
             expression_addr = e->addr;
@@ -4458,7 +4466,10 @@ static void command_evaluate_cache_client(void * x) {
     memset(&value, 0, sizeof(value));
     if (expression_context_id(args->id, &ctx, &frame, &e) < 0) err = errno;
     if (!err) {
-        check_all_stopped(ctx);
+        Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+        if ((mem->mem_access & MEM_ACCESS_RD_STOP) != 0 || (ctx->reg_access & REG_ACCESS_RD_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
         expression_context = ctx;
         expression_frame = frame;
         expression_addr = e->addr;
@@ -4466,9 +4477,14 @@ static void command_evaluate_cache_client(void * x) {
         else value_ok = 1;
     }
     if (!err && value.remote && value.size <= 0x10000) {
+        Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
         buf = tmp_alloc_zero((size_t)value.size);
-        if (!err && context_read_mem(ctx, value.address, buf, (size_t)value.size) < 0)
+        if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
+            if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot read memory if not stopped");
+        }
+        if (!err && context_read_mem(ctx, value.address, buf, (size_t)value.size) < 0) {
             err = set_errno(errno, "Cannot read target memory");
+        }
     }
     if (!err && value.loc) {
         unsigned n;
@@ -4683,7 +4699,13 @@ static void command_assign_cache_client(void * x) {
     memset(&value, 0, sizeof(value));
     if (expression_context_id(args->id, &ctx, &frame, &e) < 0) err = errno;
     if (!err) {
-        check_all_stopped(ctx);
+        Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+        if ((mem->mem_access & MEM_ACCESS_RD_STOP) != 0 || (ctx->reg_access & REG_ACCESS_RD_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
+        else if ((mem->mem_access & MEM_ACCESS_WR_STOP) != 0 || (ctx->reg_access & REG_ACCESS_WR_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
         expression_context = ctx;
         expression_frame = frame;
         expression_addr = e->addr;
@@ -4691,7 +4713,10 @@ static void command_assign_cache_client(void * x) {
     }
     if (!err) {
         if (value.remote) {
-            if (context_write_mem(ctx, value.address, args->value_buf, args->value_size) < 0) err = errno;
+            if ((ctx->mem_access & MEM_ACCESS_WR_RUNNING) == 0) {
+                if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot write memory if not stopped");
+            }
+            if (!err && context_write_mem(ctx, value.address, args->value_buf, args->value_size) < 0) err = errno;
 #if SERVICE_Memory
             if (!err) send_event_memory_changed(ctx, value.address, args->value_size);
 #endif

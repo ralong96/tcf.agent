@@ -203,6 +203,8 @@ int context_attach(pid_t pid, ContextAttachCallBack * done, void * data, int mod
     ctx->mem_access |= MEM_ACCESS_INSTRUCTION;
     ctx->mem_access |= MEM_ACCESS_DATA;
     ctx->mem_access |= MEM_ACCESS_USER;
+    ctx->mem_access |= MEM_ACCESS_RD_STOP;
+    ctx->mem_access |= MEM_ACCESS_WR_STOP;
     ctx->big_endian = big_endian_host();
     ext = EXT(ctx);
     ext->pid = pid;
@@ -1390,6 +1392,8 @@ static Context * add_thread(Context * parent, Context * creator, pid_t pid) {
     alloc_regs(ctx);
     ctx->mem = parent;
     ctx->big_endian = parent->big_endian;
+    ctx->reg_access |= REG_ACCESS_RD_STOP;
+    ctx->reg_access |= REG_ACCESS_WR_STOP;
     ctx->creator = creator;
     if (creator) {
         sigset_copy(&ctx->sig_dont_stop, &creator->sig_dont_stop);
@@ -1538,6 +1542,8 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
                 prs2->mem_access |= MEM_ACCESS_INSTRUCTION;
                 prs2->mem_access |= MEM_ACCESS_DATA;
                 prs2->mem_access |= MEM_ACCESS_USER;
+                prs2->mem_access |= MEM_ACCESS_RD_STOP;
+                prs2->mem_access |= MEM_ACCESS_WR_STOP;
                 prs2->big_endian = ctx->parent->big_endian;
                 (prs2->creator = ctx)->ref_count++;
                 sigset_copy(&prs2->sig_dont_stop, &ctx->sig_dont_stop);
@@ -1567,24 +1573,8 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             if (child_pid) {
                 int state = get_process_state(child_pid);
                 if (state != EOF) {
-                    Context * prs = ctx->parent;
-                    Context * ctx2 = create_context(pid2id(child_pid, EXT(prs)->pid));
-                    EXT(ctx2)->pid = child_pid;
-                    EXT(ctx2)->attach_mode = EXT(prs)->attach_mode;
-                    EXT(ctx2)->detach_req = EXT(prs)->detach_req;
-                    EXT(ctx2)->sigstop_posted = 1;
-                    alloc_regs(ctx2);
-                    ctx2->mem = prs;
-                    ctx2->big_endian = prs->big_endian;
-                    sigset_copy(&ctx2->sig_dont_stop, &ctx->sig_dont_stop);
-                    sigset_copy(&ctx2->sig_dont_pass, &ctx->sig_dont_pass);
+                    Context * ctx2 = add_thread(ctx->parent, ctx, child_pid);
                     ctx2->exiting = 1;
-                    (ctx2->creator = ctx)->ref_count++;
-                    (ctx2->parent = prs)->ref_count++;
-                    list_add_last(&ctx2->cldl, &prs->children);
-                    link_context(ctx2);
-                    trace(LOG_EVENTS, "event: new context %#" PRIxPTR ", id %s", (uintptr_t)ctx2, ctx2->id);
-                    send_context_created_event(ctx2);
                     if (state == 't' || state == 'T') {
                         event_pid_stopped(child_pid, SIGSTOP, 0, 0);
                     }

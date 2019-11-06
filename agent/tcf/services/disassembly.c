@@ -310,7 +310,15 @@ static void disassemble_cache_client(void * x) {
     if (ctx == NULL) error = ERR_INV_CONTEXT;
     else if (ctx->exited) error = ERR_ALREADY_EXITED;
 
-    if (!error) check_all_stopped(ctx);
+    if (!error) {
+        Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+        if ((mem->mem_access & MEM_ACCESS_RD_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
+        if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
+            if (!is_all_stopped(ctx)) error = set_errno(ERR_IS_RUNNING, "Cannot read memory if not stopped");
+        }
+    }
 
     if (!error) {
         ContextAddress sym_addr = 0;

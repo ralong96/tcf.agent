@@ -109,6 +109,10 @@ extern const char * REASON_ERROR;
 #define MEM_ACCESS_PHYSICAL     0x0080      /* Context uses physical addresses */
 #define MEM_ACCESS_CACHE        0x0100      /* Context is a cache */
 #define MEM_ACCESS_TLB          0x0200      /* Context is a TLB memory */
+#define MEM_ACCESS_RD_RUNNING   0x0400      /* Context supports reading memory while running */
+#define MEM_ACCESS_WR_RUNNING   0x0800      /* Context supports writing memory while running */
+#define MEM_ACCESS_RD_STOP      0x1000      /* Debugger should stop the context to read memory */
+#define MEM_ACCESS_WR_STOP      0x2000      /* Debugger should stop the context to write memory */
 
 /*
  * Values of "reg_access".

@@ -146,6 +146,22 @@ static void write_context(OutputStream * out, Context * ctx) {
             if (cnt++) write_stream(out, ',');
             json_write_string(out, "tlb");
         }
+        if (ctx->mem_access & MEM_ACCESS_RD_RUNNING) {
+            if (cnt++) write_stream(out, ',');
+            json_write_string(out, "rd-running");
+        }
+        if (ctx->mem_access & MEM_ACCESS_WR_RUNNING) {
+            if (cnt++) write_stream(out, ',');
+            json_write_string(out, "wr-running");
+        }
+        if (ctx->mem_access & MEM_ACCESS_RD_STOP) {
+            if (cnt++) write_stream(out, ',');
+            json_write_string(out, "rd-stop");
+        }
+        if (ctx->mem_access & MEM_ACCESS_WR_STOP) {
+            if (cnt++) write_stream(out, ',');
+            json_write_string(out, "wr-stop");
+        }
         write_stream(out, ']');
     }
 
@@ -409,9 +425,18 @@ static void memory_set_cache_client(void * parm) {
     if (ctx == NULL) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
 
+    if (args->pos > 0 && err == 0) {
+        Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+        if ((mem->mem_access & MEM_ACCESS_WR_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
+        if ((mem->mem_access & MEM_ACCESS_WR_RUNNING) == 0) {
+            if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot write memory if not stopped");
+        }
+    }
+
     /* First write needs to be done before cache_exit() */
-    if (err == 0) {
-        check_all_stopped(ctx);
+    if (args->pos > 0 && err == 0) {
 #if ENABLE_MemoryAccessModes
         if (context_write_mem_ext(ctx, &args->mode, addr, args->buf, args->pos) < 0) {
 #else
@@ -499,13 +524,22 @@ static void memory_get_cache_client(void * parm) {
     if (ctx == NULL) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
 
+    if (size > 0 && err == 0) {
+        Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+        if ((mem->mem_access & MEM_ACCESS_RD_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
+        if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
+            if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot read memory if not stopped");
+        }
+    }
+
     /* First read needs to be done before cache_exit() */
     if (size > 0) {
         size_t rd = size;
         if (rd > args->max) rd = args->max;
         memset(args->buf, 0, rd);
         if (err == 0) {
-            check_all_stopped(ctx);
 #if ENABLE_MemoryAccessModes
             if (context_read_mem_ext(ctx, &args->mode, addr, args->buf, rd) < 0) {
 #else
@@ -594,9 +628,17 @@ static void memory_fill_cache_client(void * parm) {
     if (ctx == NULL) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
 
-    if (err == 0) check_all_stopped(ctx);
+    if (size > 0 && err == 0) {
+        Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
+        if ((mem->mem_access & MEM_ACCESS_WR_STOP) != 0) {
+            check_all_stopped(ctx);
+        }
+        if ((mem->mem_access & MEM_ACCESS_WR_RUNNING) == 0) {
+            if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot write memory if not stopped");
+        }
+    }
 
-    while (err == 0 && addr < addr0 + size) {
+    while (err == 0 && addr - addr0 < size) {
         /* Note: context_write_mem() modifies buffer contents */
         unsigned wr = (unsigned)(addr0 + size - addr);
         if (wr > args->pos) wr = args->pos;
