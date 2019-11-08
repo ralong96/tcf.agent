@@ -216,6 +216,9 @@
     <ClCompile Include="..\..\agent\tcf\http\http-tcf.c">
       <Filter>http</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\agent\tcf\services\runctrl.c">
+      <Filter>services</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\tcf\services\context-proxy.h">
@@ -461,6 +464,9 @@
     </ClInclude>
     <ClInclude Include="..\..\agent\tcf\http\http-tcf.h">
       <Filter>http</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\agent\tcf\services\runctrl.h">
+      <Filter>services</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
