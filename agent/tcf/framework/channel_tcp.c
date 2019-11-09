@@ -88,6 +88,13 @@
 #  endif
 #endif
 
+#ifndef SOCKET_SEND_BUFFER_MINSIZE
+#  define SOCKET_SEND_BUFFER_MINSIZE  200 * 1024
+#endif
+#ifndef SOCKET_RECV_BUFFER_MINSIZE
+#  define SOCKET_RECV_BUFFER_MINSIZE  120 * 1024
+#endif
+
 typedef struct ChannelTCP ChannelTCP;
 
 struct ChannelTCP {
@@ -884,6 +891,30 @@ static ChannelTCP * create_channel(int sock, int en_ssl, int server, int unix_do
         }
     }
 
+    {
+        /* Buffer sizes need to be large enough to avoid deadlocking when agent connects to itself */
+        int snd_org = 0;
+        int rcv_org = 0;
+        socklen_t snd_len = sizeof(snd_org);
+        socklen_t rcv_len = sizeof(rcv_org);
+        int snd_buf = SOCKET_SEND_BUFFER_MINSIZE;
+        int rcv_buf = SOCKET_RECV_BUFFER_MINSIZE;
+
+        if (getsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *)&snd_org, &snd_len) < 0) {
+            trace(LOG_ALWAYS, "getsockopt(SOL_SOCKET,SO_SNDBUF,...) error: %s", errno_to_str(errno));
+        }
+        else if (snd_org < snd_buf && setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *)&snd_buf, sizeof(snd_buf)) < 0) {
+            trace(LOG_ALWAYS, "setsockopt(SOL_SOCKET,SO_SNDBUF,%d) error: %s", snd_buf, errno_to_str(errno));
+        }
+
+        if (getsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *)&rcv_org, &rcv_len) < 0) {
+            trace(LOG_ALWAYS, "getsockopt(SOL_SOCKET,SO_RCVBUF,...) error: %s", errno_to_str(errno));
+        }
+        else if (rcv_org < rcv_buf && setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *)&rcv_buf, sizeof(rcv_buf)) < 0) {
+            trace(LOG_ALWAYS, "setsockopt(SOL_SOCKET,SO_RCVBUF,%d) error: %s", rcv_buf, errno_to_str(errno));
+        }
+    }
+
     if (en_ssl) {
 #if ENABLE_SSL
         if (ssl_ctx == NULL) {
@@ -1201,18 +1232,6 @@ static void server_close(ChannelServer * serv) {
     /* TODO: free server struct */
 }
 
-static void set_socket_buffer_sizes(int sock) {
-    /* Buffer sizes need to be large enough to avoid deadlocking when agent connects to itself */
-    int snd_buf = 4 * BUF_SIZE;
-    int rcv_buf = 8 * BUF_SIZE;
-    if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char *)&snd_buf, sizeof(snd_buf)) < 0) {
-        trace(LOG_ALWAYS, "setsockopt(SOL_SOCKET,SO_SNDBUF,%d) error: %s", snd_buf, errno_to_str(errno));
-    }
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char *)&rcv_buf, sizeof(rcv_buf)) < 0) {
-        trace(LOG_ALWAYS, "setsockopt(SOL_SOCKET,SO_RCVBUF,%d) error: %s", rcv_buf, errno_to_str(errno));
-    }
-}
-
 static ChannelServer * channel_server_create(PeerServer * ps, int sock) {
     ServerTCP * si = (ServerTCP *)loc_alloc_zero(sizeof *si);
     /* TODO: need to investigate usage of sizeof(sockaddr_storage) for address buffer size */
@@ -1499,7 +1518,6 @@ void channel_tcp_connect(PeerServer * ps, ChannelConnectCallBack callback, void 
                 error = errno;
             }
             else {
-                set_socket_buffer_sizes(info->sock);
                 error = 0;
                 break;
             }
@@ -1539,7 +1557,6 @@ void channel_unix_connect(PeerServer * ps, ChannelConnectCallBack callback, void
     info->addr_buf = (struct sockaddr *)loc_alloc(sizeof(struct sockaddr_un));
     error = setup_unix_sockaddr(ps, (struct sockaddr_un *)info->addr_buf);
     if (!error && (info->sock = socket(PF_UNIX, SOCK_STREAM, 0)) < 0) error = errno;
-    if (!error) set_socket_buffer_sizes(info->sock);
 
     if (error) {
         if (info->sock >= 0) closesocket(info->sock);
