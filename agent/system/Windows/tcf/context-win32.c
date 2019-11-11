@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -670,6 +670,8 @@ static void debug_event_handler(DebugEvent * debug_event) {
             prs->mem_access |= MEM_ACCESS_INSTRUCTION;
             prs->mem_access |= MEM_ACCESS_DATA;
             prs->mem_access |= MEM_ACCESS_USER;
+            prs->mem_access |= MEM_ACCESS_RD_STOP;
+            prs->mem_access |= MEM_ACCESS_WR_STOP;
             prs->big_endian = big_endian_host();
             ext->pid = win32_event->dwProcessId;
             ext->handle = win32_event->u.CreateProcessInfo.hProcess;
