@@ -2946,7 +2946,7 @@ void evaluate_breakpoint(Context * ctx) {
     Context * grp = context_get_group(ctx, CONTEXT_GROUP_BREAKPOINT);
     EvaluationRequest * req = create_evaluation_request(grp);
     int already_posted = !list_is_empty(&req->link_posted) || !list_is_empty(&req->link_active);
-    int need_to_post = already_posted;
+    int need_to_post = already_posted || cache_enter_cnt > 0;
 
     assert(context_has_state(ctx));
     assert(ctx->stopped);
@@ -2970,14 +2970,14 @@ void evaluate_breakpoint(Context * ctx) {
         else {
             bi = find_instruction(mem, 0, mem_addr, CTX_BP_ACCESS_INSTRUCTION, 1);
         }
-        if (bi != NULL && bi->planted) {
-            assert(bi->valid);
+        if (bi != NULL) {
             for (i = 0; i < bi->ref_cnt; i++) {
                 if (bi->refs[i].ctx == grp) {
                     BreakpointInfo * bp = bi->refs[i].bp;
                     ConditionEvaluationRequest * c = add_condition_evaluation_request(req, ctx, bp, bi);
                     if (c == NULL) continue;
                     if (need_to_post) continue;
+                    assert(bi->valid);
                     if (is_disabled(bp)) continue;
                     if (bp->condition != NULL || bp->stop_group != NULL || bp->temporary) {
                         need_to_post = 1;
@@ -2994,13 +2994,13 @@ void evaluate_breakpoint(Context * ctx) {
         assert(ctx->stopped_by_cb[0] != NULL);
         for (j = 0; ctx->stopped_by_cb[j]; j++) {
             BreakInstruction * bi = (BreakInstruction *)((char *)ctx->stopped_by_cb[j] - offsetof(BreakInstruction, cb));
-            assert(bi->planted);
             for (i = 0; i < bi->ref_cnt; i++) {
                 if (bi->refs[i].ctx == grp) {
                     BreakpointInfo * bp = bi->refs[i].bp;
                     ConditionEvaluationRequest * c = add_condition_evaluation_request(req, ctx, bp, bi);
                     if (c == NULL) continue;
                     if (need_to_post) continue;
+                    assert(bi->valid);
                     if (is_disabled(bp)) continue;
                     if (bp->condition != NULL || bp->stop_group != NULL || bp->temporary) {
                         need_to_post = 1;
