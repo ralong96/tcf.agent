@@ -180,8 +180,12 @@
 #define DT_NUM          34
 #define DT_LOOS         0x6000000d
 #define DT_HIOS         0x6ffff000
+#define DT_FLAGS_1      0x6ffffffb
 #define DT_LOPROC       0x70000000
 #define DT_HIPROC       0x7fffffff
+
+/* Values of DT_FLAGS_1 */
+#define DF_1_PIE        0x08000000
 
 typedef uint32_t    Elf32_Addr;
 typedef uint16_t    Elf32_Half;

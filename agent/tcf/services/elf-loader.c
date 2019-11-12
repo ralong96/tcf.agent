@@ -161,7 +161,17 @@ ContextAddress elf_get_debug_structure_address(Context * ctx, ELF_File ** file_p
     ContextAddress addr = 0;
 
     for (file = elf_list_first(ctx, 0, ~(ContextAddress)0); file != NULL; file = elf_list_next(ctx)) {
-        if (file->type != ET_EXEC) continue;
+        if (file->type != ET_EXEC) {
+#ifdef DF_1_PIE
+            /* Check for PIE executable */
+            ContextAddress flags = 0;
+            if (file->type != ET_DYN) continue;
+            if (get_dynamic_tag(ctx, file, DT_FLAGS_1, &flags) != 0) continue;
+            if ((flags & DF_1_PIE) == 0) continue;
+#else
+            continue;
+#endif
+        }
         if (file_ptr != NULL) *file_ptr = file;
 #ifdef DT_MIPS_RLD_MAP
         if (get_dynamic_tag(ctx, file, DT_MIPS_RLD_MAP, &addr) == 0) {
