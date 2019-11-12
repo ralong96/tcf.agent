@@ -31,6 +31,7 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/stacktrace.h>
 #include <tcf/services/memorymap.h>
+#include <tcf/services/runctrl.h>
 #include <tcf/services/linenumbers.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/vm.h>
@@ -285,7 +286,9 @@ static void symbols_cleanup_event(void * arg) {
     if (!list_is_empty(&flush_rc) || !list_is_empty(&flush_mm)) {
         post_event_with_delay(symbols_cleanup_event, NULL, SYMBOLS_PROXY_CLEANUP_DELAY);
     }
-    else symbols_cleanup_posted = 0;
+    else {
+        symbols_cleanup_posted = 0;
+    }
 }
 
 static Symbol * alloc_symbol(void) {
@@ -670,7 +673,6 @@ static void read_context_data(InputStream * inp, const char * name, void * args)
 }
 
 static void validate_context(Channel * c, void * args, int error) {
-    Trap trap;
     SymInfoCache * s = (SymInfoCache *)args;
     assert(s->magic == MAGIC_INFO);
     assert(s->pending_get_context != NULL);
@@ -678,10 +680,11 @@ static void validate_context(Channel * c, void * args, int error) {
     assert(s->update_owner == NULL);
     assert(!s->done_context);
     assert(!s->degraded);
-    if (set_trap(&trap)) {
-        s->pending_get_context = NULL;
-        s->done_context = 1;
-        if (!error) {
+    s->pending_get_context = NULL;
+    s->done_context = 1;
+    if (!error) {
+        Trap trap;
+        if (set_trap(&trap)) {
             error = read_errno(&c->inp);
             json_read_struct(&c->inp, read_context_data, s);
             json_test_char(&c->inp, MARKER_EOA);
@@ -692,17 +695,18 @@ static void validate_context(Channel * c, void * args, int error) {
                 list_remove(&s->link_flush);
                 list_add_last(&s->link_flush, &flush_rc);
             }
+            clear_trap(&trap);
         }
-        clear_trap(&trap);
-        if (s->update_owner != NULL) context_lock(s->update_owner);
+        else {
+            error = trap.error;
+            s->update_owner = NULL;
+        }
     }
-    else {
-        error = trap.error;
-        s->update_owner = NULL;
-    }
+    if (s->update_owner != NULL) context_lock(s->update_owner);
     s->error_get_context = get_error_report(error);
     cache_notify_later(&s->cache);
     if (s->disposed) free_sym_info_cache(s);
+    run_ctrl_unlock();
 }
 
 static SymInfoCache * get_sym_info_cache(const Symbol * sym, int acc_mode) {
@@ -757,6 +761,7 @@ static SymInfoCache * get_sym_info_cache(const Symbol * sym, int acc_mode) {
     if (!s->done_context) {
         Channel * c = cache_channel();
         if (c == NULL || is_channel_closed(c)) exception(ERR_SYM_NOT_FOUND);
+        run_ctrl_lock();
         s->pending_get_context = protocol_send_command(c, SYMBOLS, "getContext", validate_context, s);
         json_write_string(&c->out, s->id);
         write_stream(&c->out, 0);
@@ -787,27 +792,28 @@ static char ** read_symbol_list(InputStream * inp, int * id_cnt) {
 }
 
 static void validate_find(Channel * c, void * args, int error) {
-    Trap trap;
     FindSymCache * f = (FindSymCache *)args;
     assert(f->magic == MAGIC_FIND);
     assert(f->pending != NULL);
     assert(f->error == NULL);
-    if (set_trap(&trap)) {
-        f->pending = NULL;
-        if (!error) {
+    f->pending = NULL;
+    if (!error) {
+        Trap trap;
+        if (set_trap(&trap)) {
             error = read_errno(&c->inp);
             f->id_buf = read_symbol_list(&c->inp, &f->id_cnt);
             json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
+            clear_trap(&trap);
         }
-        clear_trap(&trap);
-    }
-    else {
-        error = trap.error;
+        else {
+            error = trap.error;
+        }
     }
     f->error = get_error_report(error);
     cache_notify_later(&f->cache);
     if (f->disposed) free_find_sym_cache(f);
+    run_ctrl_unlock();
 }
 
 int find_symbol_by_name(Context * ctx, int frame, ContextAddress addr, const char * name, Symbol ** sym) {
@@ -850,6 +856,7 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress addr, const cha
             f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
         }
         context_lock(f->ctx = ctx);
+        run_ctrl_lock();
         f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
@@ -923,6 +930,7 @@ int find_symbol_by_addr(Context * ctx, int frame, ContextAddress addr, Symbol **
             f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
         }
         context_lock(f->ctx = ctx);
+        run_ctrl_lock();
         f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
@@ -999,6 +1007,7 @@ int find_symbol_in_scope(Context * ctx, int frame, ContextAddress addr, Symbol *
             f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
         }
         context_lock(f->ctx = ctx);
+        run_ctrl_lock();
         f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
@@ -1085,6 +1094,7 @@ int enumerate_symbols(Context * ctx, int frame, EnumerateSymbolsCallBack * func,
             f->update_policy = UPDATE_ON_MEMORY_MAP_CHANGES;
         }
         context_lock(f->ctx = ctx);
+        run_ctrl_lock();
         f->magic = MAGIC_FIND;
         f->frame = frame;
         f->ip = ip;
@@ -1289,29 +1299,30 @@ int get_symbol_frame(const Symbol * sym, Context ** ctx, int * frame) {
 }
 
 static void validate_children(Channel * c, void * args, int error) {
-    Trap trap;
     SymInfoCache * s = (SymInfoCache *)args;
     assert(s->magic == MAGIC_INFO);
     assert(s->pending_get_children != NULL);
     assert(s->error_get_children == NULL);
     assert(!s->done_children);
-    if (set_trap(&trap)) {
-        s->pending_get_children = NULL;
-        s->done_children = 1;
-        if (!error) {
+    s->pending_get_children = NULL;
+    s->done_children = 1;
+    if (!error) {
+        Trap trap;
+        if (set_trap(&trap)) {
             error = read_errno(&c->inp);
             s->children_ids = read_symbol_list(&c->inp, &s->children_count);
             json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
+            clear_trap(&trap);
         }
-        clear_trap(&trap);
-    }
-    else {
-        error = trap.error;
+        else {
+            error = trap.error;
+        }
     }
     s->error_get_children = get_error_report(error);
     cache_notify_later(&s->cache);
     if (s->disposed) free_sym_info_cache(s);
+    run_ctrl_unlock();
 }
 
 int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
@@ -1330,6 +1341,7 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
     else if (!s->done_children) {
         Channel * c = cache_channel();
         if (c == NULL || is_channel_closed(c)) exception(ERR_SYM_NOT_FOUND);
+        run_ctrl_lock();
         s->pending_get_children = protocol_send_command(c, SYMBOLS, "getChildren", validate_children, s);
         json_write_string(&c->out, s->id);
         write_stream(&c->out, 0);
@@ -1350,28 +1362,29 @@ int get_symbol_children(const Symbol * sym, Symbol *** children, int * count) {
 }
 
 static void validate_array_type_id(Channel * c, void * args, int error) {
-    Trap trap;
     ArraySymCache * s = (ArraySymCache *)args;
     assert(s->magic == MAGIC_ARRAY);
     assert(s->pending != NULL);
     assert(s->error == NULL);
     assert(s->id == NULL);
-    if (set_trap(&trap)) {
-        s->pending = NULL;
-        if (!error) {
+    s->pending = NULL;
+    if (!error) {
+        Trap trap;
+        if (set_trap(&trap)) {
             error = read_errno(&c->inp);
             s->id = json_read_alloc_string(&c->inp);
             json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
+            clear_trap(&trap);
         }
-        clear_trap(&trap);
-    }
-    else {
-        error = trap.error;
+        else {
+            error = trap.error;
+        }
     }
     s->error = get_error_report(error);
     cache_notify_later(&s->cache);
     if (s->disposed) free_arr_sym_cache(s);
+    run_ctrl_unlock();
 }
 
 int get_array_symbol(const Symbol * sym, ContextAddress length, Symbol ** ptr) {
@@ -1393,6 +1406,7 @@ int get_array_symbol(const Symbol * sym, ContextAddress length, Symbol ** ptr) {
         if (c == NULL || is_channel_closed(c)) exception(ERR_SYM_NOT_FOUND);
         a = (ArraySymCache *)loc_alloc_zero(sizeof(*a));
         list_add_first(&a->link_sym, &s->array_syms);
+        run_ctrl_lock();
         a->magic = MAGIC_ARRAY;
         a->length = length;
         a->pending = protocol_send_command(c, SYMBOLS, "getArrayType", validate_array_type_id, a);
@@ -1428,23 +1442,23 @@ static void read_address_attrs(InputStream * inp, const char * name, void * x) {
 }
 
 static void validate_address_info(Channel * c, void * args, int error) {
-    Trap trap;
     AddressInfoCache * f = (AddressInfoCache *)args;
     assert(f->magic == MAGIC_ADDR);
     assert(f->pending != NULL);
     assert(f->error == NULL);
-    if (set_trap(&trap)) {
-        f->pending = NULL;
-        if (!error) {
+    f->pending = NULL;
+    if (!error) {
+        Trap trap;
+        if (set_trap(&trap)) {
             error = read_errno(&c->inp);
             json_read_struct(&c->inp, read_address_attrs, f);
             json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
+            clear_trap(&trap);
         }
-        clear_trap(&trap);
-    }
-    else {
-        error = trap.error;
+        else {
+            error = trap.error;
+        }
     }
     if (f->range_addr != 0 || f->range_size != 0) {
         if (f->range_addr + f->range_size < f->range_addr) {
@@ -1459,6 +1473,7 @@ static void validate_address_info(Channel * c, void * args, int error) {
     f->error = get_error_report(error);
     cache_notify_later(&f->cache);
     if (f->disposed) free_address_info_cache(f);
+    run_ctrl_unlock();
 }
 
 static int get_address_info(Context * ctx, ContextAddress addr, AddressInfoCache ** info) {
@@ -1503,6 +1518,7 @@ static int get_address_info(Context * ctx, ContextAddress addr, AddressInfoCache
         list_add_first(&f->link_syms, syms->link_address + h);
         list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        run_ctrl_lock();
         f->magic = MAGIC_ADDR;
         f->addr = addr;
         context_lock(f->ctx = ctx);
@@ -1701,29 +1717,30 @@ static void read_location_attrs(InputStream * inp, const char * name, void * x) 
 }
 
 static void validate_location_info(Channel * c, void * args, int error) {
-    Trap trap;
     LocationInfoCache * f = (LocationInfoCache *)args;
     assert(f->magic == MAGIC_LOC);
     assert(f->pending != NULL);
     assert(f->error == NULL);
-    if (set_trap(&trap)) {
-        f->pending = NULL;
-        if (!error) {
+    f->pending = NULL;
+    if (!error) {
+        Trap trap;
+        if (set_trap(&trap)) {
             id2register_error = 0;
             error = read_errno(&c->inp);
             json_read_struct(&c->inp, read_location_attrs, f);
             json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
             if (!error && id2register_error) error = id2register_error;
+            clear_trap(&trap);
         }
-        clear_trap(&trap);
-    }
-    else {
-        error = trap.error;
+        else {
+            error = trap.error;
+        }
     }
     f->error = get_error_report(error);
     cache_notify_later(&f->cache);
     if (f->disposed) free_location_info_cache(f);
+    run_ctrl_unlock();
 }
 
 int get_location_info(const Symbol * sym, LocationInfo ** loc) {
@@ -1777,6 +1794,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** loc) {
     }
     if (f->sym_id == NULL) {
         Channel * c = get_channel(syms);
+        run_ctrl_lock();
         f->sym_id = loc_strdup(sym_cache->id);
         f->pending = protocol_send_command(c, SYMBOLS, "getLocationInfo", validate_location_info, f);
         json_write_string(&c->out, f->sym_id);
@@ -1876,14 +1894,14 @@ static void read_stack_frame_props(InputStream * inp, const char * name, void * 
 }
 
 static void validate_frame(Channel * c, void * args, int error) {
-    Trap trap;
     StackFrameCache * f = (StackFrameCache *)args;
     assert(f->magic == MAGIC_FRAME);
     assert(f->pending != NULL);
     assert(f->error == NULL);
-    if (set_trap(&trap)) {
-        f->pending = NULL;
-        if (!error) {
+    f->pending = NULL;
+    if (!error) {
+        Trap trap;
+        if (set_trap(&trap)) {
             id2register_error = 0;
             error = read_errno(&c->inp);
             if (f->command_props) {
@@ -1903,21 +1921,22 @@ static void validate_frame(Channel * c, void * args, int error) {
             }
             json_test_char(&c->inp, MARKER_EOM);
             if (!error && id2register_error) error = id2register_error;
+            clear_trap(&trap);
         }
-        if (error || f->sti.size == 0) {
-            f->sti.addr = (ContextAddress)f->ip;
-            f->sti.size = 1;
+        else {
+            error = trap.error;
         }
-        assert(f->sti.addr <= f->ip);
-        assert(f->sti.addr + f->sti.size == 0 || f->sti.addr + f->sti.size > f->ip);
-        clear_trap(&trap);
     }
-    else {
-        error = trap.error;
+    if (error || f->sti.size == 0) {
+        f->sti.addr = (ContextAddress)f->ip;
+        f->sti.size = 1;
     }
+    assert(f->sti.addr <= f->ip);
+    assert(f->sti.addr + f->sti.size == 0 || f->sti.addr + f->sti.size > f->ip);
     f->error = get_error_report(error);
     cache_notify_later(&f->cache);
     if (f->disposed) free_stack_frame_cache(f);
+    run_ctrl_unlock();
 }
 
 int get_stack_tracing_info(Context * ctx, ContextAddress ip, StackTracingInfo ** info) {
@@ -1972,6 +1991,7 @@ int get_stack_tracing_info(Context * ctx, ContextAddress ip, StackTracingInfo **
         list_add_first(&f->link_syms, syms->link_frame + h);
         list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        run_ctrl_lock();
         f->magic = MAGIC_FRAME;
         f->ip = ip;
         if (syms->no_find_frame_props) {
@@ -2033,27 +2053,28 @@ static void read_file_info_props(InputStream * inp, const char * name, void * ar
 }
 
 static void validate_file(Channel * c, void * args, int error) {
-    Trap trap;
     FileInfoCache * f = (FileInfoCache *)args;
     assert(f->magic == MAGIC_FILE);
     assert(f->pending != NULL);
     assert(f->error == NULL);
-    if (set_trap(&trap)) {
-        f->pending = NULL;
-        if (!error) {
+    f->pending = NULL;
+    if (!error) {
+        Trap trap;
+        if (set_trap(&trap)) {
             error = read_errno(&c->inp);
             json_read_struct(&c->inp, read_file_info_props, f);
             json_test_char(&c->inp, MARKER_EOA);
             json_test_char(&c->inp, MARKER_EOM);
+            clear_trap(&trap);
         }
-        clear_trap(&trap);
-    }
-    else {
-        error = trap.error;
+        else {
+            error = trap.error;
+        }
     }
     if (get_error_code(error) != ERR_INV_COMMAND) f->error = get_error_report(error);
     cache_notify_later(&f->cache);
     if (f->disposed) free_file_info_cache(f);
+    run_ctrl_unlock();
 }
 
 static FileInfoCache * get_file_info_cache(Context * ctx, ContextAddress addr) {
@@ -2095,6 +2116,7 @@ static FileInfoCache * get_file_info_cache(Context * ctx, ContextAddress addr) {
         list_add_first(&f->link_syms, syms->link_file + h);
         list_add_last(&f->link_flush, &flush_mm);
         context_lock(f->ctx = ctx);
+        run_ctrl_lock();
         f->magic = MAGIC_FILE;
         f->addr = addr;
         f->pending = protocol_send_command(c, SYMBOLS, "getSymFileInfo", validate_file, f);
