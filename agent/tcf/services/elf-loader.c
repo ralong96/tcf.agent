@@ -321,13 +321,14 @@ ContextAddress get_tls_address(Context * ctx, ELF_File * file) {
     */
 
     switch (file->machine) {
+    case EM_386:
     case EM_X86_64:
         reg_def = get_reg_by_id(ctx, 58, &reg_id_scope);
         if (reg_def == NULL) exception(errno);
         if (context_read_reg(ctx, reg_def, 0, reg_def->size, buf) < 0)
             str_exception(errno, "Cannot read TCB base register");
         tcb_addr = to_address(buf, reg_def->size, reg_def->big_endian);
-        if (elf_read_memory_word(ctx, file, tcb_addr + 8, &dtv_addr) < 0)
+        if (elf_read_memory_word(ctx, file, tcb_addr + (file->elf64 ? 8 : 4), &dtv_addr) < 0)
             str_exception(errno, "Cannot read TCB");
         break;
     case EM_AARCH64:

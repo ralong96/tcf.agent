@@ -489,6 +489,9 @@ static RegisterDefinition regs_def[] = {
     { "dr6",    REG_OFFSET(user.u_debugreg[6]), 8, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, regs_def + 60 },
     { "dr7",    REG_OFFSET(user.u_debugreg[7]), 8, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, regs_def + 60 },
 
+    { "fs_base32", REG_OFFSET(other.fs.base), 4, 158, 158, 0, 0, 0, 1 },
+    { "gs_base32", REG_OFFSET(other.gs.base), 4, 159, 159, 0, 0, 0, 1 },
+
 #elif defined(__i386__)
 #   define REG_SP user.regs.esp
 #   define REG_BP user.regs.ebp
@@ -528,36 +531,36 @@ static RegisterDefinition regs_def[] = {
 
     { "fpu",    0, 0, -1, -1, 0, 0, 1, 1 },
 
-    { "st0",    REG_OFFSET(other.st_space) +   0, 10, 33, 33, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "st1",    REG_OFFSET(other.st_space) +  16, 10, 34, 34, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "st2",    REG_OFFSET(other.st_space) +  32, 10, 35, 35, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "st3",    REG_OFFSET(other.st_space) +  48, 10, 36, 36, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "st4",    REG_OFFSET(other.st_space) +  64, 10, 37, 37, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "st5",    REG_OFFSET(other.st_space) +  80, 10, 38, 38, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "st6",    REG_OFFSET(other.st_space) +  96, 10, 39, 39, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "st7",    REG_OFFSET(other.st_space) + 112, 10, 40, 40, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st0",    REG_OFFSET(other.fpx.st_space) +   0, 10, 33, 33, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st1",    REG_OFFSET(other.fpx.st_space) +  16, 10, 34, 34, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st2",    REG_OFFSET(other.fpx.st_space) +  32, 10, 35, 35, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st3",    REG_OFFSET(other.fpx.st_space) +  48, 10, 36, 36, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st4",    REG_OFFSET(other.fpx.st_space) +  64, 10, 37, 37, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st5",    REG_OFFSET(other.fpx.st_space) +  80, 10, 38, 38, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st6",    REG_OFFSET(other.fpx.st_space) +  96, 10, 39, 39, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "st7",    REG_OFFSET(other.fpx.st_space) + 112, 10, 40, 40, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
 
-    { "cwd",    REG_OFFSET(other.cwd),  2, 65, 65, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "swd",    REG_OFFSET(other.swd),  2, 66, 66, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "twd",    REG_OFFSET(other.twd),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "fop",    REG_OFFSET(other.fop),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "fip",    REG_OFFSET(other.fip),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "fcs",    REG_OFFSET(other.fcs),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "foo",    REG_OFFSET(other.foo),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
-    { "fos",    REG_OFFSET(other.fos),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "cwd",    REG_OFFSET(other.fpx.cwd),  2, 65, 65, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "swd",    REG_OFFSET(other.fpx.swd),  2, 66, 66, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "twd",    REG_OFFSET(other.fpx.twd),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "fop",    REG_OFFSET(other.fpx.fop),  2, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "fip",    REG_OFFSET(other.fpx.fip),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "fcs",    REG_OFFSET(other.fpx.fcs),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "foo",    REG_OFFSET(other.fpx.foo),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "fos",    REG_OFFSET(other.fpx.fos),  4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
 
-    { "mxcsr",  REG_OFFSET(other.mxcsr), 4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
+    { "mxcsr",  REG_OFFSET(other.fpx.mxcsr), 4, -1, -1, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 28 },
 
     { "xmm",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 46 */
 
-    { "xmm0",   REG_OFFSET(other.xmm_space) +   0, 16, 17, 17, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm1",   REG_OFFSET(other.xmm_space) +  16, 16, 18, 18, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm2",   REG_OFFSET(other.xmm_space) +  32, 16, 19, 19, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm3",   REG_OFFSET(other.xmm_space) +  48, 16, 20, 20, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm4",   REG_OFFSET(other.xmm_space) +  64, 16, 21, 21, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm5",   REG_OFFSET(other.xmm_space) +  80, 16, 22, 22, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm6",   REG_OFFSET(other.xmm_space) +  96, 16, 23, 23, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
-    { "xmm7",   REG_OFFSET(other.xmm_space) + 112, 16, 24, 24, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm0",   REG_OFFSET(other.fpx.xmm_space) +   0, 16, 17, 17, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm1",   REG_OFFSET(other.fpx.xmm_space) +  16, 16, 18, 18, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm2",   REG_OFFSET(other.fpx.xmm_space) +  32, 16, 19, 19, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm3",   REG_OFFSET(other.fpx.xmm_space) +  48, 16, 20, 20, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm4",   REG_OFFSET(other.fpx.xmm_space) +  64, 16, 21, 21, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm5",   REG_OFFSET(other.fpx.xmm_space) +  80, 16, 22, 22, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm6",   REG_OFFSET(other.fpx.xmm_space) +  96, 16, 23, 23, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
+    { "xmm7",   REG_OFFSET(other.fpx.xmm_space) + 112, 16, 24, 24, 0, 1, 0,  0,  0,  0,  0,  0,  0,  0,  0, regs_def + 46 },
 
     { "debug",    0, 0, -1, -1, 0, 0, 1, 1 }, /* 55 */
 
@@ -567,6 +570,9 @@ static RegisterDefinition regs_def[] = {
     { "dr3",    REG_OFFSET(user.u_debugreg[3]), 4, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, regs_def + 55 },
     { "dr6",    REG_OFFSET(user.u_debugreg[6]), 4, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, regs_def + 55 },
     { "dr7",    REG_OFFSET(user.u_debugreg[7]), 4, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, regs_def + 55 },
+
+    { "fs_base", REG_OFFSET(other.fs.base), 4, 58, 58, 0, 0, 0, 1 },
+    { "gs_base", REG_OFFSET(other.gs.base), 4, 59, 59, 0, 0, 0, 1 },
 
 #endif
 
@@ -583,22 +589,34 @@ unsigned char BREAK_INST[] = { 0xcc };
 
 #include <tcf/framework/mdep-ptrace.h>
 
-#if !defined(PTRACE_GETFPXREGS) && !defined(PT_GETFPXREGS)
-#define PTRACE_GETFPXREGS 18
-#endif
-#if !defined(PTRACE_SETFPXREGS) && !defined(PT_SETFPXREGS)
-#define PTRACE_SETFPXREGS 19
-#endif
-
 int mdep_get_other_regs(pid_t pid, REG_SET * data,
                        size_t data_offs, size_t data_size,
                        size_t * done_offs, size_t * done_size) {
     assert(data_offs >= offsetof(REG_SET, other));
     assert(data_offs + data_size <= offsetof(REG_SET, other) + sizeof(data->other));
-    if (ptrace(PTRACE_GETFPXREGS, pid, 0, &data->other) < 0) return -1;
-    *done_offs = offsetof(REG_SET, other);
-    *done_size = sizeof(data->other);
-    return 0;
+#if defined(__i386__)
+    if (data_offs >= REG_OFFSET(other.fpx) && data_offs < REG_OFFSET(other.fpx) + sizeof(data->other.fpx)) {
+        if (ptrace(PTRACE_GETFPXREGS, pid, 0, &data->other.fpx) < 0) return -1;
+        *done_offs = offsetof(REG_SET, other.fpx);
+        *done_size = sizeof(data->other.fpx);
+        return 0;
+    }
+#endif
+    assert(sizeof(data->other.fs) == 16);
+    if (data_offs >= REG_OFFSET(other.fs) && data_offs < REG_OFFSET(other.fs) + sizeof(data->other.fs)) {
+        if (ptrace(PTRACE_GET_THREAD_AREA, pid, 12, &data->other.fs) < 0) return -1;
+        *done_offs = offsetof(REG_SET, other.fs);
+        *done_size = sizeof(data->other.fs);
+        return 0;
+    }
+    if (data_offs >= REG_OFFSET(other.gs) && data_offs < REG_OFFSET(other.gs) + sizeof(data->other.gs)) {
+        if (ptrace(PTRACE_GET_THREAD_AREA, pid, 13, &data->other.gs) < 0) return -1;
+        *done_offs = offsetof(REG_SET, other.gs);
+        *done_size = sizeof(data->other.gs);
+        return 0;
+    }
+    errno = ERR_UNSUPPORTED;
+    return -1;
 }
 
 int mdep_set_other_regs(pid_t pid, REG_SET * data,
@@ -606,10 +624,16 @@ int mdep_set_other_regs(pid_t pid, REG_SET * data,
                        size_t * done_offs, size_t * done_size) {
     assert(data_offs >= offsetof(REG_SET, other));
     assert(data_offs + data_size <= offsetof(REG_SET, other) + sizeof(data->other));
-    if (ptrace(PTRACE_SETFPXREGS, pid, 0, &data->other) < 0) return -1;
-    *done_offs = offsetof(REG_SET, other);
-    *done_size = sizeof(data->other);
-    return 0;
+#if defined(__i386__)
+    if (data_offs >= REG_OFFSET(other.fpx) && data_offs < REG_OFFSET(other.fpx) + sizeof(data->other.fpx)) {
+        if (ptrace(PTRACE_SETFPXREGS, pid, 0, &data->other.fpx) < 0) return -1;
+        *done_offs = offsetof(REG_SET, other.fpx);
+        *done_size = sizeof(data->other.fpx);
+        return 0;
+    }
+#endif
+    errno = ERR_UNSUPPORTED;
+    return -1;
 }
 
 #endif
@@ -628,6 +652,8 @@ RegisterDefinition * get_386_reg_by_id(Context * ctx, unsigned id_type, unsigned
     case 7: /* edi */ id = 5; break;
     case 8: /* eip */ id = 16; break;
     case 9: /* eflags */ id = 49; break;
+    case 58: /* fs_base */ id = 158; break;
+    case 59: /* gs_base */ id = 159; break;
     default:
         set_errno(ERR_OTHER, "Invalid register ID");
         return NULL;
