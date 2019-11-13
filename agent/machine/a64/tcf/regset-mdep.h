@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015-2017 Xilinx, Inc. and others.
+ * Copyright (c) 2015-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -19,6 +19,19 @@
 #if defined(__linux__)
 
 #include <elf.h>
+#include <tcf/framework/mdep-ptrace.h>
+
+#ifndef PTRACE_GETREGSET
+#  define PTRACE_GETREGSET 0x4204
+#endif
+
+#ifndef PTRACE_SETREGSET
+#  define PTRACE_SETREGSET 0x4205
+#endif
+
+#if !defined(NT_ARM_TLS)
+#define NT_ARM_TLS 0x401
+#endif
 
 #define MDEP_UseREGSET
 
@@ -42,7 +55,13 @@ struct regset_fp {
     uint32_t fpcr;
 };
 
+struct regset_extra {
+    uint64_t tls;
+};
+
 #define REGSET_GP NT_PRSTATUS
 #define REGSET_FP NT_FPREGSET
+
+#define MDEP_OtherRegisters struct regset_extra
 
 #endif

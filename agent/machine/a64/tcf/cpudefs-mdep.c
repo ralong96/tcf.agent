@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015-2017 Xilinx, Inc. and others.
+ * Copyright (c) 2015-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -43,6 +43,7 @@ RegisterDefinition regs_def[] = {
     { "pc",      REG_OFFSET(gp.pc),                   8, 33, 33 },
     { "cpsr",    REG_OFFSET(gp.pstate),               8, -1, -1 },
     { "orig_x0", REG_OFFSET(gp.orig_x0),              8, -1, -1 },
+    { "tls",     REG_OFFSET(other.tls),               8, -1, -1, 0, 0, 0, 1 },
     { "vfp",     0, 0, -1, -1, 0, 0, 1, 1 },
     { NULL },
 };
@@ -54,6 +55,35 @@ static unsigned regs_max = 0;
 unsigned char BREAK_INST[] = { 0x00, 0x00, 0x20, 0xd4 };
 
 static RegisterDefinition * pc_def = NULL;
+
+#ifdef MDEP_OtherRegisters
+
+int mdep_get_other_regs(pid_t pid, REG_SET * data,
+        size_t data_offs, size_t data_size,
+        size_t * done_offs, size_t * done_size) {
+    assert(data_offs >= offsetof(REG_SET, other));
+    assert(data_offs + data_size <= offsetof(REG_SET, other) + sizeof(data->other));
+    if (data_offs >= REG_OFFSET(other.tls) && data_offs < REG_OFFSET(other.tls) + sizeof(data->other.tls)) {
+        struct iovec iovec;
+        iovec.iov_base = &data->other.tls;
+        iovec.iov_len = sizeof(data->other.tls);
+        if (ptrace(PTRACE_GETREGSET, pid, NT_ARM_TLS, &iovec) < 0) return -1;
+        *done_offs = offsetof(REG_SET, other.tls);
+        *done_size = sizeof(data->other.tls);
+        return 0;
+    }
+    set_errno(ERR_OTHER, "Not supported");
+    return -1;
+}
+
+int mdep_set_other_regs(pid_t pid, REG_SET * data,
+        size_t data_offs, size_t data_size,
+        size_t * done_offs, size_t * done_size) {
+    set_errno(ERR_OTHER, "Not supported");
+    return -1;
+}
+
+#endif
 
 RegisterDefinition * get_PC_definition(Context * ctx) {
     if (!context_has_state(ctx)) return NULL;

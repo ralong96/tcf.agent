@@ -126,6 +126,8 @@
 #define STT_FUNC        2
 #define STT_SECTION     3
 #define STT_FILE        4
+#define STT_COMMON      5
+#define STT_TLS         6
 #define STT_LOPROC      13
 #define STT_HIPROC      15
 #define STT_ARM_TFUNC   STT_LOPROC
@@ -397,6 +399,12 @@ typedef struct {
 #endif
 #ifndef STT_GNU_IFUNC
 #define STT_GNU_IFUNC  10
+#endif
+#ifndef DT_FLAGS_1
+#define DT_FLAGS_1      0x6ffffffb
+#endif
+#ifndef DF_1_PIE
+#define DF_1_PIE        0x08000000
 #endif
 
 typedef struct ElfX_Sym {

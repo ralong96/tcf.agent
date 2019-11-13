@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2018 Stanislav Yakovlev and others.
+ * Copyright (c) 2013-2019 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -20,6 +20,7 @@
 #if defined(__linux__)
 
 #include <elf.h>
+#include <tcf/framework/mdep-ptrace.h>
 
 #define MDEP_UseREGSET
 

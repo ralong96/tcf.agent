@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2011-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -162,15 +162,11 @@ ContextAddress elf_get_debug_structure_address(Context * ctx, ELF_File ** file_p
 
     for (file = elf_list_first(ctx, 0, ~(ContextAddress)0); file != NULL; file = elf_list_next(ctx)) {
         if (file->type != ET_EXEC) {
-#ifdef DF_1_PIE
             /* Check for PIE executable */
             ContextAddress flags = 0;
             if (file->type != ET_DYN) continue;
             if (get_dynamic_tag(ctx, file, DT_FLAGS_1, &flags) != 0) continue;
             if ((flags & DF_1_PIE) == 0) continue;
-#else
-            continue;
-#endif
         }
         if (file_ptr != NULL) *file_ptr = file;
 #ifdef DT_MIPS_RLD_MAP
@@ -222,7 +218,7 @@ static void read_field(Context * ctx, const Symbol * sym, ContextAddress base, C
 #endif
 
 static ContextAddress find_module(Context * ctx, ELF_File * exe_file, ELF_File * module,
-                                  ContextAddress r_map, ContextAddress r_brk) {
+                                  ContextAddress r_map, ContextAddress r_brk, ContextAddress * tls_offs) {
 #if ENABLE_Symbols
     Symbol * sym = NULL;
     int i = 0, n = 0;
@@ -231,6 +227,7 @@ static ContextAddress find_module(Context * ctx, ELF_File * exe_file, ELF_File *
     Symbol * sym_l_addr = NULL;
     Symbol * sym_l_next = NULL;
     Symbol * sym_l_tls_modid = NULL;
+    Symbol * sym_l_tls_offset = NULL;
     if (find_symbol_by_name(ctx, STACK_NO_FRAME, r_brk, "link_map", &sym) < 0)
         str_exception(errno, "Cannot find loader symbol: link_map");
     if (get_symbol_children(sym, &children, &n) < 0) exception(errno);
@@ -241,6 +238,7 @@ static ContextAddress find_module(Context * ctx, ELF_File * exe_file, ELF_File *
         if (strcmp(name, "l_map_start") == 0) sym_l_addr = children[i];
         else if (strcmp(name, "l_next") == 0) sym_l_next = children[i];
         else if (strcmp(name, "l_tls_modid") == 0) sym_l_tls_modid = children[i];
+        else if (strcmp(name, "l_tls_offset") == 0) sym_l_tls_offset = children[i];
     }
     if (sym_l_addr == NULL || sym_l_next == NULL || sym_l_tls_modid == NULL)
         str_exception(ERR_OTHER, "Invalid 'link_map' fields");
@@ -253,8 +251,10 @@ static ContextAddress find_module(Context * ctx, ELF_File * exe_file, ELF_File *
             read_field(ctx, sym_l_addr, link, &l_addr);
             elf_map_to_link_time_address(ctx, l_addr, 0, &link_file, NULL);
             if (link_file != NULL) {
-                if (link_file == module) return l_tls_modid;
-                if (get_dwarf_file(link_file) == module) return l_tls_modid;
+                if (link_file == module || get_dwarf_file(link_file) == module) {
+                    if (sym_l_tls_offset != NULL) read_field(ctx, sym_l_tls_offset, link, tls_offs);
+                    return l_tls_modid;
+                }
             }
         }
         read_field(ctx, sym_l_next, link, &link);
@@ -263,7 +263,7 @@ static ContextAddress find_module(Context * ctx, ELF_File * exe_file, ELF_File *
     return 0;
 }
 
-static ContextAddress get_module_id(Context * ctx, ELF_File * module) {
+static ContextAddress get_module_id(Context * ctx, ELF_File * module, ContextAddress * tls_offs) {
     ELF_File * exe_file = NULL;
     ContextAddress addr = elf_get_debug_structure_address(ctx, &exe_file);
     size_t word_size = exe_file && exe_file->elf64 ? 8 : 4;
@@ -276,7 +276,7 @@ static ContextAddress get_module_id(Context * ctx, ELF_File * module) {
         ContextAddress mod_id = 0;
         if (elf_read_memory_word(ctx, exe_file, addr + word_size * 1, &r_map) < 0) exception(errno);
         if (elf_read_memory_word(ctx, exe_file, addr + word_size * 2, &r_brk) < 0) exception(errno);
-        if (r_map != 0 && r_brk != 0) mod_id = find_module(ctx, exe_file, module, r_map, r_brk);
+        if (r_map != 0 && r_brk != 0) mod_id = find_module(ctx, exe_file, module, r_map, r_brk, tls_offs);
         clear_trap(&trap);
         if (mod_id) return mod_id;
     }
@@ -288,8 +288,18 @@ static ContextAddress get_module_id(Context * ctx, ELF_File * module) {
 }
 
 ContextAddress get_tls_address(Context * ctx, ELF_File * file) {
+
+    /* Note: handling TLS needs libc debug info on the target machine (apt install libc6-dbg) */
+
+    uint8_t buf[8];
     ContextAddress mod_tls_addr = 0;
     RegisterIdScope reg_id_scope;
+    ContextAddress tcb_addr = 0;
+    ContextAddress tls_addr = 0;
+    ContextAddress dtv_addr = 0;  /* Address of Dynamic Thread Vector */
+    ContextAddress tls_offs = 0;
+    ContextAddress mod_id = get_module_id(ctx, file, &tls_offs);
+    RegisterDefinition * reg_def = NULL;
 
     memset(&reg_id_scope, 0, sizeof(reg_id_scope));
     reg_id_scope.machine = file->machine;
@@ -298,32 +308,52 @@ ContextAddress get_tls_address(Context * ctx, ELF_File * file) {
     reg_id_scope.big_endian = file->big_endian;
     reg_id_scope.id_type = REGNUM_DWARF;
 
+    /* Element type of the DTV:
+    typedef union {
+        size_t counter;
+        struct {
+            void * val;
+            void * to_free;
+        } pointer;
+    } dtv_t;
+
+    val == (void *) -1l means allocation is delayed
+    */
+
     switch (file->machine) {
     case EM_X86_64:
-        {
-            uint8_t buf[8];
-            ContextAddress tcb_addr = 0;
-            ContextAddress vdt_addr = 0;
-            ContextAddress mod_id = 0;
-            RegisterDefinition * reg_def = get_reg_by_id(ctx, 58, &reg_id_scope);
-            if (reg_def == NULL) exception(errno);
-            if (context_read_reg(ctx, reg_def, 0, reg_def->size, buf) < 0)
-                str_exception(errno, "Cannot read TCB base register");
-            tcb_addr = to_address(buf, reg_def->size, reg_def->big_endian);
-            if (elf_read_memory_word(ctx, file, tcb_addr + 8, &vdt_addr) < 0)
-                str_exception(errno, "Cannot read TCB");
-            mod_id = get_module_id(ctx, file);
-            if (elf_read_memory_word(ctx, file, vdt_addr + mod_id * 16, &mod_tls_addr) < 0)
-                str_exception(errno, "Cannot read VDT");
-            if (mod_tls_addr == 0 || mod_tls_addr == ~(ContextAddress)0)
-                str_exception(errno, "Thread local storage is not allocated yet");
-        }
+        reg_def = get_reg_by_id(ctx, 58, &reg_id_scope);
+        if (reg_def == NULL) exception(errno);
+        if (context_read_reg(ctx, reg_def, 0, reg_def->size, buf) < 0)
+            str_exception(errno, "Cannot read TCB base register");
+        tcb_addr = to_address(buf, reg_def->size, reg_def->big_endian);
+        if (elf_read_memory_word(ctx, file, tcb_addr + 8, &dtv_addr) < 0)
+            str_exception(errno, "Cannot read TCB");
         break;
-    default:
+    case EM_AARCH64:
+        reg_def = get_reg_definitions(ctx);
+        if (reg_def == NULL) str_exception(ERR_OTHER, "TLS register not found");
+        while (reg_def->name != NULL && strcmp(reg_def->name, "tls") != 0) reg_def++;
+        if (reg_def->name == NULL) str_exception(ERR_OTHER, "TLS register not found");
+        if (context_read_reg(ctx, reg_def, 0, reg_def->size, buf) < 0)
+            str_exception(errno, "Cannot read TLS register");
+        tls_addr = to_address(buf, reg_def->size, reg_def->big_endian);
+        if (elf_read_memory_word(ctx, file, tls_addr, &dtv_addr) < 0)
+            str_exception(errno, "Cannot read TLS");
+        break;
+    }
+    if (dtv_addr == 0) {
         str_fmt_exception(ERR_INV_CONTEXT,
             "Thread local storage access is not supported yet for machine type %d",
             file->machine);
     }
+    if (elf_read_memory_word(ctx, file, dtv_addr + mod_id * (file->elf64 ? 16 : 8), &mod_tls_addr) < 0)
+        str_exception(errno, "Cannot read DTV");
+    if (mod_tls_addr == ~(ContextAddress)0 && tls_offs != 0 && tls_offs != ~(ContextAddress)0) {
+        mod_tls_addr = tcb_addr ? tcb_addr - tls_offs : tls_addr + tls_offs;
+    }
+    if (mod_tls_addr == 0 || mod_tls_addr == ~(ContextAddress)0)
+        str_exception(ERR_OTHER, "Thread local storage is not allocated yet");
     return mod_tls_addr;
 }
 

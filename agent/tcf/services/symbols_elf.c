@@ -46,6 +46,7 @@
 #include <tcf/services/pathmap.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/elf-symbols.h>
+#include <tcf/services/elf-loader.h>
 #include <tcf/services/vm.h>
 #if ENABLE_SymbolsMux
 #define SYM_READER_PREFIX elf_reader_
@@ -164,8 +165,6 @@ static struct BaseTypeAlias {
 
 #define equ_symbol_names(x, y) (*x == *y && cmp_symbol_names(x, y) == 0)
 #define check_in_range(obj, addr) dwarf_check_in_range(obj, (addr)->section, (addr)->lt_addr)
-
-static int map_to_sym_table(ObjectInfo * obj, Symbol ** sym);
 
 /* This function is used for DWARF reader testing */
 extern ObjectInfo * get_symbol_object(Symbol * sym);
@@ -319,7 +318,12 @@ int elf_tcf_symbol(Context * ctx, ELF_SymbolInfo * sym_info, Symbol ** symbol) {
     Symbol * sym = alloc_symbol();
 
     sym->frame = STACK_NO_FRAME;
-    sym->ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
+    if (sym_info->type == STT_TLS) {
+        sym->ctx = ctx;
+    }
+    else {
+        sym->ctx = context_get_group(ctx, CONTEXT_GROUP_SYMBOLS);
+    }
     sym->tbl = sym_info->sym_section;
     sym->index = sym_info->sym_index;
     sym->dynsym = sym->tbl->type == SHT_DYNSYM;
@@ -1023,6 +1027,8 @@ static int symbol_has_location(Symbol * sym) {
             unpack_elf_symbol_info(sym->tbl, sym->index, &info);
             if (info.section_index == SHN_UNDEF) return 0;
             if (info.section_index == SHN_COMMON) return 0;
+            if (info.type == STT_TLS && !context_has_state(sym->ctx)) return 0;
+            if (info.type == STT_COMMON) return 0;
         }
         return 1;
     }
@@ -1034,9 +1040,54 @@ static int symbol_has_location(Symbol * sym) {
             /* AT_location defined, so we have an address */
             return 1;
         }
+        if (sym->obj->mFlags & DOIF_data_location) {
+            return 1;
+        }
         if (sym->obj->mFlags & DOIF_low_pc) {
             /* AT_low_pc defined, so we have an address */
             return 1;
+        }
+        if (sym->obj->mFlags & DOIF_external) {
+            /* No location info in DWARF, check ELF symbols for symbol address */
+            /* Do not call map_to_sym_table() - infinite recursion */
+            ELF_File * file = sym->obj->mCompUnit->mFile;
+            if (file->debug_info_file) {
+                size_t n = strlen(file->name);
+                if (n > 6 && strcmp(file->name + n - 6, ".debug") == 0) {
+                    char * fnm = (char *)tmp_alloc_zero(n);
+                    memcpy(fnm, file->name, n - 6);
+                    fnm = canonicalize_file_name(fnm);
+                    if (fnm != NULL) {
+                        file = elf_open(fnm);
+                        free(fnm);
+                    }
+                }
+            }
+            if (file != NULL) {
+                const char * name = get_linkage_name(sym->obj);
+                if (name != NULL) {
+                    unsigned m = 0;
+                    unsigned h = calc_symbol_name_hash(name);
+                    for (m = 1; m < file->section_cnt; m++) {
+                        unsigned n;
+                        ELF_Section * tbl = file->sections + m;
+                        if (tbl->sym_names_hash == NULL) continue;
+                        n = tbl->sym_names_hash[h % tbl->sym_names_hash_size];
+                        while (n) {
+                            ELF_SymbolInfo info;
+                            unpack_elf_symbol_info(tbl, n, &info);
+                            n = tbl->sym_names_next[n];
+                            if (equ_symbol_names(name, info.name) && info.bind == STB_GLOBAL) {
+                                if (info.section_index == SHN_UNDEF) continue;
+                                if (info.section_index == SHN_COMMON) continue;
+                                if (info.type == STT_TLS && !context_has_state(sym->ctx)) continue;
+                                if (info.type == STT_COMMON) continue;
+                                return 1;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     return 0;
@@ -4168,6 +4219,15 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                 errno = error;
                 return -1;
             }
+        }
+        if (elf_sym_info.type == STT_TLS) {
+            Trap trap;
+            if (!set_trap(&trap)) return -1;
+            address = get_tls_address(sym->ctx, elf_sym_info.sym_section->file);
+            clear_trap(&trap);
+            cmd = add_location_command(info, SFT_CMD_NUMBER);
+            cmd->args.num = address + elf_sym_info.value;
+            return 0;
         }
         if (elf_symbol_has_address(&elf_sym_info)) {
             if (elf_symbol_address(sym_ctx, &elf_sym_info, &address)) return -1;
