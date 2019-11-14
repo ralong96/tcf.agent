@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2016 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -190,6 +190,7 @@ struct PeerCache {
     ForwardingInputStream fwd_buf;
     InputStream * bck_inp;
     InputStream * fwd_inp;
+    int cache_lock;
 
     /* Initial Run Control context tree retrieval */
     int rc_done;
@@ -253,6 +254,8 @@ static const char MEMORY_MAP[] = "MemoryMap";
 static const char PATH_MAP[] = "PathMap";
 static const char MEMORY[] = "Memory";
 static const char REGISTERS[] = "Registers";
+
+static unsigned pending_cache_cnt = 0;
 
 #if ENABLE_ContextMux
 /*
@@ -959,6 +962,19 @@ static void command_path_map_set(char * token, Channel * c, void * args) {
     json_test_char(p->fwd_inp, MARKER_EOM);
 }
 
+static ReplyHandlerInfo * send_command(PeerCache * p,
+        const char * service, const char * name, ReplyHandlerCB handler, void * client_data) {
+    if (pending_cache_cnt > 0 && p->cache_lock == 0) {
+        OutputStream * out = &p->target->out;
+        write_stringz(out, "E");
+        write_stringz(out, CONTEXT_PROXY);
+        write_stringz(out, "lock");
+        write_stream(out, MARKER_EOM);
+        p->cache_lock = 1;
+    }
+    return protocol_send_command(p->target, service, name, handler, client_data);
+}
+
 static void validate_peer_cache_children(Channel * c, void * args, int error);
 
 void create_context_proxy(Channel * host, Channel * target, int forward_pm) {
@@ -990,7 +1006,7 @@ void create_context_proxy(Channel * host, Channel * target, int forward_pm) {
     add_event_handler2(target, REGISTERS, "registerChanged", event_register_changed, p);
     if (forward_pm) add_command_handler2(host->protocol, PATH_MAP, "set", command_path_map_set, p);
     /* Retrieve initial set of run control contexts */
-    protocol_send_command(p->target, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
+    send_command(p, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
     write_stringz(&p->target->out, "null");
     write_stream(&p->target->out, MARKER_EOM);
     p->rc_pending_cnt++;
@@ -1009,7 +1025,7 @@ static void read_rc_children_item(InputStream * inp, void * args) {
         ContextCache * c = (ContextCache *)loc_alloc_zero(sizeof(ContextCache));
         strcpy(c->id, id);
         c->peer = p;
-        protocol_send_command(p->target, RUN_CONTROL, "getContext", validate_peer_cache_context, c);
+        send_command(p, RUN_CONTROL, "getContext", validate_peer_cache_context, c);
         json_write_string(&p->target->out, c->id);
         write_stream(&p->target->out, 0);
         write_stream(&p->target->out, MARKER_EOM);
@@ -1085,7 +1101,7 @@ static void validate_peer_cache_context(Channel * c, void * args, int error) {
                 free_context_cache(x);
             }
             else if (x->has_state) {
-                protocol_send_command(p->target, RUN_CONTROL, "getState", validate_peer_cache_state, x);
+                send_command(p, RUN_CONTROL, "getState", validate_peer_cache_state, x);
                 json_write_string(&p->target->out, x->id);
                 write_stream(&p->target->out, 0);
                 write_stream(&p->target->out, MARKER_EOM);
@@ -1093,7 +1109,7 @@ static void validate_peer_cache_context(Channel * c, void * args, int error) {
             }
             else {
                 add_context_cache(p, x);
-                protocol_send_command(p->target, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
+                send_command(p, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
                 json_write_string(&p->target->out, x->id);
                 write_stream(&p->target->out, 0);
                 write_stream(&p->target->out, MARKER_EOM);
@@ -1144,7 +1160,7 @@ static void validate_peer_cache_state(Channel * c, void * args, int error) {
                 if (x->intercepted) {
                     clear_context_cache(x);
                 }
-                protocol_send_command(p->target, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
+                send_command(p, RUN_CONTROL, "getChildren", validate_peer_cache_children, p);
                 json_write_string(&p->target->out, x->id);
                 write_stream(&p->target->out, 0);
                 write_stream(&p->target->out, MARKER_EOM);
@@ -1327,7 +1343,7 @@ int context_read_mem(Context * ctx, ContextAddress address, void * buf, size_t s
     m->addr = address;
     m->buf = loc_alloc(size);
     m->size = size;
-    m->pending = protocol_send_command(c, "Memory", "get", validate_memory_cache, m);
+    m->pending = send_command(cache->peer, MEMORY, "get", validate_memory_cache, m);
     json_write_string(&c->out, cache->ctx->id);
     write_stream(&c->out, 0);
     json_write_int64(&c->out, m->addr);
@@ -1491,7 +1507,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
                 if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
                 if (fc->pending != NULL) cache_wait(&fc->cache);
                 fc->reg_pending = rn;
-                fc->pending = protocol_send_command(c, "Registers", "get", validate_top_frame_reg_values_cache, fc);
+                fc->pending = send_command(fc->ctx->peer, REGISTERS, "get", validate_top_frame_reg_values_cache, fc);
                 json_write_string(&c->out, fc->ctx->reg_props[rn].id);
                 write_stream(&c->out, 0);
                 write_stream(&c->out, MARKER_EOM);
@@ -1511,7 +1527,7 @@ int read_reg_bytes(StackFrame * frame, RegisterDefinition * reg_def, unsigned of
             if (!set_trap(&trap)) return -1;
             if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
             if (fc->pending != NULL) cache_wait(&fc->cache);
-            fc->pending = protocol_send_command(c, "Registers", "getm", validate_mid_frame_reg_values_cache, fc);
+            fc->pending = send_command(fc->ctx->peer, REGISTERS, "getm", validate_mid_frame_reg_values_cache, fc);
             write_stream(&c->out, '[');
             for (n = 0; n < fc->reg_cnt; n++) {
                 RegisterDefinition * reg = fc->reg_defs[n];
@@ -1694,7 +1710,7 @@ static ContextCache * get_memory_map_cache(Context * ctx) {
 
     if (cache->pending_get_mmap != NULL) cache_wait(&cache->mmap_cache);
     if (cache->mmap_is_valid == 0 && cache->peer != NULL) {
-        cache->pending_get_mmap = protocol_send_command(c, MEMORY_MAP, "get", validate_memory_map_cache, cache);
+        cache->pending_get_mmap = send_command(cache->peer, MEMORY_MAP, "get", validate_memory_map_cache, cache);
         json_write_string(&c->out, cache->id);
         write_stream(&c->out, 0);
         write_stream(&c->out, MARKER_EOM);
@@ -1858,7 +1874,7 @@ static void validate_registers_cache(Channel * c, void * args, int error) {
                 json_test_char(&c->inp, MARKER_EOM);
                 for (i = 0; i < ids_buf_pos; i++) {
                     cache->pending_regs_cnt++;
-                    protocol_send_command(c, "Registers", "getContext", validate_registers_cache, cache);
+                    send_command(cache->peer, REGISTERS, "getContext", validate_registers_cache, cache);
                     json_write_string(&c->out, str_buf + ids_buf[i]);
                     write_stream(&c->out, 0);
                     write_stream(&c->out, MARKER_EOM);
@@ -1888,7 +1904,7 @@ static void validate_registers_cache(Channel * c, void * args, int error) {
                 cache->reg_props[i] = props;
                 cache->reg_defs[i] = props.def;
                 cache->pending_regs_cnt++;
-                protocol_send_command(c, "Registers", "getChildren", validate_registers_cache, cache);
+                send_command(cache->peer, REGISTERS, "getChildren", validate_registers_cache, cache);
                 json_write_string(&c->out, props.id);
                 write_stream(&c->out, 0);
                 write_stream(&c->out, MARKER_EOM);
@@ -1932,7 +1948,7 @@ static void check_registers_cache(ContextCache * cache) {
     if (!cache->regs_done) {
         Channel * c = cache->peer->target;
         cache->pending_regs_cnt++;
-        protocol_send_command(c, "Registers", "getChildren", validate_registers_cache, cache);
+        send_command(cache->peer, REGISTERS, "getChildren", validate_registers_cache, cache);
         json_write_string(&c->out, cache->ctx->id);
         write_stream(&c->out, 0);
         write_stream(&c->out, MARKER_EOM);
@@ -2024,7 +2040,7 @@ static void validate_stack_frame_cache(Channel * c, void * args, int error) {
             error = read_errno(&c->inp);
             json_test_char(&c->inp, MARKER_EOM);
             if (!error && !s->disposed && !s->info.is_top_frame) {
-                s->pending = protocol_send_command(c, "Registers", "getChildren", validate_reg_children_cache, s);
+                s->pending = send_command(s->ctx->peer, REGISTERS, "getChildren", validate_reg_children_cache, s);
                 json_write_string(&c->out, frame2id(s->ctx->ctx, s->info.frame));
                 write_stream(&c->out, 0);
                 write_stream(&c->out, MARKER_EOM);
@@ -2092,7 +2108,7 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     s->info.regs = &s->reg_data;
     s->reg_data.data = (uint8_t *)loc_alloc_zero(cache->reg_size);
     s->reg_data.mask = (uint8_t *)loc_alloc_zero(cache->reg_size);
-    s->pending = protocol_send_command(c, "StackTrace", "getContext", validate_stack_frame_cache, s);
+    s->pending = send_command(cache->peer, "StackTrace", "getContext", validate_stack_frame_cache, s);
     write_stream(&c->out, '[');
     json_write_string(&c->out, id);
     write_stream(&c->out, ']');
@@ -2227,7 +2243,7 @@ static int get_context_defisa_from_rc(Context * ctx, ContextISA * isa) {
     }
 
     i->ctx = cache;
-    i->pending = protocol_send_command(c, "RunControl", "getISA", validate_cache_isa, i);
+    i->pending = send_command(cache->peer, RUN_CONTROL, "getISA", validate_cache_isa, i);
     json_write_string(&c->out, cache->ctx->id);
     write_stream(&c->out, 0);
     json_write_uint64(&c->out, (uint64_t)0);
@@ -2298,6 +2314,32 @@ static void event_path_mapping_changed(Channel * c, void * args) {
     }
 }
 
+static void cache_transaction_listener(int e) {
+    switch (e) {
+    case CTLE_START:
+        pending_cache_cnt++;
+        break;
+    case CTLE_COMMIT:
+        assert(pending_cache_cnt > 0);
+        pending_cache_cnt--;
+        if (pending_cache_cnt == 0) {
+            LINK * l = NULL;
+            for (l = peers.next; l != &peers; l = l->next) {
+                PeerCache * p = peers2peer(l);
+                if (p->cache_lock) {
+                    OutputStream * out = &p->target->out;
+                    write_stringz(out, "E");
+                    write_stringz(out, CONTEXT_PROXY);
+                    write_stringz(out, "unlock");
+                    write_stream(out, MARKER_EOM);
+                    p->cache_lock = 0;
+                }
+            }
+        }
+        break;
+    }
+}
+
 void init_contexts_sys_dep(void) {
     static PathMapEventListener path_map_listener = {
         event_path_mapping_changed,
@@ -2313,6 +2355,7 @@ void init_contexts_sys_dep(void) {
     add_path_map_event_listener(&path_map_listener, NULL);
     add_context_event_listener(&context_event_listener, NULL);
     add_channel_close_listener(channel_close_listener);
+    add_cache_transaction_listener(cache_transaction_listener);
     context_extension_offset = context_extension(sizeof(ContextCache *));
 }
 

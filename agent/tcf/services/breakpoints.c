@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1627,18 +1627,20 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
     int error = 0;
 #if ENABLE_Expressions
     Value v;
-    SymbolProperties props;
 
     memset (&v, 0, sizeof (Value));
 
     if (evaluate_expression(ctx, STACK_NO_FRAME, ip, bp->location, 1, &v) < 0) error = errno;
     if (!error && value_to_address(&v, &addr) < 0) error = errno;
+#if ENABLE_Symbols
     if (!error && v.sym != NULL) {
+        SymbolProperties props;
         /* We want to add the LocalEntryOffset */
         get_symbol_props(v.sym, &props);
         /* If the symbol is not a PPC64 function, offset should be 0, so it is safe to add */
         addr += props.local_entry_offset;
     }
+#endif
 #endif
 #if ENABLE_SkipPrologueWhenPlanting
     /* Even if addr is incremented by local_entry_offset, we still should be on right code area */
@@ -1674,6 +1676,7 @@ static void plant_at_address_expression(Context * ctx, ContextAddress ip, Breakp
             while (v.sym_list[n] != NULL) {
                 Symbol * sym = v.sym_list[n++];
                 if (get_symbol_address(sym, &addr) == 0) {
+                    SymbolProperties props;
                     /* We want to add the LocalEntryOffset */
                     get_symbol_props(sym, &props);
                     /* If the symbol is not a PPC64 function, offset should be 0, so it is safe to add */

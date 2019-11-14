@@ -278,7 +278,7 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
     return 0;
 }
 
-#if SERVICE_LineNumbers
+#if ENABLE_LineNumbers
 static void address_to_line_cb(CodeArea * area, void * args) {
     CodeArea ** p = (CodeArea **)args;
     if (*p == NULL || (*p)->start_address < area->start_address) {
@@ -325,7 +325,7 @@ static void disassemble_cache_client(void * x) {
         ContextAddress sym_size = 0;
         int sym_addr_ok = 0;
         int sym_size_ok = 0;
-#if SERVICE_Symbols
+#if ENABLE_Symbols
         {
             Symbol * sym = NULL;
             if (find_symbol_by_addr(ctx, STACK_NO_FRAME, args->addr, &sym) == 0) {
@@ -338,7 +338,7 @@ static void disassemble_cache_client(void * x) {
             }
         }
 #endif
-#if SERVICE_LineNumbers
+#if ENABLE_LineNumbers
         if (!sym_addr_ok || !sym_size_ok) {
             CodeArea * area = NULL;
             address_to_line(ctx, args->addr, args->addr + 1, address_to_line_cb, &area);
@@ -476,7 +476,7 @@ static void read_disassembly_params(InputStream * inp, const char * name, void *
         args->pseudo_instr = json_read_boolean(inp);
     }
     else if (strcmp(name, "OpcodeValue") == 0) {
-        args->opcode_value =json_read_boolean(inp);
+        args->opcode_value = json_read_boolean(inp);
     }
     else {
         json_skip_object(inp);

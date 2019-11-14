@@ -70,6 +70,7 @@ static unsigned listener_cnt = 0;
 static unsigned listener_max = 0;
 
 static const char RUN_CONTROL[] = "RunControl";
+static const char CONTEXT_PROXY[] = "ContextProxy";
 
 typedef struct ContextExtensionRC {
     int pending_safe_event; /* safe events are waiting for this context to be stopped */
@@ -111,9 +112,15 @@ typedef struct ContextExtensionRC {
 } ContextExtensionRC;
 
 static size_t context_extension_offset = 0;
-
 #define EXT(ctx) (ctx ? ((ContextExtensionRC *)((char *)(ctx) + context_extension_offset)) : NULL)
 #define link2ctx(lnk) ((Context *)((char *)(lnk) - offsetof(ContextExtensionRC, link) - context_extension_offset))
+
+typedef struct ChannelExtensionRC {
+    int cache_lock;
+} ChannelExtensionRC;
+
+static size_t channel_extension_offset = 0;
+#define EXT_CH(ch) ((ChannelExtensionRC *)((char *)(ch) + channel_extension_offset))
 
 typedef struct SafeEvent {
     Context * ctx;
@@ -2759,8 +2766,8 @@ static void clear_context_proxy_cache(Context * ctx) {
             int i;
             for (i = 0; i < c->peer_service_cnt; i++) {
                 char * nm = c->peer_service_list[i];
-                if (strcmp(nm, "ContextProxy") == 0) {
-                    protocol_send_command(c, "ContextProxy", "clear", context_proxy_reply, NULL);
+                if (strcmp(nm, CONTEXT_PROXY) == 0) {
+                    protocol_send_command(c, CONTEXT_PROXY, "clear", context_proxy_reply, NULL);
                     json_write_string(&c->out, ctx->id);
                     write_stream(&c->out, 0);
                     write_stream(&c->out, MARKER_EOM);
@@ -2819,12 +2826,38 @@ static void event_context_exited(Context * ctx, void * args) {
 }
 
 static void channel_closed(Channel * c) {
+    ChannelExtensionRC * ext_ch = EXT_CH(c);
     LINK * l;
     for (l = context_root.next; l != &context_root; l = l ->next) {
         Context * ctx = ctxl2ctxp(l);
         ContextExtensionRC * ext = EXT(ctx);
         if (ext->step_channel == c) cancel_step_mode(ctx);
     }
+    if (ext_ch->cache_lock) {
+        ext_ch->cache_lock = 0;
+        run_ctrl_unlock();
+    }
+}
+
+static void context_cache_lock(Channel * c) {
+    ChannelExtensionRC * ext = EXT_CH(c);
+    json_test_char(&c->inp, MARKER_EOM);
+    assert(ext->cache_lock == 0);
+    ext->cache_lock = 1;
+    run_ctrl_lock();
+}
+
+static void context_cache_unlock(Channel * c) {
+    ChannelExtensionRC * ext = EXT_CH(c);
+    json_test_char(&c->inp, MARKER_EOM);
+    assert(ext->cache_lock == 1);
+    ext->cache_lock = 0;
+    run_ctrl_unlock();
+}
+
+static void channel_opened(Channel * c) {
+    add_event_handler(c, CONTEXT_PROXY, "lock", context_cache_lock);
+    add_event_handler(c, CONTEXT_PROXY, "unlock", context_cache_unlock);
 }
 
 static void event_context_disposed(Context * ctx, void * args) {
@@ -2870,7 +2903,9 @@ void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     broadcast_group = bcg;
     add_context_event_listener(&listener, NULL);
     add_channel_close_listener(channel_closed);
+    add_channel_open_listener(channel_opened);
     context_extension_offset = context_extension(sizeof(ContextExtensionRC));
+    channel_extension_offset = channel_extension(sizeof(ChannelExtensionRC));
     add_command_handler(proto, RUN_CONTROL, "getContext", command_get_context);
     add_command_handler(proto, RUN_CONTROL, "getChildren", command_get_children);
     add_command_handler(proto, RUN_CONTROL, "getState", command_get_state);

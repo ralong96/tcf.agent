@@ -1574,6 +1574,7 @@ static void load_value(Value * v) {
     else if (v->value != NULL) {
         /* OK */
     }
+#if ENABLE_Symbols
     else if (v->loc != NULL) {
         size_t size = 0;
         void * value = NULL;
@@ -1584,6 +1585,7 @@ static void load_value(Value * v) {
         v->size = (ContextAddress)size;
         sign_extend(v, loc);
     }
+#endif
     else {
         error(ERR_OTHER, "Has no value");
     }
@@ -2041,7 +2043,9 @@ static void primary_expression(int mode, Value * v) {
         next_sy();
     }
     else if (text_sy == SY_VAL) {
+#if ENABLE_Symbols
         int flags = text_val_flags;
+#endif
         *v = text_val;
         next_sy();
 #if ENABLE_Symbols
