@@ -168,6 +168,7 @@ static test_array_field tcf_test_array_field;
 
 #if defined(__linux__) && defined(__GNUC__)
 __thread uint32_t tcf_test_tls = 0;
+__thread uint32_t tcf_test_tls2 = 0;
 #endif
 
 int tcf_test_func_int(int x, int y) {
@@ -211,6 +212,7 @@ func2_label:
     func2_local4 = &errno;
 #if defined(__linux__) && defined(__GNUC__)
     tcf_test_tls++;
+    tcf_test_tls2 += 2;
 #endif
     tcf_test_func3();
     func2_local1++;
