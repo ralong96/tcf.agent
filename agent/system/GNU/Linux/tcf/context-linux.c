@@ -376,11 +376,7 @@ static int flush_regs(Context * ctx) {
         }
 #else
         if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
-#if defined(__arm__) || defined(__aarch64__)
-            if (ptrace(PTRACE_SETVFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
-#else
             if (ptrace(PTRACE_SETFPREGS, ext->pid, 0, &ext->regs->fp) < 0) {
-#endif
                 error = errno;
                 break;
             }
@@ -961,11 +957,7 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
             /* Did not work, use PTRACE_PEEKUSER to get one register at a time */
         }
         if (i >= offsetof(REG_SET, fp) && i < offsetof(REG_SET, fp) + sizeof(ext->regs->fp)) {
-#if defined(__arm__) || defined(__aarch64__)
-            if (ptrace(PTRACE_GETVFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
-#else
             if (ptrace(PTRACE_GETFPREGS, ext->pid, 0, &ext->regs->fp) < 0 && errno != ESRCH) {
-#endif
                 error = errno;
                 break;
             }

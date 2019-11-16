@@ -331,6 +331,7 @@ ContextAddress get_tls_address(Context * ctx, ELF_File * file) {
         if (elf_read_memory_word(ctx, file, tcb_addr + (file->elf64 ? 8 : 4), &dtv_addr) < 0)
             str_exception(errno, "Cannot read TCB");
         break;
+    case EM_ARM:
     case EM_AARCH64:
         reg_def = get_reg_definitions(ctx);
         if (reg_def == NULL) str_exception(ERR_OTHER, "TLS register not found");

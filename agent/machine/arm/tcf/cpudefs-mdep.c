@@ -74,6 +74,7 @@ RegisterDefinition regs_def[] = {
     { "pc",      REG_OFFSET(gp.regs[15]),     4, 15, 15},
     { "cpsr",    REG_OFFSET(gp.cpsr),         4, 128, 128},
     { "orig_r0", REG_OFFSET(gp.orig_r0),      4, -1, -1},
+    { "tls",     REG_OFFSET(other.tls),       4, -1, -1, 0, 0, 0, 1 },
     { "vfp",     0, 0, -1, -1, 0, 0, 1, 1 },
     { NULL,      0, 0,  0,  0},
 };
@@ -143,6 +144,32 @@ RegisterDefinition * get_PC_definition(Context * ctx) {
     return pc_def;
 }
 
+#ifdef MDEP_OtherRegisters
+
+int mdep_get_other_regs(pid_t pid, REG_SET * data,
+        size_t data_offs, size_t data_size,
+        size_t * done_offs, size_t * done_size) {
+    assert(data_offs >= offsetof(REG_SET, other));
+    assert(data_offs + data_size <= offsetof(REG_SET, other) + sizeof(data->other));
+    if (data_offs >= REG_OFFSET(other.tls) && data_offs < REG_OFFSET(other.tls) + sizeof(data->other.tls)) {
+        if (ptrace(PTRACE_GET_THREAD_AREA, pid, 0, &data->other.tls) < 0) return -1;
+        *done_offs = offsetof(REG_SET, other.tls);
+        *done_size = sizeof(data->other.tls);
+        return 0;
+    }
+    set_errno(ERR_OTHER, "Not supported");
+    return -1;
+}
+
+int mdep_set_other_regs(pid_t pid, REG_SET * data,
+        size_t data_offs, size_t data_size,
+        size_t * done_offs, size_t * done_size) {
+    set_errno(ERR_OTHER, "Not supported");
+    return -1;
+}
+
+#endif
+
 int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
     return crawl_stack_frame_arm(frame, down);
 }
@@ -153,6 +180,8 @@ void add_cpudefs_disassembler(Context * cpu_ctx) {
     add_disassembler(cpu_ctx, "Thumb", disassemble_thumb);
 }
 #endif
+
+#if ENABLE_HardwareBreakpoints
 
 static int read_reg(Context *ctx, RegisterDefinition * def, size_t size, ContextAddress * addr) {
     size_t i;
@@ -167,8 +196,6 @@ static int read_reg(Context *ctx, RegisterDefinition * def, size_t size, Context
     *addr = (ContextAddress)n;
     return 0;
 }
-
-#if ENABLE_HardwareBreakpoints
 
 static void clear_bp(ContextBreakpoint * bp) {
     unsigned i;
@@ -712,7 +739,7 @@ static int arm_get_next_data_processing(void) {
     return 0;
 }
 
-static int arm_get_next_ldr(void) {
+static int arm_get_next_ldr(int * to_thumb) {
     int I = (arm_instr & (1 << 25)) != 0;
     int P = (arm_instr & (1 << 24)) != 0;
     int U = (arm_instr & (1 << 23)) != 0;
@@ -759,6 +786,16 @@ static int arm_get_next_ldr(void) {
         if (arm_read_mem(addr, &arm_next, 4) < 0) return -1;
         break;
     }
+
+    if (arm_next & 1) {
+        arm_next &= ~(uint32_t)1;
+        *to_thumb = 1;
+    }
+    else {
+        arm_next &= ~(uint32_t)3;
+        *to_thumb = 0;
+    }
+
     return 0;
 }
 
@@ -958,7 +995,7 @@ static int arm_get_next_address(Context * ctx, ContextExtensionARM * ext) {
                 break;
             case 2:
             case 3: /* Load */
-                if (arm_get_next_ldr() < 0) return -1;
+                if (arm_get_next_ldr(&to_thumb) < 0) return -1;
                 break;
             case 4: /* Load/store multiple */
                 if (arm_get_next_ldm(&to_thumb) < 0) return -1;

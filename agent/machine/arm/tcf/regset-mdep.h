@@ -36,6 +36,10 @@
 #  define PTRACE_SETREGSET 0x4205
 #endif
 
+#ifndef PTRACE_GET_THREAD_AREA
+#define PTRACE_GET_THREAD_AREA 22
+#endif
+
 struct regset_gp {
     uint32_t regs[16];
     uint32_t cpsr;
@@ -47,7 +51,13 @@ struct regset_fp {
     uint32_t fpscr;
 };
 
+struct regset_extra {
+    uint64_t tls;
+};
+
 #define REGSET_GP NT_PRSTATUS
 #define REGSET_FP NT_ARM_VFP
+
+#define MDEP_OtherRegisters struct regset_extra
 
 #endif

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright (c) 2018 Xilinx, Inc. and others.
+* Copyright (c) 2018-2019 Xilinx, Inc. and others.
 * All rights reserved. This program and the accompanying materials
 * are made available under the terms of the Eclipse Public License v1.0
 * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -53,13 +53,6 @@
 #  define PTRACE_EVENT_EXEC       4
 #  define PTRACE_EVENT_VFORK_DONE 5
 #  define PTRACE_EVENT_EXIT       6
-#endif
-
-#if defined(__arm__) || defined(__aarch64__)
-#  if !defined(PTRACE_GETVFPREGS)
-#    define PTRACE_GETVFPREGS       27
-#    define PTRACE_SETVFPREGS       28
-#  endif
 #endif
 
 #endif /* D_mdep_ptrace */
