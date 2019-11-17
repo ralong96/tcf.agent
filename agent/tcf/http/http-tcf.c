@@ -41,7 +41,7 @@
 
 typedef struct ClientData {
     LINK link_all;
-    Channel channel;
+    Channel * channel; /* Must be a pointer, because of channel_extension() */
     unsigned lock_cnt;
     char * id;
     char * cmd_data;
@@ -53,6 +53,7 @@ typedef struct ClientData {
     char * wait_token;
     int wait_done;
     int sse_posted;
+    int closed;
     unsigned timeout;
 } ClientData;
 
@@ -79,11 +80,21 @@ static LINK link_clients;
 #define link2msg(x)  ((Message *)((char *)(x) - offsetof(Message, link)))
 
 #define all2client(x) ((ClientData *)((char *)(x) - offsetof(ClientData, link_all)))
-#define channel2client(x) ((ClientData *)((char *)(x) - offsetof(ClientData, channel)))
+
+static ClientData * channel2client(Channel * ch) {
+    LINK * l = link_clients.next;
+    while (l != &link_clients) {
+        ClientData * x = all2client(l);
+        if (x->channel == ch) return x;
+        l = l->next;
+    }
+    assert(0);
+    return NULL;
+}
 
 static void close_client(ClientData * client) {
-    Channel * channel = &client->channel;
-    list_remove(&client->link_all);
+    Channel * channel = client->channel;
+    client->closed = 1;
     channel->state = ChannelStateDisconnected;
     notify_channel_closed(channel);
     if (channel->disconnected) {
@@ -165,7 +176,7 @@ static void http_message(OutputStream * out, Message * m) {
 }
 
 static void send_http_reply(ClientData * cd) {
-    Channel * ch = &cd->channel;
+    Channel * ch = cd->channel;
     OutputStream * out = cd->http_out;
     write_string(out, "[\n");
     while (!list_is_empty(&cd->link_messages)) {
@@ -227,16 +238,17 @@ static void sse_event(void * arg) {
 }
 
 static void http_channel_lock(Channel * channel) {
-    ClientData * client = channel2client(channel);
-    client->lock_cnt++;
+    ClientData * cd = channel2client(channel);
+    cd->lock_cnt++;
 }
 
 static void http_channel_unlock(Channel * channel) {
-    ClientData * client = channel2client(channel);
-    assert(client->lock_cnt > 0);
-    client->lock_cnt--;
-    if (client->lock_cnt == 0) {
-        ClientData * cd = channel2client(channel);
+    ClientData * cd = channel2client(channel);
+    assert(cd->lock_cnt > 0);
+    cd->lock_cnt--;
+    if (cd->lock_cnt == 0) {
+        assert(cd->closed);
+        list_remove(&cd->link_all);
         channel_clear_broadcast_group(channel);
         while (!list_is_empty(&cd->link_messages)) {
             Message * e = link2msg(cd->link_messages.next);
@@ -245,6 +257,7 @@ static void http_channel_unlock(Channel * channel) {
         }
         cancel_event(sse_event, cd, 0);
         loc_free(channel->peer_name);
+        channel_free(cd->channel);
         loc_free(cd->out_buf.mem);
         loc_free(cd->cmd_data);
         loc_free(cd->id);
@@ -347,8 +360,12 @@ static void http_channel_write(OutputStream * out, int byte) {
 }
 
 static void http_channel_write_block(OutputStream * out, const char * bytes, size_t size) {
-    unsigned i;
-    for (i = 0; i < size; i++) http_channel_write(out, (unsigned char)bytes[i]);
+    Channel * ch = out2channel(out);
+    if (ch->state != ChannelStateDisconnected) {
+        ClientData * cd = channel2client(ch);
+        OutputStream * out = &cd->out_buf.out;
+        write_block_stream(out, bytes, size);
+    }
 }
 
 static ssize_t http_channel_splice_block(OutputStream * out, int fd, size_t size, int64_t * offset) {
@@ -376,7 +393,7 @@ static void timer_event(void * arg) {
         while (l != &link_clients) {
             ClientData * x = all2client(l);
             l = l->next;
-            if (x->http_out == NULL && x->sse_out == NULL) {
+            if (!x->closed && x->http_out == NULL && x->sse_out == NULL) {
                 x->timeout++;
                 if (x->timeout > timeout) {
                     close_client(x);
@@ -453,7 +470,7 @@ static ClientData * find_client(int alloc, const char * id) {
 
     for (l = link_clients.next; l != &link_clients; l = l->next) {
         ClientData * x = all2client(l);
-        if (strcmp(x->id, id) == 0) {
+        if (!x->closed && strcmp(x->id, id) == 0) {
             x->timeout = 0;
             return x;
         }
@@ -465,22 +482,23 @@ static ClientData * find_client(int alloc, const char * id) {
 
     cd = (ClientData *)loc_alloc_zero(sizeof(ClientData));
     cd->lock_cnt = 1;
-    cd->channel.state = ChannelStateStartWait;
-    cd->channel.lock = http_channel_lock;
-    cd->channel.unlock = http_channel_unlock;
-    cd->channel.start_comm = http_channel_start_comm;
-    cd->channel.inp.peek = http_channel_peek;
-    cd->channel.inp.read = http_channel_read;
-    cd->channel.out.write = http_channel_write;
-    cd->channel.out.write_block = http_channel_write_block;
-    cd->channel.out.splice_block = http_channel_splice_block;
-    cd->channel.peer_name = loc_printf("HTTP:%s", id);
+    cd->channel = channel_alloc();
+    cd->channel->state = ChannelStateStartWait;
+    cd->channel->lock = http_channel_lock;
+    cd->channel->unlock = http_channel_unlock;
+    cd->channel->start_comm = http_channel_start_comm;
+    cd->channel->inp.peek = http_channel_peek;
+    cd->channel->inp.read = http_channel_read;
+    cd->channel->out.write = http_channel_write;
+    cd->channel->out.write_block = http_channel_write_block;
+    cd->channel->out.splice_block = http_channel_splice_block;
+    cd->channel->peer_name = loc_printf("HTTP:%s", id);
     create_byte_array_output_stream(&cd->out_buf);
     list_init(&cd->link_messages);
     cd->id = loc_strdup(id);
     list_add_first(&cd->link_all, &link_clients);
-    if (cd->channel.state == ChannelStateStartWait) {
-        server.new_conn(&server, &cd->channel);
+    if (cd->channel->state == ChannelStateStartWait) {
+        server.new_conn(&server, cd->channel);
     }
     return cd;
 }
@@ -608,7 +626,7 @@ static int get_page(const char * uri) {
         if (service != NULL && command != NULL) {
             Trap trap;
             ClientData * cd = find_client(1, session);
-            Channel * ch = &cd->channel;
+            Channel * ch = cd->channel;
             ch->inp.cur = NULL;
             ch->inp.end = NULL;
             loc_free(cd->cmd_data);

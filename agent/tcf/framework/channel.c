@@ -204,6 +204,7 @@ static void client_connection_ucb(ClientConnection * c) {
 
 void notify_channel_created(Channel * c) {
     unsigned i;
+    assert(channel_created);
     assert(client2channel(&c->client) == c);
     c->client.lock = client_connection_lcb;
     c->client.unlock = client_connection_ucb;
@@ -214,6 +215,7 @@ void notify_channel_created(Channel * c) {
 
 void notify_channel_opened(Channel * c) {
     unsigned i;
+    assert(channel_created);
     assert(!is_channel_closed(c));
     assert(c->state == ChannelStateConnected);
     if (c->notified_open) return;
@@ -228,6 +230,7 @@ void notify_channel_opened(Channel * c) {
 
 void notify_channel_closed(Channel * c) {
     unsigned i;
+    assert(channel_created);
     assert(c->state != ChannelStateConnected);
     if (!c->notified_open) return;
     c->notified_open = 0;
@@ -297,10 +300,12 @@ void channel_clear_broadcast_group(Channel * c) {
 }
 
 void channel_lock(Channel * c) {
+    assert(channel_created);
     c->lock(c);
 }
 
 void channel_unlock(Channel * c) {
+    assert(channel_created);
     c->unlock(c);
 }
 
@@ -338,6 +343,7 @@ static void lock_timer_event(void * args) {
 #endif
 
 void channel_lock_with_msg(Channel * c, const char * msg) {
+    assert(channel_created);
     c->lock(c);
 #ifndef NDEBUG
     if (msg != NULL) {
@@ -373,6 +379,7 @@ void channel_lock_with_msg(Channel * c, const char * msg) {
 
 void channel_unlock_with_msg(Channel * c, const char * msg) {
 #ifndef NDEBUG
+    assert(channel_created);
     if (msg != NULL) {
         int ok = 0;
         ChannelLock * l = NULL;
@@ -573,6 +580,7 @@ Channel * channel_alloc(void) {
  * Release a buffer allocated using channel_alloc().
  */
 void channel_free(Channel * c) {
+    assert(channel_created);
     loc_free(c);
 }
 
