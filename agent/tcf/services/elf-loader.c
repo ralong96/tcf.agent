@@ -344,10 +344,8 @@ ContextAddress get_tls_address(Context * ctx, ELF_File * file) {
             str_exception(errno, "Cannot read TLS");
         break;
     case EM_RISCV:
-        reg_def = get_reg_definitions(ctx);
-        if (reg_def == NULL) str_exception(ERR_OTHER, "TP register not found");
-        while (reg_def->name != NULL && strcmp(reg_def->name, "tp") != 0) reg_def++;
-        if (reg_def->name == NULL) str_exception(ERR_OTHER, "TP register not found");
+        reg_def = get_reg_by_id(ctx, 4, &reg_id_scope);
+        if (reg_def == NULL) exception(errno);
         if (context_read_reg(ctx, reg_def, 0, reg_def->size, buf) < 0)
             str_exception(errno, "Cannot read TCB base register");
         tcb_addr = to_address(buf, reg_def->size, reg_def->big_endian);
