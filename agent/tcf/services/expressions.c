@@ -1171,6 +1171,79 @@ static unsigned flag_count(SYM_FLAGS flags) {
 }
 #endif /* ENABLE_Symbols */
 
+static void expression(int mode, Value * v);
+static uint64_t to_uns(int mode, Value * v);
+static void load_value(Value * v);
+
+static int builtin_identifier(int mode, char * name, Value * v) {
+    Context * ctx = expression_context;
+    for (;;) {
+        RegisterDefinition * def = get_reg_definitions(ctx);
+        if (def != NULL) {
+            while (def->name != NULL) {
+                if (strcmp(name + 1, def->name) == 0) {
+                    int frame = STACK_NO_FRAME;
+                    if (ctx == expression_context) frame = expression_frame;
+                    reg2value(mode, ctx, frame, def, v);
+                    return SYM_CLASS_REFERENCE;
+                }
+                def++;
+            }
+        }
+        ctx = ctx->parent;
+        if (ctx == NULL) break;
+    }
+    if (strcmp(name, "$thread") == 0) {
+        set_string_value(v, expression_context->id);
+        v->constant = 1;
+        return SYM_CLASS_VALUE;
+    }
+    if (strcmp(name, "$relocate") == 0 && text_sy == '(') {
+        unsigned cnt;
+        uint64_t addr = 0;
+        const char * file_name = "";
+        const char * sect_name = "";
+        Symbol * sym = NULL;
+        next_sy();
+        for (cnt = 0;; cnt++) {
+            switch (cnt) {
+            case 0:
+                expression(mode, v);
+                addr = to_uns(mode, v);
+                break;
+            case 1:
+                expression(mode, v);
+                load_value(v);
+                file_name = tmp_strndup((char *)v->value, v->size);
+                break;
+            case 2:
+                expression(mode, v);
+                load_value(v);
+                sect_name = tmp_strndup((char *)v->value, v->size);
+                break;
+            default:
+                error(ERR_INV_EXPRESSION, "Too many arguments");
+            }
+            if (text_sy != ',') break;
+            next_sy();
+        }
+        if (text_sy != ')') error(ERR_INV_EXPRESSION, "Missing ')'");
+        next_sy();
+        ini_value(v);
+        if (mode != MODE_NORMAL) {
+            set_ctx_word_value(v, addr);
+            v->type_class = TYPE_CLASS_POINTER;
+            return SYM_CLASS_VALUE;
+        }
+        if (find_symbol_by_name(expression_context, STACK_NO_FRAME, 0,
+            tmp_printf("$relocate:%s:%s:%" PRIX64, file_name, sect_name, addr), &sym) < 0) {
+            error(errno, "Cannot read symbol data");
+        }
+        return sym2value(mode, sym, v);
+    }
+    return -1;
+}
+
 static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Value * v) {
     ini_value(v);
     if (scope == NULL) {
@@ -1182,28 +1255,8 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
             exception(ERR_INV_CONTEXT);
         }
         if (name[0] == '$') {
-            Context * ctx = expression_context;
-            for (;;) {
-                RegisterDefinition * def = get_reg_definitions(ctx);
-                if (def != NULL) {
-                    while (def->name != NULL) {
-                        if (strcmp(name + 1, def->name) == 0) {
-                            int frame = STACK_NO_FRAME;
-                            if (ctx == expression_context) frame = expression_frame;
-                            reg2value(mode, ctx, frame, def, v);
-                            return SYM_CLASS_REFERENCE;
-                        }
-                        def++;
-                    }
-                }
-                ctx = ctx->parent;
-                if (ctx == NULL) break;
-            }
-        }
-        if (strcmp(name, "$thread") == 0) {
-            set_string_value(v, expression_context->id);
-            v->constant = 1;
-            return SYM_CLASS_VALUE;
+            int id_class = builtin_identifier(mode, name, v);
+            if (id_class >= 0) return id_class;
         }
     }
 #if ENABLE_Symbols
@@ -2028,8 +2081,6 @@ static void set_complex_type(Value * v) {
     }
 #endif
 }
-
-static void expression(int mode, Value * v);
 
 static void primary_expression(int mode, Value * v) {
     if (text_sy == '(') {

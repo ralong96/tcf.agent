@@ -87,6 +87,7 @@ struct Symbol {
 #define is_array_type_pseudo_symbol(s) (s->sym_class == SYM_CLASS_TYPE && s->obj == NULL && s->base != NULL)
 #define is_std_type_pseudo_symbol(s) (s->sym_class == SYM_CLASS_TYPE && s->obj == NULL && s->base == NULL)
 #define is_constant_pseudo_symbol(s) (s->sym_class == SYM_CLASS_VALUE && s->obj == NULL && s->base != NULL)
+#define is_pointer_pseudo_symbol(s) (s->sym_class == SYM_CLASS_VALUE && s->obj == NULL && s->base == NULL && s->has_address)
 
 static Context * sym_ctx;
 static int sym_frame;
@@ -1548,6 +1549,66 @@ static void find_by_name_in_sym_table(ELF_File * file, const char * name, int gl
     }
 }
 
+static void find_relocate(ELF_File * file, const char * name) {
+    /* Psedo-symbol, which helps debugger to map link-time address to run-time address */
+    size_t l = strlen(file->name);
+    size_t i = 0;
+    int ok = 0;
+    if (strncmp(file->name, name, l) == 0 && name[l] == ':') {
+        i = l + 1;
+        ok = 1;
+    }
+    if (!ok) {
+        size_t p = l;
+        while (p > 0 && file->name[p - 1] != '/' && file->name[p - 1] != '\\') p--;
+        if (strncmp(file->name + p, name, l - p) == 0 && name[l - p] == ':') {
+            i = l - p + 1;
+            ok = 1;
+        }
+    }
+    if (ok) {
+        size_t j = i;
+        char * section_name = NULL;
+        while (name[j] != 0 && name[j] != ':') j++;
+        if (j > i) section_name = tmp_strndup(name + i, j - i);
+        if (name[j++] == ':') {
+            ELF_Section * section = NULL;
+            ContextAddress addr = 0;
+            for (;;) {
+                char ch = name[j++];
+                if (ch >= '0' && ch <= '9') addr = (addr << 4) | (ch - '0');
+                else if (ch >= 'A' && ch <= 'F') addr = (addr << 4) | (ch - 'A' + 10);
+                else if (ch >= 'a' && ch <= 'f') addr = (addr << 4) | (ch - 'a' + 10);
+                else break;
+            }
+            if (section_name != NULL) {
+                unsigned n;
+                for (n = 1; n < file->section_cnt; n++) {
+                    ELF_Section * s = file->sections + n;
+                    if (s->name == NULL) continue;
+                    if (strcmp(s->name, section_name) == 0) {
+                        section = s;
+                        break;
+                    }
+                }
+                if (section == NULL) return;
+            }
+            addr = elf_map_to_run_time_address(sym_ctx, file, section, addr);
+            if (errno == 0) {
+                Symbol * sym = alloc_symbol();
+                sym->ctx = context_get_group(sym_ctx, CONTEXT_GROUP_SYMBOLS);
+                sym->frame = STACK_NO_FRAME;
+                sym->sym_class = SYM_CLASS_VALUE;
+                sym->address = addr;
+                sym->size = file->elf64 ? 8 : 4;
+                sym->has_address = 1;
+                assert(is_pointer_pseudo_symbol(sym));
+                add_to_find_symbol_buf(sym);
+            }
+        }
+    }
+}
+
 int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char * name, Symbol ** res) {
     int error = 0;
     ELF_File * curr_file = NULL;
@@ -1691,8 +1752,13 @@ int find_symbol_by_name(Context * ctx, int frame, ContextAddress ip, const char 
                 Trap trap;
                 if (set_trap(&trap)) {
                     DWARFCache * cache = get_dwarf_cache(get_dwarf_file(file));
-                    find_by_name_in_pub_names(cache, name);
-                    find_by_name_in_sym_table(file, name, 0);
+                    if (strncmp(name, "$relocate:", 10) == 0) {
+                        find_relocate(file, name + 10);
+                    }
+                    else {
+                        find_by_name_in_pub_names(cache, name);
+                        find_by_name_in_sym_table(file, name, 0);
+                    }
                     clear_trap(&trap);
                 }
                 else {
@@ -3193,6 +3259,10 @@ int get_symbol_type_class(const Symbol * sym, int * type_class) {
         *type_class = sym->dimension;
         return 0;
     }
+    if (is_pointer_pseudo_symbol(sym)) {
+        *type_class = TYPE_CLASS_POINTER;
+        return 0;
+    }
     if (unpack(sym) < 0) return -1;
     *type_class = TYPE_CLASS_UNKNOWN;
     get_object_type_class(sym->obj, type_class);
@@ -3313,6 +3383,10 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
     }
     if (is_std_type_pseudo_symbol(sym)) {
         *size = sym->cardinal;
+        return 0;
+    }
+    if (is_pointer_pseudo_symbol(sym)) {
+        *size = sym->size;
         return 0;
     }
     if (unpack(sym) < 0) return -1;
@@ -3922,7 +3996,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
 
     assert(sym->magic == SYMBOL_MAGIC);
 
-    if (sym->has_address) {
+    if (sym->has_address && sym->sym_class != SYM_CLASS_VALUE) {
         info->big_endian = big_endian_host();
         add_location_command(info, SFT_CMD_NUMBER)->args.num = sym->address;
         return 0;
@@ -3948,6 +4022,21 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
     if (is_array_type_pseudo_symbol(sym) ||
             is_std_type_pseudo_symbol(sym)) {
         return err_wrong_obj();
+    }
+
+    if (is_pointer_pseudo_symbol(sym)) {
+        void const * value = NULL;
+        LocationExpressionCommand * cmd = add_location_command(info, SFT_CMD_PIECE);
+
+        info->big_endian = big_endian_host();
+        cmd->args.piece.bit_size = (unsigned)(sym->size * 8);
+        cmd->args.piece.value = tmp_alloc((size_t)sym->size);
+        value = &sym->address;
+        if (big_endian_host() && sym->size < sizeof(ContextAddress)) {
+            value = (uint8_t *)value + (sizeof(ContextAddress) - sym->size);
+        }
+        memcpy(cmd->args.piece.value, value, (size_t)sym->size);
+        return 0;
     }
 
     if (unpack(sym) < 0) return -1;
