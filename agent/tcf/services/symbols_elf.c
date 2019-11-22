@@ -1378,10 +1378,16 @@ static int find_in_object_tree(ObjectInfo * parent, unsigned level,
     while (obj != NULL) {
         if (obj->mTag != TAG_GNU_call_site) {
             if (obj->mName != NULL && equ_symbol_names(obj->mName, name)) {
-                /* Skip out-of-body definitions */
-                ObjectInfo * container = NULL;
-                if (get_object_scope(obj, &container) < 0) exception(errno);
-                if (container == parent) add_obj_to_find_symbol_buf(find_definition(obj), level);
+                if (obj->mTag == TAG_lexical_block && parent->mTag == TAG_subprogram &&
+                        parent->mName != NULL && strcmp(obj->mName, parent->mName) == 0) {
+                    /* Bad representation of inlined recursive function, skip */
+                }
+                else {
+                    /* Skip out-of-body definitions */
+                    ObjectInfo * container = NULL;
+                    if (get_object_scope(obj, &container) < 0) exception(errno);
+                    if (container == parent) add_obj_to_find_symbol_buf(find_definition(obj), level);
+                }
             }
             if (parent->mTag == TAG_subprogram && ip != 0) {
                 if (!obj_ptr_chk) {
