@@ -366,7 +366,7 @@ void add_memory_map_event_listener(MemoryMapEventListener * listener, void * cli
     l->args = client_data;
 }
 
-static void write_map_region(OutputStream * out, MemoryRegion * m) {
+void write_map_region(OutputStream * out, MemoryRegion * m) {
     MemoryRegionAttribute * x = m->attrs;
 
     write_stream(out, '{');

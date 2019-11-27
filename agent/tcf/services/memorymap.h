@@ -77,6 +77,8 @@ extern void add_memory_map_event_listener(MemoryMapEventListener * listener, voi
 
 extern void ini_memory_map_service(Protocol * proto, TCFBroadcastGroup * bcg);
 
+extern void write_map_region(OutputStream * out, MemoryRegion * m);
+
 #else
 
 #define memory_map_event_module_loaded(ctx)
