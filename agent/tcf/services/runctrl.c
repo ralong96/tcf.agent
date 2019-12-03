@@ -2882,6 +2882,28 @@ static int cmp_parent_id(Context * ctx, const char * v) {
     return ctx->parent != NULL && strcmp(ctx->parent->id, v) == 0;
 }
 
+static int cmp_parent_name(Context * ctx, const char * v) {
+    return ctx->parent != NULL && strcmp(ctx->parent->name ? ctx->parent->name : ctx->parent->id, v) == 0;
+}
+
+static int cmp_ancestor_id(Context * ctx, const char * v) {
+    ctx = ctx->parent;
+    while (ctx != NULL) {
+        if (strcmp(ctx->id, v) == 0) return 1;
+        ctx = ctx->parent;
+    }
+    return 0;
+}
+
+static int cmp_ancestor_name(Context * ctx, const char * v) {
+    ctx = ctx->parent;
+    while (ctx != NULL) {
+        if (strcmp(ctx->name ? ctx->name : ctx->id, v) == 0) return 1;
+        ctx = ctx->parent;
+    }
+    return 0;
+}
+
 static int cmp_creator_id(Context * ctx, const char * v) {
     return ctx->creator != NULL && strcmp(ctx->creator->id, v) == 0;
 }
@@ -2918,6 +2940,9 @@ void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     add_command_handler(proto, RUN_CONTROL, "detach", command_detach);
     add_context_query_comparator("HasState", cmp_has_state);
     add_context_query_comparator("ParentID", cmp_parent_id);
+    add_context_query_comparator("ParentName", cmp_parent_name);
+    add_context_query_comparator("AncestorID", cmp_ancestor_id);
+    add_context_query_comparator("AncestorName", cmp_ancestor_name);
     add_context_query_comparator("CreatorID", cmp_creator_id);
     add_context_query_comparator("ProcessID", cmp_process_id);
 }
