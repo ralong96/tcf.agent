@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -17,9 +17,20 @@
  * Agent self-testing service.
  */
 
-#include <tcf/config.h>
+#ifndef PURE_RCBP_TEST
+#  include <tcf/config.h>
+#else
+#  include <stdlib.h>
+#  include <errno.h>
+#  define usleep(x) {}
+#  ifndef ENABLE_RCBP_TEST
+#    define ENABLE_RCBP_TEST 1
+#  endif
+#endif
 
 #if ENABLE_RCBP_TEST
+
+#ifndef PURE_RCBP_TEST
 
 #ifndef ENABLE_TestSymbols
 #  define ENABLE_TestSymbols (SERVICE_Expressions && !ENABLE_ELF)
@@ -38,6 +49,8 @@
 #if defined(_WIN32) || defined(__CYGWIN__)
 #  include <system/Windows/tcf/context-win32.h>
 #endif
+
+#endif /* PURE_RCBP_TEST */
 
 #ifdef __cplusplus
 
@@ -236,21 +249,8 @@ char * tcf_test_array = array;
 }
 #endif
 
-static void * test_sub(void * x) {
-    volatile int * test_done = (int *)x;
-    while (!*test_done) {
-        tcf_test_func0(enum_val3);
-    }
-    return NULL;
-}
-
-void test_proc(void) {
+static void test_start(void) {
     int i, j;
-    pthread_t thread[4];
-    int test_done = 0;
-    for (i = 0; i < 4; i++) {
-        thread[i] = 0;
-    }
     for (i = 0; i < 3; i++) {
         for (j = 0; j < 5; j++) {
             tcf_test_array_field.buf[i][j] = (unsigned char)(i * 5 + j);
@@ -262,6 +262,34 @@ void test_proc(void) {
     tcf_cpp_test_class_extension_var.f_int = 345;
 #endif
     tcf_test_func0(enum_val1);
+}
+
+#ifdef PURE_RCBP_TEST
+
+void test_proc(void) {
+    int i;
+    test_start();
+    for (i = 0; i < 9; i++) {
+        tcf_test_func0(enum_val2);
+    }
+}
+
+#else
+
+static void * test_sub(void * x) {
+    volatile int * test_done = (int *)x;
+    while (!*test_done) {
+        tcf_test_func0(enum_val3);
+    }
+    return NULL;
+}
+
+void test_proc(void) {
+    int i;
+    int test_done = 0;
+    pthread_t thread[4];
+    for (i = 0; i < 4; i++) thread[i] = 0;
+    test_start();
     for (i = 0; i < 4; i++) {
         if (pthread_create(thread + i, &pthread_create_attr, test_sub, &test_done) != 0) {
             perror("pthread_create");
@@ -389,5 +417,7 @@ int run_test_process(ContextAttachCallBack * done, void * data) {
     return context_attach(pid, done, data, CONTEXT_ATTACH_SELF);
 #endif
 }
+
+#endif /* PURE_RCBP_TEST */
 
 #endif /* ENABLE_RCBP_TEST */
