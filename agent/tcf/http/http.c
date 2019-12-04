@@ -310,41 +310,47 @@ static void send_reply(HttpConnection * con) {
 }
 
 static void read_http_request(HttpConnection * con) {
-    while (con->recv_len > con->recv_pos && !con->read_request_done) {
-        unsigned i = 0;
-        while (con->recv_buf[con->recv_pos++] != '\n') {
-            if (con->recv_pos >= con->recv_len) return;
+    char * buf = con->recv_buf;
+    size_t len = con->recv_len;
+    while (len > 0 && !con->read_request_done) {
+        unsigned i = con->recv_pos;
+        while (i < len && buf[i] != '\n') i++;
+        if (i++ >= len) {
+            /* Incomplete line in the buffer */
+            con->recv_pos = len;
+            if (con->recv_len == len) return;
+            break;
         }
-        i = con->recv_pos;
+        con->recv_pos = 0;
         if (con->http_method == NULL) {
             unsigned j = 0;
             unsigned k = 0;
             while (j < i) {
-                char * s = con->recv_buf + j;
-                while (j < i && con->recv_buf[j] > ' ') j++;
-                while (j < i && con->recv_buf[j] <= ' ') con->recv_buf[j++] = 0;
+                char * s = buf + j;
+                while (j < i && buf[j] > ' ') j++;
+                s = loc_strndup(s, buf + j - s);
+                while (j < i && buf[j] <= ' ') j++;
                 switch (k++) {
-                case 0: con->http_method = loc_strdup(s); break;
-                case 1: con->http_uri = loc_strdup(s); break;
-                case 2: con->http_ver = loc_strdup(s); break;
+                case 0: con->http_method = s; break;
+                case 1: con->http_uri = s; break;
+                case 2: con->http_ver = s; break;
                 }
             }
         }
         else {
-            unsigned j = 0;
             unsigned k = i;
-            while (k > 0 && con->recv_buf[k - 1] <= ' ') con->recv_buf[--k] = 0;
+            while (k > 0 && buf[k - 1] <= ' ') k--;
             if (k == 0) {
                 con->read_request_done = 1;
             }
             else {
-                while (j < k && con->recv_buf[j] != ':') j++;
+                unsigned j = 0;
+                while (j < k && buf[j] != ':') j++;
                 if (j < k) {
                     HttpParam * h = (HttpParam *)loc_alloc_zero(sizeof(HttpParam));
-                    con->recv_buf[j++] = 0;
-                    while (j < k && con->recv_buf[j] == ' ') con->recv_buf[j++] = 0;
-                    h->name = loc_strdup(con->recv_buf);
-                    h->value = loc_strdup(con->recv_buf + j);
+                    h->name = loc_strndup(buf, j++);
+                    while (j < k && buf[j] == ' ') j++;
+                    h->value = loc_strndup(buf + j, k - j);
                     h->next = con->http_hdrs;
                     if (strcmp(h->name, "Connection") == 0 && strcmp(h->value, "keep-alive") == 0) {
                         con->keep_alive = 1;
@@ -353,10 +359,11 @@ static void read_http_request(HttpConnection * con) {
                 }
             }
         }
-        memmove(con->recv_buf, con->recv_buf + i, con->recv_len - i);
-        con->recv_len -= i;
-        con->recv_pos = 0;
+        buf += i;
+        len -= i;
     }
+    con->recv_len = len;
+    memmove(con->recv_buf, buf, len);
 }
 
 static void http_read_done(void * x) {
