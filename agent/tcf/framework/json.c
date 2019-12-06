@@ -997,8 +997,7 @@ static void skip_object(InputStream * inp) {
             for (;;) {
                 skip_object(inp);
                 skip_whitespace(inp);
-                ch = skip_char(inp);
-                check_char(ch, ':');
+                check_char(skip_char(inp), ':');
                 skip_object(inp);
                 skip_whitespace(inp);
                 ch = skip_char(inp);
@@ -1009,16 +1008,29 @@ static void skip_object(InputStream * inp) {
         }
         return;
     case '(':
+        tmp_buf_pos--;
         {
-            unsigned long size = json_read_ulong(inp);
-            ch = skip_char(inp);
-            check_char(ch, ')');
-            while (size) {
+            size_t i;
+            size_t size = 0;
+            char * cbf = NULL;
+            ByteArrayOutputStream buf;
+            OutputStream * out = create_byte_array_output_stream(&buf);
+            for (;;) {
                 ch = read_stream(inp);
-                if (ch < 0) exception(ERR_JSON_SYNTAX);
-                tmp_buf_add(ch);
-                size--;
+                if (ch < '0' || ch > '9') break;
+                size = size * 10 + (ch - '0');
             }
+            check_char(ch, ')');
+            /* Binary data cannot be stored in tmp_buf and needs to be converted to BASE64 string */
+            cbf = (char *)tmp_alloc(size);
+            for (i = 0; i < size; i++) cbf[i] = (char)read_stream(inp);
+            write_stream(out, '"');
+            write_base64(out, cbf, size);
+            write_stream(out, '"');
+            get_byte_array_output_stream_data(&buf, &cbf, &size);
+            while (tmp_buf_pos + size > tmp_buf_size) realloc_tmp_buf();
+            memcpy(tmp_buf + tmp_buf_pos, cbf, size);
+            tmp_buf_pos += size;
         }
         return;
     default:
