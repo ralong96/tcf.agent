@@ -152,9 +152,8 @@ void * tmp_realloc(void * ptr, size_t size) {
 }
 
 char * tmp_strdup(const char * s) {
-    char * rval = (char *)tmp_alloc(strlen(s) + 1);
-    strcpy(rval, s);
-    return rval;
+    size_t len = strlen(s) + 1;
+    return (char *)memcpy(tmp_alloc(len), s, len);
 }
 
 char * tmp_strdup2(const char * s1, const char * s2) {
@@ -168,9 +167,8 @@ char * tmp_strdup2(const char * s1, const char * s2) {
 
 char * tmp_strndup(const char * s, size_t len) {
     char * rval = (char *)tmp_alloc(len + 1);
-    strncpy(rval, s, len);
     rval[len] = '\0';
-    return rval;
+    return strncpy(rval, s, len);
 }
 
 char * tmp_printf(const char * fmt, ...) {
@@ -250,9 +248,8 @@ void loc_free(const void * p) {
 
 /* strdup() with end-of-memory checking. */
 char * loc_strdup(const char * s) {
-    char * rval = (char *)loc_alloc(strlen(s) + 1);
-    strcpy(rval, s);
-    return rval;
+    size_t len = strlen(s) + 1;
+    return (char *)memcpy(loc_alloc(len), s, len);
 }
 
 /* strdup2() with concatenation and  end-of-memory checking. */
@@ -268,9 +265,8 @@ char * loc_strdup2(const char * s1, const char * s2) {
 /* strndup() with end-of-memory checking. */
 char * loc_strndup(const char * s, size_t len) {
     char * rval = (char *)loc_alloc(len + 1);
-    strncpy(rval, s, len);
     rval[len] = '\0';
-    return rval;
+    return strncpy(rval, s, len);
 }
 
 char * loc_printf(const char * fmt, ...) {
