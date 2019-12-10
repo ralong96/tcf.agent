@@ -220,6 +220,8 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
                     down->has_reg_data = 1;
                 }
             }
+            /* Cache miss on register access should not be ignored, abort trace */
+            if (cache_miss_count() > 0) exception(ERR_CACHE_MISS);
             clear_trap(&trap);
             frame->is_walked = 1;
         }
