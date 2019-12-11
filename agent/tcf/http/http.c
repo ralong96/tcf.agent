@@ -329,12 +329,12 @@ static void read_http_request(HttpConnection * con) {
                 unsigned l = j;
                 char * s = buf + j;
                 while (j < i && buf[j] > ' ') j++;
-                while (j < i && buf[j] <= ' ') j++;
                 switch (k++) {
                 case 0: con->http_method = loc_strndup(s, j - l); break;
                 case 1: con->http_uri = loc_strndup(s, j - l); break;
                 case 2: con->http_ver = loc_strndup(s, j - l); break;
                 }
+                while (j < i && buf[j] <= ' ') j++;
             }
         }
         else {
