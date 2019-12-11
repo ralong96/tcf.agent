@@ -326,14 +326,14 @@ static void read_http_request(HttpConnection * con) {
             unsigned j = 0;
             unsigned k = 0;
             while (j < i) {
+                unsigned l = j;
                 char * s = buf + j;
                 while (j < i && buf[j] > ' ') j++;
-                s = loc_strndup(s, buf + j - s);
                 while (j < i && buf[j] <= ' ') j++;
                 switch (k++) {
-                case 0: con->http_method = s; break;
-                case 1: con->http_uri = s; break;
-                case 2: con->http_ver = s; break;
+                case 0: con->http_method = loc_strndup(s, j - l); break;
+                case 1: con->http_uri = loc_strndup(s, j - l); break;
+                case 2: con->http_ver = loc_strndup(s, j - l); break;
                 }
             }
         }
