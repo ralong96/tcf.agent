@@ -612,30 +612,35 @@ static void channel_close_listener(Channel * c) {
 }
 
 void ini_memory_map_service(Protocol * proto, TCFBroadcastGroup * bcg) {
-    {
-        static ContextEventListener listener = {
-            event_context_changed,
-            NULL,
-            NULL,
-            NULL,
-            event_context_changed,
-            event_context_disposed
-        };
-        add_context_event_listener(&listener, NULL);
-    }
+    static int ini_done = 0;
+    if (!ini_done) {
+        ini_done = 1;
+        {
+            static ContextEventListener listener = {
+                event_context_changed,
+                NULL,
+                NULL,
+                NULL,
+                event_context_changed,
+                event_context_disposed
+            };
+            add_context_event_listener(&listener, NULL);
+        }
 #if SERVICE_PathMap
-    {
-        static PathMapEventListener listener = {
-            event_path_map_changed,
-        };
-        add_path_map_event_listener(&listener, NULL);
-    }
+        {
+            static PathMapEventListener listener = {
+                event_path_map_changed,
+            };
+            add_path_map_event_listener(&listener, NULL);
+        }
 #endif
-    broadcast_group = bcg;
-    add_channel_close_listener(channel_close_listener);
+        add_channel_close_listener(channel_close_listener);
+        context_extension_offset = context_extension(sizeof(ContextExtensionMM));
+        broadcast_group = bcg;
+    }
+    assert(broadcast_group == bcg);
     add_command_handler(proto, MEMORY_MAP, "get", command_get);
     add_command_handler(proto, MEMORY_MAP, "set", command_set);
-    context_extension_offset = context_extension(sizeof(ContextExtensionMM));
 }
 
 

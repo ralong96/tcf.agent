@@ -789,7 +789,7 @@ static void delete_stack_trace(Context * ctx, void * args) {
 }
 
 #if SERVICE_MemoryMap
-static void event_map_changed(Context * ctx, void * client_data) {
+static void event_map_changed(Context * ctx, void * args) {
     if (ctx->mem_access && context_get_group(ctx, CONTEXT_GROUP_PROCESS) == ctx) {
         /* If the context is a memory space, we need to invalidate
          * stack traces on all members of the group, since they can
@@ -807,38 +807,42 @@ static void event_map_changed(Context * ctx, void * client_data) {
 #endif
 
 void ini_stack_trace_service(Protocol * proto, TCFBroadcastGroup * bcg) {
-    static ContextEventListener context_listener = {
-        NULL,
-        flush_stack_trace,
-        NULL,
-        flush_stack_trace,
-        flush_stack_trace,
-        delete_stack_trace
-    };
+    static int ini_done = 0;
+    if (!ini_done) {
+        ini_done = 1;
+        static ContextEventListener context_listener = {
+            NULL,
+            flush_stack_trace,
+            NULL,
+            flush_stack_trace,
+            flush_stack_trace,
+            delete_stack_trace
+        };
 #if SERVICE_Registers
-    static RegistersEventListener registers_listener = {
-        flush_on_register_change,
-    };
+        static RegistersEventListener registers_listener = {
+            flush_on_register_change,
+        };
 #endif
 #if SERVICE_MemoryMap
-    static MemoryMapEventListener map_listener = {
-        NULL,
-        NULL,
-        NULL,
-        event_map_changed,
-    };
+        static MemoryMapEventListener map_listener = {
+            NULL,
+            NULL,
+            NULL,
+            event_map_changed,
+        };
 #endif
-    add_context_event_listener(&context_listener, bcg);
+        add_context_event_listener(&context_listener, NULL);
 #if SERVICE_Registers
-    add_registers_event_listener(&registers_listener, bcg);
+        add_registers_event_listener(&registers_listener, NULL);
 #endif
 #if SERVICE_MemoryMap
-    add_memory_map_event_listener(&map_listener, NULL);
+        add_memory_map_event_listener(&map_listener, NULL);
 #endif
+        context_extension_offset = context_extension(sizeof(StackTrace));
+    }
     add_command_handler(proto, STACKTRACE, "getContext", command_get_context);
     add_command_handler(proto, STACKTRACE, "getChildren", command_get_children);
     add_command_handler(proto, STACKTRACE, "getChildrenRange", command_get_children_range);
-    context_extension_offset = context_extension(sizeof(StackTrace));
 }
 
 #endif

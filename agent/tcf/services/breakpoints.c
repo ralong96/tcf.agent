@@ -3307,43 +3307,48 @@ static void channel_close_listener(Channel * c) {
 }
 
 void ini_breakpoints_service(Protocol * proto, TCFBroadcastGroup * bcg) {
-    int i;
-    broadcast_group = bcg;
-
-    {
-        static ContextEventListener listener = {
-            event_context_created,
-            event_context_exited,
-            NULL,
-            NULL,
-            event_context_changed,
-            event_context_disposed
-        };
-        add_context_event_listener(&listener, NULL);
-    }
+    static int ini_done = 0;
+    if (!ini_done) {
+        int i;
+        ini_done = 1;
+        {
+            static ContextEventListener listener = {
+                event_context_created,
+                event_context_exited,
+                NULL,
+                NULL,
+                event_context_changed,
+                event_context_disposed
+            };
+            add_context_event_listener(&listener, NULL);
+        }
 #if SERVICE_MemoryMap
-    {
-        static MemoryMapEventListener listener = {
-            event_context_changed,
-            event_code_unmapped,
-            event_context_changed,
-            event_context_changed,
-        };
-        add_memory_map_event_listener(&listener, NULL);
-    }
+        {
+            static MemoryMapEventListener listener = {
+                event_context_changed,
+                event_code_unmapped,
+                event_context_changed,
+                event_context_changed,
+            };
+            add_memory_map_event_listener(&listener, NULL);
+        }
 #endif
 #if SERVICE_PathMap
-    {
-        static PathMapEventListener listener = {
-            event_path_map_changed,
-        };
-        add_path_map_event_listener(&listener, NULL);
-    }
+        {
+            static PathMapEventListener listener = {
+                event_path_map_changed,
+            };
+            add_path_map_event_listener(&listener, NULL);
+        }
 #endif
-    for (i = 0; i < ADDR2INSTR_HASH_SIZE; i++) list_init(addr2instr + i);
-    for (i = 0; i < ID2BP_HASH_SIZE; i++) list_init(id2bp + i);
-    for (i = 0; i < INP2BR_HASH_SIZE; i++) list_init(inp2br + i);
-    add_channel_close_listener(channel_close_listener);
+        for (i = 0; i < ADDR2INSTR_HASH_SIZE; i++) list_init(addr2instr + i);
+        for (i = 0; i < ID2BP_HASH_SIZE; i++) list_init(id2bp + i);
+        for (i = 0; i < INP2BR_HASH_SIZE; i++) list_init(inp2br + i);
+        add_channel_close_listener(channel_close_listener);
+        context_extension_offset = context_extension(sizeof(ContextExtensionBP));
+        broadcast_group = bcg;
+    }
+    assert(broadcast_group == bcg);
     add_command_handler(proto, BREAKPOINTS, "set", command_set);
     add_command_handler(proto, BREAKPOINTS, "add", command_add);
     add_command_handler(proto, BREAKPOINTS, "change", command_change);
@@ -3354,7 +3359,6 @@ void ini_breakpoints_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     add_command_handler(proto, BREAKPOINTS, "getProperties", command_get_properties);
     add_command_handler(proto, BREAKPOINTS, "getStatus", command_get_status);
     add_command_handler(proto, BREAKPOINTS, "getCapabilities", command_get_capabilities);
-    context_extension_offset = context_extension(sizeof(ContextExtensionBP));
 }
 
 #endif /* SERVICE_Breakpoints */
