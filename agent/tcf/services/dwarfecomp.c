@@ -882,6 +882,7 @@ static void add_expression(DWARFExpressionInfo * info) {
     DWARFExpressionInfo * org_expr = expr;
     size_t org_expr_pos = expr_pos;
     JumpInfo * org_jumps = jumps;
+    const char * name_synopsys = "CHESS, Synopsys Inc";
 
     expr = info;
     expr_pos = 0;
@@ -1182,6 +1183,18 @@ static void add_expression(DWARFExpressionInfo * info) {
             }
             break;
         case OP_GNU_variable_value:
+        /* case OP_address_class: */
+            if (!strncmp(expr->object->mCompUnit->mProducer, name_synopsys, strlen(name_synopsys))) {
+                /* Synopsys compiler for Xilinx AIE core uses 0xFD as a location expression
+                 * operation, which takes integer argument from top-of-stack of the location
+                 * expression stack and uses it as the address class for the location being
+                 * evaluated. Since AIE core has only one data memory, address class can be
+                 * ignored. Add OP_drop, so that the integer arg is dropped from the stack
+                 */
+                add(OP_drop);
+                expr_pos++;
+                break;
+            }
             op_gnu_variable_value();
             break;
         default:

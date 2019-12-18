@@ -433,6 +433,8 @@
 #define OP_GNU_addr_index           0xfb
 #define OP_GNU_const_index          0xfc
 #define OP_GNU_variable_value       0xfd
+/* Synopsis ASIP-specific extension */
+#define OP_address_class            0xfd
 /* TCF extensions */
 #define OP_TCF_switch               0xfe
 #define OP_TCF_offset               0xff
