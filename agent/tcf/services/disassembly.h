@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2018 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2019 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -19,6 +19,7 @@
 #include <tcf/config.h>
 #include <tcf/framework/cpudefs.h>
 #include <tcf/framework/protocol.h>
+#include <tcf/framework/context.h>
 
 typedef struct {
     const char * text;
@@ -43,6 +44,10 @@ typedef DisassemblyResult * Disassembler(uint8_t * /* code */, ContextAddress /*
 #if SERVICE_Disassembly
 
 extern void add_disassembler(Context * ctx, const char * isa, Disassembler disassembler);
+
+extern Disassembler * find_disassembler(Context * ctx, const char * isa);
+
+extern int get_disassembler_isa(Context * ctx, ContextAddress addr, ContextISA * isa);
 
 extern void ini_disassembly_service(Protocol * proto);
 

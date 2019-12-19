@@ -78,7 +78,7 @@ static DisassemblerInfo * find_disassembler_info(Context * ctx, const char * isa
     return NULL;
 }
 
-static Disassembler * find_disassembler(Context * ctx, const char * isa) {
+Disassembler * find_disassembler(Context * ctx, const char * isa) {
     DisassemblerInfo * i = find_disassembler_info(ctx, isa);
     return i ? i->disassembler : NULL;
 }
@@ -147,7 +147,7 @@ static void command_get_capabilities(char * token, Channel * c) {
     cache_enter(command_get_capabilities_cache_client, c, &args, sizeof(args));
 }
 
-static int get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
+int get_disassembler_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
     if (context_get_isa(ctx, addr, isa) < 0) {
         memset(isa, 0, sizeof(ContextISA));
         return -1;
@@ -206,7 +206,7 @@ static int disassemble_block(Context * ctx, OutputStream * out, uint8_t * mem_bu
         DisassemblyResult * dr = NULL;
         if (args->isa == NULL && (addr < isa->addr ||
                 (isa->addr + isa->size >= isa->addr && addr >= isa->addr + isa->size))) {
-            if (get_isa(ctx, addr, isa) < 0) return -1;
+            if (get_disassembler_isa(ctx, addr, isa) < 0) return -1;
             disassembler_ok = 0;
         }
         if (!disassembler_ok) {
@@ -351,7 +351,7 @@ static void disassemble_cache_client(void * x) {
         }
 #endif
         if (sym_addr_ok && sym_addr <= args->addr) {
-            if (get_isa(ctx, sym_addr, &isa) < 0) {
+            if (get_disassembler_isa(ctx, sym_addr, &isa) < 0) {
                 error = errno;
             }
             else {
@@ -367,7 +367,7 @@ static void disassemble_cache_client(void * x) {
         }
         else {
             /* Use default address alignment */
-            if (get_isa(ctx, args->addr, &isa) < 0) {
+            if (get_disassembler_isa(ctx, args->addr, &isa) < 0) {
                 error = errno;
             }
             else {
@@ -411,7 +411,7 @@ static void disassemble_cache_client(void * x) {
                     if (addr_error < buf_addr || args->addr < addr_error) break;
                     buf_addr = addr_error;
                     buf_size = args->addr + args->size - buf_addr;
-                    if (get_isa(ctx, buf_addr, &isa) < 0) {
+                    if (get_disassembler_isa(ctx, buf_addr, &isa) < 0) {
                         error = errno;
                         break;
                     }
