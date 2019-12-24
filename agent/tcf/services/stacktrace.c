@@ -809,7 +809,6 @@ static void event_map_changed(Context * ctx, void * args) {
 void ini_stack_trace_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     static int ini_done = 0;
     if (!ini_done) {
-        ini_done = 1;
         static ContextEventListener context_listener = {
             NULL,
             flush_stack_trace,
@@ -831,6 +830,7 @@ void ini_stack_trace_service(Protocol * proto, TCFBroadcastGroup * bcg) {
             event_map_changed,
         };
 #endif
+        ini_done = 1;
         add_context_event_listener(&context_listener, NULL);
 #if SERVICE_Registers
         add_registers_event_listener(&registers_listener, NULL);
