@@ -2369,7 +2369,7 @@ static void load_line_numbers_v2(CompUnit * Unit, U8_T unit_size, int dwarf64) {
                 state.mAddress += (255 - opcode_base) / line_range * min_instruction_length;
                 break;
             case DW_LNS_fixed_advance_pc:
-                state.mAddress += dio_ReadU2();
+                state.mAddress += dio_ReadAddressX(NULL, 2);
                 break;
             case DW_LNS_set_prologue_end:
                 state.mFlags |= LINE_PrologueEnd;

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1894,13 +1894,39 @@ static void next_region(void) {
                     if (get_symbol_address(fnd_sym, &fnd_addr) == 0) {
                         Value v;
                         SYM_FLAGS flags = 0;
+                        ContextAddress exp_addr = 0;
+                        int fnd_class = 0;
                         char * expr = (char *)tmp_alloc(strlen(func_name) + 16);
+                        if (get_symbol_class(fnd_sym, &fnd_class) < 0) {
+                            error_sym("get_symbol_class", fnd_sym);
+                        }
                         if (get_symbol_flags(fnd_sym, &flags) < 0) {
                             error_sym("get_symbol_flags", fnd_sym);
                         }
                         sprintf(expr, "$\"%s\"", esc(func_name));
                         if (evaluate_expression(elf_ctx, STACK_TOP_FRAME, 0, expr, 0, &v) < 0) {
                             error_sym("evaluate_expression", fnd_sym);
+                        }
+                        if (fnd_class == SYM_CLASS_FUNCTION) {
+                            if (value_to_address(&v, &exp_addr) < 0) {
+                                error_sym("value_to_address", fnd_sym);
+                            }
+                            if (fnd_addr != exp_addr) {
+                                error_sym("fnd_addr != exp_addr", fnd_sym);
+                            }
+                        }
+                        sprintf(expr, "&$\"%s\"", esc(func_name));
+                        if (evaluate_expression(elf_ctx, STACK_TOP_FRAME, 0, expr, 0, &v) < 0) {
+                            error_sym("evaluate_expression", fnd_sym);
+                        }
+                        if (value_to_address(&v, &exp_addr) < 0) {
+                            error_sym("value_to_address", fnd_sym);
+                        }
+                        if (fnd_addr != exp_addr) {
+                            error_sym("fnd_addr != exp_addr", fnd_sym);
+                        }
+                        if (fnd_class == SYM_CLASS_FUNCTION && v.sym == NULL) {
+                            error_sym("v.sym == NULL", fnd_sym);
                         }
                         if (flags & SYM_FLAG_EXTERNAL) {
                             if (find_symbol_by_name(elf_ctx, STACK_NO_FRAME, 0, func_name, &fnd_sym) < 0) {
@@ -2349,11 +2375,11 @@ static void test(void * args) {
     test_posted = 0;
     if (elf_file_name == NULL || mem_region_pos >= (int)mem_map.region_cnt) {
         if (file_has_line_info) {
+            check_line_info();
             if (line_info_cnt == 0) {
                 set_errno(ERR_OTHER, "Line info not accessable");
                 error("address_to_line");
             }
-            check_line_info();
         }
         next_file();
     }

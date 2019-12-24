@@ -1214,12 +1214,12 @@ static int builtin_identifier(int mode, char * name, Value * v) {
             case 1:
                 expression(mode, v);
                 load_value(v);
-                file_name = tmp_strndup((char *)v->value, v->size);
+                file_name = tmp_strndup((char *)v->value, (size_t)v->size);
                 break;
             case 2:
                 expression(mode, v);
                 load_value(v);
-                sect_name = tmp_strndup((char *)v->value, v->size);
+                sect_name = tmp_strndup((char *)v->value, (size_t)v->size);
                 break;
             default:
                 error(ERR_INV_EXPRESSION, "Too many arguments");

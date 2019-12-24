@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010, 2014 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010-2019 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -149,12 +149,24 @@ static void relocate(void * r) {
     func->func();
 }
 
+static U4_T get_offs4(uint8_t * x) {
+    U4_T offs = *(U4_T *)x;
+    if (relocs->file->byte_swap) SWAP(offs);
+    if (section->file->type != ET_REL) offs -= (U4_T)section->addr;
+    return offs;
+}
+
+static U8_T get_offs8(uint8_t * x) {
+    U8_T offs = *(U8_T *)x;
+    if (relocs->file->byte_swap) SWAP(offs);
+    if (section->file->type != ET_REL) offs -= section->addr;
+    return offs;
+}
+
 void drl_relocate_in_context(Context * c, ELF_Section * s, U8_T offset,
                              void * buf, size_t size, ELF_Section ** dst, int * rt_addr) {
     ELF_Section * r = s->relocate;
     ELF_Section * d = NULL;
-    uint8_t * p;
-    uint8_t * q;
     unsigned ix;
 
     if (rt_addr) *rt_addr = 0;
@@ -223,18 +235,15 @@ void drl_relocate_in_context(Context * c, ELF_Section * s, U8_T offset,
     }
 
     /* Perform a dichotomic look up for each ordered area */
-
     for (ix = 0; ix < r->reloc_num_zones; ix++) {
-        p = (uint8_t *)r->data + r->reloc_zones_bondaries[ix] * r->entsize;
-        q = (uint8_t *)r->data + r->reloc_zones_bondaries[ix + 1] * r->entsize;
+        uint8_t * p = (uint8_t *)r->data + r->reloc_zones_bondaries[ix] * r->entsize;
+        uint8_t * q = (uint8_t *)r->data + r->reloc_zones_bondaries[ix + 1] * r->entsize;
         while (p < q) {
             unsigned n = (q - p) / r->entsize / 2;
             uint8_t * x = p + n * r->entsize;
             assert(x < q);
             if (r->file->elf64) {
-                U8_T offs = *(U8_T *)x;
-                if (r->file->byte_swap) SWAP(offs);
-                if (s->file->type != ET_REL) offs -= s->addr;
+                U8_T offs = get_offs8(x);
                 if (offset > offs) {
                     p = x + r->entsize;
                     continue;
@@ -243,6 +252,30 @@ void drl_relocate_in_context(Context * c, ELF_Section * s, U8_T offset,
                     q = x;
                     continue;
                 }
+                {
+                    /* ELF can have multiple relocations at same offset */
+                    uint8_t * x0 = x;
+                    uint8_t * x1 = x;
+                    while (x0 > p) {
+                        uint8_t * y = x0 - r->entsize;
+                        U8_T z = get_offs8(y);
+                        assert(z <= offs);
+                        if (z != offs) break;
+                        x0 = y;
+                    }
+                    while (x1 + r->entsize < q) {
+                        uint8_t * y = x1 + r->entsize;
+                        U8_T z = get_offs8(y);
+                        assert(z >= offs);
+                        if (z != offs) break;
+                        x1 = y;
+                    }
+                    while (x0 <= x1) {
+                        relocate(x0);
+                        x0 += r->entsize;
+                    }
+                }
+                return;
             }
             else {
                 U4_T offs = *(U4_T *)x;
@@ -256,9 +289,31 @@ void drl_relocate_in_context(Context * c, ELF_Section * s, U8_T offset,
                     q = x;
                     continue;
                 }
+                {
+                    /* ELF can have multiple relocations at same offset */
+                    uint8_t * x0 = x;
+                    uint8_t * x1 = x;
+                    while (x0 > p) {
+                        uint8_t * y = x0 - r->entsize;
+                        U4_T z = get_offs4(y);
+                        assert(z <= offs);
+                        if (z != offs) break;
+                        x0 = y;
+                    }
+                    while (x1 + r->entsize < q) {
+                        uint8_t * y = x1 + r->entsize;
+                        U4_T z = get_offs4(y);
+                        assert(z >= offs);
+                        if (z != offs) break;
+                        x1 = y;
+                    }
+                    while (x0 <= x1) {
+                        relocate(x0);
+                        x0 += r->entsize;
+                    }
+                }
+                return;
             }
-            relocate(x);
-            return;
         }
     }
 }
