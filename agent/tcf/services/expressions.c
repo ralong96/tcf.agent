@@ -1198,6 +1198,7 @@ static int builtin_identifier(int mode, char * name, Value * v) {
         v->constant = 1;
         return SYM_CLASS_VALUE;
     }
+#if ENABLE_Symbols
     if (strcmp(name, "$relocate") == 0 && text_sy == '(') {
         unsigned cnt;
         uint64_t addr = 0;
@@ -1241,6 +1242,7 @@ static int builtin_identifier(int mode, char * name, Value * v) {
         }
         return sym2value(mode, sym, v);
     }
+#endif
     return -1;
 }
 
