@@ -83,7 +83,7 @@ int get_symbol_offset(const Symbol * sym, ContextAddress * offset) {
     if (loc_info->args_cnt == 1) {
         /* Relative location. Only static offset can be returned.
          * Dynamic offset can only be computed in an expression. */
-        if (loc_info->value_cmds.cnt == 3 &&
+        if (loc_info->value_cmds.cnt == 3 && loc_info->code_size == 0 &&
                 loc_info->value_cmds.cmds[0].cmd == SFT_CMD_ARG &&
                 loc_info->value_cmds.cmds[1].cmd == SFT_CMD_NUMBER &&
                 loc_info->value_cmds.cmds[2].cmd == SFT_CMD_ADD) {

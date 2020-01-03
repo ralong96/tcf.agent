@@ -3843,6 +3843,22 @@ static void add_dwarf_location_command(LocationInfo * l, PropertyValue * v) {
             l->code_size = info->code_addr + info->code_size - l->code_addr;
         }
     }
+    if (info->expr_size >= 2 && info->expr_addr[0] == OP_plus_uconst) {
+        unsigned pos = 1;
+        int64_t offs = 0;
+        unsigned i;
+        for (i = 0;; i += 7) {
+            U1_T n = info->expr_addr[pos++];
+            offs |= (n & 0x7f) << i;
+            if ((n & 0x80) == 0) break;
+            if (pos >= info->expr_size) exception(ERR_INV_DWARF);
+        }
+        if (pos == info->expr_size) {
+            add_location_command(l, SFT_CMD_NUMBER)->args.num = offs;
+            add_location_command(l, SFT_CMD_ADD);
+            return;
+        }
+    }
     /* Only create the command if no exception was thrown */
     cmd = add_location_command(l, SFT_CMD_LOCATION);
     cmd->args.loc.code_addr = info->expr_addr;
