@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2016-2018 Xilinx, Inc. and others.
+ * Copyright (c) 2016-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1423,6 +1423,8 @@ static int handle_D_command(GdbClient * c) {
                 c->cur_g_pid = 0;
                 c->cur_g_tid = 0;
             }
+            /* According to the GDB manual: Detaching the process continues its execution. */
+            if (!p->ctx->exited) continue_debug_context(p->ctx, NULL, RM_RESUME, 1, 0, 0);
             detach_process(p);
             add_res_str(c, "OK");
             return 0;
