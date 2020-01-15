@@ -1443,12 +1443,14 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                 ELF_File * file = elf_open_memory_region_file(r, NULL);
                 if (file != NULL) {
                     unsigned j;
+                    uint64_t base_offs = ~(uint64_t)0;
                     ContextAddress base_addr = 0;
                     for (j = 0; j < file->pheader_cnt; j++) {
                         ELF_PHeader * p = file->pheaders + j;
-                        if (p->type == PT_LOAD && p->offset == 0) {
+                        if (p->type == PT_LOAD && p->offset < base_offs) {
                             base_addr = r->addr - (ContextAddress)p->address;
-                            break;
+                            base_offs = p->offset;
+                            if (p->offset == 0) break;
                         }
                     }
                     for (j = 0; j < file->pheader_cnt; j++) {
