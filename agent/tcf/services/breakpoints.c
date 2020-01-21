@@ -137,6 +137,7 @@ struct BreakInstruction {
     size_t saved_size;
     ErrorReport * planting_error;
     ErrorReport * address_error;
+    ErrorReport * ph_address_error;
     ErrorReport * condition_error;
     int stepping_over_bp;
     InstructionRef * refs;
@@ -390,7 +391,8 @@ static void plant_instruction(BreakInstruction * bi) {
         }
     }
     else if (error == ERR_UNSUPPORTED) {
-        error = set_errno(ERR_OTHER, "Unsupported set of breakpoint attributes");
+        if (bi->ph_address_error) error = set_error_report_errno(bi->ph_address_error);
+        else error = set_errno(ERR_OTHER, "Unsupported set of breakpoint attributes");
     }
 
     rp = get_error_report(error);
@@ -513,6 +515,7 @@ static void free_instruction(BreakInstruction * bi) {
     list_remove(&bi->link_adr);
     context_unlock(bi->cb.ctx);
     release_error_report(bi->address_error);
+    release_error_report(bi->ph_address_error);
     release_error_report(bi->planting_error);
     release_error_report(bi->condition_error);
     loc_free(bi->bp_encoding);
@@ -1089,11 +1092,16 @@ static void get_bp_opcodes(void) {
             bi->bp_size = 0;
             bi->ph_ctx = NULL;
             bi->ph_addr = 0;
+            release_error_report(bi->ph_address_error);
+            bi->ph_address_error = 0;
             if (bi->ref_cnt > 0 && !bi->cb.ctx->exiting && !bi->cb.ctx->exited &&
                     (bi->cb.access_types & CTX_BP_ACCESS_INSTRUCTION) != 0) {
                 Context * ph_ctx = NULL;
                 ContextAddress ph_addr = 0;
-                if (context_get_canonical_addr(bi->cb.ctx, bi->cb.address, &ph_ctx, &ph_addr, NULL, NULL) == 0) {
+                if (context_get_canonical_addr(bi->cb.ctx, bi->cb.address, &ph_ctx, &ph_addr, NULL, NULL) < 0) {
+                    bi->ph_address_error = get_error_report(errno);
+                }
+                else {
 #if ENABLE_ContextISA
                     ContextISA isa;
                     LINK * m = channel_root.next;
