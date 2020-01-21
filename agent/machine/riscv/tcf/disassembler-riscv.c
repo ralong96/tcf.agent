@@ -636,6 +636,24 @@ static void disassemble_rv32i(void) {
         add_str("ebreak");
         return;
     }
+    if ((instr & 0x0fffffff) == 0x00200073) {
+        switch (instr >> 28) {
+        case 0: add_str("uret"); return;
+        case 1: add_str("sret"); return;
+        case 3: add_str("mret"); return;
+        }
+    }
+    if (instr == 0x10500073) {
+        add_str("wfi");
+        return;
+    }
+    if ((instr & 0xfe007fff) == 0x12000073) {
+        add_str("sfence.vma ");
+        add_reg(rs1);
+        add_str(", ");
+        add_reg(rs2);
+        return;
+    }
 }
 
 static void disassemble_rv32a(void) {
