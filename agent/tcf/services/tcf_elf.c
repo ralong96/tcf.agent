@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -2156,6 +2156,17 @@ static void create_symbol_addr_search_index(ELF_Section * sec) {
             int add = 0;
             U8_T addr = 0;
             U1_T type = 0;
+
+            /* this is a workaround for the extra relocs for local symbols in the binutils RISC-V port */
+            if (file->machine == EM_RISCV && file->type == ET_REL) {
+                ELF_SymbolInfo sym_info = {0};
+                unpack_elf_symbol_info(tbl, n, &sym_info);
+                if (sym_info.name && sym_info.name[0] == '.' && sym_info.name[1] == 'L') {
+                    n++;
+                    continue;
+                }
+            }
+
             if (file->machine == EM_PPC64) {
                 ELF_SymbolInfo sym_info;
                 unpack_elf_symbol_info(tbl, n, &sym_info);
