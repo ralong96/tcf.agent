@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2019 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -2487,7 +2487,9 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
     }
 
     spsr_id = get_spsr_id();
-    if ((spsr_id == 0 || reg_data[spsr_id].o == 0) && reg_data[13].v == 0) return 0;
+    if (spsr_id == 0 || reg_data[spsr_id].o == 0 || reg_data[14].o == 0 || reg_data[14].v == 0) {
+        if (reg_data[13].v == 0) return 0;
+    }
 
     if (trace_instructions() < 0) return -1;
 
