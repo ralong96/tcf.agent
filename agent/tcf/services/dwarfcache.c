@@ -2103,17 +2103,22 @@ static void add_state(CompUnit * unit, LineNumbersState * state) {
         add_state(unit, &s);
     }
     if (unit->mStatesCnt > 0) {
+        LineNumbersState * last = unit->mStates + unit->mStatesCnt - 1;
         /* Workaround: malformed gnu-8.1.0.0 line info when -gstatement-frontiers is used.
          * See https://bugs.eclipse.org/bugs/show_bug.cgi?id=544359
          * See https://bugs.eclipse.org/bugs/show_bug.cgi?id=544359
          */
-        LineNumbersState * last = unit->mStates + unit->mStatesCnt - 1;
         if (last->mAddress == state->mAddress && last->mSection == state->mSection &&
             last->mFile == state->mFile && last->mLine == state->mLine && last->mColumn <= state->mColumn &&
             (last->mFlags & ~(LINE_IsStmt | LINE_BasicBlock)) == state->mFlags) {
             last->mISA = state->mISA;
             last->mOpIndex = state->mOpIndex;
             last->mDiscriminator = state->mDiscriminator;
+            return;
+        }
+        /* Workaround: malformed CHESS Synopsys line info at the end of the info section */
+        if (state->mLine == 0 && state->mAddress == 1 && state->mFlags == LINE_EndSequence) {
+            last->mFlags |= LINE_EndSequence;
             return;
         }
     }
