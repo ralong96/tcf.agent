@@ -418,6 +418,7 @@ typedef struct MemoryAccessMode {
     int bypass_addr_check;
     int bypass_cache_sync;
     int verify;
+    int dont_stop;
 } MemoryAccessMode;
 
 /* Optional memory access function that take additional argument: access mode. */

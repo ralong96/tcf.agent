@@ -356,6 +356,7 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
     if (mode & 0x02) buf.mode.verify = 1;
     if (mode & 0x04) buf.mode.bypass_addr_check = 1;
     if (mode & 0x08) buf.mode.bypass_cache_sync = 1;
+    if (mode & 0x10) buf.mode.dont_stop = 1;
     switch (cmd) {
     case CMD_SET:
         json_read_binary_start(&buf.state, &c->inp);
@@ -427,7 +428,7 @@ static void memory_set_cache_client(void * parm) {
 
     if (args->pos > 0 && err == 0) {
         Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
-        if ((mem->mem_access & MEM_ACCESS_WR_STOP) != 0) {
+        if (!args->mode.dont_stop && (mem->mem_access & MEM_ACCESS_WR_STOP) != 0) {
             check_all_stopped(ctx);
         }
         if ((mem->mem_access & MEM_ACCESS_WR_RUNNING) == 0) {
@@ -526,7 +527,7 @@ static void memory_get_cache_client(void * parm) {
 
     if (size > 0 && err == 0) {
         Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
-        if ((mem->mem_access & MEM_ACCESS_RD_STOP) != 0) {
+        if (!args->mode.dont_stop && (mem->mem_access & MEM_ACCESS_RD_STOP) != 0) {
             check_all_stopped(ctx);
         }
         if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
@@ -630,7 +631,7 @@ static void memory_fill_cache_client(void * parm) {
 
     if (size > 0 && err == 0) {
         Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
-        if ((mem->mem_access & MEM_ACCESS_WR_STOP) != 0) {
+        if (!args->mode.dont_stop && (mem->mem_access & MEM_ACCESS_WR_STOP) != 0) {
             check_all_stopped(ctx);
         }
         if ((mem->mem_access & MEM_ACCESS_WR_RUNNING) == 0) {
