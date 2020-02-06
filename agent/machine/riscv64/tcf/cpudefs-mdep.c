@@ -199,6 +199,9 @@ static int riscv_get_next_address(Context * ctx, ContextExtensionRISCV * ext) {
         ext->step_addr = riscv_pc + ((int64_t)imm << 1);
         return 0;
     }
+    if ((riscv_instr & 0xe003) == 0x2001) { /* addiw (replaces jal in RV64c) */
+        return 0;
+    }
     if ((riscv_instr & 0x6003) == 0x2001) { /* j, jal */
         int32_t imm = get_imm_se(imm_bits_jc);
         ext->step_addr = riscv_pc + ((int64_t)imm << 1);
