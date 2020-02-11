@@ -451,7 +451,9 @@ void dio_ReadAttribute(U2_T Attr, U2_T Form) {
     dio_gFormDataAddr = NULL;
     dio_gFormDataSize = 0;
     dio_gFormData = 0;
-    if ((Attr == AT_stmt_list || Attr == AT_ranges) && sSection->relocate) {
+    if (sSection->relocate &&
+            (Attr == AT_stmt_list || Attr == AT_ranges ||
+                (Attr == AT_high_pc && Form != FORM_ADDR))) {
         U4_T Size = 0;
         switch (Form) {
         case FORM_DATA2     : Size = 2; break;
