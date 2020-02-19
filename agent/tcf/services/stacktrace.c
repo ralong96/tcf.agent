@@ -165,7 +165,7 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
 #endif
                             if (buf_size < def->size) buf = (uint8_t *)tmp_realloc(buf, buf_size = def->size);
                             if (read_reg_bytes(prev, def, 0, def->size, buf) == 0) {
-                                write_reg_bytes(down, def, 0, def->size, buf);
+                                if (write_reg_bytes(down, def, 0, def->size, buf) < 0) exception(errno);
                                 down->has_reg_data = 1;
                             }
                         }

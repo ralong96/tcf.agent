@@ -287,7 +287,10 @@ static int check_process_isa(GdbClient * c, Context * prs) {
     const char * regs = get_regs(c);
     if (regs != NULL) {
         memset(&isa, 0, sizeof(isa));
-        context_get_isa(prs, 0, &isa);
+        if (context_get_isa(prs, 0, &isa) < 0) {
+            trace(LOG_ALWAYS, "Cannot get process ISA: %s", errno_to_str(errno));
+            return 0;
+        }
         if (isa.def != NULL) {
             if (strcmp(isa.def, "386") == 0) return regs == cpu_regs_gdb_i386;
             if (strcmp(isa.def, "X86_64") == 0) return regs == cpu_regs_gdb_x86_64;

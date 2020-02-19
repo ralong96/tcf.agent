@@ -1099,7 +1099,9 @@ static int sym2value(int mode, Symbol * sym, Value * v) {
         {
             ContextAddress word = 0;
             v->type_class = TYPE_CLASS_POINTER;
-            if (v->type != NULL) get_array_symbol(v->type, 0, &v->type);
+            if (v->type != NULL && get_array_symbol(v->type, 0, &v->type)) {
+                error(errno, "Cannot get function type");
+            }
             if (mode == MODE_NORMAL && get_symbol_address(sym, &word) < 0) {
                 error(errno, "Cannot retrieve symbol address");
             }
@@ -2413,7 +2415,9 @@ static void op_field(int mode, Value * v) {
                 addr = (ContextAddress)loc->stk[0];
             }
             v->type_class = TYPE_CLASS_POINTER;
-            if (v->type != NULL) get_array_symbol(v->type, 0, &v->type);
+            if (v->type != NULL && get_array_symbol(v->type, 0, &v->type)) {
+                error(errno, "Cannot get function type");
+            }
             set_ctx_word_value(v, addr);
             v->function = 1;
             v->sym = sym;
