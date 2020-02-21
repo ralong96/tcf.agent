@@ -1031,6 +1031,7 @@ static void skip_object(InputStream * inp) {
             while (tmp_buf_pos + size > tmp_buf_size) realloc_tmp_buf();
             memcpy(tmp_buf + tmp_buf_pos, cbf, size);
             tmp_buf_pos += size;
+            loc_free(cbf);
         }
         return;
     default:

@@ -157,12 +157,17 @@ OutputStream * create_byte_array_output_stream(ByteArrayOutputStream * buf) {
 }
 
 void get_byte_array_output_stream_data(ByteArrayOutputStream * buf, char ** data, size_t * size) {
-    if (buf->mem == NULL) {
-        buf->max = buf->pos;
-        buf->mem = (char *)loc_alloc(buf->max);
-        memcpy(buf->mem, buf->buf, buf->pos);
+    if (data != NULL) {
+        if (buf->mem == NULL) {
+            buf->max = buf->pos;
+            buf->mem = (char *)loc_alloc(buf->max);
+            memcpy(buf->mem, buf->buf, buf->pos);
+        }
+        *data = buf->mem;
     }
-    if (data != NULL) *data = buf->mem;
+    else if (buf->mem != NULL) {
+        loc_free(buf->mem);
+    }
     if (size != NULL) *size = buf->pos;
     buf->mem = NULL;
     buf->max = 0;
