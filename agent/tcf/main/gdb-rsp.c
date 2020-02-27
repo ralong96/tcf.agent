@@ -46,6 +46,8 @@
 #include <machine/ppc64/tcf/cpu-regs-gdb.h>
 #include <machine/microblaze/tcf/cpu-regs-gdb.h>
 #include <machine/microblaze64/tcf/cpu-regs-gdb.h>
+#include <machine/riscv/tcf/cpu-regs-gdb.h>
+#include <machine/riscv64/tcf/cpu-regs-gdb.h>
 
 #include <tcf/main/gdb-rsp.h>
 
@@ -278,6 +280,10 @@ static const char * get_regs(GdbClient * c) {
     if (strcmp(c->server->isa, "microblaze64") == 0) return cpu_regs_gdb_microblaze64;
     if (strcmp(c->server->isa, "mb") == 0) return cpu_regs_gdb_microblaze;
     if (strcmp(c->server->isa, "mb64") == 0) return cpu_regs_gdb_microblaze64;
+    if (strcmp(c->server->isa, "riscv32") == 0) return cpu_regs_gdb_riscv32;
+    if (strcmp(c->server->isa, "riscv64") == 0) return cpu_regs_gdb_riscv64;
+    if (strcmp(c->server->isa, "rv32") == 0) return cpu_regs_gdb_riscv32;
+    if (strcmp(c->server->isa, "rv64") == 0) return cpu_regs_gdb_riscv64;
     set_fmt_errno(ERR_OTHER, "Unsupported ISA %s", c->server->isa);
     return NULL;
 }
@@ -303,6 +309,8 @@ static int check_process_isa(GdbClient * c, Context * prs) {
             if (strcmp(isa.def, "PPC64") == 0) return regs == cpu_regs_gdb_ppc64;
             if (strcmp(isa.def, "MicroBlaze") == 0) return regs == cpu_regs_gdb_microblaze;
             if (strcmp(isa.def, "MicroBlaze64") == 0) return regs == cpu_regs_gdb_microblaze64;
+            if (strcmp(isa.def, "Riscv32") == 0) return regs == cpu_regs_gdb_riscv32;
+            if (strcmp(isa.def, "Riscv64") == 0) return regs == cpu_regs_gdb_riscv64;
         }
     }
     return 0;
@@ -1892,6 +1900,12 @@ int ini_gdb_rsp(const char * conf) {
         isa = "microblaze";
 #elif defined(__MICROBLAZE64__)
         isa = "microblaze64";
+#elif defined(__riscv) && __riscv_xlen == 32
+        isa = "riscv32";
+#elif defined(__riscv) && __riscv_xlen == 64
+        isa = "riscv64";
+#elif defined(__riscv) && __riscv_xlen == 128
+        isa = "riscv128";
 #else
         isa = "i386";
 #endif
