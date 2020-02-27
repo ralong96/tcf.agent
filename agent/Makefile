@@ -82,6 +82,10 @@ $(BINDIR)/tcf/main/test$(EXTOBJ): tcf/main/test.c $(CCDEPS)
 	@$(call MKDIR,$(dir $@))
 	$(CC) $(filter-out -O%,$(CFLAGS)) -O0 $(OUT_OBJ_F)$@ $(NO_LINK_F) $<
 
+$(BINDIR)/machine/riscv64/%$(EXTOBJ): machine/riscv64/%.c $(wildcard machine/riscv/tcf/*.c) $(CCDEPS)
+	@$(call MKDIR,$(dir $@))
+	$(CC) $(CFLAGS) $(OUT_OBJ_F)$@ $(NO_LINK_F) $<
+
 $(BINDIR)/%$(EXTOBJ): %.c $(CCDEPS)
 	@$(call MKDIR,$(dir $@))
 	$(CC) $(CFLAGS) $(OUT_OBJ_F)$@ $(NO_LINK_F) $<

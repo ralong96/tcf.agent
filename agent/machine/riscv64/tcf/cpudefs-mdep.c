@@ -296,6 +296,7 @@ void ini_cpudefs_mdep(void) {
         if (r->offset == 0) r->offset = i * 8;
     }
     reg_pc = alloc_spr("pc", REG_OFFSET(gp.pc), 8, -1, "Program counter");
+    reg_pc->dwarf_id = reg_pc->eh_frame_id = 0x17b1;
     reg_pc->role = "PC";
 }
 

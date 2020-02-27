@@ -97,11 +97,9 @@ static const int imm_bits_sw_sp[32] = { 9, 10, 11, 12, 7, 8 };
 static const int imm_bits_sd_sp[32] = { 10, 11, 12, 7, 8, 9 };
 static const int imm_bits_sq_sp[32] = { 11, 12, 7, 8, 9, 10 };
 
-#if 0
 static const int imm_bits_s[32] = { 7, 8, 9, 10, 11, 25, 26, 27, 28, 29, 30, 31 };
-static const int imm_bits_j[32] = { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 20, 12, 13, 14, 15, 16, 17, 18, 19, 31 };
 static const int imm_bits_b[32] = { 8, 9, 10, 11, 25, 26, 27, 28, 29, 30, 7, 31 };
-#endif
+static const int imm_bits_j[32] = { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 20, 12, 13, 14, 15, 16, 17, 18, 19, 31 };
 static const int imm_bits_jc[32] = { 3, 4, 5, 11, 2, 7, 6, 9, 10, 8, 12 };
 static const int imm_bits_bc[32] = { 3, 4, 10, 11, 2, 5, 6, 12 };
 
@@ -156,19 +154,17 @@ static int read_byte(uxlen_t addr, uint8_t * bt) {
     return 0;
 }
 
-#if 0
-static int read_u16(uint64_t addr, uint16_t * w) {
+static int read_u16(uxlen_t addr, uint16_t * w) {
     unsigned i;
     uint16_t n = 0;
     for (i = 0; i < 2; i++) {
         uint8_t bt = 0;
-        if (read_byte(addr + i, &bt) < 0) return -1;
+        if (read_byte(uxlen_add_u(addr, i), &bt) < 0) return -1;
         n |= (uint32_t)bt << (i * 8);
     }
     *w = n;
     return 0;
 }
-#endif
 
 static int read_u32(uxlen_t addr, uint32_t * w) {
     unsigned i;
@@ -243,40 +239,83 @@ static int mem_hash_read(const uxlen_t addr, uxlen_t * v, unsigned bytes, int * 
     return -1;
 }
 
+static int read_mem(const uxlen_t addr, RegData * r, unsigned bits) {
+    uint8_t v8 = 0;
+    uint16_t v16 = 0;
+    uint32_t v32 = 0;
+    uint64_t v64 = 0;
+    memset(r, 0, sizeof(RegData));
+    switch (bits) {
+    case 8:
+        if (read_byte(addr, &v8) < 0) return -1;
+        r->v = uxlen_from_u(v8);
+        break;
+    case 16:
+        if (read_u16(addr, &v16) < 0) return -1;
+        r->v = uxlen_from_u(v16);
+        break;
+    case 32:
+        if (read_u32(addr, &v32) < 0) return -1;
+        r->v = uxlen_from_u(v32);
+        break;
+    case 64:
+        if (read_u64(addr, &v64) < 0) return -1;
+        r->v = uxlen_from_u(v64);
+        break;
+    case 128:
+        if (read_u128(addr, &r->v) < 0) return -1;
+        break;
+    default:
+        errno = ERR_UNSUPPORTED;
+        return -1;
+    }
+    r->o = REG_VAL_OTHER;
+    return 0;
+}
+
+static void fix_sign(uxlen_t * v, unsigned bits, int sign) {
+    unsigned i;
+    if (sign) {
+        if (bits <= 64) sign = (v->l & ((uint64_t)1 << (bits - 1))) != 0;
+        else sign = (v->h & ((uint64_t)1 << (bits - 65))) != 0;
+    }
+    for (i = bits; i < 128; i++) {
+        if (i < 64) {
+            if (sign) v->l |= (uint64_t)1 << i;
+            else v->l &= ~((uint64_t)1 << i);
+        }
+        else {
+            if (sign) v->h |= (uint64_t)1 << (i - 64);
+            else v->h &= ~((uint64_t)1 << (i - 64));
+        }
+    }
+}
+
 static int load_reg(const uxlen_t addr, RegData * r, unsigned bits) {
     int valid = 0;
 
     /* Check if the value can be found in the hash */
     if (mem_hash_read(addr, &r->v, bits >> 3, &valid) == 0) {
-        r->o = valid ? REG_VAL_OTHER : 0;
+        if (valid) {
+            fix_sign(&r->v, bits, 1);
+            r->o = REG_VAL_OTHER;
+            return 0;
+        }
+        memset(r, 0, sizeof(RegData));
     }
     else {
         /* Not in the hash, so read from real memory */
-        uint32_t v32 = 0;
-        uint64_t v64 = 0;
-        memset(r, 0, sizeof(RegData));
-        switch (bits) {
-        case 32:
-            if (read_u32(addr, &v32) < 0) return -1;
-            r->v = uxlen_from_u(v32);
-            break;
-        case 64:
-            if (read_u64(addr, &v64) < 0) return -1;
-            r->v = uxlen_from_u(v64);
-            break;
-        case 128:
-            if (read_u128(addr, &r->v) < 0) return -1;
-            break;
-        }
-        r->o = REG_VAL_OTHER;
+        if (read_mem(addr, r, bits) < 0) return -1;
+        fix_sign(&r->v, bits, 1);
     }
     return 0;
 }
 
-static int load_reg_lazy(uxlen_t addr, unsigned r, unsigned bits) {
+static int load_reg_lazy(uxlen_t addr, unsigned r, unsigned bits, int sign) {
     int valid = 0;
     if (mem_hash_read(addr, &reg_data[r].v, bits >> 3, &valid) == 0) {
         if (valid) {
+            fix_sign(&reg_data[r].v, bits, sign);
             reg_data[r].o = REG_VAL_OTHER;
             return 0;
         }
@@ -288,7 +327,9 @@ static int load_reg_lazy(uxlen_t addr, unsigned r, unsigned bits) {
         reg_data[r].v = addr;
         return 0;
     }
-    return load_reg(addr, reg_data + r, bits);
+    if (read_mem(addr, reg_data + r, bits) < 0) return -1;
+    fix_sign(&reg_data[r].v, bits, sign);
+    return 0;
 }
 
 static int chk_reg_loaded(RegData * r) {
@@ -361,13 +402,11 @@ static int32_t get_imm_se(const int * bits) {
     return v;
 }
 
-#if 0
 static int32_t get_imm_rse(unsigned pos, unsigned bits) {
     uint32_t v = (instr >> pos) & ((1u << bits) - 1);
     if (v & (1u << (bits - 1))) v |= ~((1u << bits) - 1);
     return v;
 }
-#endif
 
 static void add_branch(uxlen_t addr) {
     if (branch_cnt < BRANCH_LIST_SIZE) {
@@ -395,229 +434,91 @@ static int trace_rv32i(void) {
     unsigned rs2 = (instr >> 20) & 0x1f;
     unsigned rs1 = (instr >> 15) & 0x1f;
     unsigned rd = (instr >> 7) & 0x1f;
-    if ((instr & 0x0000007f) == 0x00000037) {
+    if ((instr & 0x0000007f) == 0x00000037) { /* lui */
         uint64_t imm = instr & 0xfffff000;
         reg_data[rd].v = uxlen_from_u(imm);
         reg_data[rd].o = REG_VAL_OTHER;
         return 0;
     }
-    if ((instr & 0x0000007f) == 0x00000017) {
+    if ((instr & 0x0000007f) == 0x00000017) { /* auipc */
         uint64_t imm = instr & 0xfffff000;
         reg_data[rd].v = uxlen_add_u(pc_data.v, imm);
         reg_data[rd].o = REG_VAL_OTHER;
         return 0;
     }
-#if 0
-    if ((instr & 0x0000007f) == 0x0000006f) {
+    if ((instr & 0x0000007f) == 0x0000006f) { /* j, jal */
         int32_t imm = get_imm_se(imm_bits_j);
         if (rd == 0) {
-            add_str("j ");
+            pc_data.v = uxlen_add_i(pc_data.v, (int64_t)imm << 1);
         }
         else {
-            add_str("jal ");
-            add_reg(rd);
-            add_str(", ");
+            reg_data[rd].v = uxlen_add_u(pc_data.v, 4);
+            reg_data[rd].o = pc_data.o;
         }
-        if (imm < 0) {
-            add_char('-');
-            add_dec_uint32(-imm);
-        }
-        else {
-            add_char('+');
-            add_dec_uint32(imm);
-        }
-        add_addr(instr_addr + ((int64_t)imm << 1));
-        return;
+        return 0;
     }
-    if ((instr & 0x0000707f) == 0x00000067) {
-        int32_t imm = instr >> 20;
-        add_str("jalr ");
-        add_reg(rd);
-        add_str(", ");
-        if (imm == 0) {
-            add_reg(rs1);
-            return;
-        }
-        add_dec_uint32(imm);
-        add_char('(');
-        add_reg(rs1);
-        add_char(')');
-        return;
+    if ((instr & 0x0000707f) == 0x00000067) { /* jalr */
+        reg_data[rd].v = uxlen_add_u(pc_data.v, 4);
+        reg_data[rd].o = pc_data.o;
+        return 0;
     }
-    if ((instr & 0x0000007f) == 0x00000063) {
+    if ((instr & 0x0000007f) == 0x00000063) { /* conditional branch */
         int32_t imm = get_imm_se(imm_bits_b);
-        if (rs2 == 0) {
-            switch ((instr >> 12) & 7) {
-            case 0:
-                add_str("beqz ");
-                break;
-            case 1:
-                add_str("bnez ");
-                break;
-            case 4:
-                add_str("bltz ");
-                break;
-            case 5:
-                add_str("bgez ");
-                break;
-            case 6:
-                add_str("bltuz ");
-                break;
-            case 7:
-                add_str("bgeuz ");
-                break;
-            }
-        }
-        else if (rs1 == 0) {
-            switch ((instr >> 12) & 7) {
-            case 4:
-                add_str("bgtz ");
-                break;
-            case 5:
-                add_str("blez ");
-                break;
-            case 6:
-                add_str("bgtuz ");
-                break;
-            case 7:
-                add_str("bteuz ");
-                break;
-            }
-        }
-        else {
-            switch ((instr >> 12) & 7) {
-            case 0:
-                add_str("beq ");
-                break;
-            case 1:
-                add_str("bne ");
-                break;
-            case 4:
-                add_str("blt ");
-                break;
-            case 5:
-                add_str("bge ");
-                break;
-            case 6:
-                add_str("bltu ");
-                break;
-            case 7:
-                add_str("bgeu ");
-                break;
-            }
-        }
-        if (buf_pos > 0) {
-            if (rs1 != 0) {
-                add_reg(rs1);
-                add_str(", ");
-            }
-            if (rs2 != 0) {
-                add_reg(rs2);
-                add_str(", ");
-            }
-            if (imm < 0) {
-                add_char('-');
-                add_dec_uint32(-imm);
-            }
-            else {
-                add_char('+');
-                add_dec_uint32(imm);
-            }
-            add_addr(instr_addr + ((int64_t)imm << 1));
-            return;
-        }
+        add_branch(uxlen_add_i(pc_data.v, (int64_t)imm << 1));
+        trace_branch = 1;
+        return 0;
     }
     if ((instr & 0x0000007f) == 0x00000003) {
         int32_t imm = get_imm_rse(20, 12);
-        switch ((instr >> 12) & 7) {
-        case 0:
-            add_str("lb ");
-            break;
-        case 1:
-            add_str("lh ");
-            break;
-        case 2:
-            add_str("lw ");
-            break;
-        case 4:
-            add_str("lbu ");
-            break;
-        case 5:
-            add_str("lhu ");
-            break;
-        }
-        if (buf_pos > 0) {
-            add_reg(rd);
-            add_str(", ");
-            if (imm < 0) {
-                add_char('-');
-                add_dec_uint32(-imm);
+        if (chk_loaded(rs1) < 0) return -1;
+        if (reg_data[rs1].o) {
+            uxlen_t addr = uxlen_add_i(reg_data[rs1].v, imm);
+            switch ((instr >> 12) & 7) {
+            case 0:
+                /* lb */
+                return load_reg_lazy(addr, rd, 8, 1);
+            case 1:
+                /* lh */
+                return load_reg_lazy(addr, rd, 16, 1);
+            case 2:
+                /* lw */
+                return load_reg_lazy(addr, rd, 32, 1);
+            case 4:
+                /* lbu */
+                return load_reg_lazy(addr, rd, 8, 0);
+            case 5:
+                /* lhu */
+                return load_reg_lazy(addr, rd, 16, 0);
             }
-            else {
-                add_dec_uint32(imm);
-            }
-            add_str("(");
-            add_reg(rs1);
-            add_str(")");
-            return;
         }
+        reg_data[rd].o = 0;
+        return 0;
     }
     if ((instr & 0x0000007f) == 0x00000023) {
         int32_t imm = get_imm_se(imm_bits_s);
-        switch ((instr >> 12) & 7) {
-        case 0:
-            add_str("sb ");
-            break;
-        case 1:
-            add_str("sh ");
-            break;
-        case 2:
-            add_str("sw ");
-            break;
-        }
-        if (buf_pos > 0) {
-            add_reg(rs2);
-            add_str(", ");
-            if (imm < 0) {
-                add_char('-');
-                add_dec_uint32(-imm);
+        if (chk_loaded(rs1) < 0) return -1;
+        if (reg_data[rs1].o) {
+            uxlen_t addr = uxlen_add_i(reg_data[rs1].v, imm);
+            switch ((instr >> 12) & 7) {
+            case 0:
+                /* sb */
+                return store_reg(addr, rs2, 8);
+            case 1:
+                /* sh */
+                return store_reg(addr, rs2, 16);
+            case 2:
+                /* sw */
+                return store_reg(addr, rs2, 32);
             }
-            else {
-                add_dec_uint32(imm);
-            }
-            add_str("(");
-            add_reg(rs1);
-            add_str(")");
-            return;
         }
+        return 0;
     }
+#if 0
     if ((instr & 0x0000007f) == 0x00000013) {
         unsigned func = (instr >> 12) & 7;
         int32_t imm = get_imm_rse(20, 12);
         switch (func) {
         case 0:
-            if (rs1 == 0) {
-                if (rd == 0 && imm == 0) {
-                    add_str("nop");
-                    return;
-                }
-                add_str("li ");
-                add_reg(rd);
-                add_str(", ");
-                if (imm < 0) {
-                    add_char('-');
-                    imm = -imm;
-                }
-                add_dec_uint32(imm);
-                return;
-            }
-            if (imm == 0) {
-                add_str("mv ");
-                add_reg(rd);
-                add_str(", ");
-                add_reg(rs1);
-                return;
-            }
             add_str("addi ");
             break;
         case 2:
@@ -634,13 +535,6 @@ static int trace_rv32i(void) {
             add_str("sltiu ");
             break;
         case 4:
-            if (imm == -1) {
-                add_str("not ");
-                add_reg(rd);
-                add_str(", ");
-                add_reg(rs1);
-                return;
-            }
             add_str("xori ");
             break;
         case 6:
@@ -765,7 +659,7 @@ static int trace_rv32c(void) {
             uint32_t imm = get_imm(imm_bits_w);
             uxlen_t addr = uxlen_add_u(reg_data[rs].v, imm * 4);
             if (ld) {
-                load_reg_lazy(addr, rd, 32);
+                if (load_reg_lazy(addr, rd, 32, 1) < 0) return -1;
             }
             else {
                 if (store_reg(addr, rd, 32) < 0) return -1;
@@ -785,7 +679,7 @@ static int trace_rv32c(void) {
         /* nop */
         return 0;
     }
-    if ((instr & 0xe003) == 0x0001) {
+    if ((instr & 0xe003) == 0x0001) { /* addi */
         int32_t imm = get_imm_se(imm_bits_shift);
         unsigned rd = (instr >> 7) & 0x1f;
         if (rd != 0) {
@@ -794,14 +688,14 @@ static int trace_rv32c(void) {
             return 0;
         }
     }
-    if ((instr & 0x6003) == 0x2001) {
+    if ((instr & 0x6003) == 0x2001) { /* j, jal */
         int32_t imm = get_imm_se(imm_bits_jc);
-        if ((instr & 0x8000) == 0) {
-            reg_data[REG_ID_RA].v = uxlen_add_u(pc_data.v, 2);
-            reg_data[REG_ID_RA].o = pc_data.o;
+        if (instr & 0x8000) {
+            pc_data.v = uxlen_add_i(pc_data.v, imm << 1);
         }
         else {
-            pc_data.v = uxlen_add_i(pc_data.v, imm << 1);
+            reg_data[REG_ID_RA].v = uxlen_add_u(pc_data.v, 2);
+            reg_data[REG_ID_RA].o = pc_data.o;
         }
         return 0;
     }
@@ -879,14 +773,13 @@ static int trace_rv32c(void) {
     }
 
     /* Quadrant 2 */
-    if ((instr & 0xe003) == 0x4002) {
+    if ((instr & 0xe003) == 0x4002) { /* lw */
         unsigned rd = (instr >> 7) & 0x1f;
         if (rd != 0) {
             if (chk_loaded(REG_ID_SP) < 0) return -1;
             if (reg_data[REG_ID_SP].o) {
                 uint32_t imm = get_imm(imm_bits_lw_sp);
-                load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 4), rd, 32);
-                return 0;
+                return load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 4), rd, 32, 1);
             }
             reg_data[rd].o = 0;
             return 0;
@@ -986,8 +879,7 @@ static int trace_rv64c(void) {
             if (chk_loaded(REG_ID_SP) < 0) return -1;
             if (reg_data[REG_ID_SP].o) {
                 uint32_t imm = get_imm(imm_bits_ld_sp);
-                load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 8), rd, 64);
-                return 0;
+                return load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 8), rd, 64, 1);
             }
             reg_data[rd].o = 0;
             return 0;
@@ -1011,7 +903,7 @@ static int trace_rv64c(void) {
             uint32_t imm = get_imm(imm_bits_d);
             uxlen_t addr = uxlen_add_u(reg_data[rs].v, imm * 8);
             if (ld) {
-                load_reg_lazy(addr, rd, 64);
+                if (load_reg_lazy(addr, rd, 64, 1) < 0) return -1;
             }
             else {
                 if (store_reg(addr, rd, 64) < 0) return -1;
@@ -1049,8 +941,7 @@ static int trace_rv128c(void) {
             if (chk_loaded(REG_ID_SP) < 0) return -1;
             if (reg_data[REG_ID_SP].o) {
                 uint32_t imm = get_imm(imm_bits_lq_sp);
-                load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 16), rd, 128);
-                return 0;
+                return load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 16), rd, 128, 1);
             }
             reg_data[rd].o = 0;
             return 0;
@@ -1074,7 +965,7 @@ static int trace_rv128c(void) {
             uint32_t imm = get_imm(imm_bits_q);
             uxlen_t addr = uxlen_add_u(reg_data[rs].v, imm * 16);
             if (ld) {
-                load_reg_lazy(addr, rd, 128);
+                if (load_reg_lazy(addr, rd, 128, 1) < 0) return -1;
             }
             else {
                 if (store_reg(addr, rd, 128) < 0) return -1;
