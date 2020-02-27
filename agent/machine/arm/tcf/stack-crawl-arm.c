@@ -108,6 +108,15 @@ static MemCache mem_cache[MEM_CACHE_SIZE];
 /* Extension can access static variables and static functions */
 #include <machine/arm/tcf/stack-crawl-arm-ext.h>
 
+static int read_mem(ContextAddress address, void * buf, size_t size) {
+#if ENABLE_MemoryAccessModes
+    static MemoryAccessMode mem_access_mode = { 0, 0, 0, 0, 0, 0, 1 };
+    return context_read_mem_ext(stk_ctx, &mem_access_mode, address, buf, size);
+#else
+    return context_read_mem(stk_ctx, address, buf, size);
+#endif
+}
+
 static int read_byte(uint32_t addr, uint8_t * bt) {
     unsigned i = 0;
     MemCache * c = NULL;
@@ -128,7 +137,7 @@ static int read_byte(uint32_t addr, uint8_t * bt) {
     c = mem_cache + mem_cache_idx;
     c->addr = addr;
     c->size = sizeof(c->data);
-    if (context_read_mem(stk_ctx, addr, c->data, c->size) < 0) {
+    if (read_mem(addr, c->data, c->size) < 0) {
 #if ENABLE_ExtendedMemoryErrorReports
         int error = errno;
         MemoryErrorInfo info;
@@ -179,7 +188,7 @@ static int read_half(uint32_t addr, uint16_t * h) {
         errno = ERR_INV_ADDRESS;
         return -1;
     }
-    if (context_read_mem(stk_ctx, addr, buf, 2) < 0) return -1;
+    if (read_mem(addr, buf, 2) < 0) return -1;
     *h = (uint32_t)buf[0] | (buf[1] << 8);
     return 0;
 }
@@ -190,7 +199,7 @@ static int read_word(uint32_t addr, uint32_t * w) {
         errno = ERR_INV_ADDRESS;
         return -1;
     }
-    if (context_read_mem(stk_ctx, addr, buf, 4) < 0) return -1;
+    if (read_mem(addr, buf, 4) < 0) return -1;
     *w = (uint32_t)buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
     return 0;
 }

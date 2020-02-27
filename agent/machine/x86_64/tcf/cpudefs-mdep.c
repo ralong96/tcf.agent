@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -703,6 +703,15 @@ RegisterDefinition * get_386_reg_by_id(Context * ctx, unsigned id_type, unsigned
 #define POP_EBP     0x5d
 #endif
 
+static int read_mem(Context * ctx, ContextAddress address, void * buf, size_t size) {
+#if ENABLE_MemoryAccessModes
+    static MemoryAccessMode mem_access_mode = { 0, 0, 0, 0, 0, 0, 1 };
+    return context_read_mem_ext(ctx, &mem_access_mode, address, buf, size);
+#else
+    return context_read_mem(ctx, address, buf, size);
+#endif
+}
+
 static int read_stack(Context * ctx, ContextAddress addr, void * buf, size_t size) {
     if (addr == 0) {
         errno = ERR_INV_ADDRESS;
@@ -717,7 +726,7 @@ static int read_stack(Context * ctx, ContextAddress addr, void * buf, size_t siz
         }
     }
 #endif
-    return context_read_mem(ctx, addr, buf, size);
+    return read_mem(ctx, addr, buf, size);
 }
 
 static int read_reg(StackFrame * frame, RegisterDefinition * def, size_t size, ContextAddress * addr) {
@@ -762,25 +771,25 @@ static ContextAddress trace_jump(Context * ctx, ContextAddress addr, int x64, ui
     while (cnt < 100) {
         unsigned char instr;    /* instruction opcode at <addr> */
         ContextAddress dest;    /* Jump destination address */
-        if (context_read_mem(ctx, addr, &instr, 1) < 0) break;
+        if (read_mem(ctx, addr, &instr, 1) < 0) break;
 
         /* If instruction is a JMP, get destination adrs */
         if (instr == JMPD08) {
             signed char disp08;
-            if (context_read_mem(ctx, addr + 1, &disp08, 1) < 0) break;
+            if (read_mem(ctx, addr + 1, &disp08, 1) < 0) break;
             dest = addr + 2 + disp08;
         }
         else if (instr == JMPD32) {
             int32_t disp32 = 0;
-            if (context_read_mem(ctx, addr + 1, &disp32, 4) < 0) break;
+            if (read_mem(ctx, addr + 1, &disp32, 4) < 0) break;
             dest = addr + 5 + disp32;
         }
         else if (instr == GRP5) {
             ContextAddress ptr;
-            if (context_read_mem(ctx, addr + 1, &instr, 1) < 0) break;
+            if (read_mem(ctx, addr + 1, &instr, 1) < 0) break;
             if (instr != JMPN) break;
-            if (context_read_mem(ctx, addr + 2, &ptr, sizeof(ptr)) < 0) break;
-            if (context_read_mem(ctx, ptr, &dest, sizeof(dest)) < 0) break;
+            if (read_mem(ctx, addr + 2, &ptr, sizeof(ptr)) < 0) break;
+            if (read_mem(ctx, ptr, &dest, sizeof(dest)) < 0) break;
         }
         else if (instr == MOVE_rm) {
             unsigned char modrm = 0;
@@ -790,7 +799,7 @@ static ContextAddress trace_jump(Context * ctx, ContextAddress addr, int x64, ui
             static int reg_to_dwarf_id_32[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
             static int reg_to_dwarf_id_64[] = { 0, 2, 1, 3, 7, 6, 4, 5 };
             int * reg_to_dwarf_id = x64 ? reg_to_dwarf_id_64 : reg_to_dwarf_id_32;
-            if (context_read_mem(ctx, addr + 1, &modrm, 1) < 0) break;
+            if (read_mem(ctx, addr + 1, &modrm, 1) < 0) break;
             mod = modrm >> 6;
             reg = (modrm >> 3) & 7u;
             rm = modrm & 7u;
@@ -929,7 +938,7 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
         else {
             unsigned char code[5];
 
-            if (context_read_mem(ctx, addr - 1, code, sizeof(code)) < 0) return -1;
+            if (read_mem(ctx, addr - 1, code, sizeof(code)) < 0) return -1;
 
             if (code[1] == RET || code[1] == RETADD) {
                 dwn_sp = reg_sp + word_size;

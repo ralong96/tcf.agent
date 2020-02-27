@@ -419,6 +419,7 @@ typedef struct MemoryAccessMode {
     int bypass_cache_sync;
     int verify;
     int dont_stop;
+    int memory_only; /* Access to memory mapped I/O should be blocked and return error */
 } MemoryAccessMode;
 
 /* Optional memory access function that take additional argument: access mode. */

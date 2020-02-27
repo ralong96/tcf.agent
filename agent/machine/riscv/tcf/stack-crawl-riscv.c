@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright (c) 2019 Xilinx, Inc. and others.
+* Copyright (c) 2019-2020 Xilinx, Inc. and others.
 * All rights reserved. This program and the accompanying materials
 * are made available under the terms of the Eclipse Public License v1.0
 * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -109,6 +109,15 @@ static const int imm_bits_shift[32] = { 2, 3, 4, 5, 6, 12 };
 
 static int read_reg128(StackFrame * frame, RegisterDefinition * reg_def, uxlen_t * v);
 
+static int read_mem(ContextAddress address, void * buf, size_t size) {
+#if ENABLE_MemoryAccessModes
+    static MemoryAccessMode mem_access_mode = { 0, 0, 0, 0, 0, 0, 1 };
+    return context_read_mem_ext(stk_ctx, &mem_access_mode, address, buf, size);
+#else
+    return context_read_mem(stk_ctx, address, buf, size);
+#endif
+}
+
 static int read_byte(uxlen_t addr, uint8_t * bt) {
     unsigned i = 0;
     MemCache * c = NULL;
@@ -135,7 +144,7 @@ static int read_byte(uxlen_t addr, uint8_t * bt) {
     c = mem_cache + mem_cache_idx;
     c->addr = ca;
     c->size = sizeof(c->data);
-    if (context_read_mem(stk_ctx, ca, c->data, c->size) < 0) {
+    if (read_mem(ca, c->data, c->size) < 0) {
 #if ENABLE_ExtendedMemoryErrorReports
         int error = errno;
         MemoryErrorInfo info;
@@ -239,7 +248,7 @@ static int mem_hash_read(const uxlen_t addr, uxlen_t * v, unsigned bytes, int * 
     return -1;
 }
 
-static int read_mem(const uxlen_t addr, RegData * r, unsigned bits) {
+static int load_reg_from_mem(const uxlen_t addr, RegData * r, unsigned bits) {
     uint8_t v8 = 0;
     uint16_t v16 = 0;
     uint32_t v32 = 0;
@@ -305,7 +314,7 @@ static int load_reg(const uxlen_t addr, RegData * r, unsigned bits) {
     }
     else {
         /* Not in the hash, so read from real memory */
-        if (read_mem(addr, r, bits) < 0) return -1;
+        if (load_reg_from_mem(addr, r, bits) < 0) return -1;
         fix_sign(&r->v, bits, 1);
     }
     return 0;
@@ -327,7 +336,7 @@ static int load_reg_lazy(uxlen_t addr, unsigned r, unsigned bits, int sign) {
         reg_data[r].v = addr;
         return 0;
     }
-    if (read_mem(addr, reg_data + r, bits) < 0) return -1;
+    if (load_reg_from_mem(addr, reg_data + r, bits) < 0) return -1;
     fix_sign(&reg_data[r].v, bits, sign);
     return 0;
 }

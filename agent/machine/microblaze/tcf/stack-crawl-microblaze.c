@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2018 Xilinx, Inc. and others.
+ * Copyright (c) 2018-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -90,6 +90,15 @@ typedef struct {
 
 static MemCache mem_cache[MEM_CACHE_SIZE];
 
+static int read_mem(ContextAddress address, void * buf, size_t size) {
+#if ENABLE_MemoryAccessModes
+    static MemoryAccessMode mem_access_mode = { 0, 0, 0, 0, 0, 0, 1 };
+    return context_read_mem_ext(stk_ctx, &mem_access_mode, address, buf, size);
+#else
+    return context_read_mem(stk_ctx, address, buf, size);
+#endif
+}
+
 static int read_byte(uint64_t addr, uint8_t * bt) {
     unsigned i = 0;
     MemCache * c = NULL;
@@ -106,7 +115,7 @@ static int read_byte(uint64_t addr, uint8_t * bt) {
     c = mem_cache + mem_cache_idx;
     c->addr = addr;
     c->size = sizeof(c->data);
-    if (context_read_mem(stk_ctx, (ContextAddress)addr, c->data, c->size) < 0) {
+    if (read_mem((ContextAddress)addr, c->data, c->size) < 0) {
 #if ENABLE_ExtendedMemoryErrorReports
         int error = errno;
         MemoryErrorInfo info;
