@@ -1616,12 +1616,11 @@ static int skip_function_prologue(Context * ctx, Symbol * sym, ContextAddress * 
 
     if (get_symbol_class(sym, &sym_class) < 0) return -1;
     if (sym_class != SYM_CLASS_FUNCTION) return 0;
-    if (get_symbol_size(sym, &sym_size) < 0) return -1;
-    if (sym_size == 0) return 0;
+    if (get_symbol_size(sym, &sym_size) < 0) sym_size = 0;
     memset(&area, 0, sizeof(area));
     if (address_to_line(ctx, *addr, *addr + 1, function_prolog_line_info, &area) < 0) return -1;
     if (area.start_address > *addr || area.end_address <= *addr) return 0;
-    if (*addr + sym_size <= area.end_address) return 0;
+    if (sym_size != 0 && *addr + sym_size <= area.end_address) return 0;
     *addr = area.end_address;
 #endif
     return 0;
