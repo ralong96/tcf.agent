@@ -309,6 +309,10 @@ static void disassemble_rv32i(void) {
     }
     if ((instr & 0x0000707f) == 0x00000067) {
         int32_t imm = instr >> 20;
+        if (rd == 0 && imm == 0 && rs1 == 1) {
+            add_str("ret");
+            return;
+        }
         add_str("jalr ");
         add_reg(rd);
         add_str(", ");
@@ -1085,7 +1089,7 @@ static void disassemble_rv64i(void) {
     if ((instr & 0x0000307f) == 0x00003023) {
         int32_t imm = get_imm_se(imm_bits_s);
         add_str("sd ");
-        add_reg((instr >> 20) & 0x1f);
+        add_reg(rs2);
         add_str(", ");
         if (imm < 0) {
             add_char('-');
@@ -1100,7 +1104,6 @@ static void disassemble_rv64i(void) {
         return;
     }
     if ((instr & 0xbc00007f) == 0x00000013) {
-        unsigned rs = rs1;
         uint32_t imm = (instr >> 20) & 0x3f;
         switch (func) {
         case 1:
@@ -1113,7 +1116,7 @@ static void disassemble_rv64i(void) {
         if (buf_pos > 0) {
             add_reg(rd);
             add_str(", ");
-            add_reg(rs);
+            add_reg(rs1);
             add_str(", 0x");
             add_hex_uint32(imm);
             return;
@@ -1160,23 +1163,41 @@ static void disassemble_rv64i(void) {
             return;
         }
     }
-    if ((instr & 0xbe00007f) == 0x0000003b) {
+    if ((instr & 0xfe00007f) == 0x0000003b) {
         switch (func) {
         case 0:
-            if (rs1 == 0 && (instr & (1 << 30)) != 0) {
+            add_str("addw ");
+            break;
+        case 1:
+            add_str("sllw ");
+            break;
+        case 5:
+            add_str("srlw ");
+            break;
+        }
+        if (buf_pos > 0) {
+            add_reg(rd);
+            add_str(", ");
+            add_reg(rs1);
+            add_str(", ");
+            add_reg(rs2);
+            return;
+        }
+    }
+    if ((instr & 0xfe00007f) == 0x4000003b) {
+        switch (func) {
+        case 0:
+            if (rs1 == 0) {
                 add_str("negw ");
                 add_reg(rd);
                 add_str(", ");
                 add_reg(rs2);
                 return;
             }
-            add_str(instr & (1 << 30) ? "subw " : "addw ");
-            break;
-        case 1:
-            add_str(instr & (1 << 30) ? "" : "sllw ");
+            add_str("subw ");
             break;
         case 5:
-            add_str(instr & (1 << 30) ? "sraw " : "srlw ");
+            add_str("sraw ");
             break;
         }
         if (buf_pos > 0) {

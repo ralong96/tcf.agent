@@ -43,19 +43,19 @@
 #define MAX_INST 200
 
 typedef struct {
-    uxlen_t  v[MEM_HASH_SIZE]; /* Value */
-    uxlen_t  a[MEM_HASH_SIZE]; /* Address */
+    int_xlen_t  v[MEM_HASH_SIZE]; /* Value */
+    int_xlen_t  a[MEM_HASH_SIZE]; /* Address */
     uint8_t  size[MEM_HASH_SIZE];
     uint8_t  valid[MEM_HASH_SIZE];
 } MemData;
 
 typedef struct {
-    uxlen_t v;
+    int_xlen_t v;
     unsigned o;
 } RegData;
 
 typedef struct {
-    uxlen_t addr;
+    int_xlen_t addr;
     RegData reg_data[REG_DATA_SIZE];
     RegData pc_data;
     MemData mem_data;
@@ -66,6 +66,9 @@ static StackFrame * stk_frame = NULL;
 static MemData mem_data;
 static RegData reg_data[REG_DATA_SIZE];
 static RegData pc_data;
+static RegData mepc_data;
+static RegData sepc_data;
+static RegData uepc_data;
 
 static uint32_t instr;
 
@@ -77,8 +80,8 @@ static int trace_return = 0;
 static int trace_branch = 0;
 
 typedef struct {
-    uint64_t addr;
-    uint32_t size;
+    ContextAddress addr;
+    size_t size;
     uint8_t data[64];
 } MemCache;
 
@@ -107,7 +110,7 @@ static const int imm_bits_addi_sp[32] = { 6, 2, 5, 3, 4, 12 };
 static const int imm_bits_addi_spn[32] = { 6, 5, 11, 12, 7, 8, 9, 10 };
 static const int imm_bits_shift[32] = { 2, 3, 4, 5, 6, 12 };
 
-static int read_reg128(StackFrame * frame, RegisterDefinition * reg_def, uxlen_t * v);
+static int read_reg128(StackFrame * frame, RegisterDefinition * reg_def, int_xlen_t * v);
 
 static int read_mem(ContextAddress address, void * buf, size_t size) {
 #if ENABLE_MemoryAccessModes
@@ -118,16 +121,18 @@ static int read_mem(ContextAddress address, void * buf, size_t size) {
 #endif
 }
 
-static int read_byte(uxlen_t addr, uint8_t * bt) {
+static int read_byte(int_xlen_t addr, uint8_t * bt) {
     unsigned i = 0;
     MemCache * c = NULL;
-    ContextAddress ca = (ContextAddress)uxlen_to_l(addr);
+    ContextAddress ca = 0;
 
-    if (uxlen_to_h(addr) != 0) {
+    addr = fix_sign(addr, xlen, 0);
+    if (int_xlen_to_h(addr) != 0) {
         /* TODO: 128-bit memory address */
         errno = ERR_INV_ADDRESS;
         return -1;
     }
+    ca = (ContextAddress)int_xlen_to_l(addr);
     if (ca == 0) {
         errno = ERR_INV_ADDRESS;
         return -1;
@@ -163,60 +168,60 @@ static int read_byte(uxlen_t addr, uint8_t * bt) {
     return 0;
 }
 
-static int read_u16(uxlen_t addr, uint16_t * w) {
+static int read_u16(int_xlen_t addr, uint16_t * w) {
     unsigned i;
     uint16_t n = 0;
     for (i = 0; i < 2; i++) {
         uint8_t bt = 0;
-        if (read_byte(uxlen_add_u(addr, i), &bt) < 0) return -1;
+        if (read_byte(int_xlen_add_u(addr, i), &bt) < 0) return -1;
         n |= (uint32_t)bt << (i * 8);
     }
     *w = n;
     return 0;
 }
 
-static int read_u32(uxlen_t addr, uint32_t * w) {
+static int read_u32(int_xlen_t addr, uint32_t * w) {
     unsigned i;
     uint32_t n = 0;
     for (i = 0; i < 4; i++) {
         uint8_t bt = 0;
-        if (read_byte(uxlen_add_u(addr, i), &bt) < 0) return -1;
+        if (read_byte(int_xlen_add_u(addr, i), &bt) < 0) return -1;
         n |= (uint32_t)bt << (i * 8);
     }
     *w = n;
     return 0;
 }
 
-static int read_u64(uxlen_t addr, uint64_t * w) {
+static int read_u64(int_xlen_t addr, uint64_t * w) {
     unsigned i;
     uint64_t n = 0;
     for (i = 0; i < 8; i++) {
         uint8_t bt = 0;
-        if (read_byte(uxlen_add_u(addr, i), &bt) < 0) return -1;
+        if (read_byte(int_xlen_add_u(addr, i), &bt) < 0) return -1;
         n |= (uint64_t)bt << (i * 8);
     }
     *w = n;
     return 0;
 }
 
-static int read_u128(uxlen_t addr, uxlen_t * v) {
+static int read_u128(int_xlen_t addr, int_xlen_t * v) {
     uint64_t l = 0;
     uint64_t h = 0;
     if (read_u64(addr, &l) < 0) return -1;
-    if (read_u64(uxlen_add_u(addr, 8), &h) < 0) return -1;
-    *v = uxlen_from_u2(l, h);
+    if (read_u64(int_xlen_add_u(addr, 8), &h) < 0) return -1;
+    *v = int_xlen_from_u2(l, h);
     return 0;
 }
 
-static int mem_hash_index(const uxlen_t addr) {
-    int v = (int)(uxlen_to_l(addr) % MEM_HASH_SIZE);
+static int mem_hash_index(const int_xlen_t addr) {
+    int v = (int)(int_xlen_to_l(addr) % MEM_HASH_SIZE);
     int s = v;
 
     do {
         /* Check if the element is occupied */
         if (mem_data.size[s]) {
             /* Check if it is occupied with the sought data */
-            if (uxlen_cmp(mem_data.a[s], addr) == 0)  return s;
+            if (int_xlen_cmpu(mem_data.a[s], addr) == 0)  return s;
         }
         else {
             /* Item is free, this is where the item should be stored */
@@ -234,10 +239,10 @@ static int mem_hash_index(const uxlen_t addr) {
     return -1;
 }
 
-static int mem_hash_read(const uxlen_t addr, uxlen_t * v, unsigned bytes, int * valid) {
+static int mem_hash_read(const int_xlen_t addr, int_xlen_t * v, unsigned bytes, int * valid) {
     int i = mem_hash_index(addr);
 
-    if (i >= 0 && mem_data.size[i] && uxlen_cmp(mem_data.a[i], addr) == 0) {
+    if (i >= 0 && mem_data.size[i] && int_xlen_cmpu(mem_data.a[i], addr) == 0) {
         *valid = mem_data.valid[i] && mem_data.size[i] >= bytes;
         *v = mem_data.v[i];
         return 0;
@@ -248,7 +253,7 @@ static int mem_hash_read(const uxlen_t addr, uxlen_t * v, unsigned bytes, int * 
     return -1;
 }
 
-static int load_reg_from_mem(const uxlen_t addr, RegData * r, unsigned bits) {
+static int load_reg_from_mem(const int_xlen_t addr, RegData * r, unsigned bits) {
     uint8_t v8 = 0;
     uint16_t v16 = 0;
     uint32_t v32 = 0;
@@ -257,19 +262,19 @@ static int load_reg_from_mem(const uxlen_t addr, RegData * r, unsigned bits) {
     switch (bits) {
     case 8:
         if (read_byte(addr, &v8) < 0) return -1;
-        r->v = uxlen_from_u(v8);
+        r->v = int_xlen_from_u(v8);
         break;
     case 16:
         if (read_u16(addr, &v16) < 0) return -1;
-        r->v = uxlen_from_u(v16);
+        r->v = int_xlen_from_u(v16);
         break;
     case 32:
         if (read_u32(addr, &v32) < 0) return -1;
-        r->v = uxlen_from_u(v32);
+        r->v = int_xlen_from_u(v32);
         break;
     case 64:
         if (read_u64(addr, &v64) < 0) return -1;
-        r->v = uxlen_from_u(v64);
+        r->v = int_xlen_from_u(v64);
         break;
     case 128:
         if (read_u128(addr, &r->v) < 0) return -1;
@@ -282,31 +287,13 @@ static int load_reg_from_mem(const uxlen_t addr, RegData * r, unsigned bits) {
     return 0;
 }
 
-static void fix_sign(uxlen_t * v, unsigned bits, int sign) {
-    unsigned i;
-    if (sign) {
-        if (bits <= 64) sign = (v->l & ((uint64_t)1 << (bits - 1))) != 0;
-        else sign = (v->h & ((uint64_t)1 << (bits - 65))) != 0;
-    }
-    for (i = bits; i < 128; i++) {
-        if (i < 64) {
-            if (sign) v->l |= (uint64_t)1 << i;
-            else v->l &= ~((uint64_t)1 << i);
-        }
-        else {
-            if (sign) v->h |= (uint64_t)1 << (i - 64);
-            else v->h &= ~((uint64_t)1 << (i - 64));
-        }
-    }
-}
-
-static int load_reg(const uxlen_t addr, RegData * r, unsigned bits) {
+static int load_reg(const int_xlen_t addr, RegData * r, unsigned bits) {
     int valid = 0;
 
     /* Check if the value can be found in the hash */
     if (mem_hash_read(addr, &r->v, bits >> 3, &valid) == 0) {
         if (valid) {
-            fix_sign(&r->v, bits, 1);
+            r->v = fix_sign(r->v, bits, 1);
             r->o = REG_VAL_OTHER;
             return 0;
         }
@@ -315,16 +302,16 @@ static int load_reg(const uxlen_t addr, RegData * r, unsigned bits) {
     else {
         /* Not in the hash, so read from real memory */
         if (load_reg_from_mem(addr, r, bits) < 0) return -1;
-        fix_sign(&r->v, bits, 1);
+        r->v = fix_sign(r->v, bits, 1);
     }
     return 0;
 }
 
-static int load_reg_lazy(uxlen_t addr, unsigned r, unsigned bits, int sign) {
+static int load_reg_lazy(int_xlen_t addr, unsigned r, unsigned bits, int sign) {
     int valid = 0;
     if (mem_hash_read(addr, &reg_data[r].v, bits >> 3, &valid) == 0) {
         if (valid) {
-            fix_sign(&reg_data[r].v, bits, sign);
+            reg_data[r].v = fix_sign(reg_data[r].v, bits, sign);
             reg_data[r].o = REG_VAL_OTHER;
             return 0;
         }
@@ -337,7 +324,7 @@ static int load_reg_lazy(uxlen_t addr, unsigned r, unsigned bits, int sign) {
         return 0;
     }
     if (load_reg_from_mem(addr, reg_data + r, bits) < 0) return -1;
-    fix_sign(&reg_data[r].v, bits, sign);
+    reg_data[r].v = fix_sign(reg_data[r].v, bits, sign);
     return 0;
 }
 
@@ -345,7 +332,7 @@ static int chk_reg_loaded(RegData * r) {
     if (r->o == 0) return 0;
     if (r->o == REG_VAL_OTHER) return 0;
     if (r->o == REG_VAL_FRAME) {
-        RegisterDefinition * def = get_reg_definitions(stk_ctx) + uxlen_to_l(r->v);
+        RegisterDefinition * def = get_reg_definitions(stk_ctx) + int_xlen_to_l(r->v);
         if (read_reg128(stk_frame, def, &r->v) < 0) {
             if (stk_frame->is_top_frame) return -1;
             r->o = 0;
@@ -361,7 +348,7 @@ static int chk_loaded(unsigned r) {
     return chk_reg_loaded(reg_data + r);
 }
 
-static int mem_hash_write(uxlen_t addr, uxlen_t v, unsigned bytes, int valid) {
+static int mem_hash_write(int_xlen_t addr, int_xlen_t v, unsigned bytes, int valid) {
     int n = mem_hash_index(addr);
     unsigned i;
 
@@ -373,8 +360,8 @@ static int mem_hash_write(uxlen_t addr, uxlen_t v, unsigned bytes, int valid) {
     /* Fix lazy loaded registers */
     for (i = 0; i < REG_DATA_SIZE; i++) {
         if (reg_data[i].o != REG_VAL_ADDR && reg_data[i].o != REG_VAL_STACK) continue;
-        if (uxlen_cmp(reg_data[i].v, uxlen_add_u(addr, xlen >> 3)) >= 0) continue;
-        if (uxlen_cmp(uxlen_add_u(reg_data[i].v, xlen >> 3), addr) <= 0) continue;
+        if (int_xlen_cmpu(reg_data[i].v, int_xlen_add_u(addr, xlen >> 3)) >= 0) continue;
+        if (int_xlen_cmpu(int_xlen_add_u(reg_data[i].v, xlen >> 3), addr) <= 0) continue;
         if (load_reg(reg_data[i].v, reg_data + i, xlen) < 0) return -1;
     }
 
@@ -386,7 +373,7 @@ static int mem_hash_write(uxlen_t addr, uxlen_t v, unsigned bytes, int valid) {
     return 0;
 }
 
-static int store_reg(uxlen_t addr, unsigned r, unsigned bits) {
+static int store_reg(int_xlen_t addr, unsigned r, unsigned bits) {
     if (chk_loaded(r) < 0) return -1;
     assert(reg_data[r].o == 0 || reg_data[r].o == REG_VAL_OTHER);
     return mem_hash_write(addr, reg_data[r].v, bits >> 3, reg_data[r].o != 0);
@@ -417,13 +404,14 @@ static int32_t get_imm_rse(unsigned pos, unsigned bits) {
     return v;
 }
 
-static void add_branch(uxlen_t addr) {
+static void add_branch(int_xlen_t addr) {
     if (branch_cnt < BRANCH_LIST_SIZE) {
         int add = 1;
         unsigned i = 0;
+        addr = fix_sign(addr, xlen, 1);
         for (i = 0; i < branch_cnt; i++) {
             BranchData * b = branch_data + i;
-            if (uxlen_cmp(b->addr, addr) ==0) {
+            if (int_xlen_cmpu(b->addr, addr) == 0) {
                 add = 0;
                 break;
             }
@@ -440,188 +428,274 @@ static void add_branch(uxlen_t addr) {
 }
 
 static int trace_rv32i(void) {
+    unsigned func = (instr >> 12) & 7;
     unsigned rs2 = (instr >> 20) & 0x1f;
     unsigned rs1 = (instr >> 15) & 0x1f;
     unsigned rd = (instr >> 7) & 0x1f;
     if ((instr & 0x0000007f) == 0x00000037) { /* lui */
-        uint64_t imm = instr & 0xfffff000;
-        reg_data[rd].v = uxlen_from_u(imm);
-        reg_data[rd].o = REG_VAL_OTHER;
+        if (rd != 0) {
+            int64_t imm = (int32_t)(instr & 0xfffff000);
+            reg_data[rd].v = int_xlen_from_i(imm);
+            reg_data[rd].o = REG_VAL_OTHER;
+        }
         return 0;
     }
     if ((instr & 0x0000007f) == 0x00000017) { /* auipc */
-        uint64_t imm = instr & 0xfffff000;
-        reg_data[rd].v = uxlen_add_u(pc_data.v, imm);
-        reg_data[rd].o = REG_VAL_OTHER;
+        if (rd != 0) {
+            int64_t imm = (int32_t)(instr & 0xfffff000);
+            reg_data[rd].v = int_xlen_add(pc_data.v, int_xlen_from_i(imm));
+            reg_data[rd].o = REG_VAL_OTHER;
+        }
         return 0;
     }
     if ((instr & 0x0000007f) == 0x0000006f) { /* j, jal */
         int32_t imm = get_imm_se(imm_bits_j);
         if (rd == 0) {
-            pc_data.v = uxlen_add_i(pc_data.v, (int64_t)imm << 1);
+            add_branch(int_xlen_add_i(pc_data.v, (int64_t)imm << 1));
+            trace_branch = 1;
         }
         else {
-            reg_data[rd].v = uxlen_add_u(pc_data.v, 4);
+            reg_data[rd].v = int_xlen_add_u(pc_data.v, 4);
             reg_data[rd].o = pc_data.o;
         }
         return 0;
     }
     if ((instr & 0x0000707f) == 0x00000067) { /* jalr */
-        reg_data[rd].v = uxlen_add_u(pc_data.v, 4);
+        int32_t imm = instr >> 20;
+        if (rd == 0) {
+            if (imm == 0 && rs1 == 1) { /* ret */
+                pc_data = reg_data[1];
+                trace_return = 1;
+                return 0;
+            }
+            if (reg_data[rs1].o) add_branch(reg_data[rs1].v);
+            trace_branch = 1;
+            return 0;
+        }
+        reg_data[rd].v = int_xlen_add_u(pc_data.v, 4);
         reg_data[rd].o = pc_data.o;
         return 0;
     }
     if ((instr & 0x0000007f) == 0x00000063) { /* conditional branch */
         int32_t imm = get_imm_se(imm_bits_b);
-        add_branch(uxlen_add_i(pc_data.v, (int64_t)imm << 1));
-        trace_branch = 1;
+        add_branch(int_xlen_add_i(pc_data.v, (int64_t)imm << 1));
         return 0;
     }
     if ((instr & 0x0000007f) == 0x00000003) {
-        int32_t imm = get_imm_rse(20, 12);
-        if (chk_loaded(rs1) < 0) return -1;
-        if (reg_data[rs1].o) {
-            uxlen_t addr = uxlen_add_i(reg_data[rs1].v, imm);
-            switch ((instr >> 12) & 7) {
-            case 0:
-                /* lb */
-                return load_reg_lazy(addr, rd, 8, 1);
-            case 1:
-                /* lh */
-                return load_reg_lazy(addr, rd, 16, 1);
-            case 2:
-                /* lw */
-                return load_reg_lazy(addr, rd, 32, 1);
-            case 4:
-                /* lbu */
-                return load_reg_lazy(addr, rd, 8, 0);
-            case 5:
-                /* lhu */
-                return load_reg_lazy(addr, rd, 16, 0);
+        if (func <= 2 || func == 4 || func == 5) {
+            if (rd != 0) {
+                int32_t imm = get_imm_rse(20, 12);
+                if (chk_loaded(rs1) < 0) return -1;
+                if (reg_data[rs1].o) {
+                    int_xlen_t addr = int_xlen_add_i(reg_data[rs1].v, imm);
+                    switch (func) {
+                    case 0:
+                        /* lb */
+                        return load_reg_lazy(addr, rd, 8, 1);
+                    case 1:
+                        /* lh */
+                        return load_reg_lazy(addr, rd, 16, 1);
+                    case 2:
+                        /* lw */
+                        return load_reg_lazy(addr, rd, 32, 1);
+                    case 4:
+                        /* lbu */
+                        return load_reg_lazy(addr, rd, 8, 0);
+                    case 5:
+                        /* lhu */
+                        return load_reg_lazy(addr, rd, 16, 0);
+                    }
+                }
+                reg_data[rd].o = 0;
             }
+            return 0;
         }
-        reg_data[rd].o = 0;
-        return 0;
     }
     if ((instr & 0x0000007f) == 0x00000023) {
-        int32_t imm = get_imm_se(imm_bits_s);
-        if (chk_loaded(rs1) < 0) return -1;
-        if (reg_data[rs1].o) {
-            uxlen_t addr = uxlen_add_i(reg_data[rs1].v, imm);
-            switch ((instr >> 12) & 7) {
-            case 0:
-                /* sb */
-                return store_reg(addr, rs2, 8);
-            case 1:
-                /* sh */
-                return store_reg(addr, rs2, 16);
-            case 2:
-                /* sw */
-                return store_reg(addr, rs2, 32);
+        if (func <= 2) {
+            int32_t imm = get_imm_se(imm_bits_s);
+            if (chk_loaded(rs1) < 0) return -1;
+            if (reg_data[rs1].o) {
+                int_xlen_t addr = int_xlen_add_i(reg_data[rs1].v, imm);
+                switch (func) {
+                case 0:
+                    /* sb */
+                    return store_reg(addr, rs2, 8);
+                case 1:
+                    /* sh */
+                    return store_reg(addr, rs2, 16);
+                case 2:
+                    /* sw */
+                    return store_reg(addr, rs2, 32);
+                }
             }
+            return 0;
         }
-        return 0;
     }
-#if 0
     if ((instr & 0x0000007f) == 0x00000013) {
-        unsigned func = (instr >> 12) & 7;
-        int32_t imm = get_imm_rse(20, 12);
-        switch (func) {
-        case 0:
-            add_str("addi ");
-            break;
-        case 2:
-            add_str("slti ");
-            break;
-        case 3:
-            if (imm == 1) {
-                add_str("seqz ");
-                add_reg(rd);
-                add_str(", ");
-                add_reg(rs1);
-                return;
+        if (func != 1 && func != 5) {
+            if (rd != 0) {
+                int32_t imm = get_imm_rse(20, 12);
+                if (chk_loaded(rs1) < 0) return -1;
+                if (reg_data[rs1].o) {
+                    switch (func) {
+                    case 0: /* addi */
+                        reg_data[rd].v = int_xlen_add(reg_data[rs1].v, int_xlen_from_i(imm));
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 2: /* slti */
+                        reg_data[rd].v = int_xlen_from_u(int_xlen_cmpi(reg_data[rs1].v, int_xlen_from_i(imm)) < 0 ? 1 : 0);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 3: /* sltiu */
+                        reg_data[rd].v = int_xlen_from_u(int_xlen_cmpu(reg_data[rs1].v, int_xlen_from_i(imm)) < 0 ? 1 : 0);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 4: /* xori */
+                        reg_data[rd].v = int_xlen_xor(reg_data[rs1].v, int_xlen_from_i(imm));
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 6: /* ori */
+                        reg_data[rd].v = int_xlen_or(reg_data[rs1].v, int_xlen_from_i(imm));
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 7: /* andi */
+                        reg_data[rd].v = int_xlen_and(reg_data[rs1].v, int_xlen_from_i(imm));
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    }
+                }
+                reg_data[rd].o = 0;
             }
-            add_str("sltiu ");
-            break;
-        case 4:
-            add_str("xori ");
-            break;
-        case 6:
-            add_str("ori ");
-            break;
-        case 7:
-            add_str("andi ");
-            break;
-        }
-        if (buf_pos > 0) {
-            add_reg(rd);
-            add_str(", ");
-            add_reg(rs1);
-            add_str(", ");
-            if (imm < 0) {
-                add_char('-');
-                imm = -imm;
-            }
-            add_dec_uint32(imm);
-            return;
+            return 0;
         }
     }
     if ((instr & 0xbe00007f) == 0x00000013) {
-        unsigned func = (instr >> 12) & 7;
-        uint32_t imm = rs2;
-        switch (func) {
-        case 1:
-            add_str("slli ");
-            break;
-        case 5:
-            add_str(instr & (1 << 30) ? "srai " : "srli ");
-            break;
-        }
-        if (buf_pos > 0) {
-            add_reg(rd);
-            add_str(", ");
-            add_reg(rs1);
-            add_str(", 0x");
-            add_hex_uint32(imm);
-            return;
+        if (func == 1 || func == 5) {
+            if (rd != 0) {
+                uint32_t imm = (instr >> 20) & 0x1f;
+                if (chk_loaded(rs1) < 0) return -1;
+                if (reg_data[rs1].o) {
+                    switch (func) {
+                    case 1:
+                        reg_data[rd].v = int_xlen_sll(reg_data[rs1].v, imm);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 5:
+                        reg_data[rd].v = instr & (1 << 30) ?
+                            int_xlen_sra(reg_data[rs1].v, imm) :
+                            int_xlen_srl(reg_data[rs1].v, imm);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    }
+                }
+                reg_data[rd].o = 0;
+            }
+            return 0;
         }
     }
     if ((instr & 0xfe00007f) == 0x00000033) {
-        unsigned func = (instr >> 12) & 7;
-        static const char * nm[8] = { "add", "sll", "slt", "sltu", "xor", "srl", "or", "and" };
-        if (func == 2 && rs1 == 0) add_str("sgtz ");
-        if (func == 3 && rs1 == 0) add_str("snez ");
-        if (func == 2 && rs2 == 0) add_str("sltz ");
-        if (buf_pos > 0) {
-            add_reg(rd);
-            add_str(", ");
-            add_reg(rs1 ? rs1 : rs2);
-            return;
-        }
-        add_str(nm[func]);
-        add_char(' ');
-        add_reg(rd);
-        add_str(", ");
-        add_reg(rs1);
-        add_str(", ");
-        add_reg(rs2);
-        return;
-    }
-#endif
-    if ((instr & 0xfe00007f) == 0x40000033) {
-        unsigned func = (instr >> 12) & 7;
-        switch (func) {
-        case 0:
+        if (rd != 0) {
             if (chk_loaded(rs1) < 0) return -1;
             if (chk_loaded(rs2) < 0) return -1;
-            reg_data[rd].v = uxlen_sub(reg_data[rs1].v, reg_data[rs2].v);
-            reg_data[rd].o = reg_data[rs1].o && reg_data[rs2].o ? REG_VAL_OTHER : 0;
-            return 0;
-        case 5:
-            reg_data[rd].v = uxlen_sra(reg_data[rs1].v, uxlen_to_l(reg_data[rs2].v));
-            reg_data[rd].o = reg_data[rs1].o && reg_data[rs2].o ? REG_VAL_OTHER : 0;
+            if (reg_data[rs1].o && reg_data[rs2].o) {
+                switch (func) {
+                case 0: /* add */
+                    reg_data[rd].v = int_xlen_add(reg_data[rs1].v, reg_data[rs2].v);
+                    reg_data[rd].o = REG_VAL_OTHER;
+                    return 0;
+                case 1: /* sll */
+                    reg_data[rd].v = int_xlen_sll(reg_data[rs1].v, int_xlen_to_l(reg_data[rs2].v) & (xlen - 1));
+                    reg_data[rd].o = REG_VAL_OTHER;
+                    return 0;
+                case 2: /* slt */
+                    reg_data[rd].v = int_xlen_from_u(int_xlen_cmpi(reg_data[rs1].v, reg_data[rs2].v) < 0 ? 1 : 0);
+                    reg_data[rd].o = REG_VAL_OTHER;
+                    return 0;
+                case 3: /* sltu */
+                    reg_data[rd].v = int_xlen_from_u(int_xlen_cmpu(reg_data[rs1].v, reg_data[rs2].v) < 0 ? 1 : 0);
+                    reg_data[rd].o = REG_VAL_OTHER;
+                    return 0;
+                case 4: /* xor */
+                    reg_data[rd].v = int_xlen_xor(reg_data[rs1].v, reg_data[rs2].v);
+                    reg_data[rd].o = REG_VAL_OTHER;
+                    return 0;
+                case 5: /* srl */
+                    reg_data[rd].v = int_xlen_srl(reg_data[rs1].v, int_xlen_to_l(reg_data[rs2].v) & (xlen - 1));
+                    reg_data[rd].o = REG_VAL_OTHER;
+                    return 0;
+                case 6: /* or */
+                    reg_data[rd].v = int_xlen_or(reg_data[rs1].v, reg_data[rs2].v);
+                    reg_data[rd].o = REG_VAL_OTHER;
+                    return 0;
+                case 7: /* and */
+                    reg_data[rd].v = int_xlen_and(reg_data[rs1].v, reg_data[rs2].v);
+                    reg_data[rd].o = REG_VAL_OTHER;
+                    return 0;
+                }
+            }
+            reg_data[rd].o = 0;
+        }
+        return 0;
+    }
+    if ((instr & 0xfe00007f) == 0x40000033) {
+        if (func == 0 || func == 5) {
+            if (rd != 0) {
+                if (chk_loaded(rs1) < 0) return -1;
+                if (chk_loaded(rs2) < 0) return -1;
+                switch (func) {
+                case 0:
+                    reg_data[rd].v = int_xlen_sub(reg_data[rs1].v, reg_data[rs2].v);
+                    reg_data[rd].o = reg_data[rs1].o && reg_data[rs2].o ? REG_VAL_OTHER : 0;
+                    return 0;
+                case 5:
+                    reg_data[rd].v = int_xlen_sra(reg_data[rs1].v, int_xlen_to_l(reg_data[rs2].v));
+                    reg_data[rd].o = reg_data[rs1].o && reg_data[rs2].o ? REG_VAL_OTHER : 0;
+                    return 0;
+                }
+            }
             return 0;
         }
+    }
+    if ((instr & 0x0000707f) == 0x0000000f) {
+        unsigned p = (instr >> 24) & 0xf;
+        unsigned s = (instr >> 20) & 0xf;
+        if (p != 0 && s != 0) {
+            /* fence - no register changes */
+            return 0;
+        }
+    }
+    if (instr == 0x00000073) {
+        /* ecall */
+        return 0;
+    }
+    if (instr == 0x00100073) {
+        /* ebreak - no register changes */
+        return 0;
+    }
+    if ((instr & 0x0fffffff) == 0x00200073) {
+        switch (instr >> 28) {
+        case 0: /* uret */
+            pc_data = uepc_data;
+            trace_return = 1;
+            return 0;
+        case 1: /* sret */
+            pc_data = sepc_data;
+            trace_return = 1;
+            return 0;
+        case 3: /* mret */
+            pc_data = mepc_data;
+            trace_return = 1;
+            return 0;
+        }
+    }
+    if (instr == 0x10500073) {
+        /* wfi - no register changes */
+        return 0;
+    }
+    if ((instr & 0xfe007fff) == 0x12000073) {
+        /* sfence.vma - no register changes */
+        return 0;
     }
     return 0;
 }
@@ -631,11 +705,168 @@ static int trace_rv32(void) {
     return 0;
 }
 
+static int trace_rv64i(void) {
+    unsigned func = (instr >> 12) & 7;
+    unsigned rs2 = (instr >> 20) & 0x1f;
+    unsigned rs1 = (instr >> 15) & 0x1f;
+    unsigned rd = (instr >> 7) & 0x1f;
+    if ((instr & 0x0000007f) == 0x00000003) {
+        if (func == 3 || func == 6) {
+            if (rd != 0) {
+                int32_t imm = get_imm_rse(20, 12);
+                if (chk_loaded(rs1) < 0) return -1;
+                if (reg_data[rs1].o) {
+                    int_xlen_t addr = int_xlen_add_i(reg_data[rs1].v, imm);
+                    switch (func) {
+                    case 3:
+                        /* ld */
+                        return load_reg_lazy(addr, rd, 64, 1);
+                    case 6:
+                        /* lwu */
+                        return load_reg_lazy(addr, rd, 32, 0);
+                    }
+                }
+                reg_data[rd].o = 0;
+            }
+            return 0;
+        }
+    }
+    if ((instr & 0x0000007f) == 0x00000023) {
+        if (func == 3) { /* sd */
+            int32_t imm = get_imm_se(imm_bits_s);
+            if (chk_loaded(rs1) < 0) return -1;
+            if (reg_data[rs1].o) {
+                int_xlen_t addr = int_xlen_add_i(reg_data[rs1].v, imm);
+                return store_reg(addr, rs2, 64);
+            }
+            return 0;
+        }
+    }
+    if ((instr & 0xbc00007f) == 0x00000013) {
+        if (func == 1 || func == 5) {
+            if (rd != 0) {
+                uint32_t imm = (instr >> 20) & 0x3f;
+                if (chk_loaded(rs1) < 0) return -1;
+                if (reg_data[rs1].o) {
+                    switch (func) {
+                    case 1:
+                        reg_data[rd].v = int_xlen_sll(reg_data[rs1].v, imm);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 5:
+                        reg_data[rd].v = instr & (1 << 30) ?
+                            int_xlen_sra(reg_data[rs1].v, imm) :
+                            int_xlen_srl(reg_data[rs1].v, imm);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    }
+                }
+                reg_data[rd].o = 0;
+            }
+            return 0;
+        }
+    }
+    if ((instr & 0x0000707f) == 0x0000001b) { /* addiw */
+        if (rd != 0) {
+            int32_t imm = get_imm_rse(20, 12);
+            if (chk_loaded(rs1) < 0) return -1;
+            if (reg_data[rs1].o) {
+                reg_data[rd].v = fix_sign(int_xlen_add_i(reg_data[rs1].v, imm), 32, 1);
+                reg_data[rd].o = REG_VAL_OTHER;
+                return 0;
+            }
+            reg_data[rd].o = 0;
+        }
+        return 0;
+    }
+    if ((instr & 0xbe00007f) == 0x0000001b) {
+        if (func == 1 || func == 5) {
+            if (rd != 0) {
+                uint32_t imm = (instr >> 20) & 0x1f;
+                if (chk_loaded(rs1) < 0) return -1;
+                if (reg_data[rs1].o) {
+                    switch (func) {
+                    case 1:
+                        reg_data[rd].v = fix_sign(int_xlen_sll(reg_data[rs1].v, imm), 32, 1);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 5:
+                        if (instr & (1 << 30)) {
+                            reg_data[rd].v = int_xlen_sra(fix_sign(reg_data[rs1].v, 32, 1), imm);
+                        }
+                        else {
+                            reg_data[rd].v = int_xlen_srl(fix_sign(reg_data[rs1].v, 32, 0), imm);
+                        }
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    }
+                }
+                reg_data[rd].o = 0;
+            }
+            return 0;
+        }
+    }
+    if ((instr & 0xfe00007f) == 0x0000003b) {
+        if (func == 0 || func == 1 || func == 5) {
+            if (rd != 0) {
+                if (chk_loaded(rs1) < 0) return -1;
+                if (chk_loaded(rs2) < 0) return -1;
+                if (reg_data[rs1].o && reg_data[rs2].o) {
+                    switch (func) {
+                    case 0: /* addw */
+                        reg_data[rd].v = fix_sign(int_xlen_add(reg_data[rs1].v, reg_data[rs2].v), 32, 1);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 1: /* sllw */
+                        reg_data[rd].v = fix_sign(int_xlen_sll(reg_data[rs1].v, int_xlen_to_l(reg_data[rs2].v) & (xlen - 1)), 32, 1);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 5: /* srlw */
+                        reg_data[rd].v = int_xlen_srl(fix_sign(reg_data[rs1].v, 32, 0), int_xlen_to_l(reg_data[rs2].v) & (xlen - 1));
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    }
+                }
+                reg_data[rd].o = 0;
+            }
+            return 0;
+        }
+    }
+    if ((instr & 0xfe00007f) == 0x4000003b) {
+        if (func == 0 || func == 5) {
+            if (rd != 0) {
+                if (chk_loaded(rs1) < 0) return -1;
+                if (chk_loaded(rs2) < 0) return -1;
+                if (reg_data[rs1].o && reg_data[rs2].o) {
+                    switch (func) {
+                    case 0: /* subw */
+                        reg_data[rd].v = fix_sign(int_xlen_sub(reg_data[rs1].v, reg_data[rs2].v), 32, 1);
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    case 5: /* sraw */
+                        reg_data[rd].v = int_xlen_sra(fix_sign(reg_data[rs1].v, 32, 1), int_xlen_to_l(reg_data[rs2].v) & (xlen - 1));
+                        reg_data[rd].o = REG_VAL_OTHER;
+                        return 0;
+                    }
+                }
+                reg_data[rd].o = 0;
+            }
+            return 0;
+        }
+    }
+    if (trace_rv32i() < 0) return -1;
+    return 0;
+}
+
+
+
 static int trace_rv64(void) {
+    if (trace_rv64i() < 0) return -1;
     return 0;
 }
 
 static int trace_rv128(void) {
+    if (trace_rv64i() < 0) return -1;
     return 0;
 }
 
@@ -650,7 +881,7 @@ static int trace_rv32c(void) {
         if (imm != 0) {
             unsigned rd = ((instr >> 2) & 0x7) + 8;
             if (chk_loaded(REG_ID_SP) < 0) return -1;
-            reg_data[rd].v = uxlen_add_u(reg_data[REG_ID_SP].v, imm * 4);
+            reg_data[rd].v = int_xlen_add_u(reg_data[REG_ID_SP].v, imm * 4);
             reg_data[rd].o = reg_data[REG_ID_SP].o;
             return 0;
         }
@@ -666,7 +897,7 @@ static int trace_rv32c(void) {
         if (chk_loaded(rs) < 0) return -1;
         if (reg_data[rs].o) {
             uint32_t imm = get_imm(imm_bits_w);
-            uxlen_t addr = uxlen_add_u(reg_data[rs].v, imm * 4);
+            int_xlen_t addr = int_xlen_add_u(reg_data[rs].v, imm * 4);
             if (ld) {
                 if (load_reg_lazy(addr, rd, 32, 1) < 0) return -1;
             }
@@ -693,17 +924,18 @@ static int trace_rv32c(void) {
         unsigned rd = (instr >> 7) & 0x1f;
         if (rd != 0) {
             if (chk_loaded(rd) < 0) return -1;
-            reg_data[rd].v = uxlen_add_i(reg_data[rd].v, imm);
+            reg_data[rd].v = int_xlen_add_i(reg_data[rd].v, imm);
             return 0;
         }
     }
     if ((instr & 0x6003) == 0x2001) { /* j, jal */
         int32_t imm = get_imm_se(imm_bits_jc);
         if (instr & 0x8000) {
-            pc_data.v = uxlen_add_i(pc_data.v, imm << 1);
+            add_branch(int_xlen_add_i(pc_data.v, (int64_t)imm << 1));
+            trace_branch = 1;
         }
         else {
-            reg_data[REG_ID_RA].v = uxlen_add_u(pc_data.v, 2);
+            reg_data[REG_ID_RA].v = int_xlen_add_u(pc_data.v, 2);
             reg_data[REG_ID_RA].o = pc_data.o;
         }
         return 0;
@@ -712,7 +944,7 @@ static int trace_rv32c(void) {
         int32_t imm = get_imm_se(imm_bits_shift);
         unsigned rd = (instr >> 7) & 0x1f;
         if (rd != 0) {
-            reg_data[rd].v = uxlen_from_i(imm);
+            reg_data[rd].v = int_xlen_from_i(imm);
             reg_data[rd].o = REG_VAL_OTHER;
             return 0;
         }
@@ -722,14 +954,14 @@ static int trace_rv32c(void) {
         if (rd == 2) {
             int32_t imm = get_imm_se(imm_bits_addi_sp);
             if (imm != 0) {
-                reg_data[REG_ID_SP].v = uxlen_add_i(reg_data[REG_ID_SP].v, imm << 4);
+                reg_data[REG_ID_SP].v = int_xlen_add_i(reg_data[REG_ID_SP].v, imm << 4);
                 return 0;
             }
         }
         if (rd != 0) {
             int32_t imm = get_imm_se(imm_bits_shift);
             if (imm != 0) {
-                reg_data[rd].v = uxlen_from_i(imm << 12);
+                reg_data[rd].v = int_xlen_from_i(imm << 12);
                 reg_data[rd].o = REG_VAL_OTHER;
                 return 0;
             }
@@ -746,12 +978,12 @@ static int trace_rv32c(void) {
                 else return 0;
             }
             if (chk_loaded(rd) < 0) return -1;
-            reg_data[rd].v = func ? uxlen_sra(reg_data[rd].v, imm) : uxlen_srl(reg_data[rd].v, imm);
+            reg_data[rd].v = func ? int_xlen_sra(reg_data[rd].v, imm) : int_xlen_srl(reg_data[rd].v, imm);
         }
         else if (func == 2) {
             int32_t imm = get_imm_se(imm_bits_shift);
             if (chk_loaded(rd) < 0) return -1;
-            reg_data[rd].v = uxlen_and(reg_data[rd].v, uxlen_from_i(imm));
+            reg_data[rd].v = int_xlen_and(reg_data[rd].v, int_xlen_from_i(imm));
         }
         else if ((instr & (1 << 12)) == 0) {
             unsigned rs = ((instr >> 2) & 0x7) + 8;
@@ -759,16 +991,16 @@ static int trace_rv32c(void) {
             if (chk_loaded(rs) < 0) return -1;
             switch ((instr >> 5) & 3) {
             case 0:
-                reg_data[rd].v = uxlen_sub(reg_data[rd].v, reg_data[rs].v);
+                reg_data[rd].v = int_xlen_sub(reg_data[rd].v, reg_data[rs].v);
                 break;
             case 1:
-                reg_data[rd].v = uxlen_xor(reg_data[rd].v, reg_data[rs].v);
+                reg_data[rd].v = int_xlen_xor(reg_data[rd].v, reg_data[rs].v);
                 break;
             case 2:
-                reg_data[rd].v = uxlen_or(reg_data[rd].v, reg_data[rs].v);
+                reg_data[rd].v = int_xlen_or(reg_data[rd].v, reg_data[rs].v);
                 break;
             case 3:
-                reg_data[rd].v = uxlen_and(reg_data[rd].v, reg_data[rs].v);
+                reg_data[rd].v = int_xlen_and(reg_data[rd].v, reg_data[rs].v);
                 break;
             }
             reg_data[rd].o = reg_data[rd].o && reg_data[rs].o ? REG_VAL_OTHER : 0;
@@ -777,7 +1009,7 @@ static int trace_rv32c(void) {
     }
     if ((instr & 0xc003) == 0xc001) {
         int32_t imm = get_imm_se(imm_bits_bc);
-        add_branch(uxlen_add_i(pc_data.v, imm << 1));
+        add_branch(int_xlen_add_i(pc_data.v, imm << 1));
         return 0;
     }
 
@@ -788,7 +1020,7 @@ static int trace_rv32c(void) {
             if (chk_loaded(REG_ID_SP) < 0) return -1;
             if (reg_data[REG_ID_SP].o) {
                 uint32_t imm = get_imm(imm_bits_lw_sp);
-                return load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 4), rd, 32, 1);
+                return load_reg_lazy(int_xlen_add_u(reg_data[REG_ID_SP].v, imm * 4), rd, 32, 1);
             }
             reg_data[rd].o = 0;
             return 0;
@@ -807,7 +1039,7 @@ static int trace_rv32c(void) {
         if (chk_loaded(REG_ID_SP) < 0) return -1;
         if (reg_data[REG_ID_SP].o) {
             uint32_t imm = get_imm(imm_bits_sw_sp);
-            if (store_reg(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 4), rd, 32) < 0) return -1;
+            if (store_reg(int_xlen_add_u(reg_data[REG_ID_SP].v, imm * 4), rd, 32) < 0) return -1;
         }
         return 0;
     }
@@ -829,7 +1061,7 @@ static int trace_rv32c(void) {
                 else return 0;
             }
             if (chk_loaded(rd) < 0) return -1;
-            reg_data[rd].v = uxlen_sll(reg_data[rd].v, imm);
+            reg_data[rd].v = int_xlen_sll(reg_data[rd].v, imm);
             return 0;
         }
     }
@@ -839,11 +1071,12 @@ static int trace_rv32c(void) {
         if ((instr & (1 << 12)) == 0) {
             if (rd == 0) return 0;
             if (rs == 0) {
+                if (chk_loaded(rd) < 0) return -1;
                 if (rd == REG_ID_RA) {
+                    pc_data = reg_data[rd];
                     trace_return = 1;
                     return 0;
                 }
-                if (chk_loaded(rd) < 0) return -1;
                 if (reg_data[rd].o) add_branch(reg_data[rd].v);
                 trace_branch = 1;
                 return 0;
@@ -858,13 +1091,13 @@ static int trace_rv32c(void) {
         }
         if (rd == 0) return 0;
         if (rs == 0) {
-            reg_data[REG_ID_RA].v = uxlen_add_u(pc_data.v, 2);
+            reg_data[REG_ID_RA].v = int_xlen_add_u(pc_data.v, 2);
             reg_data[REG_ID_RA].o = pc_data.o;
             return 0;
         }
         if (chk_loaded(rd) < 0) return -1;
         if (chk_loaded(rs) < 0) return -1;
-        reg_data[rd].v = uxlen_add(reg_data[rd].v, reg_data[rs].v);
+        reg_data[rd].v = int_xlen_add(reg_data[rd].v, reg_data[rs].v);
         reg_data[rd].o = reg_data[rd].o && reg_data[rs].o ? REG_VAL_OTHER : 0;
         return 0;
     }
@@ -878,7 +1111,7 @@ static int trace_rv64c(void) {
         unsigned rd = (instr >> 7) & 0x1f;
         if (rd != 0) {
             if (chk_loaded(rd) < 0) return -1;
-            reg_data[rd].v = uxlen_add_i(reg_data[rd].v, imm);
+            reg_data[rd].v = int_xlen_add_i(reg_data[rd].v, imm);
             return 0;
         }
     }
@@ -888,7 +1121,7 @@ static int trace_rv64c(void) {
             if (chk_loaded(REG_ID_SP) < 0) return -1;
             if (reg_data[REG_ID_SP].o) {
                 uint32_t imm = get_imm(imm_bits_ld_sp);
-                return load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 8), rd, 64, 1);
+                return load_reg_lazy(int_xlen_add_u(reg_data[REG_ID_SP].v, imm * 8), rd, 64, 1);
             }
             reg_data[rd].o = 0;
             return 0;
@@ -899,7 +1132,7 @@ static int trace_rv64c(void) {
         if (chk_loaded(REG_ID_SP) < 0) return -1;
         if (reg_data[REG_ID_SP].o) {
             uint32_t imm = get_imm(imm_bits_sd_sp);
-            if (store_reg(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 8), rd, 64) < 0) return -1;
+            if (store_reg(int_xlen_add_u(reg_data[REG_ID_SP].v, imm * 8), rd, 64) < 0) return -1;
         }
         return 0;
     }
@@ -910,7 +1143,7 @@ static int trace_rv64c(void) {
         if (chk_loaded(rs) < 0) return -1;
         if (reg_data[rs].o) {
             uint32_t imm = get_imm(imm_bits_d);
-            uxlen_t addr = uxlen_add_u(reg_data[rs].v, imm * 8);
+            int_xlen_t addr = int_xlen_add_u(reg_data[rs].v, imm * 8);
             if (ld) {
                 if (load_reg_lazy(addr, rd, 64, 1) < 0) return -1;
             }
@@ -929,10 +1162,10 @@ static int trace_rv64c(void) {
         if (chk_loaded(rs) < 0) return -1;
         switch ((instr >> 5) & 3) {
         case 0:
-            reg_data[rd].v = uxlen_sub(reg_data[rd].v, reg_data[rs].v);
+            reg_data[rd].v = int_xlen_sub(reg_data[rd].v, reg_data[rs].v);
             break;
         case 1:
-            reg_data[rd].v = uxlen_add(reg_data[rd].v, reg_data[rs].v);
+            reg_data[rd].v = int_xlen_add(reg_data[rd].v, reg_data[rs].v);
             break;
         default:
             return 0;
@@ -950,7 +1183,7 @@ static int trace_rv128c(void) {
             if (chk_loaded(REG_ID_SP) < 0) return -1;
             if (reg_data[REG_ID_SP].o) {
                 uint32_t imm = get_imm(imm_bits_lq_sp);
-                return load_reg_lazy(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 16), rd, 128, 1);
+                return load_reg_lazy(int_xlen_add_u(reg_data[REG_ID_SP].v, imm * 16), rd, 128, 1);
             }
             reg_data[rd].o = 0;
             return 0;
@@ -961,7 +1194,7 @@ static int trace_rv128c(void) {
         if (chk_loaded(REG_ID_SP) < 0) return -1;
         if (reg_data[REG_ID_SP].o) {
             uint32_t imm = get_imm(imm_bits_sq_sp);
-            if (store_reg(uxlen_add_u(reg_data[REG_ID_SP].v, imm * 16), rd, 128) < 0) return -1;
+            if (store_reg(int_xlen_add_u(reg_data[REG_ID_SP].v, imm * 16), rd, 128) < 0) return -1;
         }
         return 0;
     }
@@ -972,7 +1205,7 @@ static int trace_rv128c(void) {
         if (chk_loaded(rs) < 0) return -1;
         if (reg_data[rs].o) {
             uint32_t imm = get_imm(imm_bits_q);
-            uxlen_t addr = uxlen_add_u(reg_data[rs].v, imm * 16);
+            int_xlen_t addr = int_xlen_add_u(reg_data[rs].v, imm * 16);
             if (ld) {
                 if (load_reg_lazy(addr, rd, 128, 1) < 0) return -1;
             }
@@ -992,7 +1225,7 @@ static int trace_riscv(void) {
     assert(pc_data.o != REG_VAL_STACK);
 
     /* Check PC alignment */
-    if (uxlen_to_l(pc_data.v) & 0x1) {
+    if (int_xlen_to_l(pc_data.v) & 0x1) {
         set_errno(ERR_OTHER, "PC misalignment");
         return -1;
     }
@@ -1004,14 +1237,14 @@ static int trace_riscv(void) {
         if (xlen == 32 && trace_rv32() < 0) return -1;
         if (xlen == 64 && trace_rv64() < 0) return -1;
         if (xlen == 128 && trace_rv128() < 0) return -1;
-        if (!trace_return && !trace_branch) pc_data.v = uxlen_add_u(pc_data.v, 4);
+        if (!trace_return && !trace_branch) pc_data.v = int_xlen_add_u(pc_data.v, 4);
     }
     else {
         instr &= 0xffff;
         if (xlen == 32 && trace_rv32c() < 0) return -1;
         if (xlen == 64 && trace_rv64c() < 0) return -1;
         if (xlen == 128 && trace_rv128c() < 0) return -1;
-        if (!trace_return && !trace_branch) pc_data.v = uxlen_add_u(pc_data.v, 2);
+        if (!trace_return && !trace_branch) pc_data.v = int_xlen_add_u(pc_data.v, 2);
     }
 
     return 0;
@@ -1027,8 +1260,8 @@ static int trace_instructions(void) {
         BranchData * b = NULL;
         if (chk_loaded(REG_ID_SP) < 0) return -1;
         trace(LOG_STACK, "Stack crawl: pc %#" PRIx64 ", sp %#" PRIx64,
-            pc_data.o ? uxlen_to_l(pc_data.v) : (uint64_t)0,
-            reg_data[REG_ID_SP].o ? uxlen_to_l(reg_data[REG_ID_SP].v) : (uint64_t)0);
+            pc_data.o ? int_xlen_to_l(pc_data.v) : (uint64_t)0,
+            reg_data[REG_ID_SP].o ? int_xlen_to_l(reg_data[REG_ID_SP].v) : (uint64_t)0);
         for (t = 0; t < MAX_INST; t++) {
             int error = 0;
             trace_return = 0;
@@ -1036,7 +1269,7 @@ static int trace_instructions(void) {
             if (pc_data.o != REG_VAL_OTHER) {
                 error = set_errno(ERR_OTHER, "PC value not available");
             }
-            else if (uxlen_cmp(pc_data.v, uxlen_from_u(0)) == 0) {
+            else if (int_xlen_cmpu(pc_data.v, int_xlen_from_u(0)) == 0) {
                 error = set_errno(ERR_OTHER, "PC == 0");
             }
             else if (trace_riscv() < 0) {
@@ -1068,16 +1301,16 @@ static int trace_instructions(void) {
         if (chk_reg_loaded(&org_pc) < 0) return -1;
         if (chk_reg_loaded(org_regs + REG_ID_RA) < 0) return -1;
         if (chk_reg_loaded(org_regs + REG_ID_SP) < 0) return -1;
-        if (uxlen_cmp(org_regs[REG_ID_SP].v, uxlen_from_u(0)) != 0 &&
-            uxlen_cmp(org_regs[REG_ID_RA].v, uxlen_from_u(0)) != 0 &&
-            uxlen_cmp(org_pc.v, org_regs[REG_ID_RA].v) != 0) {
+        if (int_xlen_cmpu(org_regs[REG_ID_SP].v, int_xlen_from_u(0)) != 0 &&
+            int_xlen_cmpu(org_regs[REG_ID_RA].v, int_xlen_from_u(0)) != 0 &&
+            int_xlen_cmpu(org_pc.v, org_regs[REG_ID_RA].v) != 0) {
             pc_data = org_regs[REG_ID_RA];
         }
     }
     return 0;
 }
 
-static int read_reg128(StackFrame * frame, RegisterDefinition * reg_def, uxlen_t * v) {
+static int read_reg128(StackFrame * frame, RegisterDefinition * reg_def, int_xlen_t * v) {
     uint8_t buf[16];
     uint64_t l = 0;
     uint64_t h = 0;
@@ -1108,15 +1341,15 @@ static int read_reg128(StackFrame * frame, RegisterDefinition * reg_def, uxlen_t
             h |= buf[reg_def->big_endian ? i : reg_def->size - i - 1];
         }
     }
-    *v = uxlen_from_u2(l, h);
+    *v = int_xlen_from_u2(l, h);
     return 0;
 }
 
-static int write_reg128(StackFrame * frame, RegisterDefinition * reg_def, uxlen_t v) {
+static int write_reg128(StackFrame * frame, RegisterDefinition * reg_def, int_xlen_t v) {
     size_t i;
     uint8_t buf[16];
-    uint64_t l = uxlen_to_l(v);
-    uint64_t h = uxlen_to_h(v);
+    uint64_t l = int_xlen_to_l(v);
+    uint64_t h = int_xlen_to_h(v);
     if (reg_def == NULL) {
         set_errno(ERR_INV_CONTEXT, "Invalid register");
         return -1;
@@ -1152,6 +1385,9 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
     memset(&mem_data, 0, sizeof(mem_data));
     memset(&reg_data, 0, sizeof(reg_data));
     memset(&pc_data, 0, sizeof(pc_data));
+    memset(&mepc_data, 0, sizeof(mepc_data));
+    memset(&sepc_data, 0, sizeof(sepc_data));
+    memset(&uepc_data, 0, sizeof(uepc_data));
     branch_pos = 0;
     branch_cnt = 0;
 
@@ -1160,21 +1396,33 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
     for (def = defs; def->name; def++) {
         if (def->dwarf_id == 0) {
             assert(xlen == def->size * 8);
-            reg_data[def->dwarf_id].v = uxlen_from_u(0);
+            reg_data[def->dwarf_id].v = int_xlen_from_u(0);
             reg_data[def->dwarf_id].o = REG_VAL_OTHER;
         }
         else if (def->dwarf_id == REG_ID_SP) {
             if (read_reg128(frame, def, &reg_data[REG_ID_SP].v) < 0) continue;
-            if (uxlen_cmp(reg_data[REG_ID_SP].v, uxlen_from_u(0)) == 0) return 0;
+            if (int_xlen_cmpu(reg_data[REG_ID_SP].v, int_xlen_from_u(0)) == 0) return 0;
             reg_data[REG_ID_SP].o = REG_VAL_OTHER;
         }
         else if (def->dwarf_id >= 0 && def->dwarf_id < REG_DATA_SIZE) {
-            reg_data[def->dwarf_id].v = uxlen_from_u(def - defs);
+            reg_data[def->dwarf_id].v = int_xlen_from_u(def - defs);
             reg_data[def->dwarf_id].o = REG_VAL_FRAME;
         }
         else if (strcmp(def->name, "pc") == 0) {
             if (read_reg128(frame, def, &pc_data.v) < 0) continue;
             pc_data.o = REG_VAL_OTHER;
+        }
+        else if (strcmp(def->name, "mepc") == 0) {
+            if (read_reg128(frame, def, &mepc_data.v) < 0) continue;
+            mepc_data.o = REG_VAL_OTHER;
+        }
+        else if (strcmp(def->name, "sepc") == 0) {
+            if (read_reg128(frame, def, &sepc_data.v) < 0) continue;
+            sepc_data.o = REG_VAL_OTHER;
+        }
+        else if (strcmp(def->name, "uepc") == 0) {
+            if (read_reg128(frame, def, &uepc_data.v) < 0) continue;
+            uepc_data.o = REG_VAL_OTHER;
         }
     }
 
@@ -1188,7 +1436,7 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
                 /* Skip */
             }
             else if (reg_data[r].o == REG_VAL_ADDR || reg_data[r].o == REG_VAL_STACK) {
-                uxlen_t v;
+                int_xlen_t v;
                 int valid = 0;
                 LocationExpressionCommand * cmds = NULL;
                 if (mem_hash_read(reg_data[r].v, &v, xlen >> 3, &valid) == 0) {
@@ -1197,7 +1445,7 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
                 }
                 cmds = (LocationExpressionCommand *)tmp_alloc_zero(sizeof(LocationExpressionCommand) * 2);
                 cmds[0].cmd = SFT_CMD_NUMBER;
-                cmds[0].args.num = uxlen_to_l(reg_data[r].v);
+                cmds[0].args.num = int_xlen_to_l(reg_data[r].v);
                 cmds[1].cmd = SFT_CMD_RD_MEM;
                 cmds[1].args.mem.size = xlen >> 3;
                 if (write_reg_location(down, def, cmds, 2) == 0) {
@@ -1208,7 +1456,7 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
             else if (reg_data[r].o == REG_VAL_FRAME) {
                 LocationExpressionCommand * cmds = (LocationExpressionCommand *)tmp_alloc_zero(sizeof(LocationExpressionCommand));
                 cmds[0].cmd = SFT_CMD_RD_REG;
-                cmds[0].args.reg = defs + uxlen_to_l(reg_data[r].v);
+                cmds[0].args.reg = defs + int_xlen_to_l(reg_data[r].v);
                 if (write_reg_location(down, def, cmds, 1) == 0) {
                     down->has_reg_data = 1;
                     continue;
@@ -1216,10 +1464,10 @@ static int crawl_stack_frame_riscv(StackFrame * frame, StackFrame * down) {
             }
 #endif
             assert(r != 0 || reg_data[r].o == REG_VAL_OTHER || reg_data[r].o == 0);
-            assert(r != 0 || uxlen_to_l(reg_data[r].v) == 0);
+            assert(r != 0 || int_xlen_to_l(reg_data[r].v) == 0);
             if (chk_loaded(r) < 0) continue;
             if (!reg_data[r].o) continue;
-            if (r == REG_ID_SP) frame->fp = (ContextAddress)uxlen_to_l(reg_data[r].v);
+            if (r == REG_ID_SP) frame->fp = (ContextAddress)int_xlen_to_l(reg_data[r].v);
             if (write_reg128(down, def, reg_data[r].v) < 0) return -1;
         }
         else if (strcmp(def->name, "pc") == 0) {
