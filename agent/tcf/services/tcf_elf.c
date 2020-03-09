@@ -250,9 +250,13 @@ static void elf_cleanup_cache_client(void * arg) {
     file = files;
     while (file != NULL) {
         if (event_cnt % 5 == 0) {
-            struct stat st;
-            if (!file->mtime_changed && stat(file->name, &st) == 0 && file->mtime != st.st_mtime) {
-                file->mtime_changed = 1;
+            if (!file->mtime_changed) {
+                struct stat st;
+                if (stat(file->name, &st) < 0 ||
+                    file->size != st.st_size ||
+                    file->mtime != st.st_mtime ||
+                    (st.st_ino != 0 && st.st_ino != file->ino))
+                    file->mtime_changed = 1;
             }
         }
         file = file->next;
@@ -2456,15 +2460,18 @@ void elf_invalidate(void) {
     ELF_File * file = files;
     while (file != NULL) {
         ELF_File * next = file->next;
-        struct stat st;
+        if (!file->mtime_changed) {
+            struct stat st;
+            if (stat(file->name, &st) < 0 ||
+                file->size != st.st_size ||
+                file->mtime != st.st_mtime ||
+                (st.st_ino != 0 && st.st_ino != file->ino))
+                file->mtime_changed = 1;
+        }
         if (file->lock_cnt > 0) {
             prev = file;
         }
-        else if (file->mtime_changed ||
-                stat(file->name, &st) < 0 ||
-                file->size != st.st_size ||
-                file->mtime != st.st_mtime ||
-                (st.st_ino != 0 && st.st_ino != file->ino)) {
+        else if (file->mtime_changed) {
             if (prev == NULL) files = next;
             else prev->next = next;
             elf_dispose(file);

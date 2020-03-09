@@ -1432,6 +1432,9 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
             int * pids = NULL;
             assert(prs->ref_count == 0);
             assert(!EXT(prs)->detach_req);
+#if ENABLE_ELF
+            elf_invalidate();
+#endif
             link_context(prs);
             send_context_created_event(prs);
             ctx = add_thread(prs, NULL, pid);
@@ -1547,6 +1550,9 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
                     break;
                 }
                 prs2->ref_count--;
+#if ENABLE_ELF
+                elf_invalidate();
+#endif
                 link_context(prs2);
                 send_context_created_event(prs2);
             }
