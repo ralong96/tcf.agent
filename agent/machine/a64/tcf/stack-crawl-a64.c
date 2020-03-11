@@ -1156,6 +1156,11 @@ int crawl_stack_frame_a64(StackFrame * frame, StackFrame * down) {
     int interrupt_handler = 0;
     unsigned i;
 
+    if (defs == NULL) {
+        set_errno(ERR_OTHER, "Context has no registers");
+        return -1;
+    }
+
     stk_ctx = frame->ctx;
     stk_frame = frame;
     memset(&mem_data, 0, sizeof(mem_data));

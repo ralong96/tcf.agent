@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2012 Wind River Systems, Inc. and others.
+ * Copyright (c) 2012-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -227,18 +227,20 @@ static int c_call_cmds(void) {
 
 static void save_registers(void) {
     unsigned cnt = 0;
-    RegisterDefinition * r;
     RegisterDefinition * regs = get_reg_definitions(info->ctx);
-    for (r = regs; r->name != NULL; r++) {
-        if (r->dwarf_id < 0) continue;
-        if (r->size == 0) continue;
-        cnt++;
-    }
-    info->saveregs = (RegisterDefinition **)tmp_alloc(sizeof(RegisterDefinition *) * cnt);
-    for (r = regs; r->name != NULL; r++) {
-        if (r->dwarf_id < 0) continue;
-        if (r->size == 0) continue;
-        info->saveregs[info->saveregs_cnt++] = r;
+    if (regs != NULL) {
+        RegisterDefinition * r;
+        for (r = regs; r->name != NULL; r++) {
+            if (r->dwarf_id < 0) continue;
+            if (r->size == 0) continue;
+            cnt++;
+        }
+        info->saveregs = (RegisterDefinition **)tmp_alloc(sizeof(RegisterDefinition *) * cnt);
+        for (r = regs; r->name != NULL; r++) {
+            if (r->dwarf_id < 0) continue;
+            if (r->size == 0) continue;
+            info->saveregs[info->saveregs_cnt++] = r;
+        }
     }
     assert(info->saveregs_cnt == cnt);
 }

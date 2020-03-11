@@ -2475,6 +2475,11 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
     for (i = 0; i < MEM_CACHE_SIZE; i++) mem_cache[i].size = 0;
 #endif
 
+    if (defs == NULL) {
+        set_errno(ERR_OTHER, "Context has no registers");
+        return -1;
+    }
+
     stk_ctx = frame->ctx;
     stk_frame = frame;
     memset(&reg_data, 0, sizeof(reg_data));

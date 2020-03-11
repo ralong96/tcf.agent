@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -153,7 +153,7 @@ int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
                     StackFrame * prev = stk->frames + stk->frame_cnt - 1;
                     down->ctx = ctx;
                     down->fp = frame->fp;
-                    while (def->name != NULL) {
+                    while (def && def->name) {
                         if (def->dwarf_id >= 0) {
 #if ENABLE_StackRegisterLocations
                             cmd.args.reg = def;
@@ -269,7 +269,7 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             uint64_t v;
             RegisterDefinition * def;
             trace(LOG_STACK, "Frame %d", stack->frame_cnt - 1);
-            for (def = get_reg_definitions(ctx); def && def->name != NULL; def++) {
+            for (def = get_reg_definitions(ctx); def && def->name; def++) {
                 if (def->no_read || def->read_once || def->bits || !def->size) continue;
                 if (read_reg_value(frame, def, &v) != 0) continue;
                 trace(LOG_STACK, "  %-8s %16" PRIx64, def->name, v);
@@ -308,7 +308,7 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
             uint8_t * buf0 = (uint8_t *)tmp_alloc(buf_size);
             uint8_t * buf1 = (uint8_t *)tmp_alloc(buf_size);
             RegisterDefinition * def;
-            for (def = get_reg_definitions(ctx); def->name != NULL; def++) {
+            for (def = get_reg_definitions(ctx); def && def->name; def++) {
                 int f0, f1;
                 if (buf_size < def->size) {
                     buf_size = def->size;

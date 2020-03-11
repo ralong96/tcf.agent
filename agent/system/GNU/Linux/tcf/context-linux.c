@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -397,12 +397,14 @@ static int flush_regs(Context * ctx) {
 
     if (error) {
         RegisterDefinition * def = get_reg_definitions(ctx);
-        while (def->name != NULL && (def->offset > i || def->offset + def->size <= i)) def++;
-        if (error != ESRCH || !EXT(ctx->parent)->sigkill_posted) {
-            trace(LOG_ALWAYS, "error: writing register %s failed: ctx %#" PRIxPTR ", id %s, error %d %s",
-                def->name ? def->name : "?", (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+        if (def != NULL) {
+            while (def->name != NULL && (def->offset > i || def->offset + def->size <= i)) def++;
+            if (error != ESRCH || !EXT(ctx->parent)->sigkill_posted) {
+                trace(LOG_ALWAYS, "error: writing register %s failed: ctx %#" PRIxPTR ", id %s, error %d %s",
+                    def->name ? def->name : "?", (uintptr_t)ctx, ctx->id, error, errno_to_str(error));
+            }
+            if (def->name) error = set_fmt_errno(error, "Cannot write register %s", def->name);
         }
-        if (def->name) error = set_fmt_errno(error, "Cannot write register %s", def->name);
         errno = error;
         return -1;
     }

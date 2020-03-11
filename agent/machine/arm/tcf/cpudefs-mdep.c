@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2019 Stanislav Yakovlev and others.
+ * Copyright (c) 2013-2020 Stanislav Yakovlev and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -258,7 +258,7 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                 cr |= 0x1 << 22;
                 cr |= 0xf << 5;
             }
-            cr |= 0x7u;
+            cr |= 0x7;
             if (ptrace(PTRACE_SETHBPREGS, pid, 1, &vr) < 0) return -1;
         }
         else if (cb != NULL) {

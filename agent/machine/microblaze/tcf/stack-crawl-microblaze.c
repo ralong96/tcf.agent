@@ -1103,6 +1103,7 @@ static int trace_instructions(void) {
 }
 
 int crawl_stack_frame_microblaze(StackFrame * frame, StackFrame * down) {
+    RegisterDefinition * defs = get_reg_definitions(frame->ctx);
     RegisterDefinition * def = NULL;
     uint64_t pc = 0;
 
@@ -1111,6 +1112,11 @@ int crawl_stack_frame_microblaze(StackFrame * frame, StackFrame * down) {
     for (i = 0; i < MEM_CACHE_SIZE; i++) mem_cache[i].size = 0;
 #endif
 
+    if (defs == NULL) {
+        set_errno(ERR_OTHER, "Context has no registers");
+        return -1;
+    }
+
     reg_size = 4;
     stk_ctx = frame->ctx;
     memset(&reg_data, 0, sizeof(reg_data));
@@ -1118,7 +1124,7 @@ int crawl_stack_frame_microblaze(StackFrame * frame, StackFrame * down) {
     branch_pos = 0;
     branch_cnt = 0;
 
-    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+    for (def = defs; def->name; def++) {
         if (def->dwarf_id == 0) reg_size = def->size;
         if (def->dwarf_id < 0 || def->dwarf_id >= REG_DATA_SIZE) continue;
         if (read_reg_value(frame, def, &reg_data[def->dwarf_id].v) < 0) continue;
@@ -1129,7 +1135,7 @@ int crawl_stack_frame_microblaze(StackFrame * frame, StackFrame * down) {
 
     if (trace_instructions() < 0) return -1;
 
-    for (def = get_reg_definitions(stk_ctx); def->name; def++) {
+    for (def = defs; def->name; def++) {
         if (def->dwarf_id < 0 || def->dwarf_id >= REG_DATA_SIZE) continue;
         if (chk_loaded(def->dwarf_id) < 0) continue;
         if (!reg_data[def->dwarf_id].o) continue;

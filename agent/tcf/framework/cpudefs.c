@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -242,6 +242,7 @@ int id2reg_num(const char * id, const char ** ctx_id, int * frame, unsigned * re
 
 int id2register(const char * id, Context ** ctx, int * frame, RegisterDefinition ** reg_def) {
     const char * ctx_id = NULL;
+    RegisterDefinition * defs = NULL;
     unsigned reg_num = 0;
 
     *ctx = NULL;
@@ -258,7 +259,12 @@ int id2register(const char * id, Context ** ctx, int * frame, RegisterDefinition
         errno = ERR_ALREADY_EXITED;
         return -1;
     }
-    *reg_def = get_reg_definitions(*ctx) + reg_num;
+    defs = get_reg_definitions(*ctx);
+    if (defs == NULL) {
+        set_errno(ERR_OTHER, "Context has no registers");
+        return -1;
+    }
+    *reg_def = defs + reg_num;
     return 0;
 }
 

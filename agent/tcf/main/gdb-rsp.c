@@ -328,6 +328,7 @@ static RegisterDefinition * find_register(GdbThread * t, GdbRegister * r) {
 
     if (r->id >= 0) {
         RegisterDefinition * def = get_reg_definitions(t->ctx);
+        if (def == NULL) return NULL;
         while (def->name != NULL) {
             if (def->dwarf_id == r->id) return def;
             def++;
