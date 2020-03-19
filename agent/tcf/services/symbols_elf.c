@@ -4202,6 +4202,42 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
             add_location_command(info, SFT_CMD_NUMBER)->args.num = addr;
             return 0;
         }
+        if (obj->mTag == TAG_variable && (obj->mFlags & DOIF_external) != 0 && obj->mCompUnit->mFile->type == ET_DYN) {
+            /* Check if symbol is victim of "copy relocation" */
+            const char * name = get_linkage_name(obj);
+            if (name != NULL) {
+                unsigned h = calc_symbol_name_hash(name);
+                ELF_File * file = elf_list_first(sym_ctx, 0, ~(ContextAddress)0);
+                if (file == NULL && errno) return -1;
+                while (file != NULL) {
+                    unsigned m = 0;
+                    for (m = 1; m < file->section_cnt; m++) {
+                        unsigned n;
+                        ELF_Section * tbl = file->sections + m;
+                        if (tbl->sym_names_hash == NULL) continue;
+                        n = tbl->sym_names_hash[h % tbl->sym_names_hash_size];
+                        while (n) {
+                            ELF_SymbolInfo sym_info;
+                            unpack_elf_symbol_info(tbl, n, &sym_info);
+                            n = tbl->sym_names_next[n];
+                            if (sym_info.bind != STB_GLOBAL || sym_info.type != STT_OBJECT) continue;
+                            if (sym_info.section == NULL || sym_info.section->name == NULL) continue;
+                            if (strcmp(sym_info.section->name, ".bss") != 0) continue;
+                            if (!equ_symbol_names(name, sym_info.name)) continue;
+                            if (elf_symbol_has_address(&sym_info)) {
+                                ContextAddress address = 0;
+                                if (elf_symbol_address(sym_ctx, &sym_info, &address)) return -1;
+                                add_location_command(info, SFT_CMD_NUMBER)->args.num = address;
+                                return 0;
+                            }
+                        }
+                    }
+                    file = elf_list_next(sym_ctx);
+                    if (file == NULL && errno) return -1;
+                }
+                elf_list_done(sym_ctx);
+            }
+        }
 #if 0
 #if SERVICE_StackTrace || ENABLE_ContextProxy
         if (obj->mTag == TAG_formal_parameter) {
