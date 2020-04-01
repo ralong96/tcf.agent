@@ -543,7 +543,7 @@ static char * get_dwz_file_name(ELF_File * file, int * error) {
                 lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
 #endif
                 if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
-                trace(LOG_ALWAYS, "Cannot open DWZ file: %s", lnm);
+                trace(LOG_ALWAYS, "Cannot open DWZ file '%s': %s", lnm, errno_to_str(errno));
             }
         }
     }
