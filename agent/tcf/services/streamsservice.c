@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2009-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2009-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -673,7 +673,6 @@ int virtual_stream_read(Channel * c, char * token, char * id, size_t size) {
         VirtualStream * stream = client->stream;
         if (client->pos == stream->pos && !stream->eos_inp) {
             ReadRequest * r = (ReadRequest *)loc_alloc_zero(sizeof(ReadRequest));
-            list_init(&r->link_client);
             r->client = client;
             r->size = size;
             strlcpy(r->token, token, sizeof(r->token));
@@ -722,66 +721,78 @@ static void command_read(char * token, Channel * c) {
 }
 
 int virtual_stream_write(Channel * c, char * token, char * id, size_t size, InputStream * inp) {
-    char * data = NULL;
     int err = 0;
-    long offs = 0;
+    size_t offs = 0;
     StreamClient * client = find_client(id, c);
+    JsonReadBinaryState state;
+    size_t data_pos = 0;
+    char * data = NULL;
+    char buf[256];
 
     if (client == NULL) err = errno;
     if (!err && (client->stream->access & VS_ENABLE_REMOTE_WRITE) == 0) err = ERR_UNSUPPORTED;
 
-    {
-        JsonReadBinaryState state;
-        size_t data_pos = 0;
+    if (!err && !list_is_empty(&client->write_requests)) data = (char *)loc_alloc(size);
 
-        if (!err && !list_is_empty(&client->write_requests)) data = (char *)loc_alloc(size);
-
-        json_read_binary_start(&state, inp);
-        for (;;) {
-            if (data != NULL) {
-                size_t rd = json_read_binary_data(&state, data + data_pos, size - offs - data_pos);
-                if (rd == 0) break;
-                data_pos += rd;
-            }
-            else {
-                char buf[256];
-                size_t rd = json_read_binary_data(&state, buf, sizeof(buf));
-                if (rd == 0) break;
-                if (!err) {
-                    size_t done = 0;
-                    if (virtual_stream_add_data(client->stream, buf, rd, &done, 0) < 0) err = errno;
-                    assert(done <= rd);
-                    offs += done;
-                    if (!err && done < rd) {
-                        data = (char *)loc_alloc(size - offs);
-                        memcpy(data, buf + done, rd - done);
-                        data_pos = rd - done;
-                    }
-                }
+    json_read_binary_start(&state, inp);
+    for (;;) {
+        if (err || offs + data_pos >= size) {
+            size_t rd = json_read_binary_data(&state, buf, sizeof(buf));
+            if (rd == 0) break;
+        }
+        else if (data != NULL) {
+            size_t rd = json_read_binary_data(&state, data + data_pos, size - offs - data_pos);
+            assert(state.size_done == offs + data_pos + rd);
+            if (rd == 0) break;
+            data_pos += rd;
+        }
+        else {
+            size_t done = 0;
+            size_t rd = json_read_binary_data(&state, buf, sizeof(buf));
+            if (rd == 0) break;
+            assert(data_pos == 0);
+            assert(state.size_done == offs + rd || offs == size);
+            if (offs + rd > size) rd = size - offs;
+            if (virtual_stream_add_data(client->stream, buf, rd, &done, 0) < 0) err = errno;
+            assert(done <= rd);
+            offs += done;
+            if (done < rd && !err) {
+                assert(size > offs);
+                data = (char *)loc_alloc(size - offs);
+                memcpy(data, buf + done, rd - done);
+                data_pos = rd - done;
             }
         }
-        json_read_binary_end(&state);
+    }
+    json_read_binary_end(&state);
+
+    if (!err && state.size_done != size) {
+        err = ERR_INV_DATA_SIZE;
+        loc_free(data);
+        data = NULL;
     }
 
     if (data != NULL) {
         WriteRequest * r = (WriteRequest *)loc_alloc_zero(sizeof(WriteRequest));
-        list_init(&r->link_client);
+        assert(err == 0);
         r->client = client;
         r->data = data;
         r->size = size - offs;
         strlcpy(r->token, token, sizeof(r->token));
         list_add_last(&r->link_client, &client->write_requests);
+        return 0;
     }
-    else if (err == 0) {
+
+    if (err == 0) {
         write_stringz(&c->out, "R");
         write_stringz(&c->out, token);
-        write_errno(&c->out, err);
+        write_errno(&c->out, 0);
         write_stream(&c->out, MARKER_EOM);
+        return 0;
     }
 
-    if (err != 0) errno = err;
-
-    return err == 0 ? 0 : -1;
+    errno = err;
+    return -1;
 }
 
 static void command_write(char * token, Channel * c) {
@@ -800,8 +811,8 @@ static void command_write(char * token, Channel * c) {
 
     if (err != 0) {
         /*
-         * Handle reply with an error. If none error was detected, the reply
-         * was sent back by virtual_stream_write() or delayed.
+         * Handle reply with an error. If no error was detected, the reply
+         * was either sent back by virtual_stream_write() or delayed.
          */
         write_stringz(&c->out, "R");
         write_stringz(&c->out, token);
@@ -822,22 +833,24 @@ int virtual_stream_eos(Channel * c, char * token, char * id) {
     if (!err && r == NULL && virtual_stream_add_data(client->stream, NULL, 0, &done, 1) < 0) err = errno;
 
     if (r != NULL) {
-        list_init(&r->link_client);
+        assert(err == 0);
         r->client = client;
         r->eos = 1;
         strlcpy(r->token, token, sizeof(r->token));
         list_add_last(&r->link_client, &client->write_requests);
+        return 0;
     }
-    else if (err == 0) {
+
+    if (err == 0) {
         write_stringz(&c->out, "R");
         write_stringz(&c->out, token);
-        write_errno(&c->out, err);
+        write_errno(&c->out, 0);
         write_stream(&c->out, MARKER_EOM);
+        return 0;
     }
 
-    if (err != 0) errno = err;
-
-    return err == 0 ? 0 : -1;
+    errno = err;
+    return -1;
 }
 
 static void command_eos(char * token, Channel * c) {
@@ -852,8 +865,8 @@ static void command_eos(char * token, Channel * c) {
 
     if (err != 0) {
         /*
-         * Handle reply with an error. If none error was detected, the reply
-         * was sent back by virtual_stream_eos() or delayed.
+         * Handle reply with an error. If no error was detected, the reply
+         * was either sent back by virtual_stream_eos() or delayed.
          */
         write_stringz(&c->out, "R");
         write_stringz(&c->out, token);

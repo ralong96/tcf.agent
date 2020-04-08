@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2013 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -67,6 +67,7 @@ void ibuf_trigger_read(InputBuf * ibuf) {
     size_t size = ibuf_free_size(ibuf);
     if (size > 0) {
         assert(ibuf->inp + size <= ibuf->buf + ibuf->buf_size);
+        assert(ibuf->inp + size <= ibuf->stream->cur || ibuf->inp >= ibuf->stream->end);
         ibuf->post_read(ibuf, ibuf->inp, size);
     }
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -705,7 +705,6 @@ void json_read_binary_start(JsonReadBinaryState * state, InputStream * inp) {
         json_test_char(inp, 'l');
         json_test_char(inp, 'l');
         state->encoding = ENCODING_BINARY;
-        state->size_start = 0;
     }
     else {
         exception(ERR_JSON_SYNTAX);
@@ -745,7 +744,7 @@ size_t json_read_binary_data(JsonReadBinaryState * state, void * buf, size_t len
                     if (state->rem > sizeof(state->buf)) exception(ERR_JSON_SYNTAX);
                     while (i < state->rem) state->buf[j++] = state->buf[i++];
                     state->rem = j;
-                    return res;
+                    break;
                 }
                 state->rem = 0;
             }
