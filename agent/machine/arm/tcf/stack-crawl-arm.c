@@ -81,6 +81,8 @@ typedef struct {
 #define CPU_ARMv7M  3
 #define CPU_ARM32   4
 
+enum ISA_TYPE { ISA_ARM, ISA_THUMB, ISA_JAZELLE };
+
 static unsigned cpu_type = 0;
 static Context * stk_ctx = NULL;
 static StackFrame * stk_frame = NULL;
@@ -2276,6 +2278,18 @@ static int trace_arm(void) {
     return 0;
 }
 
+static enum ISA_TYPE get_isa_type(void) {
+    uint32_t flag_t = 1 << 5;
+    uint32_t flag_j = 1 << 24;
+    if (cpu_type == CPU_ARMv7M) {
+        flag_t = 1 << 24;
+        flag_j = 0;
+    }
+    if (reg_data[REG_ID_CPSR].v & flag_j) return ISA_JAZELLE;
+    if (reg_data[REG_ID_CPSR].v & flag_t) return ISA_THUMB;
+    return ISA_ARM;
+}
+
 static int trace_instructions(void) {
     unsigned i;
     RegData org_sp = reg_data[13];
@@ -2334,6 +2348,9 @@ static int trace_instructions(void) {
             else if (!reg_data[15].v) {
                 error = set_errno(ERR_OTHER, "PC == 0");
             }
+            else if (chk_loaded(REG_ID_CPSR) < 0) {
+                error = errno;
+            }
             else if (!reg_data[REG_ID_CPSR].o) {
                 error = set_errno(ERR_OTHER, "CPSR value not available");
             }
@@ -2343,15 +2360,11 @@ static int trace_instructions(void) {
             }
             else {
                 int r = 0;
-                uint32_t flag_t = 1 << 5;
-                uint32_t flag_j = 1 << 24;
-                if (cpu_type == CPU_ARMv7M) {
-                    flag_t = 1 << 24;
-                    flag_j = 0;
+                switch (get_isa_type()) {
+                case ISA_JAZELLE: r = trace_jazelle(); break;
+                case ISA_THUMB: r = trace_thumb(); break;
+                default: r = trace_arm(); break;
                 }
-                if (reg_data[REG_ID_CPSR].v & flag_j) r = trace_jazelle();
-                else if (reg_data[REG_ID_CPSR].v & flag_t) r = trace_thumb();
-                else r = trace_arm();
                 if (r < 0) error = errno;
             }
             if (!error && trace_return) {
@@ -2387,33 +2400,64 @@ static int trace_instructions(void) {
 
     EPILOGUE_NOT_FOUND_HOOK;
 
-    if (func_size > 12 && (func_addr & 0x3) == 0) {
-        unsigned n = 0;
+    reg_data[REG_ID_CPSR] = org_cpsr;
+    if (func_size > 12 && (func_addr & 0x3) == 0 && chk_loaded(REG_ID_CPSR) == 0 && reg_data[REG_ID_CPSR].o) {
         /* Check for common ARM prologue pattern */
-        while (n < 3 && n < func_size / 4 - 1) {
+        unsigned n = 0;
+        while (n < 16 && n < func_size - 1) {
             uint32_t instr = 0;
             uint32_t push_regs = 0;
-            if (read_word(func_addr + n * 4, &instr) < 0) break;
-            if ((instr & 0xffffe000) == 0xe92d4000) {
-                /* PUSH {..., lr} */
-                push_regs = instr & 0xffff;
+            if (read_word(func_addr + n, &instr) < 0) break;
+            if (get_isa_type() == ISA_ARM) {
+                if ((instr & 0xffffe000) == 0xe92d4000) {
+                    /* PUSH {..., lr} */
+                    push_regs = instr & 0xffff;
+                }
+                else if ((instr & 0xffffffff) == 0xe52de004) {
+                    /* PUSH {lr} */
+                    push_regs |= 1 << 14;
+                }
+                n += 4;
             }
-            else if ((instr & 0xffffffff) == 0xe52de004) {
-                /* PUSH {lr} */
-                push_regs |= 1 << 14;
+            else if (get_isa_type() == ISA_THUMB) {
+                if ((instr & 0xfe00) == 0xb400) {
+                    push_regs = instr & 0xff;
+                    if (instr & (1 << 8)) push_regs |= 1 << 14;
+                }
+                if (((instr & 0xffff) >> 11) >= 0x1d) {
+                    n += 4;
+                }
+                else {
+                    n += 2;
+                }
+            }
+            else {
+                break;
             }
             if (push_regs) {
                 reg_data[13] = org_sp;
                 if (chk_loaded(13) == 0) {
                     uint32_t addr = reg_data[13].v;
-                    while (n < 8 && n < func_size / 4 - 1) {
-                        if (read_word(func_addr + n * 4, &instr) < 0) break;
-                        if ((instr  & 0xfffff000) == 0xe24dd000) {
-                            /* SUB sp, sp, #... */
-                            addr += modified_immediate_constant(instr);
+                    while (n < 32 && n < func_size - 1) {
+                        if (read_word(func_addr + n, &instr) < 0) break;
+                        if (get_isa_type() == ISA_ARM) {
+                            if ((instr & 0xfffff000) == 0xe24dd000) {
+                                /* SUB sp, sp, #... */
+                                addr += modified_immediate_constant(instr);
+                                break;
+                            }
+                            n += 4;
+                        }
+                        else if (get_isa_type() == ISA_THUMB) {
+                            if ((instr & 0xff80) == 0xb080) {
+                                /* SUB sp, #... */
+                                addr += (instr & 0x7f) << 2;
+                            }
                             break;
                         }
-                        n++;
+                        else {
+                            break;
+                        }
                     }
                     for (i = 0; i < 16; i++) {
                         if (push_regs & (1 << i)) {
@@ -2437,7 +2481,6 @@ static int trace_instructions(void) {
                 }
                 break;
             }
-            n++;
         }
     }
 
@@ -2488,7 +2531,7 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
     branch_cnt = 0;
 
     for (def = defs; def->name; def++) {
-        if (def->dwarf_id >= 13 && def->dwarf_id <= 15) {
+        if ((def->dwarf_id >= 13 && def->dwarf_id <= 15) || def->dwarf_id == REG_ID_CPSR) {
             uint64_t v = 0;
             if (read_reg_value(frame, def, &v) < 0) continue;
             reg_data[def->dwarf_id].v = (uint32_t)v;
@@ -2497,6 +2540,18 @@ static int trace_frame(StackFrame * frame, StackFrame * down) {
         else if (def->dwarf_id >= 0 && def->dwarf_id < REG_DATA_SIZE) {
             reg_data[def->dwarf_id].v = (uint32_t)(def - defs);
             reg_data[def->dwarf_id].o = REG_VAL_FRAME;
+        }
+    }
+
+    if (cpu_type == CPU_ARM32 && reg_data[15].o && reg_data[REG_ID_CPSR].o) {
+        const char * isa = NULL;
+        ContextAddress addr = 0;
+        ContextAddress size = 0;
+        assert(reg_data[15].o == REG_VAL_OTHER);
+        assert(reg_data[REG_ID_CPSR].o == REG_VAL_OTHER);
+        if (get_context_isa(stk_ctx, reg_data[15].v, &isa, &addr, &size) == 0 && isa != NULL) {
+            if (strcmp(isa, "ARM") == 0) reg_data[REG_ID_CPSR].v &= ~(1 << 5);
+            if (strcmp(isa, "Thumb") == 0) reg_data[REG_ID_CPSR].v |= (1 << 5);
         }
     }
 
