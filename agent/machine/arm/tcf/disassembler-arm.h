@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -23,7 +23,13 @@
 extern DisassemblyResult * disassemble_arm(uint8_t * buf,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params);
 
+extern DisassemblyResult * disassemble_arm_big_endian_code(uint8_t * buf,
+        ContextAddress addr, ContextAddress size, DisassemblerParams * params);
+
 extern DisassemblyResult * disassemble_thumb(uint8_t * buf,
+        ContextAddress addr, ContextAddress size, DisassemblerParams * params);
+
+extern DisassemblyResult * disassemble_thumb_big_endian_code(uint8_t * buf,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params);
 
 #endif /* D_disassembler_arm */

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2017 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -3053,20 +3053,15 @@ static void disassemble_supervisor_and_ext_load_store(uint32_t instr, const char
     }
 }
 
-DisassemblyResult * disassemble_arm(uint8_t * code,
-        ContextAddress addr, ContextAddress size, DisassemblerParams * params) {
-    unsigned i;
-    uint32_t instr = 0;
+static DisassemblyResult * disassemble_instr(ContextAddress addr, uint32_t instr) {
     uint8_t cond = 0;
     const char * cond_name = NULL;
     static DisassemblyResult dr;
 
-    if (size < 4) return NULL;
     memset(&dr, 0, sizeof(dr));
     dr.size = 4;
     buf_pos = 0;
-    ctx = params->ctx;
-    for (i = 0; i < 4; i++) instr |= (uint32_t)*code++ << (i * 8);
+
     cond = (instr >> 28) & 0xf;
     cond_name = cond_names[cond];
 
@@ -3095,6 +3090,28 @@ DisassemblyResult * disassemble_arm(uint8_t * code,
         buf[buf_pos] = 0;
     }
     return &dr;
+}
+
+DisassemblyResult * disassemble_arm(uint8_t * code,
+        ContextAddress addr, ContextAddress size, DisassemblerParams * params) {
+    unsigned i;
+    uint32_t instr = 0;
+
+    ctx = params->ctx;
+    if (size < 4) return NULL;
+    for (i = 0; i < 4; i++) instr |= (uint32_t)*code++ << (i * 8);
+    return disassemble_instr(addr, instr);
+}
+
+DisassemblyResult * disassemble_arm_big_endian_code(uint8_t * code,
+    ContextAddress addr, ContextAddress size, DisassemblerParams * params) {
+    unsigned i;
+    uint32_t instr = 0;
+
+    ctx = params->ctx;
+    if (size < 4) return NULL;
+    for (i = 0; i < 4; i++) instr |= (uint32_t)*code++ << ((3 - i) * 8);
+    return disassemble_instr(addr, instr);
 }
 
 #endif /* SERVICE_Disassembly */

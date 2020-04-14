@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013, 2016 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -25,9 +25,9 @@
 
 static char buf[128];
 static size_t buf_pos = 0;
+static int code_be = 0;
 static uint16_t instr = 0;
 static uint32_t instr_addr = 0;
-static uint8_t * instr_code = NULL;
 static ContextAddress instr_size = 0;
 static const char * it_cond_name = NULL;
 static unsigned it_cnt = 0;
@@ -1544,7 +1544,7 @@ static void disassemble_long_multiply_32(uint16_t suffix) {
     }
 }
 
-static void disassemble_thumb7(void) {
+static void disassemble_thumb7(uint8_t * code) {
     unsigned i;
     uint16_t suffix = 0;
 
@@ -1561,7 +1561,7 @@ static void disassemble_thumb7(void) {
     }
 
     instr_size = 4;
-    for (i = 0; i < 2; i++) suffix |= (uint16_t)*instr_code++ << (i * 8);
+    for (i = 0; i < 2; i++) suffix |= (uint16_t)*code++ << ((code_be ? 1 - i : i) * 8);
 
     if ((instr & 0xfe00) == 0xe800) {
         disassemble_load_store_32(suffix);
@@ -1724,7 +1724,7 @@ static DisassemblyResult * disassemble_arm_ti(uint8_t * code, ContextAddress add
     return dr;
 }
 
-DisassemblyResult * disassemble_thumb(uint8_t * code,
+static DisassemblyResult * disassemble_thumb_any(uint8_t * code,
         ContextAddress addr, ContextAddress size, DisassemblerParams * prm) {
     unsigned i;
     static DisassemblyResult dr;
@@ -1732,13 +1732,12 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
     if (size < 2) return NULL;
 
     instr = 0;
-    for (i = 0; i < 2; i++) instr |= (uint16_t)code[i] << (i * 8);
+    for (i = 0; i < 2; i++) instr |= (uint16_t)code[i] << ((code_be ? 1 - i : i) * 8);
     memset(&dr, 0, sizeof(dr));
     params = prm;
 
     instr_size = 2;
     instr_addr = (uint32_t)addr;
-    instr_code = code + 2;
     buf_pos = 0;
 
     it_cond_name = NULL;
@@ -1759,10 +1758,18 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
     if ((instr & 0xec00) == 0xec00 && size >= 4) {
         /* Coprocessor instructions - same as ARM encoding */
         uint8_t tmp[4];
-        tmp[2] = code[0];
-        tmp[3] = code[1];
-        tmp[0] = code[2];
-        tmp[1] = code[3];
+        if (code_be) {
+            tmp[2] = code[1];
+            tmp[3] = code[0];
+            tmp[0] = code[3];
+            tmp[1] = code[2];
+        }
+        else {
+            tmp[2] = code[0];
+            tmp[3] = code[1];
+            tmp[0] = code[2];
+            tmp[1] = code[3];
+        }
         if ((instr & 0xef00) == 0xef00) {
             /* Advanced SIMD data-processing instructions */
             tmp[3] = 0xf2 | ((instr >> 12) & 1);
@@ -1773,10 +1780,18 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
     if ((instr & 0xff10) == 0xf900 && size >= 4) {
         /* Advanced SIMD element or structure load/store instructions */
         uint8_t tmp[4];
-        tmp[2] = code[0];
-        tmp[3] = 0xf4;
-        tmp[0] = code[2];
-        tmp[1] = code[3];
+        if (code_be) {
+            tmp[2] = code[1];
+            tmp[3] = 0xf4;
+            tmp[0] = code[3];
+            tmp[1] = code[2];
+        }
+        else {
+            tmp[2] = code[0];
+            tmp[3] = 0xf4;
+            tmp[0] = code[2];
+            tmp[1] = code[3];
+        }
         return disassemble_arm_ti(tmp, addr, 4);
     }
 
@@ -1788,7 +1803,7 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
     case 4: disassemble_thumb4(); break;
     case 5: disassemble_thumb5(); break;
     case 6: disassemble_thumb6(); break;
-    case 7: disassemble_thumb7(); break;
+    case 7: disassemble_thumb7(code + 2); break;
     }
 
     dr.text = buf;
@@ -1800,7 +1815,7 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
         }
         else if (dr.size == 4) {
             uint16_t suffix = 0;
-            for (i = 0; i < 2; i++) suffix |= (uint16_t)code[i + 2] << (i * 8);
+            for (i = 0; i < 2; i++) suffix |= (uint16_t)code[i + 2] << ((code_be ? 1 - i : i) * 8);
             snprintf(buf, sizeof(buf), ".word 0x%04x%04x", instr, suffix);
         }
         else {
@@ -1811,6 +1826,18 @@ DisassemblyResult * disassemble_thumb(uint8_t * code,
         buf[buf_pos] = 0;
     }
     return &dr;
+}
+
+DisassemblyResult * disassemble_thumb(uint8_t * code,
+        ContextAddress addr, ContextAddress size, DisassemblerParams * prm) {
+    code_be = 0;
+    return disassemble_thumb_any(code, addr, size, prm);
+}
+
+DisassemblyResult * disassemble_thumb_big_endian_code(uint8_t * code,
+        ContextAddress addr, ContextAddress size, DisassemblerParams * prm) {
+    code_be = 1;
+    return disassemble_thumb_any(code, addr, size, prm);
 }
 
 #endif /* SERVICE_Disassembly */
