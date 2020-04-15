@@ -24,6 +24,7 @@
 #include <tcf/framework/exceptions.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/cache.h>
+#include <tcf/framework/trace.h>
 #include <tcf/services/runctrl.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/linenumbers.h>
@@ -309,6 +310,10 @@ static void disassemble_cache_client(void * x) {
     ctx = id2ctx(args->id);
     if (ctx == NULL) error = ERR_INV_CONTEXT;
     else if (ctx->exited) error = ERR_ALREADY_EXITED;
+
+    trace(LOG_DISASM, "%s: ctx %s address 0x%16" PRIx64 " size %" PRId64 " ISA %s",
+          DISASSEMBLY, ctx->id, args->addr, args->size,
+          args->isa ? "(null)" : args->isa);
 
     if (!error) {
         Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);

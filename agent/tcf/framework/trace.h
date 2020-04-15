@@ -41,6 +41,7 @@
 #define LOG_STACK       0x2000
 #define LOG_PLUGIN      0x4000
 #define LOG_SHUTDOWN    0x8000
+#define LOG_DISASM      0x10000
 
 #define LOG_NAME_STDERR "-"
 
