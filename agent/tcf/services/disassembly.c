@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2013-2019 Xilinx, Inc. and others.
+ * Copyright (c) 2013-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -312,8 +312,8 @@ static void disassemble_cache_client(void * x) {
     else if (ctx->exited) error = ERR_ALREADY_EXITED;
 
     trace(LOG_DISASM, "%s: ctx %s address 0x%16" PRIx64 " size %" PRId64 " ISA %s",
-          DISASSEMBLY, ctx->id, args->addr, args->size,
-          args->isa ? "(null)" : args->isa);
+          DISASSEMBLY, ctx->id, (uint64_t)args->addr, (uint64_t)args->size,
+          args->isa == NULL ? "(null)" : args->isa);
 
     if (!error) {
         Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
