@@ -259,7 +259,10 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                 cr |= 0xf << 5;
             }
             cr |= 0x7;
-            if (ptrace(PTRACE_SETHBPREGS, pid, 1, &vr) < 0) return -1;
+            if (ptrace(PTRACE_SETHBPREGS, pid, 1, &vr) < 0) {
+                set_errno(errno, "Cannot set stepping breakpoint address register");
+                return -1;
+            }
         }
         else if (cb != NULL) {
             if (i < bps->bp_cnt && ((uint32_t)cb->address & ~0x1) == pc) {
@@ -288,10 +291,16 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                 }
                 cr |= 0x7;
                 if (i < bps->bp_cnt) {
-                    if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 1, &vr) < 0) return -1;
+                    if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 1, &vr) < 0) {
+                        set_errno(errno, "Cannot set breakpoint address register");
+                        return -1;
+                    }
                 }
                 else {
-                    if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 1), &vr) < 0) return -1;
+                    if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 1), &vr) < 0) {
+                        set_errno(errno, "Cannot set watchpoint address register");
+                        return -1;
+                    }
                 }
                 ext->armed |= 1 << i;
             }
@@ -305,14 +314,21 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
             }
         }
         if (i < bps->bp_cnt) {
-            if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 2, &cr) < 0) return -1;
+            if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 2, &cr) < 0) {
+                set_errno(errno, "Cannot set breakpoint control register");
+                return -1;
+            }
         }
         else {
-            if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 2), &cr) < 0) return -1;
+            if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 2), &cr) < 0) {
+                set_errno(errno, "Cannot set watchpoint control register");
+                return -1;
+            }
         }
     }
 
     ext->hw_bps_regs_generation = bps->hw_bps_generation;
+    if (*step_over_hw_bp) ext->hw_bps_regs_generation--;
     return 0;
 }
 
@@ -360,24 +376,16 @@ int cpu_bp_plant(ContextBreakpoint * bp) {
     if (bp->access_types & CTX_BP_ACCESS_VIRTUAL) {
         if (bp->access_types & CTX_BP_ACCESS_INSTRUCTION) {
             unsigned i;
-            unsigned n = 0;
             for (i = 0; i < bps->bp_cnt; i++) {
                 assert(bps->hw_bps[i] != bp);
                 if (bps->hw_bps[i] == NULL) {
                     bps->hw_bps[i] = bp;
                     bps->hw_bps_generation++;
-                    n++;
-                    break;
+                    return 0;
                 }
-            }
-            if (n == 0) {
-                clear_bp(bp);
-                errno = ERR_UNSUPPORTED;
-                return -1;
             }
         }
         if (bp->access_types & (CTX_BP_ACCESS_DATA_READ | CTX_BP_ACCESS_DATA_WRITE)) {
-            unsigned n = 0;
             if (bp->length <= bps->wp_size) {
                 unsigned i;
                 for (i = bps->bp_cnt; i < bps->bp_cnt + bps->wp_cnt; i++) {
@@ -385,19 +393,13 @@ int cpu_bp_plant(ContextBreakpoint * bp) {
                     if (bps->hw_bps[i] == NULL) {
                         bps->hw_bps[i] = bp;
                         bps->hw_bps_generation++;
-                        n++;
-                        break;
+                        return 0;
                     }
                 }
             }
-            if (n == 0) {
-                clear_bp(bp);
-                errno = ERR_UNSUPPORTED;
-                return -1;
-            }
         }
-        return 0;
     }
+    clear_bp(bp);
     errno = ERR_UNSUPPORTED;
     return -1;
 }
@@ -444,6 +446,7 @@ int cpu_bp_on_suspend(Context * ctx, int * triggered) {
         if (bps->wp_cnt > 0) {
             siginfo_t siginfo;
             pid_t pid = id2pid(ctx->id, NULL);
+            memset(&siginfo, 0, sizeof(siginfo));
             if (ptrace(PTRACE_GETSIGINFO, pid, 0, &siginfo) < 0) return -1;
             if (siginfo.si_signo == SIGTRAP && (siginfo.si_code & 0xffff) == 0x0004 && siginfo.si_errno < 0) {
                 /* Watchpoint */
