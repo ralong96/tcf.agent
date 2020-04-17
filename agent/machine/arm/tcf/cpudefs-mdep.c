@@ -79,6 +79,30 @@ RegisterDefinition regs_def[] = {
     { NULL,      0, 0,  0,  0},
 };
 
+typedef struct BitFieldInfo {
+    const char * name;
+    const char * desc;
+    int bits[10];
+} BitFieldInfo;
+
+static BitFieldInfo psr_defs[] = {
+    { "n",  "Negative condition code flag",{ 31, -1 } },
+    { "z",  "Zero condition code flag",{ 30, -1 } },
+    { "c",  "Carry condition code flag",{ 29, -1 } },
+    { "v",  "Overflow condition code flag",{ 28, -1 } },
+    { "q",  "Cumulative saturation flag",{ 27, -1 } },
+    { "it", "If-Then execution state bits",{ 25, 26, 10, 11, 12, 13, 14, 15, -1 } },
+    { "j",  "Jazelle bit",{ 24, -1 } },
+    { "ge", "SIMD Greater than or Equal flags",{ 16, 17, 18, 19, -1 } },
+    { "e",  "Endianness execution state bit",{ 9, -1 } },
+    { "a",  "Asynchronous abort disable bit",{ 8, -1 } },
+    { "i",  "Interrupt disable bit",{ 7, -1 } },
+    { "f",  "Fast interrupt disable bit",{ 6, -1 } },
+    { "t",  "Thumb execution state bit",{ 5, -1 } },
+    { "m",  "Mode field",{ 0, 1, 2, 3, 4, -1 } },
+    { NULL, NULL }
+};
+
 RegisterDefinition * regs_index = NULL;
 static unsigned regs_cnt = 0;
 static unsigned regs_max = 0;
@@ -1170,6 +1194,34 @@ static RegisterDefinition * alloc_reg(void) {
 #  endif
 #endif
 
+static void add_field(RegisterDefinition * parent, const char * name, const char * desc, int * list) {
+    RegisterDefinition * fld = alloc_reg();
+    unsigned size = 0;
+    int * bits = NULL;
+    while (list[size] >= 0) size++;
+    size++;
+    bits = (int *)loc_alloc(sizeof(int) * size);
+    memcpy(bits, list, sizeof(int) * size);
+    fld->name = name;
+    fld->parent = parent;
+    if (desc) fld->description = desc;
+    if (fld->parent->no_read) fld->no_read = 1;
+    if (fld->parent->no_write) fld->no_write = 1;
+    if (fld->parent->read_once) fld->read_once = 1;
+    if (fld->parent->write_once) fld->write_once = 1;
+    fld->bits = bits;
+}
+
+static void add_psr_fields(RegisterDefinition * psr) {
+    BitFieldInfo * d = psr_defs;
+    unsigned i = 0;
+
+    while (d[i].name) {
+        add_field(psr, d[i].name, d[i].desc, d[i].bits);
+        i++;
+    }
+}
+
 static void ini_reg_defs(void) {
     int i;
     RegisterDefinition * d;
@@ -1196,6 +1248,9 @@ static void ini_reg_defs(void) {
         }
         else if (r->offset == offsetof(REG_SET, REG_CPSR)) {
             cpsr_def = r;
+        }
+        if (strcmp(r->name, "cpsr") == 0) {
+            add_psr_fields(r);
         }
         if (strcmp(r->name, "vfp") == 0) {
             uint32_t fpsid = 0;
