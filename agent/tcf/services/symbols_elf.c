@@ -2461,6 +2461,16 @@ int get_context_isa(Context * ctx, ContextAddress ip, const char ** isa,
         /* TODO: faster handling of ARM mapping symbols */
         ELF_SymbolInfo sym_info;
         elf_find_symbol_by_address(sec, lt_addr, &sym_info);
+        if (sym_info.type16bit && sym_info.value + sym_info.size > lt_addr) {
+            *isa = "Thumb";
+            assert(sym_info.size > 0);
+            assert(sym_info.value <= lt_addr);
+            *range_addr = (ContextAddress)sym_info.value;
+            if (file->type == ET_REL) *range_addr += (ContextAddress)sec->addr;
+            *range_addr += ip - lt_addr;
+            *range_size = sym_info.size;
+            return 0;
+        }
         while (sym_info.sym_section != NULL) {
             assert(sym_info.section == sec);
             if (sym_info.name != NULL && *sym_info.name == '$') {

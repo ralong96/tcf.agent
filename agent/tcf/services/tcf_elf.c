@@ -467,6 +467,7 @@ static char * get_debug_info_file_name(ELF_File * file, int * error) {
                     lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
 #endif
                     if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
+                    trace(LOG_ALWAYS, "Cannot open debug info file '%s': %s", lnm, errno_to_str(errno));
                 }
                 offs += desc_sz;
                 while (offs % 4 != 0) offs++;
@@ -494,6 +495,7 @@ static char * get_debug_info_file_name(ELF_File * file, int * error) {
                 lnm = apply_path_map(NULL, NULL, lnm, PATH_MAP_TO_LOCAL);
 #endif
                 if (stat(lnm, &buf) == 0) return loc_strdup(lnm);
+                trace(LOG_ALWAYS, "Cannot open debug info file '%s': %s", lnm, errno_to_str(errno));
             }
         }
     }
@@ -2081,9 +2083,17 @@ void unpack_elf_symbol_info(ELF_Section * sym_sec, U4_T index, ELF_SymbolInfo * 
     }
 
     if (file->machine == EM_ARM) {
-        if (info->type == STT_FUNC || info->type == STT_ARM_TFUNC) {
-            info->value = info->value & ~ (U8_T)1;
+        if (info->type == STT_ARM_16BIT) {
+            info->type = STT_OBJECT;
+            info->type16bit = 1;
+        }
+        if (info->type == STT_ARM_TFUNC) {
             info->type = STT_FUNC;
+            info->type16bit = 1;
+        }
+        if (info->type == STT_FUNC || info->type16bit) {
+            if (info->value & 1) info->type16bit = 1;
+            info->value = info->value & ~(U8_T)1;
         }
     }
     else if (IS_PPC64_FUNC_OPD(file, info)) {
@@ -2175,7 +2185,7 @@ static void create_symbol_addr_search_index(ELF_Section * sec) {
                 ELF_SymbolInfo sym_info;
                 unpack_elf_symbol_info(tbl, n, &sym_info);
                 /* Don't register PPC64 dot function name */
-                add = IS_PPC64_FUNC_OPD(file, &sym_info)|| \
+                add = IS_PPC64_FUNC_OPD(file, &sym_info) || \
                         (sym_info.section == sec && !IS_PPC64_FUNC_DOT(file, &sym_info) && sym_info.type != STT_GNU_IFUNC);
                 if (add) {
                     addr = sym_info.value + (rel ? sec->addr : 0);
@@ -2222,8 +2232,8 @@ static void create_symbol_addr_search_index(ELF_Section * sec) {
                 }
                 add = add && type != STT_GNU_IFUNC;
                 if (add && file->machine == EM_ARM) {
-                    if (type == STT_FUNC || type == STT_ARM_TFUNC) {
-                        addr = addr & ~(U8_T) 1;
+                    if (type == STT_FUNC || type == STT_ARM_TFUNC || type == STT_ARM_16BIT) {
+                        addr = addr & ~(U8_T)1;
                     }
                 }
             }

@@ -131,6 +131,7 @@
 #define STT_LOPROC      13
 #define STT_HIPROC      15
 #define STT_ARM_TFUNC   STT_LOPROC
+#define STT_ARM_16BIT   STT_HIPROC
 
 #define PT_NULL         0
 #define PT_LOAD         1
@@ -500,6 +501,7 @@ struct ELF_SymbolInfo {
     char * name;
     U1_T bind;
     U1_T type;
+    U1_T type16bit;
     U8_T value;
     U8_T size;
     U8_T other;
