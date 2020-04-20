@@ -181,6 +181,12 @@ ifeq ($(OPSYS),MinGW)
   CFILES += system/Windows/tcf/context-win32.c
 endif
 
+ifeq ($(MACHINE),a64)
+  CFILES += machine/arm/tcf/stack-crawl-arm.c
+  CFILES += machine/arm/tcf/disassembler-arm.c
+  CFILES += machine/arm/tcf/disassembler-thumb.c
+endif
+
 ifdef SERVICES
   OPTS += $(shell $(TCF_AGENT_DIR)/bin/services-to-cflags $(SERVICES))
 endif

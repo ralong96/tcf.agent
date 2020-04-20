@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -36,11 +36,17 @@ typedef struct SysRegisterData {
 } SysRegisterData;
 
 RegisterDefinition * get_reg_definitions(Context * ctx) {
-    if (context_has_state(ctx)) return regs_index;
-    return NULL;
+    if (!context_has_state(ctx)) return NULL;
+#ifdef ENABLE_cpu_alt_isa_mode
+    if (is_alt_isa_thread(ctx)) return get_alt_reg_definitions(ctx);
+#endif
+    return regs_index;
 }
 
 uint8_t * get_break_instruction(Context * ctx, size_t * size) {
+#ifdef ENABLE_cpu_alt_isa_mode
+    if (is_alt_isa_thread(ctx)) return get_alt_break_instruction(ctx, size);
+#endif
     *size = sizeof(BREAK_INST);
     return BREAK_INST;
 }
@@ -85,6 +91,9 @@ RegisterDefinition * get_reg_by_id(Context * ctx, unsigned id, RegisterIdScope *
     GET_REG_BY_ID_HOOK;
 #endif
     if (context_has_state(ctx)) {
+#ifdef ENABLE_cpu_alt_isa_mode
+        if (is_alt_isa_thread(ctx)) return get_alt_reg_by_id(ctx, id, scope);
+#endif
         switch (scope->id_type) {
         case REGNUM_DWARF: def = get_sys_reg_by_dwarf_id(id); break;
         case REGNUM_EH_FRAME: def = get_sys_reg_by_eh_frame_id(id); break;

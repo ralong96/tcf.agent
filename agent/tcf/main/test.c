@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -306,7 +306,7 @@ void test_proc(void) {
 }
 
 int find_test_symbol(Context * ctx, const char * name, void ** addr, int * sym_class) {
-#if ENABLE_TestSymbols
+#if ENABLE_TestSymbols && !defined(ALT_RCBP_TEST)
     /* This code allows to run TCF diagnostic tests when symbols info is not available */
     *addr = NULL;
     if (is_test_process(ctx) && strncmp(name, "tcf_test_", 9) == 0) {
@@ -397,7 +397,13 @@ int run_test_process(ContextAttachCallBack * done, void * data) {
         int fd = sysconf(_SC_OPEN_MAX);
         while (fd > 3) close(--fd);
         if (context_attach_self() < 0) exit(1);
-#if defined(__linux__) && !ENABLE_TestSymbols
+#if defined(ALT_RCBP_TEST)
+        {
+            char * fnm = canonicalize_file_name(ALT_RCBP_TEST);
+            if (fnm != NULL) execl(fnm, fnm, "-t", (char *)NULL);
+            exit(1);
+        }
+#elif defined(__linux__) && !ENABLE_TestSymbols
         {
             char buf[32];
             char * fnm = NULL;

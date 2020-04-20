@@ -987,7 +987,11 @@ int context_read_reg(Context * ctx, RegisterDefinition * def, unsigned offs, uns
 }
 
 unsigned context_word_size(Context * ctx) {
+#ifdef MDEP_WordSize
+    return MDEP_WordSize(ctx);
+#else
     return sizeof(void *);
+#endif
 }
 
 int context_get_canonical_addr(Context * ctx, ContextAddress addr,

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2015-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -33,5 +33,19 @@ extern void ini_cpudefs_mdep(void);
 #define ENABLE_add_cpudefs_disassembler 1
 extern void add_cpudefs_disassembler(Context * cpu_ctx);
 #endif
+
+
+/*******************************************************************************/
+/* Support for AArch32 Arm and Thumb execution modes                           */
+
+#define ENABLE_cpu_alt_isa_mode 1
+
+extern int is_alt_isa_thread(Context * ctx);
+
+extern uint8_t * get_alt_break_instruction(Context * ctx, size_t * size);
+extern RegisterDefinition * get_alt_reg_definitions(Context * ctx);
+extern RegisterDefinition * get_alt_reg_by_id(Context * ctx, unsigned id, RegisterIdScope * scope);
+
+/*******************************************************************************/
 
 #endif

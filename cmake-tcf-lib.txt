@@ -41,6 +41,12 @@ file(GLOB TCF_SRCS_REL RELATIVE ${TCF_BASE_DIR}
 	${TCF_BASE_DIR}/tcf/main/*.c
 	${TCF_BASE_DIR}/tcf/http/*.c)
 
+if(TCF_MACHINE STREQUAL "a64")
+  list(APPEND TCF_SRCS_REL machine/arm/tcf/stack-crawl-arm.c)
+  list(APPEND TCF_SRCS_REL machine/arm/tcf/disassembler-arm.c)
+  list(APPEND TCF_SRCS_REL machine/arm/tcf/disassembler-thumb.c)
+endif()
+
 # remove non-library files
 file(GLOB TCF_MAIN_REL RELATIVE ${TCF_BASE_DIR}
 	${TCF_BASE_DIR}/tcf/main/main*.c)
