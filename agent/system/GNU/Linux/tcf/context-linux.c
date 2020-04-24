@@ -1173,7 +1173,7 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
 #else
     isa->def = NULL;
 #endif
-#if SERVICE_Symbols
+#if ENABLE_Symbols
     if (cache_channel() != NULL) {
         if (get_context_isa(ctx, addr, &isa->isa, &isa->addr, &isa->size) < 0) return -1;
     }
