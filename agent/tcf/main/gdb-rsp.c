@@ -163,7 +163,6 @@ typedef struct MonitorCommand {
 
 #define client2gdb(c)  ((GdbClient *)((char *)(c) - offsetof(GdbClient, client)))
 
-static size_t context_extension_offset = 0;
 static int ini_done = 0;
 static LINK link_a2s;
 
@@ -1926,7 +1925,6 @@ int ini_gdb_rsp(const char * conf) {
     if (sock < 0) return -1;
     if (!ini_done) {
         list_init(&link_a2s);
-        context_extension_offset = context_extension(sizeof(LINK));
         add_context_event_listener(&context_listener, NULL);
         add_registers_event_listener(&registers_listener, NULL);
         add_run_control_event_listener(&run_ctrl_listener, NULL);
