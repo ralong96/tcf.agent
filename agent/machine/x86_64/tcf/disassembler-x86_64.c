@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2015-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -366,10 +366,37 @@ static void add_rel(unsigned size) {
     }
 }
 
-static void add_modrm(unsigned modrm, unsigned size) {
+static void add_modrm_reg(unsigned modrm, unsigned size) {
+    unsigned rm = (modrm >> 3) & 7;
+    if (rex & REX_R) rm += 8;
+    add_reg(rm, size);
+}
+
+#if 0
+static void add_modrm_mm(unsigned modrm) {
+    unsigned rm = (modrm >> 3) & 7;
+    add_str("mm");
+    add_dec_uint32(rm);
+}
+
+static void add_modrm_xmm(unsigned modrm) {
+    unsigned rm = (modrm >> 3) & 7;
+    if (rex & REX_R) rm += 8;
+    add_str("xmm");
+    add_dec_uint32(rm);
+}
+#endif
+
+static void add_modrm_sreg(unsigned modrm) {
+    unsigned rm = (modrm >> 3) & 7;
+    add_seg_reg(rm);
+}
+
+static void add_modrm_mem(unsigned modrm, unsigned size) {
     unsigned mod = (modrm >> 6) & 3;
     unsigned rm = modrm & 7;
     if (mod == 3) {
+        if (rex & REX_B) rm += 8;
         add_reg(rm, size);
     }
     else {
@@ -380,49 +407,13 @@ static void add_modrm(unsigned modrm, unsigned size) {
         case 8: add_str("qword"); break;
         }
         add_char('[');
-        if (addr_size == 4) {
-            switch (rm) {
-            case 0: add_str("eax"); break;
-            case 1: add_str("acx"); break;
-            case 2: add_str("edx"); break;
-            case 3: add_str("ebx"); break;
-            case 4:
-                {
-                    uint8_t sib = get_code();
-                    unsigned base = sib & 7;
-                    unsigned index = (sib >> 3) & 7;
-                    unsigned scale = (sib >> 6) & 3;
-                    int bs = 0;
-                    if ((mod == 0 && base != 5) || mod == 1 || mod == 2) {
-                        add_reg(base, 4);
-                        bs = 1;
-                    }
-                    if (index != 4) {
-                        if (bs) add_char('+');
-                        add_reg(index, 4);
-                        switch (scale) {
-                        case 1: add_str("*2"); break;
-                        case 2: add_str("*4"); break;
-                        case 3: add_str("*8"); break;
-                        }
-                        bs = 1;
-                    }
-                    if ((mod == 0 && base == 5) || mod == 2) {
-                        if (bs) add_char('+');
-                        add_disp32();
-                    }
-                    else if (mod == 1) {
-                        add_disp8();
-                    }
-                    add_char(']');
-                }
-                return;
-            case 5: if (mod != 0) add_str("ebp"); break;
-            case 6: add_str("esi"); break;
-            case 7: add_str("edi"); break;
-            }
-        }
-        else {
+        if (prefix & PREFIX_CS) add_str("cs:");
+        if (prefix & PREFIX_SS) add_str("ss:");
+        if (prefix & PREFIX_DS) add_str("ds:");
+        if (prefix & PREFIX_ES) add_str("es:");
+        if (prefix & PREFIX_FS) add_str("fs:");
+        if (prefix & PREFIX_GS) add_str("gs:");
+        if (addr_size < 4) {
             switch (rm) {
             case 0: add_str("bx+si"); break;
             case 1: add_str("bx+di"); break;
@@ -432,6 +423,50 @@ static void add_modrm(unsigned modrm, unsigned size) {
             case 5: add_str("di"); break;
             case 6: if (mod != 0) add_str("bp"); break;
             case 7: add_str("bx"); break;
+            }
+        }
+        else {
+            if (rm == 5 && mod == 0) {
+                if (x86_64) {
+                    add_str(addr_size > 4 ? "rip" : "eip");
+                    add_char('+');
+                }
+            }
+            else if (rm == 4) {
+                uint8_t sib = get_code();
+                unsigned base = sib & 7;
+                unsigned index = (sib >> 3) & 7;
+                unsigned scale = (sib >> 6) & 3;
+                int bs = 0;
+                if (base != 5 || mod == 1 || mod == 2) {
+                    if (rex & REX_B) add_reg(base + 8, addr_size);
+                    else add_reg(base, addr_size);
+                    bs = 1;
+                }
+                if (index != 4 || (rex & REX_X) != 0) {
+                    if (bs) add_char('+');
+                    if (rex & REX_X) add_reg(index + 8, addr_size);
+                    else add_reg(index, addr_size);
+                    switch (scale) {
+                    case 1: add_str("*2"); break;
+                    case 2: add_str("*4"); break;
+                    case 3: add_str("*8"); break;
+                    }
+                    bs = 1;
+                }
+                if (base == 5) {
+                    if (mod == 0 || mod == 2) {
+                        if (bs) add_char('+');
+                        add_disp32();
+                    }
+                    else if (mod == 1) {
+                        add_disp8();
+                    }
+                }
+            }
+            else {
+                if (rex & REX_B) rm += 8;
+                add_reg(rm, addr_size);
             }
         }
         switch (mod) {
@@ -487,7 +522,7 @@ static void disassemble_0f(void) {
     case 0x1f:
         modrm = get_code();
         add_str("nop ");
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         return;
     case 0x38:
         switch (get_code()) {
@@ -495,9 +530,9 @@ static void disassemble_0f(void) {
             if (prefix & PREFIX_DATA_SIZE) {
                 modrm = get_code();
                 add_str("adcx ");
-                add_reg((modrm >> 3) & 7, data_size);
+                add_modrm_reg(modrm, data_size);
                 add_char(',');
-                add_modrm(modrm, 1);
+                add_modrm_mem(modrm, 1);
                 return;
             }
             break;
@@ -524,6 +559,28 @@ static void disassemble_0f(void) {
         add_char(' ');
         add_rel(4);
         return;
+    case 0x90:
+    case 0x91:
+    case 0x92:
+    case 0x93:
+    case 0x94:
+    case 0x95:
+    case 0x96:
+    case 0x97:
+    case 0x98:
+    case 0x99:
+    case 0x9a:
+    case 0x9b:
+    case 0x9c:
+    case 0x9d:
+    case 0x9e:
+    case 0x9f:
+        modrm = get_code();
+        add_str("set");
+        add_ttt(opcode  & 0xf);
+        add_char(' ');
+        add_modrm_mem(modrm, 1);
+        return;
     case 0xa0:
         add_str("push fs");
         return;
@@ -533,18 +590,18 @@ static void disassemble_0f(void) {
     case 0xa4:
         add_str("shld ");
         modrm = get_code();
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_char(',');
         add_imm8();
         return;
     case 0xa5:
         add_str("shld ");
         modrm = get_code();
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_str(",cl");
         return;
     case 0xa8:
@@ -556,30 +613,30 @@ static void disassemble_0f(void) {
     case 0xb6:
         add_str("movzx ");
         modrm = get_code();
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_char(',');
-        add_modrm(modrm, 1);
+        add_modrm_mem(modrm, 1);
         return;
     case 0xb7:
         add_str("movzx ");
         modrm = get_code();
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_char(',');
-        add_modrm(modrm, 2);
+        add_modrm_mem(modrm, 2);
         return;
     case 0xbe:
         add_str("movsx ");
         modrm = get_code();
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_char(',');
-        add_modrm(modrm, 1);
+        add_modrm_mem(modrm, 1);
         return;
     case 0xbf:
         add_str("movsx ");
         modrm = get_code();
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_char(',');
-        add_modrm(modrm, 2);
+        add_modrm_mem(modrm, 2);
         return;
     }
 
@@ -603,9 +660,9 @@ static void disassemble_instr(void) {
     case 0x38:
         modrm = get_code();
         add_a_op((opcode >> 3) & 7);
-        add_modrm(modrm, 1);
+        add_modrm_mem(modrm, 1);
         add_char(',');
-        add_reg((modrm >> 3) & 7, 1);
+        add_modrm_reg(modrm, 1);
         return;
     case 0x01:
     case 0x09:
@@ -617,9 +674,9 @@ static void disassemble_instr(void) {
     case 0x39:
         modrm = get_code();
         add_a_op((opcode >> 3) & 7);
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         return;
     case 0x02:
     case 0x0a:
@@ -631,9 +688,9 @@ static void disassemble_instr(void) {
     case 0x3a:
         modrm = get_code();
         add_a_op((opcode >> 3) & 7);
-        add_reg((modrm >> 3) & 7, 1);
+        add_modrm_reg(modrm, 1);
         add_char(',');
-        add_modrm(modrm, 1);
+        add_modrm_mem(modrm, 1);
         return;
     case 0x03:
     case 0x0b:
@@ -645,9 +702,9 @@ static void disassemble_instr(void) {
     case 0x3b:
         modrm = get_code();
         add_a_op((opcode >> 3) & 7);
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_char(',');
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         return;
     case 0x04:
     case 0x0c:
@@ -736,7 +793,8 @@ static void disassemble_instr(void) {
     case 0x56:
     case 0x57:
         add_str("push ");
-        add_reg(opcode & 7, data_size);
+        if (rex & REX_B) add_reg((opcode & 7) + 8, addr_size);
+        else add_reg(opcode & 7, addr_size);
         return;
     case 0x58:
     case 0x59:
@@ -747,7 +805,15 @@ static void disassemble_instr(void) {
     case 0x5e:
     case 0x5f:
         add_str("pop ");
-        add_reg(opcode & 7, data_size);
+        if (rex & REX_B) add_reg((opcode & 7) + 8, addr_size);
+        else add_reg(opcode & 7, addr_size);
+        return;
+    case 0x63:
+        add_str("movsxd ");
+        modrm = get_code();
+        add_modrm_reg(modrm, data_size);
+        add_char(',');
+        add_modrm_mem(modrm, x86_64 ? 4 : 2);
         return;
     case 0x68:
         add_str("push ");
@@ -782,14 +848,14 @@ static void disassemble_instr(void) {
     case 0x80:
         modrm = get_code();
         add_a_op((modrm >> 3) & 7);
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
         add_imm8();
         return;
     case 0x81:
         modrm = get_code();
         add_a_op((modrm >> 3) & 7);
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
         if (data_size == 2) add_imm16();
         else add_imm32();
@@ -797,79 +863,79 @@ static void disassemble_instr(void) {
     case 0x83:
         modrm = get_code();
         add_a_op((modrm >> 3) & 7);
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
         add_imm8();
         return;
     case 0x84:
         modrm = get_code();
         add_str("test ");
-        add_modrm(modrm, 1);
+        add_modrm_mem(modrm, 1);
         add_char(',');
-        add_reg((modrm >> 3) & 7, 1);
+        add_modrm_reg(modrm, 1);
         return;
     case 0x85:
         modrm = get_code();
         add_str("test ");
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         return;
     case 0x88:
         modrm = get_code();
         add_str("mov ");
-        add_modrm(modrm, 1);
+        add_modrm_mem(modrm, 1);
         add_char(',');
-        add_reg((modrm >> 3) & 7, 1);
+        add_modrm_reg(modrm, 1);
         return;
     case 0x89:
         modrm = get_code();
         add_str("mov ");
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         return;
     case 0x8a:
         modrm = get_code();
         add_str("mov ");
-        add_reg((modrm >> 3) & 7, 1);
+        add_modrm_reg(modrm, 1);
         add_char(',');
-        add_modrm(modrm, 1);
+        add_modrm_mem(modrm, 1);
         return;
     case 0x8b:
         modrm = get_code();
         add_str("mov ");
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_char(',');
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         return;
     case 0x8c:
         modrm = get_code();
         add_str("mov ");
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
-        add_seg_reg((modrm >> 3) & 7);
+        add_modrm_sreg(modrm);
         return;
     case 0x8d:
         modrm = get_code();
         add_str("lea ");
-        add_reg((modrm >> 3) & 7, data_size);
+        add_modrm_reg(modrm, data_size);
         add_char(',');
-        add_modrm(modrm, 0);
+        add_modrm_mem(modrm, 0);
         return;
     case 0x8e:
         modrm = get_code();
         add_str("mov ");
-        add_seg_reg((modrm >> 3) & 7);
+        add_modrm_sreg(modrm);
         add_char(',');
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         return;
     case 0x8f:
         modrm = get_code();
         switch ((modrm >> 3) & 7) {
         case 0:
             add_str("pop ");
-            add_modrm(modrm, data_size);
+            add_modrm_mem(modrm, data_size);
             return;
         }
         break;
@@ -961,7 +1027,7 @@ static void disassemble_instr(void) {
     case 0xc1:
         modrm = get_code();
         if (!shift_op((modrm >> 3) & 7)) break;
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_char(',');
         add_imm8();
         return;
@@ -977,7 +1043,7 @@ static void disassemble_instr(void) {
         switch ((modrm >> 3) & 7) {
         case 0:
             add_str("mov ");
-            add_modrm(modrm, 1);
+            add_modrm_mem(modrm, 1);
             add_char(',');
             add_imm8();
             return;
@@ -988,7 +1054,7 @@ static void disassemble_instr(void) {
         switch ((modrm >> 3) & 7) {
         case 0:
             add_str("mov ");
-            add_modrm(modrm, data_size);
+            add_modrm_mem(modrm, data_size);
             add_char(',');
             if (addr_size <= 2) add_imm16();
             else add_imm32();
@@ -1015,14 +1081,14 @@ static void disassemble_instr(void) {
     case 0xd1:
         modrm = get_code();
         if (!shift_op((modrm >> 3) & 7)) break;
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_str(",1");
         return;
     case 0xd2:
     case 0xd3:
         modrm = get_code();
         if (!shift_op((modrm >> 3) & 7)) break;
-        add_modrm(modrm, data_size);
+        add_modrm_mem(modrm, data_size);
         add_str(",cl");
         return;
     case 0xe3:
@@ -1074,7 +1140,7 @@ static void disassemble_instr(void) {
         switch ((modrm >> 3) & 7) {
         case 0:
             add_str("test ");
-            add_modrm(modrm, 1);
+            add_modrm_mem(modrm, 1);
             add_char(',');
             add_imm8();
             return;
@@ -1085,7 +1151,7 @@ static void disassemble_instr(void) {
         switch ((modrm >> 3) & 7) {
         case 0:
             add_str("test ");
-            add_modrm(modrm, data_size);
+            add_modrm_mem(modrm, data_size);
             add_char(',');
             if (data_size <= 2) add_imm16();
             else add_imm32();
@@ -1097,11 +1163,11 @@ static void disassemble_instr(void) {
         switch ((modrm >> 3) & 7) {
         case 0:
             add_str("inc ");
-            add_modrm(modrm, 1);
+            add_modrm_mem(modrm, 1);
             return;
         case 1:
             add_str("dec ");
-            add_modrm(modrm, 1);
+            add_modrm_mem(modrm, 1);
             return;
         }
         break;
@@ -1110,23 +1176,23 @@ static void disassemble_instr(void) {
         switch ((modrm >> 3) & 7) {
         case 0:
             add_str("inc ");
-            add_modrm(modrm, data_size);
+            add_modrm_mem(modrm, data_size);
             return;
         case 1:
             add_str("dec ");
-            add_modrm(modrm, data_size);
+            add_modrm_mem(modrm, data_size);
             return;
         case 2:
             add_str("call ");
-            add_modrm(modrm, data_size);
+            add_modrm_mem(modrm, addr_size);
             return;
         case 4:
             add_str("jmp ");
-            add_modrm(modrm, data_size);
+            add_modrm_mem(modrm, addr_size);
             return;
         case 6:
             add_str("push ");
-            add_modrm(modrm, data_size);
+            add_modrm_mem(modrm, data_size);
             return;
         }
         break;
