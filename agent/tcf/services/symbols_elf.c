@@ -4238,6 +4238,7 @@ int get_location_info(const Symbol * sym, LocationInfo ** res) {
                                 ContextAddress address = 0;
                                 if (elf_symbol_address(sym_ctx, &sym_info, &address)) return -1;
                                 add_location_command(info, SFT_CMD_NUMBER)->args.num = address;
+                                elf_list_done(sym_ctx);
                                 return 0;
                             }
                         }
