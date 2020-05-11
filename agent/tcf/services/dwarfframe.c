@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1310,7 +1310,20 @@ static void read_frame_info_section(Context * ctx, ELF_Section * text_section,
     rules.reg_id_scope.id_type = rules.eh_frame ? REGNUM_EH_FRAME : REGNUM_DWARF;
     rules.cie_pos = ~(U8_T)0;
 
-    if (index->mFrameInfoRanges == NULL) create_search_index(cache, index);
+    if (index->mFrameInfoRanges == NULL) {
+        Trap trap;
+        if (set_trap(&trap)) {
+            create_search_index(cache, index);
+            clear_trap(&trap);
+        }
+        else {
+            loc_free(index->mFrameInfoRanges);
+            index->mFrameInfoRanges = NULL;
+            index->mFrameInfoRangesCnt = 0;
+            index->mFrameInfoRangesMax = 0;
+            exception(trap.error);
+        }
+    }
     l = 0;
     h = index->mFrameInfoRangesCnt;
     if (index->mRelocatable && text_section != NULL) sec_idx = text_section->index;
