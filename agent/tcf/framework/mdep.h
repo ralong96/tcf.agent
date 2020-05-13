@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -199,15 +199,9 @@ extern ssize_t pwrite(int fd, const void * buf, size_t size, off_t offset);
 #include <strings.h>
 #include <sys/ioctl.h>
 #include <selectLib.h>
-#if _WRS_VXWORKS_MAJOR > 6 || _WRS_VXWORKS_MAJOR == 6 && _WRS_VXWORKS_MINOR >= 6
-#  include <private/taskLibP.h>
-#endif
+#include <private/taskLibP.h>
 
 #define environ taskIdCurrent->ppEnviron
-
-#if _WRS_VXWORKS_MAJOR < 6 || _WRS_VXWORKS_MAJOR == 6 && _WRS_VXWORKS_MINOR < 9
-typedef unsigned uintptr_t;
-#endif
 
 typedef unsigned long useconds_t;
 

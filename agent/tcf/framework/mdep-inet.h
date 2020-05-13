@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -117,9 +117,6 @@ extern int wsa_closesocket(int socket);
 #define SA_LEN(addr) ((addr)->sa_len)
 #define MSG_MORE 0
 
-#if _WRS_VXWORKS_MAJOR < 6 || _WRS_VXWORKS_MAJOR == 6 && _WRS_VXWORKS_MINOR < 9
-#define send(s, buf, len, flags) (send)(s, (char *)(buf), len, flags)
-#endif
 
 extern void loc_freeaddrinfo(struct addrinfo * ai);
 extern int loc_getaddrinfo(const char * nodename, const char * servname,

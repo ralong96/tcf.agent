@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -796,13 +796,7 @@ int getegid(void) {
 }
 
 const char * get_os_name(void) {
-#if _WRS_VXWORKS_MAJOR > 6 || _WRS_VXWORKS_MAJOR == 6 && _WRS_VXWORKS_MINOR >= 7
     return VXWORKS_VERSION;
-#else
-    static char str[256];
-    snprintf(str, sizeof(str), "VxWorks %s", kernelVersion());
-    return str;
-#endif
 }
 
 const char * get_user_home(void) {
