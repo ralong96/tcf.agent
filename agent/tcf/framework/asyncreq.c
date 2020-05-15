@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -48,19 +48,21 @@
 #define EVENTS_TIMER_RESOLUTION 50
 #endif
 
-static LINK wtlist = TCF_LIST_INIT(wtlist);
-static int wtlist_size = 0;
-static int wtrunning_count = 0;
+static LINK worker_all = TCF_LIST_INIT(worker_all);
+static LINK worker_idle = TCF_LIST_INIT(worker_idle);
+static unsigned worker_count = 0;
+static unsigned idle_count = 0;
 static pthread_mutex_t wtlock;
 
 typedef struct WorkerThread {
-    LINK wtlink;
+    LINK link_all;
+    LINK link_idle;
     AsyncReqInfo * req;
     pthread_cond_t cond;
     pthread_t thread;
 } WorkerThread;
 
-#define wtlink2wt(A)  ((WorkerThread *)((char *)(A) - offsetof(WorkerThread, wtlink)))
+#define idle2worker(link) ((WorkerThread *)((char *)(link) - offsetof(WorkerThread, link_idle)))
 
 #define AsyncReqTimer -1
 
@@ -69,10 +71,10 @@ static AsyncReqInfo timer_req;
 
 static void trigger_async_shutdown(ShutdownInfo * obj) {
     check_error(pthread_mutex_lock(&wtlock));
-    while (!list_is_empty(&wtlist)) {
-        WorkerThread * wt = wtlink2wt(wtlist.next);
-        list_remove(&wt->wtlink);
-        wtlist_size--;
+    while (!list_is_empty(&worker_idle)) {
+        WorkerThread * wt = idle2worker(worker_idle.next);
+        list_remove(&wt->link_idle);
+        idle_count--;
         assert(wt->req == NULL);
         wt->req = &shutdown_req;
         check_error(pthread_cond_signal(&wt->cond));
@@ -89,8 +91,10 @@ static void worker_thread_exit(void * x) {
     check_error(pthread_cond_destroy(&wt->cond));
     pthread_join(wt->thread, NULL);
     check_error(pthread_mutex_lock(&wtlock));
-    if (--wtrunning_count == 0) shutdown_set_stopped(&async_shutdown);
-    trace(LOG_ASYNCREQ, "worker_thread_exit %p running threads %d", wt, wtrunning_count);
+    assert(worker_count > 0);
+    list_remove(&wt->link_all);
+    if (--worker_count == 0) shutdown_set_stopped(&async_shutdown);
+    trace(LOG_ASYNCREQ, "worker_thread_exit %p running threads %d", wt, worker_count);
     check_error(pthread_mutex_unlock(&wtlock));
     loc_free(wt);
 }
@@ -520,12 +524,12 @@ static void * worker_thread_handler(void * x) {
         /* Post event inside lock to make sure a new worker thread is not created unnecessarily */
         post_event(req->done, req);
         wt->req = NULL;
-        if (wtlist_size >= MAX_WORKER_THREADS || async_shutdown.state == SHUTDOWN_STATE_PENDING) {
+        if (idle_count >= MAX_WORKER_THREADS || async_shutdown.state == SHUTDOWN_STATE_PENDING) {
             check_error(pthread_mutex_unlock(&wtlock));
             break;
         }
-        list_add_last(&wt->wtlink, &wtlist);
-        wtlist_size++;
+        list_add_last(&wt->link_idle, &worker_idle);
+        idle_count++;
         for (;;) {
             check_error(pthread_cond_wait(&wt->cond, &wtlock));
             if (wt->req != NULL) break;
@@ -541,12 +545,13 @@ static void worker_thread_add(AsyncReqInfo * req) {
     WorkerThread * wt;
 
     assert(is_dispatch_thread());
-    wt = (WorkerThread *)loc_alloc_zero(sizeof *wt);
+    wt = (WorkerThread *)loc_alloc_zero(sizeof(WorkerThread));
     wt->req = req;
+    list_add_last(&wt->link_all, &worker_all);
     check_error(pthread_cond_init(&wt->cond, NULL));
     check_error(pthread_create(&wt->thread, &pthread_create_attr, worker_thread_handler, wt));
-    if (wtrunning_count++ == 0) shutdown_set_normal(&async_shutdown);
-    trace(LOG_ASYNCREQ, "worker_thread_add %p running threads %d", wt, wtrunning_count);
+    if (worker_count++ == 0) shutdown_set_normal(&async_shutdown);
+    trace(LOG_ASYNCREQ, "worker_thread_add %p running threads %d", wt, worker_count);
 }
 
 static void worker_thread_add_deferred(void * x) {
@@ -599,8 +604,8 @@ void async_req_post(AsyncReqInfo * req) {
     }
 #endif
     check_error(pthread_mutex_lock(&wtlock));
-    if (list_is_empty(&wtlist)) {
-        assert(wtlist_size == 0);
+    if (list_is_empty(&worker_idle)) {
+        assert(idle_count == 0);
         if (is_dispatch_thread()) {
             worker_thread_add(req);
         }
@@ -609,9 +614,10 @@ void async_req_post(AsyncReqInfo * req) {
         }
     }
     else {
-        wt = wtlink2wt(wtlist.next);
-        list_remove(&wt->wtlink);
-        wtlist_size--;
+        assert(idle_count > 0);
+        wt = idle2worker(worker_idle.next);
+        list_remove(&wt->link_idle);
+        idle_count--;
         assert(wt->req == NULL);
         wt->req = req;
         check_error(pthread_cond_signal(&wt->cond));
