@@ -2453,18 +2453,27 @@ static void run_safe_events(void * arg) {
     if (safe_event_list == NULL) return;
 
     safe_event_pid_count = 0;
+    i = safe_event_list;
+    while (i != NULL) {
+        ContextExtensionRC * ext = EXT(i->ctx);
+        assert(i->ctx->ref_count > 0);
+        ext->stop_group_ctx = NULL;
+        ext->stop_group_mark = 0;
+        i = i->next;
+    }
     l = context_root.next;
     while (l != &context_root) {
         Context * ctx = ctxl2ctxp(l);
         ContextExtensionRC * ext = EXT(ctx);
         ext->stop_group_ctx = context_get_group(ctx, CONTEXT_GROUP_STOP);
         ext->stop_group_mark = 0;
+        assert(ext->stop_group_ctx != NULL);
         l = l->next;
     }
     i = safe_event_list;
     while (i != NULL) {
         Context * grp = EXT(i->ctx)->stop_group_ctx;
-        EXT(grp)->stop_group_mark = 1;
+        if (grp != NULL) EXT(grp)->stop_group_mark = 1;
         i = i->next;
     }
     l = context_root.next;
