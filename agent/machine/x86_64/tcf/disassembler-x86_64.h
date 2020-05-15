@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2015 Xilinx, Inc. and others.
+ * Copyright (c) 2015-2020 Xilinx, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -19,6 +19,9 @@
 #include <tcf/config.h>
 
 #include <tcf/services/disassembly.h>
+
+extern DisassemblyResult * disassemble_x86_16(uint8_t * buf,
+    ContextAddress addr, ContextAddress size, DisassemblerParams * params);
 
 extern DisassemblyResult * disassemble_x86_32(uint8_t * buf,
         ContextAddress addr, ContextAddress size, DisassemblerParams * params);

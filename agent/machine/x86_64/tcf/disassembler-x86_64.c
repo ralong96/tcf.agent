@@ -23,12 +23,16 @@
 #include <tcf/services/symbols.h>
 #include <machine/x86_64/tcf/disassembler-x86_64.h>
 
+#define MODE_16     0
+#define MODE_32     1
+#define MODE_64     2
+
 #define PREFIX_LOCK         0x0001
 #define PREFIX_REPNZ        0x0002
 #define PREFIX_REPZ         0x0004
-#define PREFIX_CS           0x0008
+#define PREFIX_CS           0x0008 /* Also "Branch not taken" hint */
 #define PREFIX_SS           0x0010
-#define PREFIX_DS           0x0020
+#define PREFIX_DS           0x0020 /* Also "Branch taken" hint */
 #define PREFIX_ES           0x0040
 #define PREFIX_FS           0x0080
 #define PREFIX_GS           0x0100
@@ -39,6 +43,14 @@
 #define REX_R               0x04
 #define REX_X               0x02
 #define REX_B               0x01
+
+#define REG_SIZE_ST         10
+#define REG_SIZE_MMX        11
+#define REG_SIZE_XMM        12
+#define REG_SIZE_YMM        13
+#define REG_SIZE_SEG        14
+#define REG_SIZE_CR         15
+#define REG_SIZE_DR         16
 
 static char buf[128];
 static size_t buf_pos = 0;
@@ -52,7 +64,7 @@ static uint32_t vex = 0;
 static uint8_t rex = 0;
 static unsigned data_size = 0;
 static unsigned addr_size = 0;
-static int x86_64 = 0;
+static int x86_mode = 0;
 
 static uint8_t get_code(void) {
     uint8_t c = 0;
@@ -167,6 +179,45 @@ static void add_addr(uint64_t addr) {
 }
 
 static void add_reg(unsigned reg, unsigned size) {
+    switch (size) {
+    case REG_SIZE_ST:
+        add_str("st");
+        add_dec_uint32(reg & 7);
+        return;
+    case REG_SIZE_MMX:
+        add_str("mmx");
+        add_dec_uint32(reg & 7);
+        return;
+    case REG_SIZE_XMM:
+        add_str("xmm");
+        add_dec_uint32(reg);
+        return;
+    case REG_SIZE_YMM:
+        add_str("ymm");
+        add_dec_uint32(reg);
+        return;
+    case REG_SIZE_SEG:
+        switch (reg & 7) {
+        case 0: add_str("es"); break;
+        case 1: add_str("cs"); break;
+        case 2: add_str("ss"); break;
+        case 3: add_str("ds"); break;
+        case 4: add_str("fs"); break;
+        case 5: add_str("gs"); break;
+        case 6: add_str("s6"); break;
+        case 7: add_str("s7"); break;
+        }
+        return;
+    case REG_SIZE_CR:
+        add_str("cr");
+        add_dec_uint32(reg);
+        return;
+    case REG_SIZE_DR:
+        add_str("dr");
+        add_dec_uint32(reg);
+        return;
+    }
+    assert(size <= 8);
     if (reg >= 8) {
         add_char('r');
         add_dec_uint32(reg);
@@ -177,7 +228,7 @@ static void add_reg(unsigned reg, unsigned size) {
         }
         return;
     }
-    if (x86_64 && size == 1 && reg >= 4 && reg <= 7) {
+    if (rex && size == 1 && reg >= 4 && reg <= 7) {
         switch (reg) {
         case 4: add_str("spl"); break;
         case 5: add_str("bpl"); break;
@@ -215,31 +266,6 @@ static void add_reg(unsigned reg, unsigned size) {
         }
     }
 }
-
-static void add_seg_reg(unsigned reg) {
-    switch (reg) {
-    case 0: add_str("es"); break;
-    case 1: add_str("cs"); break;
-    case 2: add_str("ss"); break;
-    case 3: add_str("ds"); break;
-    case 4: add_str("fs"); break;
-    case 5: add_str("gs"); break;
-    case 6: add_str("s6"); break;
-    case 7: add_str("s7"); break;
-    }
-}
-
-#if 0
-static void add_ctrl_reg(unsigned reg) {
-    add_str("cr");
-    add_dec_uint32(reg);
-}
-
-static void add_dbg_reg(unsigned reg) {
-    add_str("dr");
-    add_dec_uint32(reg);
-}
-#endif
 
 static void add_ttt(unsigned ttt) {
     switch (ttt) {
@@ -372,26 +398,6 @@ static void add_modrm_reg(unsigned modrm, unsigned size) {
     add_reg(rm, size);
 }
 
-#if 0
-static void add_modrm_mm(unsigned modrm) {
-    unsigned rm = (modrm >> 3) & 7;
-    add_str("mm");
-    add_dec_uint32(rm);
-}
-
-static void add_modrm_xmm(unsigned modrm) {
-    unsigned rm = (modrm >> 3) & 7;
-    if (rex & REX_R) rm += 8;
-    add_str("xmm");
-    add_dec_uint32(rm);
-}
-#endif
-
-static void add_modrm_sreg(unsigned modrm) {
-    unsigned rm = (modrm >> 3) & 7;
-    add_seg_reg(rm);
-}
-
 static void add_modrm_mem(unsigned modrm, unsigned size) {
     unsigned mod = (modrm >> 6) & 3;
     unsigned rm = modrm & 7;
@@ -427,7 +433,7 @@ static void add_modrm_mem(unsigned modrm, unsigned size) {
         }
         else {
             if (rm == 5 && mod == 0) {
-                if (x86_64) {
+                if (x86_mode == MODE_64) {
                     add_str(addr_size > 4 ? "rip" : "eip");
                     add_char('+');
                 }
@@ -813,7 +819,7 @@ static void disassemble_instr(void) {
         modrm = get_code();
         add_modrm_reg(modrm, data_size);
         add_char(',');
-        add_modrm_mem(modrm, x86_64 ? 4 : 2);
+        add_modrm_mem(modrm, x86_mode == MODE_64 ? 4 : 2);
         return;
     case 0x68:
         add_str("push ");
@@ -914,7 +920,7 @@ static void disassemble_instr(void) {
         add_str("mov ");
         add_modrm_mem(modrm, data_size);
         add_char(',');
-        add_modrm_sreg(modrm);
+        add_modrm_reg(modrm, REG_SIZE_SEG);
         return;
     case 0x8d:
         modrm = get_code();
@@ -926,7 +932,7 @@ static void disassemble_instr(void) {
     case 0x8e:
         modrm = get_code();
         add_str("mov ");
-        add_modrm_sreg(modrm);
+        add_modrm_reg(modrm, REG_SIZE_SEG);
         add_char(',');
         add_modrm_mem(modrm, data_size);
         return;
@@ -1202,7 +1208,7 @@ static void disassemble_instr(void) {
 }
 
 static DisassemblyResult * disassemble_x86(uint8_t * code,
-        ContextAddress addr, ContextAddress size, int i64,
+        ContextAddress addr, ContextAddress size, int mode,
         DisassemblerParams * disass_params) {
 
     static DisassemblyResult dr;
@@ -1215,7 +1221,7 @@ static DisassemblyResult * disassemble_x86(uint8_t * code,
 
     instr_addr = addr;
     params = disass_params;
-    x86_64 = i64;
+    x86_mode = mode;
     prefix = 0;
     vex = 0;
     rex = 0;
@@ -1274,7 +1280,7 @@ static DisassemblyResult * disassemble_x86(uint8_t * code,
         break;
     }
 
-    if (i64) {
+    if (x86_mode == MODE_64) {
         if (code_pos + 1 < code_len && code_buf[code_pos] == 0xc5) { /* Two byte VEX */
             vex = code_buf[code_pos++];
             vex |= (uint32_t)code_buf[code_pos++] << 8;
@@ -1289,8 +1295,25 @@ static DisassemblyResult * disassemble_x86(uint8_t * code,
         }
     }
 
-    data_size = rex & REX_W ? 8 : 4;
-    addr_size = x86_64 ? 8 : 4;
+    switch (x86_mode) {
+    case MODE_16:
+        data_size = prefix & PREFIX_DATA_SIZE ? 4 : 2;
+        addr_size = prefix & PREFIX_ADDR_SIZE ? 4 : 2;
+        break;
+    case MODE_32:
+        data_size = prefix & PREFIX_DATA_SIZE ? 2 : 4;
+        addr_size = prefix & PREFIX_ADDR_SIZE ? 2 : 4;
+        break;
+    case MODE_64:
+        if ((rex & REX_W) == 0) {
+            data_size = prefix & PREFIX_DATA_SIZE ? 2 : 4;
+        }
+        else {
+            data_size = 8;
+        }
+        addr_size = prefix & PREFIX_ADDR_SIZE ? 4 : 8;
+        break;
+    }
 
     disassemble_instr();
 
@@ -1306,16 +1329,22 @@ static DisassemblyResult * disassemble_x86(uint8_t * code,
     return &dr;
 }
 
+DisassemblyResult * disassemble_x86_16(uint8_t * code,
+    ContextAddress addr, ContextAddress size,
+    DisassemblerParams * disass_params) {
+    return disassemble_x86(code, addr, size, MODE_16, disass_params);
+}
+
 DisassemblyResult * disassemble_x86_32(uint8_t * code,
         ContextAddress addr, ContextAddress size,
         DisassemblerParams * disass_params) {
-    return disassemble_x86(code, addr, size, 0, disass_params);
+    return disassemble_x86(code, addr, size, MODE_32, disass_params);
 }
 
 DisassemblyResult * disassemble_x86_64(uint8_t * code,
         ContextAddress addr, ContextAddress size,
         DisassemblerParams * disass_params) {
-    return disassemble_x86(code, addr, size, 1, disass_params);
+    return disassemble_x86(code, addr, size, MODE_64, disass_params);
 }
 
 #endif /* SERVICE_Disassembly */
