@@ -1187,6 +1187,14 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
             isa->max_instruction_size = 15;
         }
         else if (strcmp(s, "ARM") == 0) {
+#if defined(__aarch64__)
+            static uint8_t bp_arm[] = { 0x70, 0xbe, 0x20, 0xe1 };
+#else
+            /* Note: don't use BKPT instruction - it is not supported by 32-bit Linux kernel */
+            static uint8_t bp_arm[] = { 0xf0, 0x01, 0xf0, 0xe7 };
+#endif
+            isa->bp_encoding = bp_arm;
+            isa->bp_size = sizeof(bp_arm);
             isa->max_instruction_size = 4;
             isa->alignment = 4;
         }
@@ -1195,9 +1203,14 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
             isa->alignment = 4;
         }
         else if (strcmp(s, "Thumb") == 0 || strcmp(s, "ThumbEE") == 0) {
-            static uint8_t bp_thumb[] = { 0x00, 0xbe };
+#if defined(__aarch64__)
+            static uint8_t bp_thumb[] = { 0x70, 0xbe };
+#else
+            /* Note: don't use BKPT instruction - it is not supported by 32-bit Linux kernel */
+            static uint8_t bp_thumb[] = { 0x01, 0xde };
+#endif
             isa->bp_encoding = bp_thumb;
-            isa->bp_size = 2;
+            isa->bp_size = sizeof(bp_thumb);
             isa->max_instruction_size = 4;
             isa->alignment = 2;
         }
@@ -1597,9 +1610,8 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
     if (signal != SIGSTOP && signal != SIGTRAP) {
         sigset_set(&ctx->pending_signals, signal, 1);
 #if defined(__arm__)
-        /* On ARM, Linux kernel appears to use SIGILL to lazily enable vector registers */
         if (signal == SIGILL && !EXT(ctx->mem)->crt0_done) {
-            /* Ignore */
+            /* On ARM, Linux kernel appears to use SIGILL to lazily enable vector registers */
         }
         else
 #endif
@@ -1621,12 +1633,12 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
 
     get_PC(ctx, &pc0);
 
+    memset(ext->regs_valid, 0, sizeof(REG_SET));
 #if defined(__powerpc__) || defined(__powerpc64__)
     /* Don't retrieve registers from an exiting process,
         causes kernel critical messages */
     if (event != PTRACE_EVENT_EXIT)
 #endif
-    memset(ext->regs_valid, 0, sizeof(REG_SET));
     get_PC(ctx, &pc1);
 
     if (syscall) {
@@ -1833,11 +1845,9 @@ static int cmp_linux_tid(Context * ctx, const char * v) {
 }
 
 static int cmp_linux_kernel_name(Context * ctx, const char * v) {
-    struct utsname un;
-    if (uname(&un) != 0) {
-        return 0;
-    }
-    return (strcmp(un.sysname, v)== 0);
+    struct utsname buf;
+    if (uname(&buf) != 0) return 0;
+    return strcmp(buf.sysname, v) == 0;
 }
 
 void init_contexts_sys_dep(void) {

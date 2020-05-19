@@ -107,6 +107,7 @@ RegisterDefinition * regs_index = NULL;
 static unsigned regs_cnt = 0;
 static unsigned regs_max = 0;
 
+/* Note: don't use BKPT instruction - it is not supported by 32-bit Linux kernel */
 unsigned char BREAK_INST[] = { 0xf0, 0x01, 0xf0, 0xe7 };
 
 static RegisterDefinition * pc_def = NULL;
@@ -1104,7 +1105,7 @@ static int arm_get_next_address(Context * ctx, ContextExtensionARM * ext) {
         }
     }
 
-    ext->step_to_thumb = to_thumb;
+    ext->step_to_thumb = to_thumb || (arm_next & 2) != 0;
     ext->step_addr = arm_next;
     return 0;
 }
@@ -1115,17 +1116,28 @@ static int enable_sw_stepping_mode(Context * ctx) {
     assert(!grp->exited);
     assert(!ext->sw_stepping);
     if (arm_get_next_address(ctx, ext) < 0) return -1;
-    trace(LOG_CONTEXT, "enable_sw_stepping_mode %s 0x%08x", ctx->id, (unsigned)ext->step_addr);
+    trace(LOG_CONTEXT, "enable_sw_stepping_mode %s 0x%08x %d", ctx->id, (unsigned)ext->step_addr, ext->step_to_thumb);
     if (ext->step_to_thumb) {
-        static uint8_t bp_thumb[] = { 0x00, 0xbe };
+#if defined(__aarch64__)
+        static uint8_t bp_thumb[] = { 0x70, 0xbe };
+#else
+        /* Note: don't use BKPT instruction - it is not supported by 32-bit Linux kernel */
+        static uint8_t bp_thumb[] = { 0x01, 0xde };
+#endif
         ext->opcode_size = sizeof(bp_thumb);
         if (context_read_mem(grp, ext->step_addr, ext->opcode, ext->opcode_size) < 0) return -1;
         if (context_write_mem(grp, ext->step_addr, bp_thumb, ext->opcode_size) < 0) return -1;
     }
     else {
-        ext->opcode_size = sizeof(BREAK_INST);
+#if defined(__aarch64__)
+        static uint8_t bp_arm[] = { 0x70, 0xbe, 0x20, 0xe1 };
+#else
+        /* Note: don't use BKPT instruction - it is not supported by 32-bit Linux kernel */
+        static uint8_t bp_arm[] = { 0xf0, 0x01, 0xf0, 0xe7 };
+#endif
+        ext->opcode_size = sizeof(bp_arm);
         if (context_read_mem(grp, ext->step_addr, ext->opcode, ext->opcode_size) < 0) return -1;
-        if (context_write_mem(grp, ext->step_addr, BREAK_INST, ext->opcode_size) < 0) return -1;
+        if (context_write_mem(grp, ext->step_addr, bp_arm, ext->opcode_size) < 0) return -1;
     }
     ext->sw_stepping = 1;
     run_ctrl_lock();
