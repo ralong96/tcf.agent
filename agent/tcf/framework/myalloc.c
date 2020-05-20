@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -173,6 +173,14 @@ char * tmp_strndup(const char * s, size_t len) {
 
 char * tmp_printf(const char * fmt, ...) {
     va_list ap;
+    char * buf = NULL;
+    va_start(ap, fmt);
+    buf = tmp_vprintf(fmt, ap);
+    va_end(ap);
+    return buf;
+}
+
+char * tmp_vprintf(const char * fmt, va_list ap) {
     char arr[0x100];
     void * mem = NULL;
     char * buf = arr;
@@ -180,9 +188,7 @@ char * tmp_printf(const char * fmt, ...) {
     int n;
 
     while (1) {
-        va_start(ap, fmt);
         n = vsnprintf(buf, len, fmt, ap);
-        va_end(ap);
         if (n < 0) {
             if (len > 0x1000) break;
             len *= 2;
@@ -271,6 +277,14 @@ char * loc_strndup(const char * s, size_t len) {
 
 char * loc_printf(const char * fmt, ...) {
     va_list ap;
+    char * buf = NULL;
+    va_start(ap, fmt);
+    buf = loc_vprintf(fmt, ap);
+    va_end(ap);
+    return buf;
+}
+
+char * loc_vprintf(const char * fmt, va_list ap) {
     char arr[0x100];
     void * mem = NULL;
     char * buf = arr;
@@ -278,9 +292,7 @@ char * loc_printf(const char * fmt, ...) {
     int n;
 
     while (1) {
-        va_start(ap, fmt);
         n = vsnprintf(buf, len, fmt, ap);
-        va_end(ap);
         if (n < 0) {
             if (len > 0x1000) break;
             len *= 2;

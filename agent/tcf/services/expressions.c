@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -256,14 +256,11 @@ static void set_string_value(Value * v, char * str) {
 
 static void error(int no, const char * fmt, ...) {
     va_list ap;
-    char buf[256];
-    size_t l = 0;
-
+    char * buf = NULL;
     va_start(ap, fmt);
-    l = snprintf(buf, sizeof(buf), "At col %d: ", sy_pos);
-    vsnprintf(buf + l, sizeof(buf) - l, fmt, ap);
+    buf = tmp_vprintf(fmt, ap);
     va_end(ap);
-    str_exception(no, buf);
+    str_fmt_exception(no, "At col %d: %s", sy_pos, buf);
 }
 
 #define next_ch_fast() { \

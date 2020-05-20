@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,6 +22,7 @@
 
 #include <tcf/config.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #ifndef MEM_HEAP_LINK_SIZE
 #define MEM_HEAP_LINK_SIZE 0x10
@@ -34,6 +35,7 @@ extern char * loc_strdup(const char * s);
 extern char * loc_strdup2(const char * s1, const char * s2);
 extern char * loc_strndup(const char * s, size_t len);
 extern char * loc_printf(const char * fmt, ...) ATTR_PRINTF(1, 2);
+extern char * loc_vprintf(const char * fmt, va_list args);
 
 extern void loc_free(const void * p);
 
@@ -48,6 +50,7 @@ extern char * tmp_strdup(const char * s);
 extern char * tmp_strdup2(const char * s1, const char * s2);
 extern char * tmp_strndup(const char * s, size_t len);
 extern char * tmp_printf(const char * fmt, ...) ATTR_PRINTF(1, 2);
+extern char * tmp_vprintf(const char * fmt, va_list args);
 
 extern void tmp_gc(void);
 
