@@ -411,6 +411,9 @@ static void add_modrm_mem(unsigned modrm, unsigned size) {
         case 2: add_str("word"); break;
         case 4: add_str("dword"); break;
         case 8: add_str("qword"); break;
+        case REG_SIZE_MMX: add_str("qword"); break;
+        case REG_SIZE_XMM: add_str("dqword"); break;
+        case REG_SIZE_YMM: add_str("qqword"); break;
         }
         add_char('[');
         if (prefix & PREFIX_CS) add_str("cs:");
@@ -494,6 +497,20 @@ static void add_modrm_mem(unsigned modrm, unsigned size) {
     }
 }
 
+static void add_modrm(unsigned reg_size, unsigned mem_size, int swap) {
+    unsigned modrm = get_code();
+    if (swap) {
+        add_modrm_mem(modrm, mem_size);
+        add_char(',');
+        add_modrm_reg(modrm, reg_size);
+    }
+    else {
+        add_modrm_reg(modrm, reg_size);
+        add_char(',');
+        add_modrm_mem(modrm, mem_size);
+    }
+}
+
 static void add_a_op(unsigned op) {
     switch (op) {
     case 0: add_str("add "); break;
@@ -530,20 +547,112 @@ static void disassemble_0f(void) {
         add_str("nop ");
         add_modrm_mem(modrm, data_size);
         return;
+    case 0x28:
+    case 0x29:
+        add_str("mov");
+        if (prefix & PREFIX_DATA_SIZE) {
+            add_str("apd ");
+            add_modrm(REG_SIZE_YMM, REG_SIZE_YMM, (opcode & 1) != 0);
+            return;
+        }
+        add_str("aps ");
+        add_modrm(REG_SIZE_XMM, REG_SIZE_XMM, 0);
+        return;
+    case 0x2a:
+        add_str("cvtsi2");
+        if (prefix & PREFIX_DATA_SIZE) {
+            add_str("pd ");
+            add_modrm(REG_SIZE_YMM, 4, 0);
+            return;
+        }
+        if (prefix & PREFIX_REPNZ) {
+            add_str("sd ");
+            add_modrm(REG_SIZE_YMM, 8, 0);
+            return;
+        }
+        if (prefix & PREFIX_REPZ) {
+            add_str("ss ");
+            add_modrm(REG_SIZE_XMM, 8, 0);
+            return;
+        }
+        add_str("ps ");
+        add_modrm(REG_SIZE_MMX, 4, 0);
+        return;
+    case 0x2e:
+    case 0x2f:
+        switch (opcode) {
+        case 0x2e: add_str("ucomi"); break;
+        case 0x2f: add_str("comi"); break;
+        }
+        if (prefix & PREFIX_DATA_SIZE) {
+            add_str("sd ");
+            add_modrm(REG_SIZE_XMM, REG_SIZE_XMM, 0);
+            return;
+        }
+        add_str("ss ");
+        add_modrm(REG_SIZE_MMX, REG_SIZE_MMX, 0);
+        return;
     case 0x38:
         switch (get_code()) {
         case 0xf6:
             if (prefix & PREFIX_DATA_SIZE) {
-                modrm = get_code();
                 add_str("adcx ");
-                add_modrm_reg(modrm, data_size);
-                add_char(',');
-                add_modrm_mem(modrm, 1);
+                add_modrm(data_size, 1, 0);
                 return;
             }
             break;
         }
         break;
+    case 0x51:
+    case 0x58:
+    case 0x59:
+    case 0x5c:
+    case 0x5d:
+    case 0x5e:
+    case 0x5f:
+        switch (opcode) {
+        case 0x51: add_str("sqrt"); break;
+        case 0x58: add_str("add"); break;
+        case 0x59: add_str("mul"); break;
+        case 0x5c: add_str("sub"); break;
+        case 0x5d: add_str("min"); break;
+        case 0x5e: add_str("div"); break;
+        case 0x5f: add_str("max"); break;
+        }
+        if (prefix & PREFIX_DATA_SIZE) {
+            add_str("pd ");
+            add_modrm(REG_SIZE_YMM, 4, 0);
+            return;
+        }
+        if (prefix & PREFIX_REPNZ) {
+            add_str("sd ");
+            add_modrm(REG_SIZE_YMM, 8, 0);
+            return;
+        }
+        if (prefix & PREFIX_REPZ) {
+            add_str("ss ");
+            add_modrm(REG_SIZE_XMM, 8, 0);
+            return;
+        }
+        add_str("ps ");
+        add_modrm(REG_SIZE_MMX, 4, 0);
+        return;
+    case 0x6f:
+    case 0x7f:
+        add_str("mov");
+        if (prefix & PREFIX_DATA_SIZE) {
+            add_str("dqa ");
+            add_modrm(REG_SIZE_XMM, REG_SIZE_XMM, (opcode & 0x10) != 0);
+            return;
+        }
+        if (prefix & PREFIX_REPZ) {
+            add_str("dqu ");
+            add_modrm(REG_SIZE_XMM, REG_SIZE_XMM, (opcode & 0x10) != 0);
+            return;
+        }
+        add_str("q ");
+        add_modrm(REG_SIZE_MMX, REG_SIZE_MMX, (opcode & 0x10) != 0);
+        return;
     case 0x80:
     case 0x81:
     case 0x82:
@@ -595,19 +704,13 @@ static void disassemble_0f(void) {
         return;
     case 0xa4:
         add_str("shld ");
-        modrm = get_code();
-        add_modrm_mem(modrm, data_size);
-        add_char(',');
-        add_modrm_reg(modrm, data_size);
+        add_modrm(data_size, data_size, 1);
         add_char(',');
         add_imm8();
         return;
     case 0xa5:
         add_str("shld ");
-        modrm = get_code();
-        add_modrm_mem(modrm, data_size);
-        add_char(',');
-        add_modrm_reg(modrm, data_size);
+        add_modrm(data_size, data_size, 1);
         add_str(",cl");
         return;
     case 0xa8:
@@ -618,35 +721,62 @@ static void disassemble_0f(void) {
         return;
     case 0xb6:
         add_str("movzx ");
-        modrm = get_code();
-        add_modrm_reg(modrm, data_size);
-        add_char(',');
-        add_modrm_mem(modrm, 1);
+        add_modrm(data_size, 1, 0);
         return;
     case 0xb7:
         add_str("movzx ");
-        modrm = get_code();
-        add_modrm_reg(modrm, data_size);
-        add_char(',');
-        add_modrm_mem(modrm, 2);
+        add_modrm(data_size, 2, 0);
         return;
     case 0xbe:
         add_str("movsx ");
-        modrm = get_code();
-        add_modrm_reg(modrm, data_size);
-        add_char(',');
-        add_modrm_mem(modrm, 1);
+        add_modrm(data_size, 1, 0);
         return;
     case 0xbf:
         add_str("movsx ");
-        modrm = get_code();
-        add_modrm_reg(modrm, data_size);
-        add_char(',');
-        add_modrm_mem(modrm, 2);
+        add_modrm(data_size, 2, 0);
+        return;
+    case 0xef:
+        add_str("pxor ");
+        if (prefix & PREFIX_DATA_SIZE) {
+            add_modrm(REG_SIZE_XMM, REG_SIZE_XMM, 0);
+            return;
+        }
+        add_modrm(REG_SIZE_MMX, REG_SIZE_MMX, 0);
         return;
     }
 
     buf_pos = 0;
+}
+
+static void disassemble_cmps(unsigned reg_size, unsigned mem_size) {
+    if (prefix & PREFIX_REPNZ) add_str("repnz ");
+    if (prefix & PREFIX_REPZ) add_str("repz ");
+    add_str("cmps ");
+    switch (mem_size) {
+    case 1: add_str("byte"); break;
+    case 2: add_str("word"); break;
+    case 4: add_str("dword"); break;
+    case 8: add_str("qword"); break;
+    }
+    add_char('[');
+    if (prefix & PREFIX_CS) add_str("cs:");
+    else if (prefix & PREFIX_SS) add_str("ss:");
+    else if (prefix & PREFIX_DS) add_str("ds:");
+    else if (prefix & PREFIX_ES) add_str("es:");
+    else if (prefix & PREFIX_FS) add_str("fs:");
+    else if (prefix & PREFIX_GS) add_str("gs:");
+    else add_str("ds:");
+    add_reg(6, reg_size);
+    add_str("],");
+    switch (mem_size) {
+    case 1: add_str("byte"); break;
+    case 2: add_str("word"); break;
+    case 4: add_str("dword"); break;
+    case 8: add_str("qword"); break;
+    }
+    add_str("[es:");
+    add_reg(7, reg_size);
+    add_char(']');
 }
 
 static void disassemble_instr(void) {
@@ -664,11 +794,8 @@ static void disassemble_instr(void) {
     case 0x28:
     case 0x30:
     case 0x38:
-        modrm = get_code();
         add_a_op((opcode >> 3) & 7);
-        add_modrm_mem(modrm, 1);
-        add_char(',');
-        add_modrm_reg(modrm, 1);
+        add_modrm(1, 1, 1);
         return;
     case 0x01:
     case 0x09:
@@ -678,11 +805,8 @@ static void disassemble_instr(void) {
     case 0x29:
     case 0x31:
     case 0x39:
-        modrm = get_code();
         add_a_op((opcode >> 3) & 7);
-        add_modrm_mem(modrm, data_size);
-        add_char(',');
-        add_modrm_reg(modrm, data_size);
+        add_modrm(data_size, data_size, 1);
         return;
     case 0x02:
     case 0x0a:
@@ -692,11 +816,8 @@ static void disassemble_instr(void) {
     case 0x2a:
     case 0x32:
     case 0x3a:
-        modrm = get_code();
         add_a_op((opcode >> 3) & 7);
-        add_modrm_reg(modrm, 1);
-        add_char(',');
-        add_modrm_mem(modrm, 1);
+        add_modrm(1, 1, 0);
         return;
     case 0x03:
     case 0x0b:
@@ -706,11 +827,8 @@ static void disassemble_instr(void) {
     case 0x2b:
     case 0x33:
     case 0x3b:
-        modrm = get_code();
         add_a_op((opcode >> 3) & 7);
-        add_modrm_reg(modrm, data_size);
-        add_char(',');
-        add_modrm_mem(modrm, data_size);
+        add_modrm(data_size, data_size, 0);
         return;
     case 0x04:
     case 0x0c:
@@ -816,10 +934,7 @@ static void disassemble_instr(void) {
         return;
     case 0x63:
         add_str("movsxd ");
-        modrm = get_code();
-        add_modrm_reg(modrm, data_size);
-        add_char(',');
-        add_modrm_mem(modrm, x86_mode == MODE_64 ? 4 : 2);
+        add_modrm(data_size, x86_mode == MODE_64 ? 4 : 2, 0);
         return;
     case 0x68:
         add_str("push ");
@@ -874,67 +989,40 @@ static void disassemble_instr(void) {
         add_imm8();
         return;
     case 0x84:
-        modrm = get_code();
         add_str("test ");
-        add_modrm_mem(modrm, 1);
-        add_char(',');
-        add_modrm_reg(modrm, 1);
+        add_modrm(1, 1, 1);
         return;
     case 0x85:
-        modrm = get_code();
         add_str("test ");
-        add_modrm_mem(modrm, data_size);
-        add_char(',');
-        add_modrm_reg(modrm, data_size);
+        add_modrm(data_size, data_size, 1);
         return;
     case 0x88:
-        modrm = get_code();
         add_str("mov ");
-        add_modrm_mem(modrm, 1);
-        add_char(',');
-        add_modrm_reg(modrm, 1);
+        add_modrm(1, 1, 1);
         return;
     case 0x89:
-        modrm = get_code();
         add_str("mov ");
-        add_modrm_mem(modrm, data_size);
-        add_char(',');
-        add_modrm_reg(modrm, data_size);
+        add_modrm(data_size, data_size, 1);
         return;
     case 0x8a:
-        modrm = get_code();
         add_str("mov ");
-        add_modrm_reg(modrm, 1);
-        add_char(',');
-        add_modrm_mem(modrm, 1);
+        add_modrm(1, 1, 0);
         return;
     case 0x8b:
-        modrm = get_code();
         add_str("mov ");
-        add_modrm_reg(modrm, data_size);
-        add_char(',');
-        add_modrm_mem(modrm, data_size);
+        add_modrm(data_size, data_size, 0);
         return;
     case 0x8c:
-        modrm = get_code();
         add_str("mov ");
-        add_modrm_mem(modrm, data_size);
-        add_char(',');
-        add_modrm_reg(modrm, REG_SIZE_SEG);
+        add_modrm(REG_SIZE_SEG, data_size, 1);
         return;
     case 0x8d:
-        modrm = get_code();
         add_str("lea ");
-        add_modrm_reg(modrm, data_size);
-        add_char(',');
-        add_modrm_mem(modrm, 0);
+        add_modrm(data_size, 0, 0);
         return;
     case 0x8e:
-        modrm = get_code();
         add_str("mov ");
-        add_modrm_reg(modrm, REG_SIZE_SEG);
-        add_char(',');
-        add_modrm_mem(modrm, data_size);
+        add_modrm(REG_SIZE_SEG, data_size, 0);
         return;
     case 0x8f:
         modrm = get_code();
@@ -990,6 +1078,12 @@ static void disassemble_instr(void) {
         add_moffs(1);
         add_char(',');
         add_reg(0, data_size);
+        return;
+    case 0xa6:
+        disassemble_cmps(addr_size, 1);
+        return;
+    case 0xa7:
+        disassemble_cmps(addr_size, data_size);
         return;
     case 0xa8:
         add_str("test al,");
@@ -1236,12 +1330,10 @@ static DisassemblyResult * disassemble_x86(uint8_t * code,
             continue;
         case 0xf2:
             prefix |= PREFIX_REPNZ;
-            add_str("repnz ");
             code_pos++;
             continue;
         case 0xf3:
             prefix |= PREFIX_REPZ;
-            add_str("repz ");
             code_pos++;
             continue;
         case 0x2e:
