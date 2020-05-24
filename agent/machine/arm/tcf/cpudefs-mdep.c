@@ -233,25 +233,86 @@ static void clear_bp(ContextBreakpoint * bp) {
 }
 
 static int get_bp_info(Context * ctx) {
-    uint32_t buf = 0;
     ContextExtensionARM * bps = EXT(ctx);
-    if (bps->info_ok) return 0;
-    if (ptrace(PTRACE_GETHBPREGS, id2pid(ctx->id, NULL), 0, &buf) < 0) {
-        /* Kernel does not support hardware breakpoints */
-        bps->arch = 0;
-        bps->wp_size = 0;
-        bps->wp_cnt = 0;
-        bps->bp_cnt = 0;
-        bps->info_ok = 1;
-        return 0;
+    if (!bps->info_ok) {
+        uint32_t buf = 0;
+        pid_t pid = id2pid(ctx->id, NULL);
+        if (ptrace(PTRACE_GETHBPREGS, pid, 0, &buf) < 0) {
+            /* Kernel does not support hardware breakpoints */
+            bps->arch = 0;
+            bps->wp_size = 0;
+            bps->wp_cnt = 0;
+            bps->bp_cnt = 0;
+            bps->info_ok = 1;
+            return 0;
+        }
+        bps->arch = (uint8_t)(buf >> 24);
+        bps->wp_size = (uint8_t)(buf >> 16);
+        bps->wp_cnt = (uint8_t)(buf >> 8);
+        bps->bp_cnt = (uint8_t)buf;
+        if (bps->wp_cnt > MAX_HWP) bps->wp_cnt = MAX_HWP;
+        if (bps->bp_cnt > MAX_HBP) bps->bp_cnt = MAX_HBP;
+        trace(LOG_CONTEXT,
+            "Breakpoints: pid %u, arch %u, wp size %u, wp count %u, bp count %u",
+            (unsigned)pid, bps->arch, bps->wp_size, bps->wp_cnt, bps->bp_cnt);
+        if (bps->arch == 0 || bps->bp_cnt == 0) {
+            /* Kernel does not support hardware breakpoints */
+            bps->arch = 0;
+            bps->wp_size = 0;
+            bps->wp_cnt = 0;
+            bps->bp_cnt = 0;
+            bps->info_ok = 1;
+            return 0;
+        }
     }
-    bps->arch = (uint8_t)(buf >> 24);
-    bps->wp_size = (uint8_t)(buf >> 16);
-    bps->wp_cnt = (uint8_t)(buf >> 8);
-    bps->bp_cnt = (uint8_t)buf;
-    if (bps->wp_cnt > MAX_HWP) bps->wp_cnt = MAX_HWP;
-    if (bps->bp_cnt > MAX_HBP) bps->bp_cnt = MAX_HBP;
     bps->info_ok = 1;
+    return 0;
+}
+
+static int set_debug_cr(pid_t pid, ContextExtensionARM * bps, int i, uint32_t cr) {
+    if (cr == 0) {
+        /* Linux kernel does not allow 0 as Control Register value */
+        cr |= 0x3 << 1;
+        if (i < bps->bp_cnt) {
+            cr |= 0x3 << 5;
+        }
+        else {
+            cr |= 0x1 << 5;
+            cr |= 0x1 << 4;
+        }
+    }
+    if (i < bps->bp_cnt) {
+        trace(LOG_CONTEXT, "Breakpoints: pid %u, set reg %d, 0x%08x", (unsigned)pid, i * 2 + 2, cr);
+        if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 2, &cr) < 0) {
+            set_errno(errno, "Cannot set breakpoint control register");
+            return -1;
+        }
+    }
+    else {
+        trace(LOG_CONTEXT, "Breakpoints: pid %u, set reg %d, 0x%08x", (unsigned)pid, -(i * 2 + 2), cr);
+        if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 2), &cr) < 0) {
+            set_errno(errno, "Cannot set watchpoint control register");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int set_debug_vr(pid_t pid, ContextExtensionARM * bps, int i, uint32_t vr) {
+    if (i < bps->bp_cnt) {
+        trace(LOG_CONTEXT, "Breakpoints: pid %u, set reg %d, 0x%08x", (unsigned)pid, i * 2 + 1, vr);
+        if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 1, &vr) < 0) {
+            set_errno(errno, "Cannot set breakpoint address register");
+            return -1;
+        }
+    }
+    else {
+        trace(LOG_CONTEXT, "Breakpoints: pid %u, set reg %d, 0x%08x", (unsigned)pid, -(i * 2 + 1), vr);
+        if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 1), &vr) < 0) {
+            set_errno(errno, "Cannot set watchpoint address register");
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -270,9 +331,12 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
     if (read_reg(ctx, pc_def, pc_def->size, &pc) < 0) return -1;
 
     for (i = 0; i < bps->bp_cnt + bps->wp_cnt; i++) {
-        uint32_t cr = 0;
         ContextBreakpoint * cb = bps->hw_bps[i];
+
+        if (set_debug_cr(pid, bps, i, 0) < 0) return -1;
+
         if (i == 0 && ext->hw_stepping) {
+            uint32_t cr = 0;
             uint32_t vr = 0;
             if (ext->hw_stepping == 1) {
                 vr = (uint32_t)ext->step_addr & ~0x1;
@@ -284,10 +348,8 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                 cr |= 0xf << 5;
             }
             cr |= 0x7;
-            if (ptrace(PTRACE_SETHBPREGS, pid, 1, &vr) < 0) {
-                set_errno(errno, "Cannot set stepping breakpoint address register");
-                return -1;
-            }
+            if (set_debug_vr(pid, bps, 0, vr) < 0) return -1;
+            if (set_debug_cr(pid, bps, 0, cr) < 0) return -1;
         }
         else if (cb != NULL) {
             if (i < bps->bp_cnt && ((uint32_t)cb->address & ~0x1) == pc) {
@@ -300,6 +362,7 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                 *step_over_hw_bp = 1;
             }
             else {
+                uint32_t cr = 0;
                 uint32_t vr = (uint32_t)cb->address & ~0x1;
                 if (i < bps->bp_cnt) {
                     cr |= 0x3 << 5;
@@ -315,39 +378,9 @@ static int set_debug_regs(Context * ctx, int * step_over_hw_bp) {
                     if (cb->access_types & CTX_BP_ACCESS_DATA_WRITE) cr |= 1 << 4;
                 }
                 cr |= 0x7;
-                if (i < bps->bp_cnt) {
-                    if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 1, &vr) < 0) {
-                        set_errno(errno, "Cannot set breakpoint address register");
-                        return -1;
-                    }
-                }
-                else {
-                    if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 1), &vr) < 0) {
-                        set_errno(errno, "Cannot set watchpoint address register");
-                        return -1;
-                    }
-                }
+                if (set_debug_vr(pid, bps, i, vr) < 0) return -1;
+                if (set_debug_cr(pid, bps, i, cr) < 0) return -1;
                 ext->armed |= 1 << i;
-            }
-        }
-        if (cr == 0) {
-            /* Linux kernel does not allow 0 as Control Register value */
-            cr |= 0x3u << 1;
-            cr |= 0xfu << 5;
-            if (i >= bps->bp_cnt) {
-                cr |= 1u << 4;
-            }
-        }
-        if (i < bps->bp_cnt) {
-            if (ptrace(PTRACE_SETHBPREGS, pid, i * 2 + 2, &cr) < 0) {
-                set_errno(errno, "Cannot set breakpoint control register");
-                return -1;
-            }
-        }
-        else {
-            if (ptrace(PTRACE_SETHBPREGS, pid, -(i * 2 + 2), &cr) < 0) {
-                set_errno(errno, "Cannot set watchpoint control register");
-                return -1;
             }
         }
     }
@@ -361,7 +394,7 @@ static int enable_hw_stepping_mode(Context * ctx, int mode) {
     int step = 0;
     ContextExtensionARM * ext = EXT(ctx);
     if (mode == 1 && arm_get_next_address(ctx, ext) < 0) return -1;
-    trace(LOG_CONTEXT, "enable_hw_stepping_mode %s 0x%08x", ctx->id, (unsigned)ext->step_addr);
+    trace(LOG_CONTEXT, "enable_hw_stepping_mode %s 0x%08x %d", ctx->id, (unsigned)ext->step_addr, mode);
     ext->hw_stepping = mode;
     return set_debug_regs(ctx, &step);
 }
