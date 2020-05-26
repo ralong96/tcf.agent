@@ -1345,8 +1345,20 @@ static int identifier(int mode, Value * scope, char * name, SYM_FLAGS flags, Val
     return -1;
 }
 
+#ifndef NDEBUG
+/* Check for bad recursion */
+static int indentifier_checked(int mode, Value * scope, char * name, SYM_FLAGS flags, Value * v) {
+    int text_pos_org = text_pos;
+    int text_sy_org = text_sy;
+    int res = identifier(mode, scope, name, flags, v);
+    assert(text_pos_org == text_pos);
+    assert(text_sy_org == text_sy);
+    return res;
+}
+#define identifier(mode, scope, name, flags, v) indentifier_checked(mode, scope, name, flags, v)
+#endif
+
 static int qualified_name(int mode, Value * scope, SYM_FLAGS flags, Value * v) {
-    Value x;
     int sym_class = 0;
     for (;;) {
         ini_value(v);
@@ -1403,8 +1415,7 @@ static int qualified_name(int mode, Value * scope, SYM_FLAGS flags, Value * v) {
         }
         if (text_sy != SY_SCOPE) break;
         next_sy();
-        scope = &x;
-        x = *v;
+        *(scope = (Value *)tmp_alloc(sizeof(Value))) = *v;
     }
     return sym_class;
 }
@@ -2170,7 +2181,7 @@ static void primary_expression(int mode, Value * v) {
         }
         else if (v->type_class == TYPE_CLASS_ARRAY && (flags & VAL_FLAG_S) != 0) {
             if (text_sy == SY_SCOPE) {
-                Value x;
+                Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
                 char * name = NULL;
                 if (flags & VAL_FLAG_L) {
                     unsigned i = 0;
@@ -2199,10 +2210,10 @@ static void primary_expression(int mode, Value * v) {
                 else {
                     name = (char *)v->value;
                 }
-                if (identifier(mode, NULL, name, 0, &x) < 0)
+                if (identifier(mode, NULL, name, 0, x) < 0)
                     error(ERR_INV_EXPRESSION, "Undefined identifier '%s'", name);
                 next_sy();
-                qualified_name_expression(mode, &x, v);
+                qualified_name_expression(mode, x, v);
             }
             else {
                 size_t size = 0;
@@ -2229,10 +2240,8 @@ static void primary_expression(int mode, Value * v) {
 #endif
     }
     else if (text_sy == SY_SCOPE) {
-        Value x;
         next_sy();
-        memset(&x, 0, sizeof(x));
-        qualified_name_expression(mode, &x, v);
+        qualified_name_expression(mode, (Value *)tmp_alloc_zero(sizeof(Value)), v);
     }
     else if (text_sy == SY_NAME || text_sy == SY_ID) {
         qualified_name_expression(mode, NULL, v);
@@ -3344,11 +3353,11 @@ static void pm_expression(int mode, Value * v) {
     unary_expression(mode, v);
 #if ENABLE_Symbols
     while (text_sy == SY_PM_D || text_sy == SY_PM_R) {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         int sy = text_sy;
         next_sy();
-        unary_expression(mode, &x);
-        if (x.type == NULL || x.type_class != TYPE_CLASS_MEMBER_PTR) {
+        unary_expression(mode, x);
+        if (x->type == NULL || x->type_class != TYPE_CLASS_MEMBER_PTR) {
             error(ERR_INV_EXPRESSION, "Invalid type: pointer to member expected");
         }
         if (mode != MODE_SKIP) {
@@ -3363,8 +3372,8 @@ static void pm_expression(int mode, Value * v) {
                 else {
                     obj = (ContextAddress)to_uns(mode, v);
                 }
-                ptr = (ContextAddress)to_uns(mode, &x);
-                evaluate_symbol_location(x.type, obj, ptr, &loc, NULL);
+                ptr = (ContextAddress)to_uns(mode, x);
+                evaluate_symbol_location(x->type, obj, ptr, &loc, NULL);
                 if (loc->stk_pos != 1) error(ERR_INV_EXPRESSION, "Cannot evaluate symbol address");
                 v->address = (ContextAddress)loc->stk[0];
             }
@@ -3381,7 +3390,7 @@ static void pm_expression(int mode, Value * v) {
             v->field_cb = NULL;
             v->value = NULL;
             v->constant = 0;
-            if (get_symbol_base_type(x.type, &v->type) < 0) {
+            if (get_symbol_base_type(x->type, &v->type) < 0) {
                 error(ERR_INV_EXPRESSION, "Cannot get pointed type");
             }
             if (get_symbol_type_class(v->type, &v->type_class) < 0) {
@@ -3390,7 +3399,7 @@ static void pm_expression(int mode, Value * v) {
             if (get_symbol_size(v->type, &v->size) < 0) {
                 error(errno, "Cannot retrieve field size");
             }
-            set_value_endianness(v, x.type, v->type);
+            set_value_endianness(v, x->type, v->type);
         }
     }
 #endif
@@ -3399,15 +3408,15 @@ static void pm_expression(int mode, Value * v) {
 static void multiplicative_expression(int mode, Value * v) {
     pm_expression(mode, v);
     while (text_sy == '*' || text_sy == '/' || text_sy == '%') {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         int sy = text_sy;
         next_sy();
-        pm_expression(mode, &x);
+        pm_expression(mode, x);
         if (mode != MODE_SKIP) {
-            if (!is_number(v) || !is_number(&x)) {
+            if (!is_number(v) || !is_number(x)) {
                 error(ERR_INV_EXPRESSION, "Numeric types expected");
             }
-            else if (v->type_class == TYPE_CLASS_COMPLEX || x.type_class == TYPE_CLASS_COMPLEX) {
+            else if (v->type_class == TYPE_CLASS_COMPLEX || x->type_class == TYPE_CLASS_COMPLEX) {
                 double r_value = 0;
                 double i_value = 0;
                 if (mode == MODE_NORMAL) {
@@ -3415,22 +3424,22 @@ static void multiplicative_expression(int mode, Value * v) {
                     switch (sy) {
                     case '*':
                         r_value =
-                            to_r_double(mode, v) * to_r_double(mode, &x) -
-                            to_i_double(mode, v) * to_i_double(mode, &x);
+                            to_r_double(mode, v) * to_r_double(mode, x) -
+                            to_i_double(mode, v) * to_i_double(mode, x);
                         i_value =
-                            to_r_double(mode, v) * to_i_double(mode, &x) +
-                            to_i_double(mode, v) * to_r_double(mode, &x);
+                            to_r_double(mode, v) * to_i_double(mode, x) +
+                            to_i_double(mode, v) * to_r_double(mode, x);
                         break;
                     case '/':
                         d =
-                            to_r_double(mode, &x) * to_r_double(mode, &x) +
-                            to_i_double(mode, &x) * to_i_double(mode, &x);
+                            to_r_double(mode, x) * to_r_double(mode, x) +
+                            to_i_double(mode, x) * to_i_double(mode, x);
                         r_value =
-                            (to_r_double(mode, v) * to_r_double(mode, &x) +
-                            to_i_double(mode, v) * to_i_double(mode, &x)) / d;
+                            (to_r_double(mode, v) * to_r_double(mode, x) +
+                            to_i_double(mode, v) * to_i_double(mode, x)) / d;
                         i_value =
-                            (to_i_double(mode, v) * to_r_double(mode, &x) -
-                            to_r_double(mode, v) * to_i_double(mode, &x)) / d;
+                            (to_i_double(mode, v) * to_r_double(mode, x) -
+                            to_r_double(mode, v) * to_i_double(mode, x)) / d;
                         break;
                     default:
                         error(ERR_INV_EXPRESSION, "Invalid type");
@@ -3441,12 +3450,12 @@ static void multiplicative_expression(int mode, Value * v) {
                 set_complex_value(v, sizeof(double) * 2, r_value, i_value);
                 set_complex_type(v);
             }
-            else if (is_real_number(v) || is_real_number(&x)) {
+            else if (is_real_number(v) || is_real_number(x)) {
                 double value = 0;
                 if (mode == MODE_NORMAL) {
                     switch (sy) {
-                    case '*': value = to_double(mode, v) * to_double(mode, &x); break;
-                    case '/': value = to_double(mode, v) / to_double(mode, &x); break;
+                    case '*': value = to_double(mode, v) * to_double(mode, x); break;
+                    case '/': value = to_double(mode, v) / to_double(mode, x); break;
                     default: error(ERR_INV_EXPRESSION, "Invalid type");
                     }
                 }
@@ -3455,11 +3464,11 @@ static void multiplicative_expression(int mode, Value * v) {
                 set_fp_value(v, sizeof(double), value);
                 set_fp_type(v);
             }
-            else if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
+            else if (v->type_class == TYPE_CLASS_CARDINAL || x->type_class == TYPE_CLASS_CARDINAL) {
                 uint64_t value = 0;
                 if (mode == MODE_NORMAL) {
                     uint64_t a = to_uns(mode, v);
-                    uint64_t b = to_uns(mode, &x);
+                    uint64_t b = to_uns(mode, x);
                     if (sy != '*' && b == 0) error(ERR_INV_EXPRESSION, "Dividing by zero");
                     switch (sy) {
                     case '*': value = a * b; break;
@@ -3475,7 +3484,7 @@ static void multiplicative_expression(int mode, Value * v) {
                 int64_t value = 0;
                 if (mode == MODE_NORMAL) {
                     int64_t a = to_int(mode, v);
-                    int64_t b = to_int(mode, &x);
+                    int64_t b = to_int(mode, x);
                     if (sy != '*' && b == 0) error(ERR_INV_EXPRESSION, "Dividing by zero");
                     switch (sy) {
                     case '*': value = a * b; break;
@@ -3487,7 +3496,7 @@ static void multiplicative_expression(int mode, Value * v) {
                 v->type_class = TYPE_CLASS_INTEGER;
                 set_int_value(v, sizeof(int64_t), value);
             }
-            v->constant = v->constant && x.constant;
+            v->constant = v->constant && x->constant;
         }
     }
 }
@@ -3495,20 +3504,20 @@ static void multiplicative_expression(int mode, Value * v) {
 static void additive_expression(int mode, Value * v) {
     multiplicative_expression(mode, v);
     while (text_sy == '+' || text_sy == '-') {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         int sy = text_sy;
         next_sy();
-        multiplicative_expression(mode, &x);
+        multiplicative_expression(mode, x);
         if (mode != MODE_SKIP) {
             if (v->function) {
                 v->type_class = TYPE_CLASS_CARDINAL;
                 v->type = NULL;
             }
-            if (x.function) {
-                x.type_class = TYPE_CLASS_CARDINAL;
-                x.type = NULL;
+            if (x->function) {
+                x->type_class = TYPE_CLASS_CARDINAL;
+                x->type = NULL;
             }
-            if (sy == '+' && v->type_class == TYPE_CLASS_ARRAY && x.type_class == TYPE_CLASS_ARRAY) {
+            if (sy == '+' && v->type_class == TYPE_CLASS_ARRAY && x->type_class == TYPE_CLASS_ARRAY) {
                 if (mode == MODE_TYPE) {
                     v->remote = 0;
                     v->size = 0;
@@ -3517,17 +3526,17 @@ static void additive_expression(int mode, Value * v) {
                 else {
                     char * value;
                     load_value(v);
-                    load_value(&x);
-                    v->size = strlen((char *)v->value) + strlen((char *)x.value) + 1;
+                    load_value(x);
+                    v->size = strlen((char *)v->value) + strlen((char *)x->value) + 1;
                     value = (char *)tmp_alloc((size_t)v->size);
                     strcpy(value, (const char *)(v->value));
-                    strcat(value, (const char *)(x.value));
+                    strcat(value, (const char *)(x->value));
                     v->value = value;
                 }
                 v->type = NULL;
             }
 #if ENABLE_Symbols
-            else if ((v->type_class == TYPE_CLASS_POINTER || v->type_class == TYPE_CLASS_ARRAY) && is_number(&x)) {
+            else if ((v->type_class == TYPE_CLASS_POINTER || v->type_class == TYPE_CLASS_ARRAY) && is_number(x)) {
                 uint64_t value = 0;
                 Symbol * base = NULL;
                 ContextAddress size = 0;
@@ -3536,8 +3545,8 @@ static void additive_expression(int mode, Value * v) {
                     error(ERR_INV_EXPRESSION, "Unknown pointer base type size");
                 }
                 switch (sy) {
-                case '+': value = to_uns(mode, v) + to_uns(mode, &x) * size; break;
-                case '-': value = to_uns(mode, v) - to_uns(mode, &x) * size; break;
+                case '+': value = to_uns(mode, v) + to_uns(mode, x) * size; break;
+                case '-': value = to_uns(mode, v) - to_uns(mode, x) * size; break;
                 }
                 if (v->type_class == TYPE_CLASS_ARRAY) {
                     if (get_array_symbol(base, 0, &v->type) < 0 ||
@@ -3548,40 +3557,40 @@ static void additive_expression(int mode, Value * v) {
                 }
                 set_int_value(v, (size_t)v->size, value);
             }
-            else if (is_number(v) && (x.type_class == TYPE_CLASS_POINTER || x.type_class == TYPE_CLASS_ARRAY) && sy == '+') {
+            else if (is_number(v) && (x->type_class == TYPE_CLASS_POINTER || x->type_class == TYPE_CLASS_ARRAY) && sy == '+') {
                 uint64_t value = 0;
                 Symbol * base = NULL;
                 ContextAddress size = 0;
-                if (x.type == NULL || get_symbol_base_type(x.type, &base) < 0 ||
+                if (x->type == NULL || get_symbol_base_type(x->type, &base) < 0 ||
                     base == NULL || get_symbol_size(base, &size) < 0 || size == 0) {
                     error(ERR_INV_EXPRESSION, "Unknown pointer base type size");
                 }
-                value = to_uns(mode, &x) + to_uns(mode, v) * size;
-                v->type = x.type;
-                if (x.type_class == TYPE_CLASS_ARRAY) {
+                value = to_uns(mode, x) + to_uns(mode, v) * size;
+                v->type = x->type;
+                if (x->type_class == TYPE_CLASS_ARRAY) {
                     if (get_array_symbol(base, 0, &v->type) < 0 ||
                         get_symbol_size(v->type, &v->size) < 0) {
                         error(errno, "Cannot cast to pointer");
                     }
                 }
                 v->type_class = TYPE_CLASS_POINTER;
-                set_int_value(v, (size_t)x.size, value);
+                set_int_value(v, (size_t)x->size, value);
             }
 #endif
-            else if (!is_number(v) || !is_number(&x)) {
+            else if (!is_number(v) || !is_number(x)) {
                 error(ERR_INV_EXPRESSION, "Numeric types expected");
             }
-            else if (v->type_class == TYPE_CLASS_COMPLEX || x.type_class == TYPE_CLASS_COMPLEX) {
+            else if (v->type_class == TYPE_CLASS_COMPLEX || x->type_class == TYPE_CLASS_COMPLEX) {
                 double r_value = 0;
                 double i_value = 0;
                 switch (sy) {
                 case '+':
-                    r_value = to_r_double(mode, v) + to_r_double(mode, &x);
-                    i_value = to_i_double(mode, v) + to_i_double(mode, &x);
+                    r_value = to_r_double(mode, v) + to_r_double(mode, x);
+                    i_value = to_i_double(mode, v) + to_i_double(mode, x);
                     break;
                 case '-':
-                    r_value = to_r_double(mode, v) - to_r_double(mode, &x);
-                    i_value = to_i_double(mode, v) - to_i_double(mode, &x);
+                    r_value = to_r_double(mode, v) - to_r_double(mode, x);
+                    i_value = to_i_double(mode, v) - to_i_double(mode, x);
                     break;
                 }
                 v->type = NULL;
@@ -3589,22 +3598,22 @@ static void additive_expression(int mode, Value * v) {
                 set_complex_value(v, sizeof(double) * 2, r_value, i_value);
                 set_complex_type(v);
             }
-            else if (is_real_number(v) || is_real_number(&x)) {
+            else if (is_real_number(v) || is_real_number(x)) {
                 double value = 0;
                 switch (sy) {
-                case '+': value = to_double(mode, v) + to_double(mode, &x); break;
-                case '-': value = to_double(mode, v) - to_double(mode, &x); break;
+                case '+': value = to_double(mode, v) + to_double(mode, x); break;
+                case '-': value = to_double(mode, v) - to_double(mode, x); break;
                 }
                 v->type = NULL;
                 v->type_class = TYPE_CLASS_REAL;
                 set_fp_value(v, sizeof(double), value);
                 set_fp_type(v);
             }
-            else if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
+            else if (v->type_class == TYPE_CLASS_CARDINAL || x->type_class == TYPE_CLASS_CARDINAL) {
                 uint64_t value = 0;
                 switch (sy) {
-                case '+': value = to_uns(mode, v) + to_uns(mode, &x); break;
-                case '-': value = to_uns(mode, v) - to_uns(mode, &x); break;
+                case '+': value = to_uns(mode, v) + to_uns(mode, x); break;
+                case '-': value = to_uns(mode, v) - to_uns(mode, x); break;
                 }
                 v->type = NULL;
                 v->type_class = TYPE_CLASS_CARDINAL;
@@ -3613,14 +3622,14 @@ static void additive_expression(int mode, Value * v) {
             else {
                 int64_t value = 0;
                 switch (sy) {
-                case '+': value = to_int(mode, v) + to_int(mode, &x); break;
-                case '-': value = to_int(mode, v) - to_int(mode, &x); break;
+                case '+': value = to_int(mode, v) + to_int(mode, x); break;
+                case '-': value = to_int(mode, v) - to_int(mode, x); break;
                 }
                 v->type = NULL;
                 v->type_class = TYPE_CLASS_INTEGER;
                 set_int_value(v, sizeof(int64_t), value);
             }
-            v->constant = v->constant && x.constant;
+            v->constant = v->constant && x->constant;
         }
     }
 }
@@ -3628,26 +3637,26 @@ static void additive_expression(int mode, Value * v) {
 static void shift_expression(int mode, Value * v) {
     additive_expression(mode, v);
     while (text_sy == SY_SHL || text_sy == SY_SHR) {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         int sy = text_sy;
         next_sy();
-        additive_expression(mode, &x);
+        additive_expression(mode, x);
         if (mode != MODE_SKIP) {
             uint64_t value = 0;
-            if (!is_whole_number(v) || !is_whole_number(&x)) {
+            if (!is_whole_number(v) || !is_whole_number(x)) {
                 error(ERR_INV_EXPRESSION, "Integral types expected");
             }
-            if (x.type_class != TYPE_CLASS_CARDINAL && to_int(mode, &x) < 0) {
+            if (x->type_class != TYPE_CLASS_CARDINAL && to_int(mode, x) < 0) {
                 if (v->type_class == TYPE_CLASS_CARDINAL) {
                     switch (sy) {
-                    case SY_SHL: value = to_uns(mode, v) >> -to_int(mode, &x); break;
-                    case SY_SHR: value = to_uns(mode, v) << -to_int(mode, &x); break;
+                    case SY_SHL: value = to_uns(mode, v) >> -to_int(mode, x); break;
+                    case SY_SHR: value = to_uns(mode, v) << -to_int(mode, x); break;
                     }
                 }
                 else {
                     switch (sy) {
-                    case SY_SHL: value = to_int(mode, v) >> -to_int(mode, &x); break;
-                    case SY_SHR: value = to_int(mode, v) << -to_int(mode, &x); break;
+                    case SY_SHL: value = to_int(mode, v) >> -to_int(mode, x); break;
+                    case SY_SHR: value = to_int(mode, v) << -to_int(mode, x); break;
                     }
                     v->type_class = TYPE_CLASS_INTEGER;
                 }
@@ -3655,20 +3664,20 @@ static void shift_expression(int mode, Value * v) {
             else {
                 if (v->type_class == TYPE_CLASS_CARDINAL) {
                     switch (sy) {
-                    case SY_SHL: value = to_uns(mode, v) << to_uns(mode, &x); break;
-                    case SY_SHR: value = to_uns(mode, v) >> to_uns(mode, &x); break;
+                    case SY_SHL: value = to_uns(mode, v) << to_uns(mode, x); break;
+                    case SY_SHR: value = to_uns(mode, v) >> to_uns(mode, x); break;
                     }
                 }
                 else {
                     switch (sy) {
-                    case SY_SHL: value = to_int(mode, v) << to_uns(mode, &x); break;
-                    case SY_SHR: value = to_int(mode, v) >> to_uns(mode, &x); break;
+                    case SY_SHL: value = to_int(mode, v) << to_uns(mode, x); break;
+                    case SY_SHR: value = to_int(mode, v) >> to_uns(mode, x); break;
                     }
                     v->type_class = TYPE_CLASS_INTEGER;
                 }
             }
             v->type = NULL;
-            v->constant = v->constant && x.constant;
+            v->constant = v->constant && x->constant;
             set_int_value(v, sizeof(uint64_t), value);
         }
     }
@@ -3677,17 +3686,17 @@ static void shift_expression(int mode, Value * v) {
 static void relational_expression(int mode, Value * v) {
     shift_expression(mode, v);
     while (text_sy == '<' || text_sy == '>' || text_sy == SY_LEQ || text_sy == SY_GEQ) {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         int sy = text_sy;
         next_sy();
-        shift_expression(mode, &x);
+        shift_expression(mode, x);
         if (mode != MODE_SKIP) {
             uint32_t value = 0;
-            if (v->type_class == TYPE_CLASS_ARRAY && x.type_class == TYPE_CLASS_ARRAY) {
+            if (v->type_class == TYPE_CLASS_ARRAY && x->type_class == TYPE_CLASS_ARRAY) {
                 int n = 0;
                 load_value(v);
-                load_value(&x);
-                n = strcmp((char *)v->value, (char *)x.value);
+                load_value(x);
+                n = strcmp((char *)v->value, (char *)x->value);
                 switch (sy) {
                 case '<': value = n < 0; break;
                 case '>': value = n > 0; break;
@@ -3695,32 +3704,32 @@ static void relational_expression(int mode, Value * v) {
                 case SY_GEQ: value = n >= 0; break;
                 }
             }
-            else if (is_real_number(v) || is_real_number(&x)) {
+            else if (is_real_number(v) || is_real_number(x)) {
                 switch (sy) {
-                case '<': value = to_double(mode, v) < to_double(mode, &x); break;
-                case '>': value = to_double(mode, v) > to_double(mode, &x); break;
-                case SY_LEQ: value = to_double(mode, v) <= to_double(mode, &x); break;
-                case SY_GEQ: value = to_double(mode, v) >= to_double(mode, &x); break;
+                case '<': value = to_double(mode, v) < to_double(mode, x); break;
+                case '>': value = to_double(mode, v) > to_double(mode, x); break;
+                case SY_LEQ: value = to_double(mode, v) <= to_double(mode, x); break;
+                case SY_GEQ: value = to_double(mode, v) >= to_double(mode, x); break;
                 }
             }
-            else if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
+            else if (v->type_class == TYPE_CLASS_CARDINAL || x->type_class == TYPE_CLASS_CARDINAL) {
                 switch (sy) {
-                case '<': value = to_uns(mode, v) < to_uns(mode, &x); break;
-                case '>': value = to_uns(mode, v) > to_uns(mode, &x); break;
-                case SY_LEQ: value = to_uns(mode, v) <= to_uns(mode, &x); break;
-                case SY_GEQ: value = to_uns(mode, v) >= to_uns(mode, &x); break;
+                case '<': value = to_uns(mode, v) < to_uns(mode, x); break;
+                case '>': value = to_uns(mode, v) > to_uns(mode, x); break;
+                case SY_LEQ: value = to_uns(mode, v) <= to_uns(mode, x); break;
+                case SY_GEQ: value = to_uns(mode, v) >= to_uns(mode, x); break;
                 }
             }
             else {
                 switch (sy) {
-                case '<': value = to_int(mode, v) < to_int(mode, &x); break;
-                case '>': value = to_int(mode, v) > to_int(mode, &x); break;
-                case SY_LEQ: value = to_int(mode, v) <= to_int(mode, &x); break;
-                case SY_GEQ: value = to_int(mode, v) >= to_int(mode, &x); break;
+                case '<': value = to_int(mode, v) < to_int(mode, x); break;
+                case '>': value = to_int(mode, v) > to_int(mode, x); break;
+                case SY_LEQ: value = to_int(mode, v) <= to_int(mode, x); break;
+                case SY_GEQ: value = to_int(mode, v) >= to_int(mode, x); break;
                 }
             }
             if (mode != MODE_NORMAL) value = 0;
-            v->constant = v->constant && x.constant;
+            v->constant = v->constant && x->constant;
             set_bool_value(v, value);
         }
     }
@@ -3729,31 +3738,31 @@ static void relational_expression(int mode, Value * v) {
 static void equality_expression(int mode, Value * v) {
     relational_expression(mode, v);
     while (text_sy == SY_EQU || text_sy == SY_NEQ) {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         int sy = text_sy;
         next_sy();
-        relational_expression(mode, &x);
+        relational_expression(mode, x);
         if (mode != MODE_SKIP) {
             uint32_t value = 0;
-            if (v->type_class == TYPE_CLASS_ARRAY && x.type_class == TYPE_CLASS_ARRAY) {
+            if (v->type_class == TYPE_CLASS_ARRAY && x->type_class == TYPE_CLASS_ARRAY) {
                 load_value(v);
-                load_value(&x);
-                value = strcmp((char *)v->value, (char *)x.value) == 0;
+                load_value(x);
+                value = strcmp((char *)v->value, (char *)x->value) == 0;
             }
-            else if (v->type_class == TYPE_CLASS_COMPLEX || x.type_class == TYPE_CLASS_COMPLEX) {
+            else if (v->type_class == TYPE_CLASS_COMPLEX || x->type_class == TYPE_CLASS_COMPLEX) {
                 value =
-                    to_r_double(mode, v) == to_r_double(mode, &x) &&
-                    to_i_double(mode, v) == to_i_double(mode, &x);
+                    to_r_double(mode, v) == to_r_double(mode, x) &&
+                    to_i_double(mode, v) == to_i_double(mode, x);
             }
-            else if (is_real_number(v) || is_real_number(&x)) {
-                value = to_double(mode, v) == to_double(mode, &x);
+            else if (is_real_number(v) || is_real_number(x)) {
+                value = to_double(mode, v) == to_double(mode, x);
             }
             else {
-                value = to_int(mode, v) == to_int(mode, &x);
+                value = to_int(mode, v) == to_int(mode, x);
             }
             if (sy == SY_NEQ) value = !value;
             if (mode != MODE_NORMAL) value = 0;
-            v->constant = v->constant && x.constant;
+            v->constant = v->constant && x->constant;
             set_bool_value(v, value);
         }
     }
@@ -3762,25 +3771,25 @@ static void equality_expression(int mode, Value * v) {
 static void and_expression(int mode, Value * v) {
     equality_expression(mode, v);
     while (text_sy == '&') {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         next_sy();
-        equality_expression(mode, &x);
+        equality_expression(mode, x);
         if (mode != MODE_SKIP) {
             int64_t value = 0;
-            if (!is_whole_number(v) || !is_whole_number(&x)) {
+            if (!is_whole_number(v) || !is_whole_number(x)) {
                 error(ERR_INV_EXPRESSION, "Integral types expected");
             }
-            if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
+            if (v->type_class == TYPE_CLASS_CARDINAL || x->type_class == TYPE_CLASS_CARDINAL) {
                 v->type_class = TYPE_CLASS_CARDINAL;
-                value = to_uns(mode, v) & to_uns(mode, &x);
+                value = to_uns(mode, v) & to_uns(mode, x);
             }
             else {
                 v->type_class = TYPE_CLASS_INTEGER;
-                value = to_int(mode, v) & to_int(mode, &x);
+                value = to_int(mode, v) & to_int(mode, x);
             }
             if (mode != MODE_NORMAL) value = 0;
             v->type = NULL;
-            v->constant = v->constant && x.constant;
+            v->constant = v->constant && x->constant;
             set_int_value(v, sizeof(int64_t), value);
         }
     }
@@ -3789,25 +3798,25 @@ static void and_expression(int mode, Value * v) {
 static void exclusive_or_expression(int mode, Value * v) {
     and_expression(mode, v);
     while (text_sy == '^') {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         next_sy();
-        and_expression(mode, &x);
+        and_expression(mode, x);
         if (mode != MODE_SKIP) {
             int64_t value = 0;
-            if (!is_whole_number(v) || !is_whole_number(&x)) {
+            if (!is_whole_number(v) || !is_whole_number(x)) {
                 error(ERR_INV_EXPRESSION, "Integral types expected");
             }
-            if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
+            if (v->type_class == TYPE_CLASS_CARDINAL || x->type_class == TYPE_CLASS_CARDINAL) {
                 v->type_class = TYPE_CLASS_CARDINAL;
-                value = to_uns(mode, v) ^ to_uns(mode, &x);
+                value = to_uns(mode, v) ^ to_uns(mode, x);
             }
             else {
                 v->type_class = TYPE_CLASS_INTEGER;
-                value = to_int(mode, v) ^ to_int(mode, &x);
+                value = to_int(mode, v) ^ to_int(mode, x);
             }
             if (mode != MODE_NORMAL) value = 0;
             v->type = NULL;
-            v->constant = v->constant && x.constant;
+            v->constant = v->constant && x->constant;
             set_int_value(v, sizeof(int64_t), value);
         }
     }
@@ -3816,25 +3825,25 @@ static void exclusive_or_expression(int mode, Value * v) {
 static void inclusive_or_expression(int mode, Value * v) {
     exclusive_or_expression(mode, v);
     while (text_sy == '|') {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         next_sy();
-        exclusive_or_expression(mode, &x);
+        exclusive_or_expression(mode, x);
         if (mode != MODE_SKIP) {
             int64_t value = 0;
-            if (!is_whole_number(v) || !is_whole_number(&x)) {
+            if (!is_whole_number(v) || !is_whole_number(x)) {
                 error(ERR_INV_EXPRESSION, "Integral types expected");
             }
-            if (v->type_class == TYPE_CLASS_CARDINAL || x.type_class == TYPE_CLASS_CARDINAL) {
+            if (v->type_class == TYPE_CLASS_CARDINAL || x->type_class == TYPE_CLASS_CARDINAL) {
                 v->type_class = TYPE_CLASS_CARDINAL;
-                value = to_uns(mode, v) | to_uns(mode, &x);
+                value = to_uns(mode, v) | to_uns(mode, x);
             }
             else {
                 v->type_class = TYPE_CLASS_INTEGER;
-                value = to_int(mode, v) | to_int(mode, &x);
+                value = to_int(mode, v) | to_int(mode, x);
             }
             if (mode != MODE_NORMAL) value = 0;
             v->type = NULL;
-            v->constant = v->constant && x.constant;
+            v->constant = v->constant && x->constant;
             set_int_value(v, sizeof(int64_t), value);
         }
     }
@@ -3843,13 +3852,13 @@ static void inclusive_or_expression(int mode, Value * v) {
 static void logical_and_expression(int mode, Value * v) {
     inclusive_or_expression(mode, v);
     while (text_sy == SY_AND) {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         int b = to_boolean(mode, v);
         next_sy();
-        inclusive_or_expression(b ? mode : MODE_SKIP, &x);
+        inclusive_or_expression(b ? mode : MODE_SKIP, x);
         if (b) {
-            if (!v->constant) x.constant = 0;
-            *v = x;
+            if (!v->constant) x->constant = 0;
+            *v = *x;
         }
     }
 }
@@ -3857,13 +3866,13 @@ static void logical_and_expression(int mode, Value * v) {
 static void logical_or_expression(int mode, Value * v) {
     logical_and_expression(mode, v);
     while (text_sy == SY_OR) {
-        Value x;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
         int b = to_boolean(mode, v);
         next_sy();
-        logical_and_expression(!b ? mode : MODE_SKIP, &x);
+        logical_and_expression(!b ? mode : MODE_SKIP, x);
         if (!b) {
-            if (!v->constant) x.constant = 0;
-            *v = x;
+            if (!v->constant) x->constant = 0;
+            *v = *x;
         }
     }
 }
@@ -3871,16 +3880,16 @@ static void logical_or_expression(int mode, Value * v) {
 static void conditional_expression(int mode, Value * v) {
     logical_or_expression(mode, v);
     if (text_sy == '?') {
-        Value x;
-        Value y;
+        Value * x = (Value *)tmp_alloc_zero(sizeof(Value));
+        Value * y = (Value *)tmp_alloc_zero(sizeof(Value));
         int b = to_boolean(mode, v);
         next_sy();
-        expression(b ? mode : MODE_SKIP, &x);
+        expression(b ? mode : MODE_SKIP, x);
         if (text_sy != ':') error(ERR_INV_EXPRESSION, "Missing ':'");
         next_sy();
-        conditional_expression(!b ? mode : MODE_SKIP, &y);
-        if (!v->constant) x.constant = y.constant = 0;
-        *v = b ? x : y;
+        conditional_expression(!b ? mode : MODE_SKIP, y);
+        if (!v->constant) x->constant = y->constant = 0;
+        *v = b ? *x : *y;
     }
 }
 
