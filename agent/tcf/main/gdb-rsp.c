@@ -614,6 +614,10 @@ static void add_res_hex8(GdbClient * c, unsigned n) {
     add_res_str(c, s);
 }
 
+static void add_res_hex8_str(GdbClient * c, const char * s) {
+    while (*s) add_res_hex8(c, *s++);
+}
+
 static void add_res_ptid(GdbClient * c, unsigned pid, unsigned tid) {
     if (c->multiprocess) {
         add_res_ch(c, 'p');
@@ -919,17 +923,69 @@ static void monitor_ps(GdbClient * c, const char * args) {
         else {
             m = tmp_printf("%u: %s\n", (unsigned)p->pid, p->ctx->name ? p->ctx->name : p->ctx->id);
         }
-        while (*m) add_res_hex8(c, *m++);
+        add_res_hex8_str(c, m);
         cnt++;
     }
-    if (cnt == 0) {
-        const char * m = "No processes\n";
-        while (*m) add_res_hex8(c, *m++);
+    if (cnt == 0) add_res_hex8_str(c, "No debug targets found\n");
+}
+
+static void monitor_info(GdbClient * c, const char * args) {
+    unsigned pid = 0;
+    char * s = (char *)args;
+    while (*s == ' ') s++;
+    pid = (unsigned)strtol(s, &s, 10);
+    while (*s == ' ') s++;
+    if (*s == 0 && pid != 0) {
+        GdbProcess * prs = find_process_pid(c, pid);
+        if (prs != NULL) {
+            Context * ctx = prs->ctx;
+            add_res_hex8_str(c, tmp_printf("Target %u properties:\n", pid));
+            for (;;) {
+                add_res_hex8_str(c, tmp_printf(" ID        : \"%s\"\n", ctx->id));
+                if (ctx->parent != NULL) add_res_hex8_str(c, tmp_printf(" ParentID  : \"%s\"\n", ctx->parent->id));
+                if (ctx->name != NULL) add_res_hex8_str(c, tmp_printf(" Name      : \"%s\"\n", ctx->name));
+                add_res_hex8_str(c, tmp_printf(" WordSize  : %u\n", context_word_size(ctx)));
+                add_res_hex8_str(c, tmp_printf(" BigEndian : %d\n", ctx->big_endian));
+#if ENABLE_ContextExtraProperties
+                {
+                    /* Back-end context properties */
+                    int cnt = 0;
+                    const char ** names = NULL;
+                    const char ** values = NULL;
+                    if (context_get_extra_properties(ctx, &names, &values, &cnt) == 0) {
+                        while (cnt > 0) {
+                            if (*values != NULL) add_res_hex8_str(c, tmp_printf(" %-10s: %s\n", *names, *values));
+                            names++;
+                            values++;
+                            cnt--;
+                        }
+                    }
+                }
+#endif
+                if (ctx->parent == NULL) break;
+                add_res_hex8_str(c, "Parent properties:\n");
+                ctx = ctx->parent;
+            }
+            return;
+        }
     }
+    add_res_hex8_str(c, "Invalid target ID.\n");
+    add_res_hex8_str(c, "Available targets:\n");
+    monitor_ps(c, "");
+}
+
+static void monitor_help(GdbClient * c, const char * args) {
+    add_res_hex8_str(c, "Usage: monitor <command> [<arguments>]\n");
+    add_res_hex8_str(c, "Commands:\n");
+    add_res_hex8_str(c, " ps - list of debug targets\n");
+    add_res_hex8_str(c, " info <target ID> - properties of a target\n");
+    add_res_hex8_str(c, " help - print this text\n");
 }
 
 static MonitorCommand mon_cmds[] = {
     { "ps", monitor_ps },
+    { "info", monitor_info },
+    { "help", monitor_help },
     { NULL }
 };
 
@@ -1206,7 +1262,7 @@ static int handle_q_command(GdbClient * c) {
             }
         }
         if (m == NULL) m = "Invalid ID";
-        while (*m) add_res_hex8(c, *m++);
+        add_res_hex8_str(c, m);
         return 0;
     }
     if (strcmp(w, "Rcmd") == 0) {
@@ -1217,7 +1273,6 @@ static int handle_q_command(GdbClient * c) {
             MonitorCommand * mon_cmd = NULL;
             unsigned mon_cnt = 0;
             unsigned cmd_pos = 0;
-            const char * res = NULL;
             while (i < max - 1) {
                 char ch = get_cmd_uint8(c, &s);
                 if (ch == 0) break;
@@ -1239,17 +1294,15 @@ static int handle_q_command(GdbClient * c) {
                 }
             }
             if (mon_cnt > 1) {
-                res = "Ambiguous command\n";
+                add_res_hex8_str(c, "Ambiguous command.\n");
             }
             else if (mon_cmd == NULL) {
-                res = "Invalid command\n";
+                add_res_hex8_str(c, "Invalid command.\n");
+                monitor_help(c, "");
             }
             else {
                 while (cmd[cmd_pos] == ' ') cmd_pos++;
                 mon_cmd->func(c, cmd + cmd_pos);
-            }
-            if (res) {
-                while (*res) add_res_hex8(c, *res++);
             }
             return 0;
         }
