@@ -306,9 +306,10 @@ void test_proc(void) {
 }
 
 int find_test_symbol(Context * ctx, const char * name, void ** addr, int * sym_class) {
-#if ENABLE_TestSymbols && !defined(ALT_RCBP_TEST)
     /* This code allows to run TCF diagnostic tests when symbols info is not available */
     *addr = NULL;
+    *sym_class = SYM_CLASS_UNKNOWN;
+#if ENABLE_TestSymbols && !defined(ALT_RCBP_TEST)
     if (is_test_process(ctx) && strncmp(name, "tcf_test_", 9) == 0) {
         if (strcmp(name, "tcf_test_array") == 0) {
             *sym_class = SYM_CLASS_REFERENCE;

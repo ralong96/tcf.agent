@@ -97,6 +97,8 @@ typedef struct ContextExtensionLinux {
     int                     sigkill_posted;
     int                     detach_req;
     int                     crt0_done;
+    BreakpointInfo *        bp_loader;
+    BreakpointInfo *        bp_main;
 #if ENABLE_ProfilerSST
     int                     prof_armed;
     int                     prof_fired;
@@ -423,6 +425,7 @@ static void free_regs(Context * ctx) {
 }
 
 static void send_process_exited_event(Context * prs) {
+    ContextExtensionLinux * ext = EXT(prs);
     LINK * l = prs->children.next;
     assert(prs->parent == NULL);
     assert(prs->exited == 0);
@@ -435,6 +438,14 @@ static void send_process_exited_event(Context * prs) {
     }
     prs->exiting = 1;
     send_context_exited_event(prs);
+    if (ext->bp_loader != NULL) {
+        destroy_eventpoint(ext->bp_loader);
+        ext->bp_loader = NULL;
+    }
+    if (ext->bp_main != NULL) {
+        destroy_eventpoint(ext->bp_main);
+        ext->bp_main = NULL;
+    }
 }
 
 #if ENABLE_Trace
@@ -1393,6 +1404,124 @@ static pid_t get_thread_group_id(pid_t pid) {
     return res;
 }
 
+#if SERVICE_Expressions && ENABLE_ELF
+
+static void get_debug_structure_address(Context * ctx, Value * v) {
+    ELF_File * file = NULL;
+    v->address = elf_get_debug_structure_address(ctx, &file);
+    if (v->address == 0) str_exception(ERR_OTHER, "Cannot access loader data");
+    v->type_class = TYPE_CLASS_POINTER;
+    v->big_endian = ctx->big_endian;
+    v->size = file && file->elf64 ? 8 : 4;
+}
+
+static int expression_identifier_callback(Context * ctx, int frame, char * name, Value * v) {
+    if (ctx == NULL) return 0;
+    if (EXT(ctx)->pid == 0) return 0;
+    if (strcmp(name, "$loader_brk") == 0) {
+        get_debug_structure_address(ctx, v);
+        switch (v->size) {
+        case 4: v->address += 8; break;
+        case 8: v->address += 16; break;
+        default: assert(0);
+        }
+        v->remote = 1;
+#if defined(__arm__)
+        {
+            /* On ARM, r_debug.r_brk can have bit 0 set to 1 to indicate Thumb ISA.
+            * We need to clear the bit to make a valid breakpoint address. */
+            size_t size = (size_t)v->size;
+            uint8_t * buf = (uint8_t *)tmp_alloc(size);
+            if (context_read_mem(ctx, v->address, buf, size) < 0) exception(errno);
+            buf[v->big_endian ? size - 1 : 0] &= ~1;
+            v->value = buf;
+            v->remote = 0;
+        }
+#endif
+        return 1;
+    }
+    if (strcmp(name, "$loader_state") == 0) {
+        get_debug_structure_address(ctx, v);
+        switch (v->size) {
+        case 4: v->address += 12; break;
+        case 8: v->address += 24; break;
+        default: assert(0);
+        }
+        v->type_class = TYPE_CLASS_INTEGER;
+        v->remote = 1;
+        return 1;
+    }
+    return 0;
+}
+
+static void eventpoint_at_loader(Context * ctx, void * args) {
+    enum r_state { RT_CONSISTENT, RT_ADD, RT_DELETE };
+    ELF_File * file = NULL;
+    ContextAddress addr = 0;
+    unsigned size = 0;
+    ContextAddress state = 0;
+    ContextExtensionLinux * ext = NULL;
+
+    assert(!is_intercepted(ctx));
+    if (EXT(ctx)->pid == 0) return;
+    addr = elf_get_debug_structure_address(ctx, &file);
+    size = file && file->elf64 ? 8 : 4;
+    if (ctx->parent != NULL) ctx = ctx->parent;
+    ext = EXT(ctx);
+
+    if (addr != 0) {
+        switch (size) {
+        case 4: addr += 12; break;
+        case 8: addr += 24; break;
+        default: assert(0);
+        }
+        if (elf_read_memory_word(ctx, file, addr, &state) < 0) {
+            trace(LOG_ALWAYS, "Can't read loader state flag: %s", errno_to_str(errno));
+            ctx->pending_intercept = 1;
+            ext->loader_state = 0;
+            return;
+        }
+    }
+
+    switch (state) {
+    case RT_CONSISTENT:
+        if (ext->loader_state == RT_ADD) {
+            memory_map_event_module_loaded(ctx);
+        }
+        else if (ext->loader_state == RT_DELETE) {
+            memory_map_event_module_unloaded(ctx);
+        }
+        break;
+    case RT_ADD:
+        break;
+    case RT_DELETE:
+        /* TODO: need to call memory_map_event_code_section_ummapped() */
+        break;
+    }
+    ext->loader_state = state;
+}
+
+#endif /* SERVICE_Expressions && ENABLE_ELF */
+
+static void eventpoint_at_main(Context * ctx, void * args) {
+    if (EXT(ctx)->pid == 0) return;
+    EXT(ctx->mem)->crt0_done = 1;
+    send_context_changed_event(ctx->mem);
+    memory_map_event_mapping_changed(ctx->mem);
+    if ((EXT(ctx)->attach_mode & CONTEXT_ATTACH_NO_MAIN) == 0) {
+        suspend_by_breakpoint(ctx, ctx, NULL, 1);
+    }
+}
+
+static void create_eventpoints(Context * ctx) {
+    ContextExtensionLinux * ext = EXT(ctx);
+    assert(context_get_group(ctx, CONTEXT_GROUP_PROCESS) == ctx);
+#if SERVICE_Expressions && ENABLE_ELF
+    ext->bp_loader = create_eventpoint("$loader_brk", ctx, eventpoint_at_loader, NULL);
+#endif /* SERVICE_Expressions && ENABLE_ELF */
+    ext->bp_main = create_eventpoint("main", ctx, eventpoint_at_main, NULL);
+}
+
 static Context * add_thread(Context * parent, Context * creator, pid_t pid) {
     Context * ctx;
     assert (parent != NULL);
@@ -1456,6 +1585,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
 #endif
             link_context(prs);
             send_context_created_event(prs);
+            create_eventpoints(prs);
             ctx = add_thread(prs, NULL, pid);
             if (signal == SIGTRAP && (EXT(prs)->attach_mode & CONTEXT_ATTACH_SELF) != 0) {
                 /* In case of self-attach, tracee can be stopped by SIGTRAP instead of SIGSTOP */
@@ -1574,6 +1704,7 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
 #endif
                 link_context(prs2);
                 send_context_created_event(prs2);
+                create_eventpoints(prs2);
             }
             add_thread(prs2, ctx, msg);
         }
@@ -1726,115 +1857,6 @@ static void waitpid_listener(int pid, int exited, int exit_code, int signal, int
     }
 }
 
-#if SERVICE_Expressions && ENABLE_ELF
-
-static void get_debug_structure_address(Context * ctx, Value * v) {
-    ELF_File * file = NULL;
-    v->address = elf_get_debug_structure_address(ctx, &file);
-    if (v->address == 0) str_exception(ERR_OTHER, "Cannot access loader data");
-    v->type_class = TYPE_CLASS_POINTER;
-    v->big_endian = ctx->big_endian;
-    v->size = file && file->elf64 ? 8 : 4;
-}
-
-static int expression_identifier_callback(Context * ctx, int frame, char * name, Value * v) {
-    if (ctx == NULL) return 0;
-    if (EXT(ctx)->pid == 0) return 0;
-    if (strcmp(name, "$loader_brk") == 0) {
-        get_debug_structure_address(ctx, v);
-        switch (v->size) {
-        case 4: v->address += 8; break;
-        case 8: v->address += 16; break;
-        default: assert(0);
-        }
-        v->remote = 1;
-#if defined(__arm__)
-        {
-            /* On ARM, r_debug.r_brk can have bit 0 set to 1 to indicate Thumb ISA.
-             * We need to clear the bit to make a valid breakpoint address. */
-            size_t size = (size_t)v->size;
-            uint8_t * buf = (uint8_t *)tmp_alloc(size);
-            if (context_read_mem(ctx, v->address, buf, size) < 0) exception(errno);
-            buf[v->big_endian ? size - 1 : 0] &= ~1;
-            v->value = buf;
-            v->remote = 0;
-        }
-#endif
-        return 1;
-    }
-    if (strcmp(name, "$loader_state") == 0) {
-        get_debug_structure_address(ctx, v);
-        switch (v->size) {
-        case 4: v->address += 12; break;
-        case 8: v->address += 24; break;
-        default: assert(0);
-        }
-        v->type_class = TYPE_CLASS_INTEGER;
-        v->remote = 1;
-        return 1;
-    }
-    return 0;
-}
-
-static void eventpoint_at_loader(Context * ctx, void * args) {
-    enum r_state { RT_CONSISTENT, RT_ADD, RT_DELETE };
-    ELF_File * file = NULL;
-    ContextAddress addr = 0;
-    unsigned size = 0;
-    ContextAddress state = 0;
-    ContextExtensionLinux * ext = NULL;
-
-    assert(!is_intercepted(ctx));
-    if (EXT(ctx)->pid == 0) return;
-    addr = elf_get_debug_structure_address(ctx, &file);
-    size = file && file->elf64 ? 8 : 4;
-    if (ctx->parent != NULL) ctx = ctx->parent;
-    ext = EXT(ctx);
-
-    if (addr != 0) {
-        switch (size) {
-        case 4: addr += 12; break;
-        case 8: addr += 24; break;
-        default: assert(0);
-        }
-        if (elf_read_memory_word(ctx, file, addr, &state) < 0) {
-            trace(LOG_ALWAYS, "Can't read loader state flag: %s", errno_to_str(errno));
-            ctx->pending_intercept = 1;
-            ext->loader_state = 0;
-            return;
-        }
-    }
-
-    switch (state) {
-    case RT_CONSISTENT:
-        if (ext->loader_state == RT_ADD) {
-            memory_map_event_module_loaded(ctx);
-        }
-        else if (ext->loader_state == RT_DELETE) {
-            memory_map_event_module_unloaded(ctx);
-        }
-        break;
-    case RT_ADD:
-        break;
-    case RT_DELETE:
-        /* TODO: need to call memory_map_event_code_section_ummapped() */
-        break;
-    }
-    ext->loader_state = state;
-}
-
-#endif /* SERVICE_Expressions && ENABLE_ELF */
-
-static void eventpoint_at_main(Context * ctx, void * args) {
-    if (EXT(ctx)->pid == 0) return;
-    EXT(ctx->mem)->crt0_done = 1;
-    send_context_changed_event(ctx->mem);
-    memory_map_event_mapping_changed(ctx->mem);
-    if ((EXT(ctx)->attach_mode & CONTEXT_ATTACH_NO_MAIN) == 0) {
-        suspend_by_breakpoint(ctx, ctx, NULL, 1);
-    }
-}
-
 static int cmp_linux_pid(Context * ctx, const char * v) {
     ctx = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
     return ctx != NULL && EXT(ctx)->pid == atoi(v);
@@ -1845,9 +1867,12 @@ static int cmp_linux_tid(Context * ctx, const char * v) {
 }
 
 static int cmp_linux_kernel_name(Context * ctx, const char * v) {
-    struct utsname buf;
-    if (uname(&buf) != 0) return 0;
-    return strcmp(buf.sysname, v) == 0;
+    if (EXT(ctx)->pid != 0) {
+        struct utsname buf;
+        if (uname(&buf) != 0) return 0;
+        return strcmp(buf.sysname, v) == 0;
+    }
+    return 0;
 }
 
 void init_contexts_sys_dep(void) {
@@ -1856,12 +1881,10 @@ void init_contexts_sys_dep(void) {
     ini_context_pid_hash();
 #if SERVICE_Expressions && ENABLE_ELF
     add_identifier_callback(expression_identifier_callback);
-    create_eventpoint("$loader_brk", NULL, eventpoint_at_loader, NULL);
 #endif /* SERVICE_Expressions && ENABLE_ELF */
     add_context_query_comparator("pid", cmp_linux_pid);
     add_context_query_comparator("tid", cmp_linux_tid);
     add_context_query_comparator("KernelName", cmp_linux_kernel_name);
-    create_eventpoint("main", NULL, eventpoint_at_main, NULL);
 }
 
 #endif  /* if ENABLE_DebugContext */

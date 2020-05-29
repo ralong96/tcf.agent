@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1788,7 +1788,7 @@ static int check_context_ids_condition(BreakpointInfo * bp, Context * ctx) {
     /* Check context IDs attribute and return 1 if the breakpoint should be triggered by 'ctx' */
     assert(context_has_state(ctx));
     if (bp->ctx != NULL) {
-        if (bp->ctx != ctx) return 0;
+        if (bp->ctx != ctx && bp->ctx != context_get_group(ctx, CONTEXT_GROUP_PROCESS)) return 0;
     }
     if (bp->context_ids != NULL) {
         int ok = 0;
