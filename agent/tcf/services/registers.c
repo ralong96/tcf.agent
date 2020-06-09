@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -362,15 +362,15 @@ void send_event_register_changed(const char * id) {
 
     id2register(id, &ctx, &frame, &def);
     if (ctx == NULL) return;
+    if (frame >= 0 && frame == get_top_frame(ctx)) {
+        id = register2id(ctx, STACK_TOP_FRAME, def);
+    }
 
+    assert(cache_miss_count() == 0);
     for (i = 0; i < listener_cnt; i++) {
         Listener * l = listeners + i;
         if (l->func->register_changed == NULL) continue;
         l->func->register_changed(ctx, frame, def, l->args);
-    }
-
-    if (frame >= 0 && frame == get_top_frame(ctx)) {
-        id = register2id(ctx, STACK_TOP_FRAME, def);
     }
 
     write_stringz(out, "E");

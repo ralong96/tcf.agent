@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -253,22 +253,19 @@ static void write_ranges(OutputStream * out, ContextAddress addr, int offs, int 
     write_stream(out, 0);
 }
 
-static void command_get_context(char * token, Channel * c) {
+static void get_context_cache_client(void * parm) {
+    MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
+    Channel * c = cache_channel();
+    Context * ctx = id2ctx(args->ctx_id);
     int err = 0;
-    char id[256];
-    Context * ctx = NULL;
 
-    json_read_string(&c->inp, id, sizeof(id));
-    json_test_char(&c->inp, MARKER_EOA);
-    json_test_char(&c->inp, MARKER_EOM);
-
-    ctx = id2ctx(id);
+    cache_exit();
     if (ctx == NULL) err = ERR_INV_CONTEXT;
     else if (ctx->exited) err = ERR_ALREADY_EXITED;
     else if (ctx->mem_access == 0) err = ERR_INV_CONTEXT;
 
     write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
+    write_stringz(&c->out, args->token);
     write_errno(&c->out, err);
     if (err == 0) {
         write_context(&c->out, ctx);
@@ -280,20 +277,34 @@ static void command_get_context(char * token, Channel * c) {
     write_stream(&c->out, MARKER_EOM);
 }
 
-static void command_get_children(char * token, Channel * c) {
-    char id[256];
+static void command_get_context(char * token, Channel * c) {
+    MemoryCommandArgs args;
 
-    json_read_string(&c->inp, id, sizeof(id));
+    memset(&args, 0, sizeof(args));
+    json_read_string(&c->inp, args.ctx_id, sizeof(args.ctx_id));
     json_test_char(&c->inp, MARKER_EOA);
     json_test_char(&c->inp, MARKER_EOM);
 
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(get_context_cache_client, c, &args, sizeof(MemoryCommandArgs));
+}
+
+static void get_children_cache_client(void * parm) {
+    MemoryCommandArgs * args = (MemoryCommandArgs *)parm;
+    Channel * c = cache_channel();
+    Context * parent = NULL;
+
+    if (args->ctx_id[0] != 0) parent = id2ctx(args->ctx_id);
+
+    cache_exit();
+
     write_stringz(&c->out, "R");
-    write_stringz(&c->out, token);
+    write_stringz(&c->out, args->token);
 
     write_errno(&c->out, 0);
 
     write_stream(&c->out, '[');
-    if (id[0] == 0) {
+    if (args->ctx_id[0] == 0) {
         LINK * qp;
         int cnt = 0;
         for (qp = context_root.next; qp != &context_root; qp = qp->next) {
@@ -306,26 +317,35 @@ static void command_get_children(char * token, Channel * c) {
             cnt++;
         }
     }
-    else {
-        Context * parent = id2ctx(id);
-        if (parent != NULL) {
-            LINK * l;
-            int cnt = 0;
-            for (l = parent->children.next; l != &parent->children; l = l->next) {
-                Context * ctx = cldl2ctxp(l);
-                assert(ctx->parent == parent);
-                if (ctx->exited) continue;
-                if (ctx->mem_access == 0 && list_is_empty(&ctx->children)) continue;
-                if (cnt > 0) write_stream(&c->out, ',');
-                json_write_string(&c->out, ctx->id);
-                cnt++;
-            }
+    else if (parent != NULL) {
+        LINK * l;
+        int cnt = 0;
+        for (l = parent->children.next; l != &parent->children; l = l->next) {
+            Context * ctx = cldl2ctxp(l);
+            assert(ctx->parent == parent);
+            if (ctx->exited) continue;
+            if (ctx->mem_access == 0 && list_is_empty(&ctx->children)) continue;
+            if (cnt > 0) write_stream(&c->out, ',');
+            json_write_string(&c->out, ctx->id);
+            cnt++;
         }
     }
     write_stream(&c->out, ']');
     write_stream(&c->out, 0);
 
     write_stream(&c->out, MARKER_EOM);
+}
+
+static void command_get_children(char * token, Channel * c) {
+    MemoryCommandArgs args;
+
+    memset(&args, 0, sizeof(args));
+    json_read_string(&c->inp, args.ctx_id, sizeof(args.ctx_id));
+    json_test_char(&c->inp, MARKER_EOA);
+    json_test_char(&c->inp, MARKER_EOM);
+
+    strlcpy(args.token, token, sizeof(args.token));
+    cache_enter(get_children_cache_client, c, &args, sizeof(MemoryCommandArgs));
 }
 
 static void read_memory_fill_array_cb(InputStream * inp, void * args) {
@@ -382,6 +402,7 @@ static MemoryCommandArgs * read_command_args(char * token, Channel * c, int cmd)
 void send_event_memory_changed(Context * ctx, ContextAddress addr, unsigned long size) {
     OutputStream * out = &broadcast_group->out;
 
+    assert(cache_miss_count() == 0);
     write_stringz(out, "E");
     write_stringz(out, MEMORY);
     write_stringz(out, "memoryChanged");
@@ -700,6 +721,7 @@ static void command_fill(char * token, Channel * c) {
 static void send_event_context_added(Context * ctx) {
     OutputStream * out = &broadcast_group->out;
 
+    assert(cache_miss_count() == 0);
     write_stringz(out, "E");
     write_stringz(out, MEMORY);
     write_stringz(out, "contextAdded");
@@ -716,6 +738,7 @@ static void send_event_context_added(Context * ctx) {
 static void send_event_context_changed(Context * ctx) {
     OutputStream * out = &broadcast_group->out;
 
+    assert(cache_miss_count() == 0);
     write_stringz(out, "E");
     write_stringz(out, MEMORY);
     write_stringz(out, "contextChanged");
@@ -732,6 +755,7 @@ static void send_event_context_changed(Context * ctx) {
 static void send_event_context_removed(Context * ctx) {
     OutputStream * out = &broadcast_group->out;
 
+    assert(cache_miss_count() == 0);
     write_stringz(out, "E");
     write_stringz(out, MEMORY);
     write_stringz(out, "contextRemoved");
