@@ -3326,18 +3326,23 @@ int get_symbol_name(const Symbol * sym, char ** name) {
     else if (sym->tbl != NULL) {
         ELF_SymbolInfo sym_info;
         if (sym->dimension == 0) {
-            size_t i;
             unpack_elf_symbol_info(sym->tbl, sym->index, &sym_info);
-            for (i = 0;; i++) {
-                if (sym_info.name[i] == 0) {
-                    *name = sym_info.name;
-                    break;
+            if (sym_info.name != NULL) {
+                size_t i;
+                for (i = 0;; i++) {
+                    if (sym_info.name[i] == 0) {
+                        *name = sym_info.name;
+                        break;
+                    }
+                    if (sym_info.name[i] == '@' && sym_info.name[i + 1] == '@') {
+                        *name = (char *)tmp_alloc_zero(i + 1);
+                        memcpy(*name, sym_info.name, i);
+                        break;
+                    }
                 }
-                if (sym_info.name[i] == '@' && sym_info.name[i + 1] == '@') {
-                    *name = (char *)tmp_alloc_zero(i + 1);
-                    memcpy(*name, sym_info.name, i);
-                    break;
-                }
+            }
+            else {
+                *name = NULL;
             }
         }
         else {
