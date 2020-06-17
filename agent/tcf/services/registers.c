@@ -46,6 +46,18 @@ static Listener * listeners = NULL;
 static unsigned listener_cnt = 0;
 static unsigned listener_max = 0;
 
+typedef struct Notification {
+    LINK link_all;
+    Context * ctx;
+    int frame;
+    RegisterDefinition * def;
+    char * id;
+} Notification;
+
+static int notify_definitions_changed = 0;
+static LINK notifications = TCF_LIST_INIT(notifications);
+#define all2notification(link) ((Notification *)((char *)(link) - offsetof(Notification, link_all)))
+
 static uint8_t * bbf = NULL;
 static unsigned bbf_pos = 0;
 static unsigned bbf_len = 0;
@@ -353,50 +365,86 @@ static void command_get_children(char * token, Channel * c) {
     cache_enter(command_get_children_cache_client, c, &args, sizeof(args));
 }
 
+static void flush_notifications(void) {
+    OutputStream * out = &broadcast_group->out;
+
+    assert(cache_miss_count() == 0);
+
+    if (notify_definitions_changed) {
+        unsigned i;
+        for (i = 0; i < listener_cnt; i++) {
+            Listener * l = listeners + i;
+            if (l->func->register_definitions_changed == NULL) continue;
+            l->func->register_definitions_changed(l->args);
+        }
+
+        write_stringz(out, "E");
+        write_stringz(out, REGISTERS);
+        write_stringz(out, "contextChanged");
+        write_stream(out, 0);
+        write_stream(out, MARKER_EOM);
+    }
+
+    while (!list_is_empty(&notifications)) {
+        Notification * n = all2notification(notifications.next);
+        list_remove(&n->link_all);
+
+        if (!notify_definitions_changed && !n->ctx->exited) {
+            unsigned i;
+            for (i = 0; i < listener_cnt; i++) {
+                Listener * l = listeners + i;
+                if (l->func->register_changed == NULL) continue;
+                l->func->register_changed(n->ctx, n->frame, n->def, l->args);
+            }
+
+            write_stringz(out, "E");
+            write_stringz(out, REGISTERS);
+            write_stringz(out, "registerChanged");
+            json_write_string(out, n->id);
+            write_stream(out, 0);
+            write_stream(out, MARKER_EOM);
+        }
+        context_unlock(n->ctx);
+        loc_free(n->id);
+        loc_free(n);
+    }
+
+    notify_definitions_changed = 0;
+}
+
 void send_event_register_changed(const char * id) {
-    unsigned i;
     Context * ctx = NULL;
     int frame = STACK_NO_FRAME;
     RegisterDefinition * def = NULL;
-    OutputStream * out = &broadcast_group->out;
+    Notification * n = NULL;
+    LINK * l = NULL;
 
     id2register(id, &ctx, &frame, &def);
     if (ctx == NULL) return;
+    assert(!ctx->exited);
+    for (l = notifications.next; l != &notifications; l = l->next) {
+        n = all2notification(l);
+        if (n->ctx == ctx && n->frame == frame && n->def == def) return;
+    }
     if (frame >= 0 && frame == get_top_frame(ctx)) {
         id = register2id(ctx, STACK_TOP_FRAME, def);
     }
+    n = (Notification *)loc_alloc_zero(sizeof(Notification));
+    n->ctx = ctx;
+    n->frame = frame;
+    n->def = def;
+    n->id = loc_strdup(id);
+    context_lock(n->ctx);
+    list_add_last(&n->link_all, &notifications);
 
-    assert(cache_miss_count() == 0);
-    for (i = 0; i < listener_cnt; i++) {
-        Listener * l = listeners + i;
-        if (l->func->register_changed == NULL) continue;
-        l->func->register_changed(ctx, frame, def, l->args);
-    }
-
-    write_stringz(out, "E");
-    write_stringz(out, REGISTERS);
-    write_stringz(out, "registerChanged");
-
-    json_write_string(out, id);
-    write_stream(out, 0);
-
-    write_stream(out, MARKER_EOM);
+    /* Delay notifications until cache transaction is committed */
+    if (cache_transaction_id() == 0) flush_notifications();
 }
 
 void send_event_register_definitions_changed(void) {
-    unsigned i;
-    OutputStream * out = &broadcast_group->out;
-
-    for (i = 0; i < listener_cnt; i++) {
-        Listener * l = listeners + i;
-        if (l->func->register_definitions_changed == NULL) continue;
-        l->func->register_definitions_changed(l->args);
-    }
-
-    write_stringz(out, "E");
-    write_stringz(out, REGISTERS);
-    write_stringz(out, "contextChanged");
-    write_stream(out, MARKER_EOM);
+    notify_definitions_changed = 1;
+    /* Delay notifications until cache transaction is committed */
+    if (cache_transaction_id() == 0) flush_notifications();
 }
 
 typedef struct GetArgs {
@@ -479,7 +527,6 @@ typedef struct SetArgs {
 static void command_set_cache_client(void * x) {
     SetArgs * args = (SetArgs *)x;
     Channel * c  = cache_channel();
-    int notify = 0;
     Trap trap;
 
     if (set_trap(&trap)) {
@@ -500,14 +547,12 @@ static void command_set_cache_client(void * x) {
         if ((size_t)args->data_len > reg_def->size) exception(ERR_INV_DATA_SIZE);
         if (args->data_len > 0) {
             if (context_write_reg(ctx, reg_def, 0, args->data_len, args->data) < 0) exception(errno);
-            notify = 1;
+            send_event_register_changed(args->id);
         }
         clear_trap(&trap);
     }
 
     cache_exit();
-
-    if (notify) send_event_register_changed(args->id);
 
     if (!is_channel_closed(c)) {
         write_stringz(&c->out, "R");
@@ -542,7 +587,6 @@ typedef struct Location {
     RegisterDefinition * reg_def;
     unsigned offs;
     unsigned size;
-    int notify;
 } Location;
 
 static Location * buf = NULL;
@@ -687,7 +731,6 @@ typedef struct SetmArgs {
 static void command_setm_cache_client(void * x) {
     SetmArgs * args = (SetmArgs *)x;
     Channel * c  = cache_channel();
-    int notify = 0;
     Trap trap;
 
     if (set_trap(&trap)) {
@@ -699,23 +742,14 @@ static void command_setm_cache_client(void * x) {
             assert(l->frame_info == NULL);
             if (l->size > 0) {
                 if (context_write_reg(l->ctx, l->reg_def, l->offs, l->size, args->data + data_pos) < 0) exception(errno);
+                send_event_register_changed(l->id);
                 data_pos += l->size;
-                l->notify = 1;
-                notify = 1;
             }
         }
         clear_trap(&trap);
     }
 
     cache_exit();
-
-    if (notify) {
-        unsigned locs_pos = 0;
-        while (locs_pos < args->locs_cnt) {
-            Location * l = args->locs + locs_pos++;
-            if (l->notify) send_event_register_changed(l->id);
-        }
-    }
 
     if (!is_channel_closed(c)) {
         write_stringz(&c->out, "R");
@@ -773,6 +807,10 @@ void add_registers_event_listener(RegistersEventListener * listener, void * args
     listener_cnt++;
 }
 
+static void cache_transaction_listener(int evt) {
+    if (evt == CTLE_COMMIT) flush_notifications();
+}
+
 void ini_registers_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     broadcast_group = bcg;
     add_command_handler(proto, REGISTERS, "getContext", command_get_context);
@@ -782,6 +820,7 @@ void ini_registers_service(Protocol * proto, TCFBroadcastGroup * bcg) {
     add_command_handler(proto, REGISTERS, "getm", command_getm);
     add_command_handler(proto, REGISTERS, "setm", command_setm);
     add_command_handler(proto, REGISTERS, "search", command_search);
+    add_cache_transaction_listener(cache_transaction_listener);
 }
 
 #endif /* SERVICE_Registers */
