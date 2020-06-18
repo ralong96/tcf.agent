@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2010-2018 Wind River Systems, Inc. and others.
+ * Copyright (c) 2010-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -22,6 +22,7 @@
 #define R_X86_64_PC32  2
 #define R_X86_64_32    10
 #define R_X86_64_32S   11
+#define R_X86_64_PC64  24
 
 static void elf_relocate(void) {
     if (relocs->type == SHT_REL && reloc_type != R_X86_64_NONE) {
@@ -29,6 +30,7 @@ static void elf_relocate(void) {
         assert(reloc_addend == 0);
         switch (reloc_type) {
         case R_X86_64_64:
+        case R_X86_64_PC64:
             {
                 U8_T x = *(U8_T *)((char *)section->data + reloc_offset);
                 if (section->file->byte_swap) SWAP(x);
@@ -60,6 +62,10 @@ static void elf_relocate(void) {
     case R_X86_64_PC32:
         if (data_size < 4) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
         *(U4_T *)data_buf = (U4_T)(sym_value + reloc_addend - (section->addr + reloc_offset));
+        break;
+    case R_X86_64_PC64:
+        if (data_size < 8) str_exception(ERR_INV_FORMAT, "Invalid relocation record");
+        *(U8_T *)data_buf = (U8_T)(sym_value + reloc_addend - (section->addr + reloc_offset));
         break;
     default:
         str_exception(ERR_INV_FORMAT, "Unsupported relocation type");
