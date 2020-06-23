@@ -26,7 +26,7 @@
 #include <tcf/framework/events.h>
 #include <tcf/framework/myalloc.h>
 
-#define ALIGNMENT (sizeof(size_t *))
+#define ALIGNMENT (sizeof(void *) < 8 ? 8 : sizeof(void *))
 
 #if !defined(ENABLE_FastMemAlloc)
 #  define ENABLE_FastMemAlloc 1
