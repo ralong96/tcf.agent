@@ -858,9 +858,9 @@ static int is_func_exit(unsigned char * code) {
 
 int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
 
-    static RegisterDefinition * pc_def = NULL;
-    static RegisterDefinition * sp_def = NULL;
-    static RegisterDefinition * bp_def = NULL;
+    RegisterDefinition * pc_def = NULL;
+    RegisterDefinition * sp_def = NULL;
+    RegisterDefinition * bp_def = NULL;
 
     ContextAddress reg_pc = 0;
     ContextAddress reg_bp = 0;
@@ -873,13 +873,17 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
     size_t word_size = context_word_size(ctx);
     int x64 = word_size == 8;
 
-    if (pc_def == NULL) {
-        RegisterDefinition * r;
-        for (r = get_reg_definitions(ctx); r->name != NULL; r++) {
+    {
+        RegisterDefinition * r = get_reg_definitions(ctx);
+        if (r == NULL) return 0;
+        for (; r->name != NULL; r++) {
             if (r->offset == offsetof(REG_SET, REG_IP)) pc_def = r;
             if (r->offset == offsetof(REG_SET, REG_SP)) sp_def = r;
             if (r->offset == offsetof(REG_SET, REG_BP)) bp_def = r;
         }
+        if (pc_def == NULL) return 0;
+        if (sp_def == NULL) return 0;
+        if (bp_def == NULL) return 0;
     }
 
     if (read_reg(frame, pc_def, word_size, &reg_pc) < 0) return 0;
