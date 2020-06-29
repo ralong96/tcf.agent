@@ -3456,7 +3456,7 @@ int get_symbol_size(const Symbol * sym, ContextAddress * size) {
         if (sym->dimension == 0) {
             ELF_SymbolInfo info;
             unpack_elf_symbol_info(sym->tbl, sym->index, &info);
-            if (IS_PPC64_FUNC_OPD(sym->tbl->file, &info)) {
+            if (IS_PPC64_FUNC_OPD(sym->tbl->file, &info) && info.name != NULL) {
                 /*
                  * For PPC64, the size of an ELF symbol is either the size
                  * described by the .<name> symbol or, if this symbol does not

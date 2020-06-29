@@ -1706,7 +1706,7 @@ static ContextCache * get_memory_map_cache(Context * ctx) {
     assert(cache->ctx == ctx);
     if (!set_trap(&trap)) return NULL;
     if (is_channel_closed(c)) exception(ERR_CHANNEL_CLOSED);
-    if (cache->peer != NULL && !cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
+    if (!cache->peer->rc_done) cache_wait(&cache->peer->rc_cache);
 
     if (cache->pending_get_mmap != NULL) cache_wait(&cache->mmap_cache);
     if (cache->mmap_is_valid == 0 && cache->peer != NULL) {
@@ -2264,12 +2264,12 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
 }
 #endif
 
-static void channel_close_listener(Channel * c) {
+static void channel_close_listener(Channel * ch) {
     LINK * l = NULL;
 
     for (l = peers.next; l != &peers; l = l->next) {
         PeerCache * p = peers2peer(l);
-        if (p->target == c) {
+        if (p->target == ch) {
             int i;
             assert(p->rc_pending_cnt == 0);
             for (i = 0; i < CTX_ID_HASH_SIZE; i++) {

@@ -978,7 +978,7 @@ int crawl_stack_frame(StackFrame * frame, StackFrame * down) {
                 if (reg == pc_def || reg == sp_def || reg == bp_def) continue;
                 if (reg->dwarf_id < 32 && (reg_mask & ((uint32_t)1 << reg->dwarf_id))) continue;
                 if (context_read_reg(ctx, reg, 0, reg->size, buf) < 0) continue;
-                write_reg_bytes(down, reg, 0, reg->size, buf);
+                if (write_reg_bytes(down, reg, 0, reg->size, buf) < 0) return -1;
             }
         }
     }
