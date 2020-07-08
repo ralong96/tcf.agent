@@ -116,9 +116,6 @@ static int expression_has_func_call = 0;
 #ifndef ENABLE_FuncCallInjection
 #  define ENABLE_FuncCallInjection (ENABLE_Symbols && SERVICE_RunControl && SERVICE_Breakpoints && ENABLE_DebugContext)
 #endif
-#ifndef ENABLE_ExpressionSerialization
-#  define ENABLE_ExpressionSerialization ENABLE_SymbolsProxy
-#endif
 
 #if ENABLE_FuncCallInjection
 typedef struct FuncCallState {
@@ -3996,12 +3993,12 @@ int value_to_double(Value * v, double *res) {
 
 /********************** Commands **************************/
 
-typedef struct CommandArgs {
+typedef struct {
     char token[256];
     char id[256];
 } CommandArgs;
 
-typedef struct CommandCreateArgs {
+typedef struct {
     char token[256];
     char id[256];
     int use_state;
@@ -4010,14 +4007,14 @@ typedef struct CommandCreateArgs {
     char * script;
 } CommandCreateArgs;
 
-typedef struct CommandAssignArgs {
+typedef struct {
     char token[256];
     char id[256];
     char * value_buf;
     size_t value_size;
 } CommandAssignArgs;
 
-typedef struct Expression {
+typedef struct {
     LINK link_all;
     LINK link_id;
     char id[256];
@@ -4048,9 +4045,7 @@ static unsigned expr_id_cnt = 0;
 
 #define expression_hash(id) ((unsigned)atoi(id + 4) % ID2EXP_HASH_SIZE)
 
-#if ENABLE_ExpressionSerialization
-
-typedef struct PendingCommand {
+typedef struct {
     LINK link;
     CacheClient * client;
     Channel * channel;
@@ -4060,49 +4055,55 @@ typedef struct PendingCommand {
 
 #define link_cmds2cmd(A) ((PendingCommand *)((char *)(A) - offsetof(PendingCommand, link)))
 
-static PendingCommand * pending_cmd = NULL;
-static LINK cmd_queue;
+typedef struct {
+    PendingCommand * pending_cmd;
+    LINK cmd_queue;
+} ChannelExtensionExpr;
+
+static size_t channel_extension_offset = 0;
+#define EXT_CH(ch) ((ChannelExtensionExpr *)((char *)(ch) + channel_extension_offset))
 
 static void command_start(CacheClient * client, Channel * channel, void * args, size_t args_size) {
+    ChannelExtensionExpr * ext = EXT_CH(channel);
     PendingCommand * cmd = (PendingCommand *)loc_alloc_zero(sizeof(PendingCommand));
     assert(args_size <= sizeof(cmd->args));
     channel_lock_with_msg(cmd->channel = channel, EXPRESSIONS);
     memcpy(cmd->args, args, args_size);
     cmd->args_size = args_size;
     cmd->client = client;
-    list_add_last(&cmd->link, &cmd_queue);
-    if (cmd_queue.next == &cmd->link) {
-        assert(pending_cmd == NULL);
-        pending_cmd = cmd;
+    if (ext->cmd_queue.next == NULL) list_init(&ext->cmd_queue);
+    list_add_last(&cmd->link, &ext->cmd_queue);
+    if (ext->cmd_queue.next == &cmd->link) {
+        assert(ext->pending_cmd == NULL);
+        ext->pending_cmd = cmd;
         cache_enter(cmd->client, cmd->channel, cmd->args, cmd->args_size);
     }
 }
 
 static void command_start_next(void * args) {
+    Channel * channel = (Channel *)args;
+    ChannelExtensionExpr * ext = EXT_CH(channel);
     PendingCommand * cmd = NULL;
-    assert(pending_cmd == NULL);
-    pending_cmd = cmd = link_cmds2cmd(cmd_queue.next);
+    assert(ext->pending_cmd == NULL);
+    assert(!list_is_empty(&ext->cmd_queue));
+    ext->pending_cmd = cmd = link_cmds2cmd(ext->cmd_queue.next);
     cache_enter(cmd->client, cmd->channel, cmd->args, cmd->args_size);
 }
 
-static void command_done(void) {
-    PendingCommand * cmd = pending_cmd;
-    pending_cmd = NULL;
+static void command_done(Channel * channel) {
+    ChannelExtensionExpr * ext = EXT_CH(channel);
+    PendingCommand * cmd = ext->pending_cmd;
+    ext->pending_cmd = NULL;
     assert(cmd != NULL);
-    assert(&cmd->link == cmd_queue.next);
+    assert(cmd->channel == channel);
+    assert(&cmd->link == ext->cmd_queue.next);
+    list_remove(ext->cmd_queue.next);
+    if (!list_is_empty(&ext->cmd_queue)) {
+        post_event(command_start_next, channel);
+    }
     channel_unlock_with_msg(cmd->channel, EXPRESSIONS);
-    list_remove(cmd_queue.next);
     loc_free(cmd);
-    if (list_is_empty(&cmd_queue)) return;
-    post_event(command_start_next, NULL);
 }
-
-#else
-
-#define command_start(client, channel, args, args_size) cache_enter(client, channel, args, args_size)
-#define command_done()
-
-#endif
 
 static Expression * find_expression(char * id) {
     if (id[0] == 'E' && id[1] == 'X' && id[2] == 'P' && id[3] == 'R') {
@@ -4474,7 +4475,7 @@ static void command_create_cache_client(void * x) {
     }
 
     run_ctrl_unlock();
-    command_done();
+    command_done(c);
 }
 
 static void command_create(char * token, Channel * c) {
@@ -4739,7 +4740,7 @@ static void command_evaluate_cache_client(void * x) {
     }
 
     run_ctrl_unlock();
-    command_done();
+    command_done(c);
 }
 
 static void command_evaluate(char * token, Channel * c) {
@@ -4837,7 +4838,7 @@ static void command_assign_cache_client(void * x) {
 
     loc_free(args->value_buf);
     run_ctrl_unlock();
-    command_done();
+    command_done(c);
 }
 
 static void command_assign(char * token, Channel * c) {
@@ -4881,7 +4882,7 @@ static void command_dispose_cache_client(void * x) {
         write_stream(&c->out, MARKER_EOM);
     }
 
-    command_done();
+    command_done(c);
 }
 
 static void command_dispose(char * token, Channel * c) {
@@ -4948,10 +4949,8 @@ void ini_expressions_service(Protocol * proto) {
         static RunControlEventListener rc_listener = { context_intercepted, NULL };
         add_run_control_event_listener(&rc_listener, NULL);
 #endif
-#if ENABLE_ExpressionSerialization
-        list_init(&cmd_queue);
-#endif
         for (i = 0; i < ID2EXP_HASH_SIZE; i++) list_init(id2exp + i);
+        channel_extension_offset = channel_extension(sizeof(ChannelExtensionExpr));
         add_channel_close_listener(on_channel_close);
         big_endian = big_endian_host();
         init = 1;
