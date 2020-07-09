@@ -417,7 +417,7 @@ static int is_json(const char * s) {
         ByteArrayInputStream buf;
         InputStream * inp = create_byte_array_input_stream(&buf, s, strlen(s));
         json_skip_object(inp);
-        if (read_stream(inp) != MARKER_EOS) exception(ERR_JSON_SYNTAX);
+        json_test_char(inp, MARKER_EOS);
         clear_trap(&trap);
     }
     return trap.error == 0;
@@ -2211,15 +2211,22 @@ static void check_step_breakpoint_instances(InputStream * inp, void * args) {
 static int check_step_breakpoint(Context * ctx) {
 #if SERVICE_Breakpoints
     /* Return error if step machine breakpoint cannot be planted */
+    Trap trap;
     int error = 0;
     char * status = NULL;
-    ByteArrayInputStream buf;
-    InputStream * inp = NULL;
     ContextExtensionRC * ext = EXT(ctx);
     if (ext->step_bp_info == NULL) return 0;
     status = get_breakpoint_status(ext->step_bp_info);
-    inp = create_byte_array_input_stream(&buf, status, strlen(status));
-    json_read_struct(inp, check_step_breakpoint_status, &error);
+    if (set_trap(&trap)) {
+        ByteArrayInputStream buf;
+        InputStream * inp = create_byte_array_input_stream(&buf, status, strlen(status));
+        json_read_struct(inp, check_step_breakpoint_status, &error);
+        json_test_char(inp, MARKER_EOS);
+        clear_trap(&trap);
+    }
+    else {
+        error = trap.error;
+    }
     loc_free(status);
     if (!error) return 0;
     errno = error;

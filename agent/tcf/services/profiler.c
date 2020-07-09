@@ -163,10 +163,12 @@ static void read_cfg_param(InputStream * inp, const char * name, void * x) {
     if (strcmp(name, "FrameCnt") == 0) {
         inp = create_byte_array_input_stream(&buf, p->value, strlen(p->value));
         cfg->params.frame_cnt = json_read_ulong(inp);
+        json_test_char(inp, MARKER_EOS);
     }
     else if (strcmp(name, "MaxSamples") == 0) {
         inp = create_byte_array_input_stream(&buf, p->value, strlen(p->value));
         cfg->params.max_samples = json_read_ulong(inp);
+        json_test_char(inp, MARKER_EOS);
     }
 }
 

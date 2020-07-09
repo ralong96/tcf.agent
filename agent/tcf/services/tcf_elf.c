@@ -1428,6 +1428,7 @@ static void search_regions(MemoryMap * map, ContextAddress addr0, ContextAddress
                             InputStream * inp = create_byte_array_input_stream(&buf, a->value, strlen(a->value));
                             module = (KernelModuleAddress *)tmp_alloc_zero(sizeof(KernelModuleAddress));
                             json_read_struct(inp, read_module_struct, module);
+                            json_test_char(inp, MARKER_EOS);
                             break;
                         }
                         a = a->next;

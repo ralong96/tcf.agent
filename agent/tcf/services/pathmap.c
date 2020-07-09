@@ -228,6 +228,7 @@ static int update_rule(PathMapRule * r, PathMapRuleAttribute * new_attrs) {
         InputStream * buf_inp;
         ByteArrayInputStream buf;
         char * name = new_attr->name;
+        int unsupported_attr = 0;
 
         new_attrs = new_attr->next;
         new_attr->next = NULL;
@@ -283,6 +284,10 @@ static int update_rule(PathMapRule * r, PathMapRuleAttribute * new_attrs) {
             loc_free(r->ctx);
             r->ctx = json_read_alloc_string(buf_inp);
         }
+        else {
+            unsupported_attr = 1;
+        }
+        if (!unsupported_attr) json_test_char(buf_inp, MARKER_EOS);
     }
 
     while (old_attrs != NULL) {
