@@ -103,6 +103,10 @@ typedef struct ContextExtensionLinux {
     int                     prof_armed;
     int                     prof_fired;
 #endif
+#if ENABLE_ContextExtraProperties
+    char *                  thread_name;
+    char *                  additional_info;
+#endif
 } ContextExtensionLinux;
 
 static size_t context_extension_offset = 0;
@@ -1251,10 +1255,107 @@ int context_get_isa(Context * ctx, ContextAddress addr, ContextISA * isa) {
 #endif
 
 #if ENABLE_ContextExtraProperties
+
+static const char ** ctx_props_names = NULL;
+static const char ** ctx_props_values = NULL;
+static int ctx_props_cnt = 0;
+static int ctx_props_max = 0;
+
+static void add_context_property(const char * name, const char * value) {
+    int i;
+    for (i = 0; i < ctx_props_cnt; i++) {
+        if (strcmp(ctx_props_names[i], name) == 0) {
+            ctx_props_values[i] = value;
+            return;
+        }
+    }
+    if (ctx_props_cnt >= ctx_props_max) {
+        ctx_props_max += 8;
+        ctx_props_names = (const char **)tmp_realloc((void *)ctx_props_names, sizeof(char *) * ctx_props_max);
+        ctx_props_values = (const char **)tmp_realloc((void *)ctx_props_values, sizeof(char *) * ctx_props_max);
+    }
+    ctx_props_names[ctx_props_cnt] = name;
+    ctx_props_values[ctx_props_cnt] = value;
+    ctx_props_cnt++;
+}
+
+static char * get_thread_name(pid_t pid, pid_t tid) {
+    char * res = NULL;
+    FILE * file = NULL;
+    char file_name[FILE_PATH_SIZE];
+    snprintf(file_name, sizeof(file_name), "/proc/%d/task/%d/comm", pid, tid);
+    if ((file = fopen(file_name, "r")) != NULL) {
+        char s[128];
+        if (fgets(s, sizeof(s), file) != NULL) res = tmp_strdup(s);
+        fclose(file);
+    }
+    return res;
+}
+
+static void update_thread_name(Context * ctx) {
+    ContextExtensionLinux * ext = EXT(ctx);
+    char * name = get_thread_name(EXT(ctx->mem)->pid, ext->pid);
+    int notify = 0;
+    assert(!ctx->exited);
+    assert(!ctx->stopped);
+    if (name != NULL) {
+        if (ext->thread_name == NULL || strcmp(ext->thread_name, name) != 0) {
+            loc_free(ext->thread_name);
+            ext->thread_name = loc_strdup(name);
+            notify = 1;
+        }
+    }
+    else {
+        if (ext->thread_name != NULL) {
+            loc_free(ext->thread_name);
+            ext->thread_name = NULL;
+            notify = 1;
+        }
+    }
+    if (notify && ctx->mem != ctx) {
+        loc_free(ext->additional_info);
+        if (ext->thread_name != NULL) {
+            ByteArrayOutputStream buf;
+            OutputStream * out = create_byte_array_output_stream(&buf);
+            json_write_string(out, tmp_printf(" %s", ext->thread_name));
+            write_stream(out, 0);
+            get_byte_array_output_stream_data(&buf, &ext->additional_info, NULL);
+        }
+        else {
+            ext->additional_info = NULL;
+        }
+        if (!list_is_empty(&ctx->ctxl)) send_context_changed_event(ctx);
+    }
+}
+
+static void thread_name_timer(void * args) {
+    LINK * l;
+    for (l = context_root.next; l != &context_root; l = l->next) {
+        Context * ctx = ctxl2ctxp(l);
+        if (!ctx->exited) {
+            ContextExtensionLinux * ext = EXT(ctx);
+            if (ext->pid == 0) continue;
+            if (!ctx->stopped && ctx->mem != ctx) update_thread_name(ctx);
+        }
+    }
+    post_event_with_delay(thread_name_timer, NULL, 2000000);
+}
+
 int context_get_extra_properties(Context * ctx, const char *** names, const char *** values, int * cnt) {
-    *cnt = 0;
+    ContextExtensionLinux * ext = EXT(ctx);
+    ctx_props_names = NULL;
+    ctx_props_values = NULL;
+    ctx_props_cnt = 0;
+    ctx_props_max = 0;
+    if (ext->additional_info != NULL) {
+        add_context_property("AdditionalInfo", ext->additional_info);
+    }
+    *names = ctx_props_names;
+    *values = ctx_props_values;
+    *cnt = ctx_props_cnt;
     return 0;
 }
+
 #endif
 
 #if ENABLE_ContextMemoryProperties
@@ -1531,6 +1632,7 @@ static Context * add_thread(Context * parent, Context * creator, pid_t pid) {
     EXT(ctx)->sigstop_posted = 1;
     alloc_regs(ctx);
     ctx->mem = parent;
+    ctx->name = loc_printf("%d", pid);
     ctx->big_endian = parent->big_endian;
     ctx->reg_access |= REG_ACCESS_RD_STOP;
     ctx->reg_access |= REG_ACCESS_WR_STOP;
@@ -1549,6 +1651,9 @@ static Context * add_thread(Context * parent, Context * creator, pid_t pid) {
         ctx->pending_intercept = 1;
     }
     list_add_last(&ctx->cldl, &parent->children);
+#if ENABLE_ContextExtraProperties
+    update_thread_name(ctx);
+#endif
     link_context(ctx);
 #if ENABLE_ProfilerSST
     profiler_sst_add(ctx);
@@ -1754,6 +1859,10 @@ static void event_pid_stopped(pid_t pid, int signal, int event, int syscall) {
 
     assert(!ctx->stopped);
 
+#if ENABLE_ContextExtraProperties
+    update_thread_name(ctx);
+#endif
+
     ext->end_of_step = 0;
     ext->ptrace_event = event;
     ctx->signal = signal;
@@ -1857,6 +1966,16 @@ static void waitpid_listener(int pid, int exited, int exit_code, int signal, int
     }
 }
 
+static void event_context_disposed(Context * ctx, void * args) {
+#if ENABLE_ContextExtraProperties
+    ContextExtensionLinux * ext = EXT(ctx);
+    loc_free(ext->additional_info);
+    loc_free(ext->thread_name);
+    ext->additional_info = NULL;
+    ext->thread_name = NULL;
+#endif
+}
+
 static int cmp_linux_pid(Context * ctx, const char * v) {
     ctx = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
     return ctx != NULL && EXT(ctx)->pid == atoi(v);
@@ -1876,6 +1995,9 @@ static int cmp_linux_kernel_name(Context * ctx, const char * v) {
 }
 
 void init_contexts_sys_dep(void) {
+    static ContextEventListener listener = { NULL };
+    listener.context_disposed = event_context_disposed;
+    add_context_event_listener(&listener, NULL);
     context_extension_offset = context_extension(sizeof(ContextExtensionLinux));
     add_waitpid_listener(waitpid_listener, NULL);
     ini_context_pid_hash();
@@ -1885,6 +2007,9 @@ void init_contexts_sys_dep(void) {
     add_context_query_comparator("pid", cmp_linux_pid);
     add_context_query_comparator("tid", cmp_linux_tid);
     add_context_query_comparator("KernelName", cmp_linux_kernel_name);
+#if ENABLE_ContextExtraProperties
+    post_event(thread_name_timer, NULL);
+#endif
 }
 
 #endif  /* if ENABLE_DebugContext */

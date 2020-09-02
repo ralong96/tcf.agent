@@ -305,7 +305,7 @@
 #endif
 
 #if !defined(ENABLE_ContextExtraProperties)
-#  define ENABLE_ContextExtraProperties (TARGET_WINDOWS)
+#  define ENABLE_ContextExtraProperties (TARGET_UNIX || TARGET_WINDOWS)
 #endif
 
 #if !defined(ENABLE_ContextStateProperties)
