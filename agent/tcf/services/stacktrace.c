@@ -78,6 +78,7 @@ static void free_frame(StackFrame * frame) {
     errno = error;
 }
 
+#if ENABLE_Symbols
 static int get_frame_debug_info(StackFrame * frame, StackTracingInfo ** info) {
     uint64_t ip = 0;
     Context * ctx = frame->ctx;
@@ -97,7 +98,6 @@ static int get_frame_debug_info(StackFrame * frame, StackTracingInfo ** info) {
             if (up->is_walked) {
                 ip--;
             }
-#if ENABLE_Symbols
             else {
                 /* Workaround for missing frame info for return address of a function that never returns */
                 Symbol * sym = NULL;
@@ -112,11 +112,11 @@ static int get_frame_debug_info(StackFrame * frame, StackTracingInfo ** info) {
                     ip--;
                 }
             }
-#endif
         }
     }
     return get_stack_tracing_info(ctx, (ContextAddress)ip, info);
 }
+#endif
 
 int get_next_stack_frame(StackFrame * frame, StackFrame * down) {
 #if ENABLE_Symbols
