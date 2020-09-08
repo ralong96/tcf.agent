@@ -57,15 +57,20 @@ extern int print_trace(int mode, const char * fmt, ...) ATTR_PRINTF(2, 3);
 
 extern FILE * log_file;
 
+#ifndef trace
 #define trace log_file == NULL ? (void)0 : (void)print_trace
+#endif /* not def trace */
 
 #else /* not ENABLE_Trace */
-
+#ifndef trace
 #if (defined(_MSC_VER) && _MSC_VER >= 1400) || defined(__GNUC__)
 #  define trace(...) ((void)0)
 #else
 #  define trace 0 &&
 #endif
+#endif /* not def trace */
+
+
 
 #endif /* ENABLE_Trace */
 
