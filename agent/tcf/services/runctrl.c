@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2019 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -1443,6 +1443,19 @@ int is_all_stopped(Context * grp) {
     for (l = context_root.next; l != &context_root; l = l->next) {
         Context * ctx = ctxl2ctxp(l);
         if (ctx->stopped || ctx->exited || ctx->exiting) continue;
+        if (!context_has_state(ctx)) continue;
+        if (context_get_group(ctx, CONTEXT_GROUP_STOP) != grp) continue;
+        return 0;
+    }
+    return 1;
+}
+
+static int is_all_stopped_or_cannot_stop(Context * grp) {
+    LINK * l;
+    grp = context_get_group(grp, CONTEXT_GROUP_STOP);
+    for (l = context_root.next; l != &context_root; l = l->next) {
+        Context * ctx = ctxl2ctxp(l);
+        if (ctx->stopped || ctx->exited || ctx->exiting) continue;
         if (EXT(ctx)->cannot_stop) continue;
         if (!context_has_state(ctx)) continue;
         if (context_get_group(ctx, CONTEXT_GROUP_STOP) != grp) continue;
@@ -2258,10 +2271,10 @@ static Channel * select_skip_prologue_channel(void) {
 #endif
 
 #ifndef NDEBUG
-extern int print_not_stopped_contexts(Context * ctx) {
+int print_not_stopped_contexts(Context * ctx) {
     LINK * l;
     Context * grp;
-    if (is_all_stopped(ctx)) return 1;
+    if (is_all_stopped_or_cannot_stop(ctx)) return 1;
     grp = context_get_group(ctx, CONTEXT_GROUP_STOP);
     fprintf(stderr, "Context group '%s':\n", grp->name ? grp->name : grp->id);
     for (l = context_root.next; l != &context_root; l = l->next) {
@@ -2604,7 +2617,7 @@ int is_safe_event(void) {
 }
 
 void check_all_stopped(Context * ctx) {
-    if (is_all_stopped(ctx)) return;
+    if (is_all_stopped_or_cannot_stop(ctx)) return;
     post_safe_event(ctx, NULL, NULL);
     cache_wait(&safe_events_cache);
 }
