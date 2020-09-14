@@ -2926,6 +2926,18 @@ static void disassemble_media_instr(uint32_t instr, const char * cond) {
         }
         return;
     }
+
+    if ((instr & 0x0fd000f0) == 0x07100010) {
+        add_str(instr & (1 << 21) ? "udiv" : "sdiv");
+        add_str(cond);
+        add_char(' ');
+        add_reg_name((instr >> 16) & 0xf);
+        add_str(", ");
+        add_reg_name(instr & 0xf);
+        add_str(", ");
+        add_reg_name((instr >> 8) & 0xf);
+        return;
+    }
 }
 
 static void disassemble_load_store_instr(uint32_t instr, const char * cond) {
