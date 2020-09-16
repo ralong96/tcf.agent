@@ -278,7 +278,7 @@ static void trace_stack(Context * ctx, StackTrace * stack, int max_frames) {
 #endif
         if (get_next_stack_frame(frame, &down) < 0) {
             if (cache_miss_count() > 0) break;
-            trace(LOG_ALWAYS, "Stack trace error: %s", errno_to_str(errno));
+            trace(LOG_STACK, "Stack trace error: %s", errno_to_str(errno));
         }
         frame = stack->frames + frame_idx; /* stack->frames might be realloc-ed */
         if (frame->is_walked == 0) {
