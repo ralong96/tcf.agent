@@ -62,7 +62,7 @@ typedef struct ProfilerSST {
     int stop_pending;
     ContextAddress pc;
     int disposed;
-    int lock;
+    int posted;
 } ProfilerSST;
 
 typedef struct {
@@ -174,8 +174,8 @@ static void add_sample_cache_client(void * x) {
         SampleStackTrace * stk = find_stack_trace(prf);
         add_to_sample_array(prf, prf->pc, stk);
     }
-    prf->lock--;
-    if (prf->disposed && prf->lock == 0) loc_free(prf);
+    prf->posted = 0;
+    if (prf->disposed) loc_free(prf);
     run_ctrl_unlock();
 }
 
@@ -186,7 +186,8 @@ static void add_sample_event(void * args) {
 
 static void add_sample(ProfilerSST * prf) {
     assert(!prf->disposed);
-    prf->lock++;
+    if (prf->posted) return;
+    prf->posted = 1;
     run_ctrl_lock();
     post_event(add_sample_event, prf);
 }
@@ -243,7 +244,7 @@ static void profiler_dispose(void * args) {
     list_remove(&prf->link_core);
     free_buffers(prf);
     prf->disposed = 1;
-    if (prf->lock == 0) loc_free(prf);
+    if (!prf->posted) loc_free(prf);
 }
 
 static char * profiler_capabilities(Context * ctx) {
