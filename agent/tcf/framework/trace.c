@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007-2017 Wind River Systems, Inc. and others.
+ * Copyright (c) 2007-2020 Wind River Systems, Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * and Eclipse Distribution License v1.0 which accompany this distribution.
@@ -33,6 +33,10 @@ int log_mode = LOG_EVENTS | LOG_CHILD | LOG_WAITPID | LOG_CONTEXT | LOG_PROTOCOL
 #include <syslog.h>
 #endif
 
+#if !defined(ENABLE_CustomPrintTrace)
+#  define ENABLE_CustomPrintTrace 0
+#endif
+
 static int use_syslog = 0;
 
 FILE * log_file = NULL;
@@ -61,6 +65,7 @@ struct trace_mode trace_mode_table[MAX_TRACE_MODES + 1] = {
 
 static pthread_mutex_t mutex;
 
+#if !ENABLE_CustomPrintTrace
 int print_trace(int mode, const char * fmt, ...) {
     va_list ap;
     int error = errno;
@@ -112,7 +117,7 @@ int print_trace(int mode, const char * fmt, ...) {
     errno = error;
     return 1;
 }
-
+#endif /* ENABLE_CustomPrintTrace */
 #endif /* ENABLE_Trace */
 
 int parse_trace_mode(const char * mode, int * result) {
