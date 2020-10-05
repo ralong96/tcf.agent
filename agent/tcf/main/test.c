@@ -179,7 +179,16 @@ unsigned tcf_test_func_call_cnt = 0;
 
 static test_array_field tcf_test_array_field;
 
-#if defined(__linux__) && defined(__GNUC__)
+#if defined(__clang_major__) && __clang_major__ == 7
+/* TLS debug info is broken in clang 7.0 */
+#  define TLS_SUPPORTED 0
+#elif defined(__linux__) && defined(__GNUC__)
+#  define TLS_SUPPORTED 1
+#else
+#  define TLS_SUPPORTED 0
+#endif
+
+#if TLS_SUPPORTED
 __thread uint32_t tcf_test_tls = 0;
 __thread uint32_t tcf_test_tls2 = 0;
 #endif
@@ -223,7 +232,7 @@ func2_label:
     tcf_test_short++;
     errno = tcf_test_short;
     func2_local4 = &errno;
-#if defined(__linux__) && defined(__GNUC__)
+#if TLS_SUPPORTED
     tcf_test_tls++;
     tcf_test_tls2 += 2;
 #endif
