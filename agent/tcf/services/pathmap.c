@@ -29,6 +29,9 @@
 #include <tcf/services/contextquery.h>
 #include <tcf/services/pathmap.h>
 
+#ifndef ENABLE_CaseInsensitivePathMap
+#define ENABLE_CaseInsensitivePathMap 0
+#endif
 
 static int is_separator(const char c) {
     return ((c == '/') || (c == '\\'));
@@ -367,7 +370,11 @@ static char * map_file_name(Context * ctx, PathMap * m, char * fnm, int mode) {
         }
         src = canonic_path_map_file_name(r->src);
         k = (unsigned)strlen(src);
+#if ENABLE_CaseInsensitivePathMap
+        if (strncasecmp(src, fnm, k)) continue;
+#else
         if (strncmp(src, fnm, k)) continue;
+#endif
 
         if (fnm[k] == 0) {
             /* perfect match */
