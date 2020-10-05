@@ -431,7 +431,13 @@ int main(int argc, char ** argv) {
         }
     }
 
+    if (url_cnt == 0) {
+        if (url_cnt >= url_max) url_arr = (const char **)loc_realloc((void *)url_arr, sizeof(const char *) * (url_max += 16));
+        url_arr[url_cnt++] = DEFAULT_SERVER_URL;
+    }
+
     POST_OPTION_HOOK;
+
     if (daemon) {
 #if defined(_WIN32) || defined(__CYGWIN__)
         become_daemon(daemon > 1 ? argv : NULL);
@@ -466,11 +472,6 @@ int main(int argc, char ** argv) {
 
     {
         unsigned i;
-
-        if (url_cnt == 0) {
-            if (url_cnt >= url_max) url_arr = (const char **)loc_realloc((void *)url_arr, sizeof(const char *) * (url_max += 16));
-            url_arr[url_cnt++] = DEFAULT_SERVER_URL;
-        }
 
         for (i = 0; i < url_cnt; i++) {
             if (ini_server(url_arr[i], proto, bcg) < 0) {
