@@ -1540,12 +1540,12 @@ static int is_hidden_function(Context * ctx, ContextAddress ip,
     return 0;
 }
 
-#if EN_STEP_OVER
-
 static void get_machine_code_area(CodeArea * area, void * args) {
     *(CodeArea **)args = (CodeArea *)tmp_alloc(sizeof(CodeArea));
     memcpy(*(CodeArea **)args, area, sizeof(CodeArea));
 }
+
+#if EN_STEP_OVER
 
 static int is_within_function_epilogue(Context * ctx, ContextAddress ip) {
     Symbol * sym = NULL;
@@ -1975,7 +1975,6 @@ static int update_step_machine_state(Context * ctx) {
             }
         }
         else if (addr < ext->step_range_start || addr >= ext->step_range_end) {
-            int same_line = 0;
             int function_prologue = 0;
             CodeArea * area = ext->step_code_area;
             if (area == NULL) {
@@ -2019,39 +2018,50 @@ static int update_step_machine_state(Context * ctx) {
                 return 0;
             }
 
-            same_line = is_same_line(ext->step_code_area, area);
-            if (!same_line) {
-                function_prologue = is_function_prologue(ctx, addr, ext->step_code_area);
-                if (cache_miss_count() > 0) {
-                    free_code_area(ext->step_code_area);
-                    ext->step_code_area = area;
-                    errno = ERR_CACHE_MISS;
-                    return -1;
+            if (ext->step_code_area->start_line == 0) {
+                /* Clang associates some instructions in the middle of functions to line 0.
+                 * That is valid DWARF, we need to step over such no-line-info instructions.
+                 */
+                ext->step_range_start = ext->step_code_area->start_address;
+                ext->step_range_end = ext->step_code_area->end_address;
+                free_code_area(ext->step_code_area);
+                ext->step_code_area = area;
+            }
+            else {
+                int same_line = is_same_line(ext->step_code_area, area);
+                if (!same_line) {
+                    function_prologue = is_function_prologue(ctx, addr, ext->step_code_area);
+                    if (cache_miss_count() > 0) {
+                        free_code_area(ext->step_code_area);
+                        ext->step_code_area = area;
+                        errno = ERR_CACHE_MISS;
+                        return -1;
+                    }
                 }
-            }
-            free_code_area(area);
+                free_code_area(area);
 
-            /* We are doing reverse step-over/into line. The first line has already been skipped, we are now trying to reach
-             * the beginning of previous line. If we are still on same line but have reached the beginning of the line, then we
-             * are done.
-             */
-            if (same_line && do_reverse && ext->step_line_cnt > 0 && addr == ext->step_code_area->start_address) {
-                ext->step_done = REASON_STEP;
-                return 0;
-            }
-            if (!same_line && !function_prologue) {
-                if (!do_reverse ||
-                        (ext->step_line_cnt == 0 && addr == ext->step_code_area->start_address) ||
-                        ext->step_line_cnt >= 2) {
+                /* We are doing reverse step-over/into line. The first line has already been skipped, we are now trying to reach
+                 * the beginning of previous line. If we are still on same line but have reached the beginning of the line, then we
+                 * are done.
+                 */
+                if (same_line && do_reverse && ext->step_line_cnt > 0 && addr == ext->step_code_area->start_address) {
                     ext->step_done = REASON_STEP;
                     return 0;
                 }
-                /* Current IP is in the middle of a source line.
-                 * Continue stepping to get to the beginning of the line */
-                ext->step_line_cnt++;
+                if (!same_line && !function_prologue) {
+                    if (!do_reverse ||
+                            (ext->step_line_cnt == 0 && addr == ext->step_code_area->start_address) ||
+                            ext->step_line_cnt >= 2) {
+                        ext->step_done = REASON_STEP;
+                        return 0;
+                    }
+                    /* Current IP is in the middle of a source line.
+                     * Continue stepping to get to the beginning of the line */
+                    ext->step_line_cnt++;
+                }
+                ext->step_range_start = ext->step_code_area->start_address;
+                ext->step_range_end = ext->step_code_area->end_address;
             }
-            ext->step_range_start = ext->step_code_area->start_address;
-            ext->step_range_end = ext->step_code_area->end_address;
 
             /* When doing reverse step-into/over line, if we have already skipped the first line, we want to reach
              * the beginning of current line, fix step range to handle this.
@@ -2069,7 +2079,7 @@ static int update_step_machine_state(Context * ctx) {
                 return 0;
             }
             if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return -1;
-            if (area == NULL || !is_function_prologue(ctx, addr, area)) {
+            if (area == NULL || (area->start_line != 0 && !is_function_prologue(ctx, addr, area))) {
                 if (cache_miss_count() > 0) {
                     errno = ERR_CACHE_MISS;
                     return -1;
@@ -2083,6 +2093,29 @@ static int update_step_machine_state(Context * ctx) {
 #endif /* EN_STEP_LINE */
     case RM_STEP_OUT:
     case RM_REVERSE_STEP_OUT:
+#if EN_STEP_LINE
+        {
+            /* Clang associates some instructions in the middle of functions to line 0.
+             * That is valid DWARF, we need to step over such no-line-info instructions.
+             */
+            CodeArea * area = NULL;
+            if (address_to_line(ctx, addr, addr + 1, get_machine_code_area, &area) < 0) return -1;
+            if (area != NULL && area->start_line == 0) {
+                ext->step_range_start = area->start_address;
+                ext->step_range_end = area->end_address;
+                switch (ext->step_mode) {
+                case RM_STEP_OUT:
+                    if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_INTO_RANGE)) return 0;
+                    if (context_can_resume(ctx, ext->step_continue_mode = RM_STEP_INTO)) return 0;
+                    break;
+                case RM_REVERSE_STEP_OUT:
+                    if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_INTO_RANGE)) return 0;
+                    if (context_can_resume(ctx, ext->step_continue_mode = RM_REVERSE_STEP_INTO)) return 0;
+                    break;
+                }
+            }
+        }
+#endif /* EN_STEP_LINE */
         ext->step_done = REASON_STEP;
         return 0;
     default:
