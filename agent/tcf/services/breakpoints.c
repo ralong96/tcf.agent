@@ -408,6 +408,7 @@ static void plant_instruction(BreakInstruction * bi) {
         release_error_report(rp);
     }
     bi->planted = bi->planting_error == NULL;
+    assert(bi->planted || !bi->dirty);
     if (bi->planted && !bi->virtual_addr) planted_sw_bp_cnt++;
 }
 
@@ -793,6 +794,7 @@ void invalidate_breakpoints_on_process_exec(Context * ctx) {
         if (bi->cb.ctx != mem) continue;
         if (!bi->virtual_addr) planted_sw_bp_cnt--;
         bi->planted = 0;
+        bi->dirty = 0;
     }
 }
 
@@ -3289,6 +3291,7 @@ static void event_code_unmapped(Context * ctx, ContextAddress addr, ContextAddre
             }
             if (!bi->virtual_addr) planted_sw_bp_cnt--;
             bi->planted = 0;
+            bi->dirty = 0;
         }
         addr += sz;
         size -= sz;
