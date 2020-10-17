@@ -230,6 +230,15 @@ static void send_event_terminal_win_size_changed(OutputStream * out, Terminal * 
     write_stream(out, MARKER_EOM);
 }
 
+#if !defined(_WIN32) && !defined(__CYGWIN__)
+static void kill_term_event(void * args) {
+    Terminal * term = (Terminal *)args;
+    int pid = get_process_pid(term->prs);
+    post_event_with_delay(kill_term_event, term, 1000000);
+    kill(pid, SIGKILL);
+}
+#endif
+
 static int kill_term(Terminal * term) {
     int err = 0;
     int pid = get_process_pid(term->prs);
@@ -244,7 +253,9 @@ static int kill_term(Terminal * term) {
         if (!CloseHandle(h) && !err) err = set_win32_errno(GetLastError());
     }
 #else
-    if (kill(pid, get_process_out_state(term->prs) ? TERM_EXIT_SIGNAL : SIGKILL) < 0) err = errno;
+    int sig = get_process_out_state(term->prs) ? TERM_EXIT_SIGNAL : SIGKILL;
+    if (kill(pid, sig) < 0) err = errno;
+    if (!err && sig != SIGKILL) post_event_with_delay(kill_term_event, term, 10000000);
 #endif
     term->terminated = 1;
     return err;
@@ -291,6 +302,9 @@ static void terminal_exited(void * args) {
     list_remove(&term->link);
     broadcast_group_unlock(term->bcg);
     channel_unlock_with_msg(term->channel, TERMINALS);
+#if !defined(_WIN32) && !defined(__CYGWIN__)
+    cancel_event(kill_term_event, term, 0);
+#endif
     loc_free(term);
 }
 
