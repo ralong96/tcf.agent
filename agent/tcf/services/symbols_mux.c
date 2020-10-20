@@ -30,6 +30,7 @@
 #include <tcf/framework/cache.h>
 #include <tcf/framework/myalloc.h>
 #include <tcf/framework/context.h>
+#include <tcf/services/runctrl.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/symbols_mux.h>
 #include <tcf/services/memorymap.h>
@@ -46,14 +47,7 @@ static int get_sym_addr(Context * ctx, int frame, ContextAddress addr, ContextAd
         *sym_addr = addr;
     }
     else if (is_top_frame(ctx, frame)) {
-        if (!ctx->stopped) {
-            errno = ERR_IS_RUNNING;
-            return -1;
-        }
-        if (ctx->exited) {
-            errno = ERR_ALREADY_EXITED;
-            return -1;
-        }
+        if (!is_ctx_stopped(ctx)) return -1;
         if (get_PC(ctx, sym_addr) < 0) return -1;
     }
     else {

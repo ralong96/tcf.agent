@@ -32,6 +32,7 @@
 #include <tcf/framework/cache.h>
 #include <tcf/framework/exceptions.h>
 #include <tcf/services/registers.h>
+#include <tcf/services/runctrl.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/linenumbers.h>
 #include <tcf/services/memorymap.h>
@@ -471,8 +472,8 @@ static void command_get_context_cache_client(void * x) {
             err = errno;
             break;
         }
-        if (!d->ctx->stopped) {
-            err = ERR_IS_RUNNING;
+        if (!is_ctx_stopped(d->ctx)) {
+            err = errno;
             break;
         }
         assert(d->frame >= 0);
@@ -550,8 +551,8 @@ static void command_get_children_cache_client(void * x) {
     if (ctx == NULL || !context_has_state(ctx)) {
         /* no children */
     }
-    else if (!ctx->stopped) {
-        err = ERR_IS_RUNNING;
+    else if (!is_ctx_stopped(ctx)) {
+        err = errno;
     }
     else if (args->all_frames) {
         stack = create_stack_trace(ctx, MAX_FRAMES);
@@ -628,22 +629,14 @@ static void command_get_children_range(char * token, Channel * c) {
 }
 
 int get_top_frame(Context * ctx) {
-
-    if (!ctx->stopped) {
-        errno = ERR_IS_RUNNING;
-        return STACK_TOP_FRAME;
-    }
-
+    if (!is_ctx_stopped(ctx)) return STACK_TOP_FRAME;
     return 0;
 }
 
 int get_bottom_frame(Context * ctx) {
     StackTrace * stack;
 
-    if (!ctx->stopped) {
-        errno = ERR_IS_RUNNING;
-        return STACK_BOTTOM_FRAME;
-    }
+    if (!is_ctx_stopped(ctx)) return STACK_BOTTOM_FRAME;
 
     stack = create_stack_trace(ctx, MAX_FRAMES);
     if (stack == NULL) return STACK_BOTTOM_FRAME;
@@ -696,14 +689,7 @@ int get_frame_info(Context * ctx, int frame, StackFrame ** info) {
     int max_frames = 0;
 
     *info = NULL;
-    if (ctx == NULL || !context_has_state(ctx)) {
-        errno = ERR_INV_CONTEXT;
-        return -1;
-    }
-    if (!ctx->stopped) {
-        errno = ERR_IS_RUNNING;
-        return -1;
-    }
+    if (!is_ctx_stopped(ctx)) return -1;
 
     if (frame >= 0) max_frames = frame + 1;
     else if (frame == STACK_TOP_FRAME) max_frames = 1;

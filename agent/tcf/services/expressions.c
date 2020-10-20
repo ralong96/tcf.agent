@@ -838,8 +838,8 @@ static void reg2value(int mode, Context * ctx, int frame, RegisterDefinition * d
             if (frame != STACK_NO_FRAME) str_exception(ERR_INV_CONTEXT, "Invalid stack frame ID");
             if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
         }
-        else if (!ctx->stopped && (ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0) {
-            str_exception(ERR_IS_RUNNING, "Cannot read CPU register");
+        else if ((ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0 && !is_ctx_stopped(ctx)) {
+            str_exception(errno, "Cannot read CPU register");
         }
         else if (frame == STACK_TOP_FRAME || frame == STACK_NO_FRAME) {
             if (context_read_reg(ctx, def, 0, def->size, v->value) < 0) exception(errno);
@@ -1625,7 +1625,7 @@ static void load_value(Value * v) {
         Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
         assert(!v->constant);
         if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
-            if (!is_all_stopped(ctx)) error(ERR_IS_RUNNING, "Cannot read memory if not stopped");
+            if (!is_all_stopped(ctx)) error(errno, "Cannot read memory if not stopped");
         }
         if (context_read_mem(ctx, v->address, buf, size) < 0) {
             error(errno, "Can't read variable value");
@@ -4548,7 +4548,7 @@ static void command_evaluate_cache_client(void * x) {
         Context * mem = context_get_group(ctx, CONTEXT_GROUP_PROCESS);
         buf = tmp_alloc_zero((size_t)value.size);
         if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
-            if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot read memory if not stopped");
+            if (!is_all_stopped(ctx)) err = set_errno(errno, "Cannot read memory if not stopped");
         }
         if (!err && context_read_mem(ctx, value.address, buf, (size_t)value.size) < 0) {
             err = set_errno(errno, "Cannot read target memory");
@@ -4782,7 +4782,7 @@ static void command_assign_cache_client(void * x) {
     if (!err) {
         if (value.remote) {
             if ((ctx->mem_access & MEM_ACCESS_WR_RUNNING) == 0) {
-                if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot write memory if not stopped");
+                if (!is_all_stopped(ctx)) err = set_errno(errno, "Cannot write memory if not stopped");
             }
             if (!err && context_write_mem(ctx, value.address, args->value_buf, args->value_size) < 0) err = errno;
 #if SERVICE_Memory

@@ -432,7 +432,7 @@ static const char * get_suspend_reason(Context * ctx) {
     if (ext->step_error != NULL) return errno_to_str(set_error_report_errno(ext->step_error));
     if (ext->step_done != NULL) return ext->step_done;
     reason = context_suspend_reason(ctx);
-    if (reason != NULL)  return reason;
+    if (reason != NULL) return reason;
     return REASON_USER_REQUEST;
 }
 
@@ -1437,6 +1437,28 @@ static void send_event_context_exception(Context * ctx) {
     write_stream(out, MARKER_EOM);
 }
 
+int is_ctx_stopped(Context * ctx) {
+    if (ctx == NULL) {
+        errno = ERR_INV_CONTEXT;
+        return 0;
+    }
+    if (ctx->stopped) return 1;
+    if (ctx->exited) {
+        errno = ERR_ALREADY_EXITED;
+        return 0;
+    }
+    if (!context_has_state(ctx)) {
+        errno = ERR_INV_CONTEXT;
+        return 0;
+    }
+    if (EXT(ctx)->state_name) {
+        set_fmt_errno(ERR_OTHER, "Context %s state: %s", ctx->name ? ctx->name : ctx->id, get_context_state_name(ctx));
+        return 0;
+    }
+    errno = ERR_IS_RUNNING;
+    return 0;
+}
+
 int is_all_stopped(Context * grp) {
     LINK * l;
     grp = context_get_group(grp, CONTEXT_GROUP_STOP);
@@ -1445,6 +1467,11 @@ int is_all_stopped(Context * grp) {
         if (ctx->stopped || ctx->exited || ctx->exiting) continue;
         if (!context_has_state(ctx)) continue;
         if (context_get_group(ctx, CONTEXT_GROUP_STOP) != grp) continue;
+        if (EXT(ctx)->state_name) {
+            set_fmt_errno(ERR_OTHER, "Context %s state: %s", ctx->name ? ctx->name : ctx->id, get_context_state_name(ctx));
+            return 0;
+        }
+        errno = ERR_IS_RUNNING;
         return 0;
     }
     return 1;
@@ -3013,6 +3040,26 @@ void ini_run_ctrl_service(Protocol * proto, TCFBroadcastGroup * bcg) {
 
 #include <tcf/services/runctrl.h>
 
+int is_ctx_stopped(Context * ctx) {
+#if ENABLE_DebugContext
+    if (ctx == NULL) {
+        errno = ERR_INV_CONTEXT;
+        return 0;
+    }
+    if (ctx->stopped) return 1;
+    if (ctx->exited) {
+        errno = ERR_ALREADY_EXITED;
+        return 0;
+    }
+    if (!context_has_state(ctx)) {
+        errno = ERR_INV_CONTEXT;
+        return 0;
+    }
+#endif
+    errno = ERR_IS_RUNNING;
+    return 0;
+}
+
 int is_all_stopped(Context * grp) {
 #if ENABLE_DebugContext
     LINK * l;
@@ -3022,6 +3069,7 @@ int is_all_stopped(Context * grp) {
         if (ctx->stopped || ctx->exited || ctx->exiting) continue;
         if (!context_has_state(ctx)) continue;
         if (context_get_group(ctx, CONTEXT_GROUP_STOP) != grp) continue;
+        errno = ERR_IS_RUNNING;
         return 0;
     }
 #endif

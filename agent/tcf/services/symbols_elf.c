@@ -44,6 +44,7 @@
 #include <tcf/services/memorymap.h>
 #include <tcf/services/funccall.h>
 #include <tcf/services/pathmap.h>
+#include <tcf/services/runctrl.h>
 #include <tcf/services/symbols.h>
 #include <tcf/services/elf-symbols.h>
 #include <tcf/services/elf-loader.h>
@@ -209,14 +210,7 @@ static int get_sym_context(Context * ctx, int frame, ContextAddress addr) {
         sym_ip = addr;
     }
     else if (is_top_frame(ctx, frame)) {
-        if (!ctx->stopped) {
-            errno = ERR_IS_RUNNING;
-            return -1;
-        }
-        if (ctx->exited) {
-            errno = ERR_ALREADY_EXITED;
-            return -1;
-        }
+        if (!is_ctx_stopped(ctx)) return -1;
         if (get_PC(ctx, &sym_ip) < 0) return -1;
     }
     else {

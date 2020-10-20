@@ -469,8 +469,8 @@ static void command_get_cache_client(void * x) {
             check_all_stopped(ctx);
         }
         if ((ctx->reg_access & REG_ACCESS_RD_RUNNING) == 0) {
-            if (!ctx->stopped && context_has_state(ctx))
-                str_exception(ERR_IS_RUNNING, "Cannot read register if not stopped");
+            if (context_has_state(ctx) && !is_ctx_stopped(ctx))
+                str_exception(errno, "Cannot read register if not stopped");
         }
         if (reg_def->size > bbf_len) {
             bbf_len += 0x100 + reg_def->size;
@@ -541,8 +541,8 @@ static void command_set_cache_client(void * x) {
             check_all_stopped(ctx);
         }
         if ((ctx->reg_access & REG_ACCESS_WR_RUNNING) == 0) {
-            if (!ctx->stopped && context_has_state(ctx))
-                str_exception(ERR_IS_RUNNING, "Cannot write register if not stopped");
+            if (context_has_state(ctx) && !is_ctx_stopped(ctx))
+                str_exception(errno, "Cannot write register if not stopped");
         }
         if ((size_t)args->data_len > reg_def->size) exception(ERR_INV_DATA_SIZE);
         if (args->data_len > 0) {
@@ -647,8 +647,8 @@ static void check_location_list(Location * locs, unsigned cnt, int setm) {
             check_all_stopped(loc->ctx);
         }
         if ((loc->ctx->reg_access & setm ? REG_ACCESS_WR_RUNNING : REG_ACCESS_RD_RUNNING) == 0) {
-            if (!loc->ctx->stopped && context_has_state(loc->ctx))
-                str_fmt_exception(ERR_IS_RUNNING, "Cannot %s register if not stopped", setm ? "write" : "read");
+            if (context_has_state(loc->ctx) && !is_ctx_stopped(loc->ctx))
+                str_fmt_exception(errno, "Cannot %s register if not stopped", setm ? "write" : "read");
         }
         if (loc->offs + loc->size > loc->reg_def->size) exception(ERR_INV_DATA_SIZE);
 

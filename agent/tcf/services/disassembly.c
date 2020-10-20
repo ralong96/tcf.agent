@@ -321,7 +321,7 @@ static void disassemble_cache_client(void * x) {
             check_all_stopped(ctx);
         }
         if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
-            if (!is_all_stopped(ctx)) error = set_errno(ERR_IS_RUNNING, "Cannot read memory if not stopped");
+            if (!is_all_stopped(ctx)) error = set_errno(errno, "Cannot read memory if not stopped");
         }
     }
 

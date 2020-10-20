@@ -453,7 +453,7 @@ static void memory_set_cache_client(void * parm) {
             check_all_stopped(ctx);
         }
         if ((mem->mem_access & MEM_ACCESS_WR_RUNNING) == 0) {
-            if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot write memory if not stopped");
+            if (!is_all_stopped(ctx)) err = set_errno(errno, "Cannot write memory if not stopped");
         }
     }
 
@@ -552,7 +552,7 @@ static void memory_get_cache_client(void * parm) {
             check_all_stopped(ctx);
         }
         if ((mem->mem_access & MEM_ACCESS_RD_RUNNING) == 0) {
-            if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot read memory if not stopped");
+            if (!is_all_stopped(ctx)) err = set_errno(errno, "Cannot read memory if not stopped");
         }
     }
 
@@ -656,7 +656,7 @@ static void memory_fill_cache_client(void * parm) {
             check_all_stopped(ctx);
         }
         if ((mem->mem_access & MEM_ACCESS_WR_RUNNING) == 0) {
-            if (!is_all_stopped(ctx)) err = set_errno(ERR_IS_RUNNING, "Cannot write memory if not stopped");
+            if (!is_all_stopped(ctx)) err = set_errno(errno, "Cannot write memory if not stopped");
         }
     }
 

@@ -629,8 +629,7 @@ static uint64_t get_symbol_ip(Context * ctx, int * frame, ContextAddress addr) {
     }
     else if (is_top_frame(ctx, *frame)) {
         ContextAddress pc = 0;
-        if (!ctx->stopped) exception(ERR_IS_RUNNING);
-        if (ctx->exited) exception(ERR_ALREADY_EXITED);
+        if (!is_ctx_stopped(ctx)) exception(errno);
         *frame = get_top_frame(ctx);
         if (get_PC(ctx, &pc) < 0) exception(errno);
         ip = (uint64_t)pc;
@@ -736,7 +735,7 @@ static SymInfoCache * get_sym_info_cache(const Symbol * sym, int acc_mode) {
             break;
         }
         if (update) {
-            if (!s->update_owner->stopped) exception(ERR_IS_RUNNING);
+            if (!is_ctx_stopped(s->update_owner)) exception(errno);
             s->degraded = 0;
             s->done_context = 0;
             s->has_size = 0;
